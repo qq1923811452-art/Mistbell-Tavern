@@ -43,39 +43,37 @@ class CachedVectorStore(
         queryVector: FloatArray,
         topK: Int,
         filters: Map<String, Any>,
-    ): List<VectorStore.SearchResult> {
-        // Avoid unnecessary delegate work and prevent take(negative) failures
-        // in underlying stores for invalid result limits.
-        if (topK <= 0) return emptyList()
-
-        val cacheKey =
-            SearchCacheKey(
-                queryVector = queryVector.toList(),
-                topK = topK,
-                filters = filters.toMap(),
-            )
-        val generationAtLookup =
-            cacheMutex.withLock {
-                searchCache.get(cacheKey)?.let { cached ->
-                    Log.d(TAG, "Cache hit for search (dimension=" + queryVector.size + ")")
-                    return cached
+    ): List<VectorStore.SearchResult> =
+        if (topK <= 0) {
+            emptyList()
+        } else {
+            val cacheKey =
+                SearchCacheKey(
+                    queryVector = queryVector.toList(),
+                    topK = topK,
+                    filters = filters.toMap(),
+                )
+            val lookup =
+                cacheMutex.withLock {
+                    searchCache.get(cacheKey) to cacheGeneration
                 }
-                cacheGeneration
-            }
-
-        Log.d(TAG, "Cache miss for search (dimension=" + queryVector.size + ")")
-        val results = delegate.search(queryVector, topK, filters)
-
-        cacheMutex.withLock {
-            // If a write invalidated the cache while search was running, don't
-            // reinsert results computed against the pre-write store state.
-            if (generationAtLookup == cacheGeneration) {
-                searchCache.put(cacheKey, results.toList())
+            val cached = lookup.first
+            if (cached != null) {
+                Log.d(TAG, "Cache hit for search (dimension=" + queryVector.size + ")")
+                cached
+            } else {
+                Log.d(TAG, "Cache miss for search (dimension=" + queryVector.size + ")")
+                val results = delegate.search(queryVector, topK, filters)
+                cacheMutex.withLock {
+                    // If a write invalidated the cache while search was running, don't
+                    // reinsert results computed against the pre-write store state.
+                    if (lookup.second == cacheGeneration) {
+                        searchCache.put(cacheKey, results.toList())
+                    }
+                }
+                results
             }
         }
-
-        return results
-    }
 
     override suspend fun get(id: String): VectorStore.VectorEntry? {
         return delegate.get(id)
