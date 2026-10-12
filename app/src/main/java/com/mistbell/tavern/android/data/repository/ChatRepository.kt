@@ -575,8 +575,9 @@ class ChatRepository(private val context: Context) {
                 storeAssistantMessageVector(existing[nextIndex], ownerId, entity.characterId.ifBlank { characterId }, sessionId, messageId)
                 return@withContext
             }
-            val lastUser = db.messageDao().getBySession(sessionId, ownerId).first()
-                .lastOrNull { it.role == "user" && it.createdAt < entity.createdAt }
+            val lastUser =
+                db.messageDao().getBySession(sessionId, ownerId).first()
+                    .lastOrNull { it.role == "user" && it.createdAt < entity.createdAt }
                 ?: throw IllegalStateException("没有可用于生成替代回复的用户消息")
             val config = loadLlmConfig(sessionId)
             if (config.baseUrl.isBlank() || config.apiKey.isBlank()) {
@@ -708,7 +709,10 @@ class ChatRepository(private val context: Context) {
             resolveReplyAttribution(rawReply, loadGroupContext(ownerId, characterId, sessionId)?.speakerNames, characterId)
         if (continuation.isBlank() && continuationThinking.isNullOrBlank()) return
         val mergedContent = listOf(target.content.trimEnd(), continuation.trimStart()).filter { it.isNotBlank() }.joinToString("\n")
-        val mergedThinking = listOfNotNull(target.thinking?.takeIf { it.isNotBlank() }, continuationThinking).joinToString("\n\n").ifBlank { null }
+        val mergedThinking =
+            listOfNotNull(target.thinking?.takeIf { it.isNotBlank() }, continuationThinking)
+                .joinToString("\n\n")
+                .ifBlank { null }
         val swipes = decodeStringList(target.swipesJson).toMutableList()
         val thinkingSwipes = decodeStringList(target.thinkingSwipesJson).toMutableList()
         if (swipes.isNotEmpty()) {
@@ -732,7 +736,9 @@ class ChatRepository(private val context: Context) {
         deleteMessageVectors(target.id)
         storeAssistantMessageVector(mergedContent, ownerId, storedCharacterId, sessionId, target.id)
         db.sessionDao().get(sessionId, ownerId, characterId)?.let { session ->
-            db.sessionDao().upsert(session.copy(updatedAt = java.time.Instant.now().toString()))
+            db.sessionDao().upsert(
+                session.copy(updatedAt = java.time.Instant.now().toString()),
+            )
         }
     }
 
