@@ -139,6 +139,9 @@ jobs:
           patch = content[start:] if start >= 0 else ""
           if patch and ("*** Begin Patch" in patch or "\x00" in patch):
               raise SystemExit("Relay returned a non-git or invalid patch format")
+          # Relay models sometimes append unprefixed blank lines after the final hunk.
+          # Keep the patch syntactically valid; git apply --recount repairs hunk counts.
+          patch = patch.rstrip() + "\n" if patch.strip() else ""
           open("/tmp/relay-style.patch", "w", encoding="utf-8").write(patch)
           print("Relay model:", data.get("model", os.environ["ODYS_MODEL"]))
           print("Patch generated:", "yes" if patch.strip() else "no")
