@@ -22,6 +22,7 @@ import okhttp3.sse.EventSourceListener
 import okhttp3.sse.EventSources
 import java.io.IOException
 import java.net.SocketTimeoutException
+import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 @Serializable
@@ -242,7 +243,15 @@ object LlmClient {
         }
         val hit = usage.cacheHitTokens
         val miss = usage.cacheMissTokens
-        val rate = if (hit + miss > 0) "${(hit * 100) / (hit + miss)}%" else "n/a"
+        // Use Long for the denominator to avoid Int overflow, and retain one decimal place
+        // so low but non-zero cache hit rates are not rounded down to a misleading 0%.
+        val cacheTokens = hit.toLong() + miss.toLong()
+        val rate =
+            if (cacheTokens > 0L) {
+                String.format(Locale.US, "%.1f%%", hit.toDouble() * 100.0 / cacheTokens)
+            } else {
+                "n/a"
+            }
         android.util.Log.i(
             LOG_TAG,
             "[$path] prompt=${usage.promptTokens} 命中=$hit 未命中=$miss 命中率=$rate " +
