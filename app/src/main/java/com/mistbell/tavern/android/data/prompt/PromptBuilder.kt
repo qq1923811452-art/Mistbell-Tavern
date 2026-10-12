@@ -175,10 +175,18 @@ object PromptBuilder {
     private const val RRF_RANK_CONSTANT = 60.0
     private const val MIN_HYBRID_VECTOR_SCORE = 0.5f
     private const val MAX_LEXICAL_CONTENT_CHARS = 240
+    private const val VECTOR_RECALL_MULTIPLIER = 2
     private data class HybridCandidate(
         val content: String,
         var score: Double,
         val sources: MutableSet<String>,
+    )
+    private data class HybridRecallRequest(
+        val ownerId: String,
+        val characterId: String,
+        val sessionId: String,
+        val userMessage: String,
+        val alreadyInjected: List<String>,
     )
     private val THINKING_BLOCK_REGEX = Regex("(?s)<think>[\\s\\S]*?</think>")
 
@@ -882,19 +890,24 @@ object PromptBuilder {
                 )
         }
 
-        recallBlock = buildHybridRecallBlock(db, ownerId, characterId, sessionId, userMessage, recalledContents)
+        recallBlock =
+            buildHybridRecallBlock(
+                db,
+                HybridRecallRequest(ownerId, characterId, sessionId, userMessage, recalledContents),
+            )
 
         return MemoryContext(structuredBlock = structuredBlock, recallBlock = recallBlock)
     }
 
     private suspend fun buildHybridRecallBlock(
         db: AppDatabase,
-        ownerId: String,
-        characterId: String,
-        sessionId: String,
-        userMessage: String,
-        alreadyInjected: List<String>,
+        request: HybridRecallRequest,
     ): ChatMessage? {
+        val ownerId = request.ownerId
+        val characterId = request.characterId
+        val sessionId = request.sessionId
+        val userMessage = request.userMessage
+        val alreadyInjected = request.alreadyInjected
         // Hybrid retrieval: semantic vectors and exact lexical history run together.
         // Reciprocal-rank fusion avoids assuming the two retrievers' scores share a scale.
                 val topK = ChatSettingsResolver.memoryRecallTopK(db.settingsDao().getValue("memory_recall_top_k"))
@@ -911,7 +924,7 @@ object PromptBuilder {
                                 ownerId = ownerId,
                                 characterId = characterId,
                                 sessionId = sessionId,
-                                topK = topK * 2,
+                                topK = topK * VECTOR_RECALL_MULTIPLIER,
                             ).filter { it.score >= threshold }
                         } else {
                             emptyList()

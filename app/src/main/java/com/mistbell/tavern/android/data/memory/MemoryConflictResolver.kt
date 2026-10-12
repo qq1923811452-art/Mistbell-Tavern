@@ -70,11 +70,9 @@ internal object MemoryConflictResolver {
         val subject = obj?.get("subject")?.jsonPrimitive?.contentOrNull.orEmpty()
         val relation = obj?.get("relation")?.jsonPrimitive?.contentOrNull.orEmpty()
         val value = obj?.get("object")?.jsonPrimitive?.contentOrNull.orEmpty()
-        return if (obj == null || subject.isBlank() || relation.isBlank() || value.isBlank()) {
-            null
-        } else {
-            Fact(subject, relation, value)
-        }
+        if (obj == null) return null
+        if (subject.isBlank() || relation.isBlank() || value.isBlank()) return null
+        return Fact(subject, relation, value)
     }
 
     private fun readObject(raw: String?) =
