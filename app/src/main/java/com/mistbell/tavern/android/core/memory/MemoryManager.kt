@@ -14,7 +14,7 @@ class MemoryManager(
     }
 
     suspend fun recent(limit: Int = 20): List<MemoryRecord> {
-        return store.query(limit)
+        return store.getAll().take(limit.coerceAtLeast(0))
     }
 
     suspend fun clear() {
