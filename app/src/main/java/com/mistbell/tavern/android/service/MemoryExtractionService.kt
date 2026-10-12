@@ -509,7 +509,14 @@ class MemoryExtractionService(
 
         return existing.any { memory ->
             // A different value for the same structured fact is an update, not a duplicate.
-            if (MemoryConflictResolver.conflictsWith(candidate.subject, candidate.relation, candidate.objValue, memory)) {
+            if (
+                MemoryConflictResolver.conflictsWith(
+                    candidate.subject,
+                    candidate.relation,
+                    candidate.objValue,
+                    memory,
+                )
+            ) {
                 return@any false
             }
             if (MemoryConflictResolver.isSuperseded(memory)) return@any false
