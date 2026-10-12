@@ -110,7 +110,9 @@ object PromptBuilder {
         }
 
         private fun parseKeywords(keysJson: String): List<String> =
-            runCatching { if (keysJson.isBlank()) emptyList() else Json.decodeFromString<List<String>>(keysJson) }.getOrDefault(emptyList())
+            runCatching {
+                if (keysJson.isBlank()) emptyList() else Json.decodeFromString<List<String>>(keysJson)
+            }.getOrDefault(emptyList())
 
         private fun matchingKeywords(keysJson: String, text: String): Int = matchingKeywords(parseKeywords(keysJson), text)
 
@@ -119,7 +121,10 @@ object PromptBuilder {
                 val normalized = key.trim()
                 if (normalized.isBlank()) false
                 else if (normalized.startsWith("/") && normalized.endsWith("/")) {
-                    runCatching { Regex(normalized.substring(1, normalized.length - 1), RegexOption.IGNORE_CASE).containsMatchIn(text) }.getOrDefault(false)
+                    runCatching {
+                        Regex(normalized.substring(1, normalized.length - 1), RegexOption.IGNORE_CASE)
+                            .containsMatchIn(text)
+                    }.getOrDefault(false)
                 } else if (normalized.contains("*")) {
                     val pattern = normalized.split("*").joinToString(".*") { Regex.escape(it) }
                     runCatching { Regex("(?is).*" + pattern + ".*").matches(text) }.getOrDefault(false)
