@@ -1,0 +1,184 @@
+name: AI Relay Code Style
+
+on:
+  workflow_dispatch:
+    inputs:
+      scope:
+        description: "Scope of AI-assisted code cleanup"
+        required: true
+        type: choice
+        options:
+          - recent-kotlin-changes
+        default: recent-kotlin-changes
+
+permissions:
+  contents: write
+
+concurrency:
+  group: relay-code-style-feature
+  cancel-in-progress: false
+
+jobs:
+  standardize:
+    if: github.ref == 'refs/heads/feature'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature
+          fetch-depth: 30
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Make wrapper executable
+        run: chmod +x ./gradlew
+
+      - name: Validate relay configuration
+        env:
+          ODYS_API_KEY: ${{ secrets.ODYS_API_KEY }}
+          ODYS_MODEL: ${{ secrets.ODYS_MODEL }}
+        run: |
+          test -n "$ODYS_API_KEY" || { echo "::error::Missing repository secret ODYS_API_KEY"; exit 1; }
+          test -n "$ODYS_MODEL" || { echo "::error::Missing repository secret ODYS_MODEL"; exit 1; }
+
+      - name: Collect diagnostics and recent Kotlin changes
+        id: context
+        shell: bash
+        run: |
+          set +e
+          ./gradlew :app:detekt :app:ktlintCheck --continue --no-daemon > /tmp/style-check.log 2>&1
+          CHECK_EXIT=$?
+          set -e
+          git diff HEAD~10..HEAD -- '*.kt' > /tmp/recent-kotlin.diff || true
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+          log = Path("/tmp/style-check.log").read_text(errors="replace")
+          diff = Path("/tmp/recent-kotlin.diff").read_text(errors="replace")
+          # Keep the request bounded while preserving the actionable diagnostics.
+          relevant = [line for line in log.splitlines() if any(
+              key in line for key in ("MaxLineLength", "LongMethod", "LongParameterList",
+                                      "Analysis failed", "BUILD FAILED", "BUILD SUCCESSFUL",
+                                      "e: file:", "error:")
+          )]
+          context = {
+              "branch": "feature",
+              "checks_exit_code": int("$CHECK_EXIT"),
+              "diagnostics": "\n".join(relevant[-100:]),
+              "recent_kotlin_diff": diff[-26000:],
+          }
+          Path("/tmp/relay-context.json").write_text(json.dumps(context, ensure_ascii=False))
+          print("Captured diagnostics and recent Kotlin diff for the relay model.")
+          PY
+
+      - name: Ask relay AI for a minimal style-only patch
+        id: ai
+        env:
+          ODYS_API_KEY: ${{ secrets.ODYS_API_KEY }}
+          ODYS_MODEL: ${{ secrets.ODYS_MODEL }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, urllib.request, urllib.error
+          context = open("/tmp/relay-context.json", encoding="utf-8").read()
+          prompt = """你是这个 Kotlin Android 仓库的资深维护者。请根据下面的真实 Detekt/Ktlint 诊断和近期 Kotlin diff，生成最小、可验证的代码规范修复补丁。
+          硬性规则：
+          1. 只输出标准 unified diff（以 diff --git 开始），不要 Markdown 代码围栏或解释。
+          2. 只做格式、超长方法的合理拆分、参数对象整理等与诊断直接相关的改动；不得改变产品行为、API 协议、Room schema/migration、streaming include_usage、usage 缺失时显示规则、thinking 开关语义或资源释放行为。
+          3. 不要关闭/放宽 Detekt、Ktlint，不要添加 suppress，不要改 baseline，不要改测试来掩盖问题。
+          4. 补丁必须匹配给出的当前 diff；不确定时输出空补丁，不要臆造上下文。
+          5. 优先处理新增/修改代码中的诊断。保持 Kotlin 风格，避免只为缩短行而制造难读代码。
+          以下是 JSON 格式的诊断和近期改动：
+          """ + context
+          payload = {
+              "model": os.environ["ODYS_MODEL"],
+              "messages": [
+                  {"role": "system", "content": "You produce safe, minimal unified diffs for Kotlin style fixes. Never expose secrets."},
+                  {"role": "user", "content": prompt}
+              ],
+              "stream": False,
+              "temperature": 0.1
+          }
+          req = urllib.request.Request(
+              "https://api.odys.work/v1/chat/completions",
+              data=json.dumps(payload).encode("utf-8"),
+              headers={"Authorization": "Bearer " + os.environ["ODYS_API_KEY"],
+                       "Content-Type": "application/json"},
+              method="POST")
+          try:
+              with urllib.request.urlopen(req, timeout=180) as response:
+                  data = json.loads(response.read().decode("utf-8"))
+          except urllib.error.HTTPError as exc:
+              print("Relay request failed with HTTP", exc.code)
+              raise SystemExit(1)
+          except Exception as exc:
+              print("Relay request failed:", type(exc).__name__)
+              raise SystemExit(1)
+          choices = data.get("choices") or []
+          if not choices:
+              raise SystemExit("Relay returned no choices")
+          content = choices[0].get("message", {}).get("content", "")
+          if not isinstance(content, str):
+              raise SystemExit("Relay response content was not text")
+          # Accept only a unified diff; reject prose or unsupported output.
+          start = content.find("diff --git ")
+          patch = content[start:] if start >= 0 else ""
+          if patch and ("*** Begin Patch" in patch or "\x00" in patch):
+              raise SystemExit("Relay returned a non-git or invalid patch format")
+          open("/tmp/relay-style.patch", "w", encoding="utf-8").write(patch)
+          print("Relay model:", data.get("model", os.environ["ODYS_MODEL"]))
+          print("Patch generated:", "yes" if patch.strip() else "no")
+          PY
+
+      - name: Validate and apply AI patch
+        id: patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -s /tmp/relay-style.patch ]; then
+            echo "The relay returned no applicable patch; refusing to invent changes."
+            exit 1
+          fi
+          git apply --check /tmp/relay-style.patch
+          git apply /tmp/relay-style.patch
+          git diff --check
+          git diff --stat
+
+      - name: Run complete quality gate
+        run: ./gradlew checkAll --continue --no-daemon
+
+      - name: Commit verified AI cleanup
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo "No changes to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- '*.kt'
+          git commit -m "Apply relay AI Kotlin style fixes"
+          git push origin HEAD:feature
+
+      - name: Upload patch and diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: relay-ai-code-style-report
+          path: |
+            /tmp/relay-style.patch
+            /tmp/relay-context.json
+            /tmp/style-check.log
+          if-no-files-found: ignore
+          retention-days: 14
