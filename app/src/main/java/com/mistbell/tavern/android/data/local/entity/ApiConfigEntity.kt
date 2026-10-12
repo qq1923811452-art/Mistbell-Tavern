@@ -25,6 +25,8 @@ data class ApiConfigEntity(
     val context1m: Boolean = false,
     // SSE 流式传输开关：按 API 配置独立控制，关闭后使用整包响应
     val streamingEnabled: Boolean = true,
+    // 思考模式开关：true 表示向支持协议发送禁用思考参数
+    val thinkingDisabled: Boolean = true,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis(),
 )
