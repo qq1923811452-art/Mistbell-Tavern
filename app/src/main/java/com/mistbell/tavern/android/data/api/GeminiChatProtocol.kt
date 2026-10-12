@@ -3,6 +3,7 @@ package com.mistbell.tavern.android.data.api
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -104,14 +105,17 @@ internal object GeminiChatProtocol : ChatProtocol {
         val bodyJson = json.encodeToString(GeminiRequest.serializer(), requestBody)
         val base = config.baseUrl.trimEnd('/')
         val modelPath = "models/${config.model}:generateContent"
-        val url =
-            buildString {
-                append(if (base.endsWith("/v1beta")) "$base/$modelPath" else "$base/v1beta/$modelPath")
-                append("?key=${config.apiKey}")
-                if (stream) append("&alt=sse")
+        val endpoint =
+            if (base.endsWith("/v1beta")) {
+                "$base/$modelPath"
+            } else {
+                "$base/v1beta/$modelPath"
             }
+        val urlBuilder = endpoint.toHttpUrl().newBuilder()
+            .addQueryParameter("key", config.apiKey)
+        if (stream) urlBuilder.addQueryParameter("alt", "sse")
         return Request.Builder()
-            .url(url)
+            .url(urlBuilder.build())
             .addHeader("Content-Type", "application/json")
             .post(bodyJson.toRequestBody("application/json".toMediaType()))
             .build()
