@@ -28,6 +28,7 @@ class InMemoryVectorStore(
     private val maxVectorsInMemory: Int = 1000,
 ) : VectorStore {
     private val vectors = mutableMapOf<String, VectorStore.VectorEntry>()
+    private val capacity = maxVectorsInMemory.coerceAtLeast(1)
     private val mutex = Mutex()
     private val storageFile = File(context.filesDir, "vector_store.json")
 
@@ -65,7 +66,7 @@ class InMemoryVectorStore(
             vectors[id] = VectorStore.VectorEntry(id, vector, metadata)
 
             // 内存限制：如果超过最大数量，移除最旧的条目
-            if (vectors.size > maxVectorsInMemory) {
+            while (vectors.size > capacity) {
                 val oldestKey = vectors.keys.first()
                 vectors.remove(oldestKey)
                 Log.d(TAG, "Memory limit reached, removed oldest vector: $oldestKey")
@@ -84,8 +85,8 @@ class InMemoryVectorStore(
             }
 
             // 内存限制：保留最新的 maxVectorsInMemory 个
-            if (vectors.size > maxVectorsInMemory) {
-                val toRemove = vectors.size - maxVectorsInMemory
+            if (vectors.size > capacity) {
+                val toRemove = vectors.size - capacity
                 vectors.keys.take(toRemove).forEach { vectors.remove(it) }
                 Log.d(TAG, "Memory limit reached, removed $toRemove oldest vectors")
             }
@@ -234,6 +235,14 @@ class InMemoryVectorStore(
                         vector = entry.vector.toFloatArray(),
                         metadata = entry.metadata,
                     )
+            }
+
+            // Older files may exceed the configured limit. Keep the newest
+            // entries in file order, matching add/addBatch eviction behavior.
+            if (vectors.size > capacity) {
+                val toRemove = vectors.size - capacity
+                vectors.keys.take(toRemove).forEach { vectors.remove(it) }
+                Log.d(TAG, "Memory limit reached during load, removed $toRemove oldest vectors")
             }
 
             Log.d(TAG, "Loaded ${vectors.size} vectors from disk")
