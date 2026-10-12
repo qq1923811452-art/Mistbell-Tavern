@@ -508,7 +508,10 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
                         ?: exportData.messages.firstOrNull { it.role == "assistant" }?.characterId.orEmpty()
                 val character =
                     db.characterDao().getById(characterKey)
-                        ?: db.characterDao().getAll().first().firstOrNull { it.name.equals(characterKey, ignoreCase = true) }
+                        ?: db.characterDao()
+                            .getAll()
+                            .first()
+                            .firstOrNull { it.name.equals(characterKey, ignoreCase = true) }
                 if (character == null) {
                     _importError.value = "导入失败：找不到角色 ${characterKey.ifBlank { "ID 未提供" }}，请先导入对应角色卡"
                     return@launch
