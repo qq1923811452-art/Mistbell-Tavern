@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import com.mistbell.tavern.android.TavernApplication
 import com.mistbell.tavern.android.data.api.model.StructuredMemory
+import com.mistbell.tavern.android.data.memory.MemoryConflictResolver
 import com.mistbell.tavern.android.data.local.entity.StructuredMemoryEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -146,7 +147,9 @@ class StructuredMemoryRepository(context: Context) {
             memoryDao.update(entity)
 
             // 如果重要性 >= 7，重新同步到向量数据库；降到阈值以下则清理既有摘要副本
-            if (memory.shouldSyncToVector()) {
+            if (MemoryConflictResolver.isSuperseded(memory)) {
+                deleteVectorCopy(memory.id)
+            } else if (memory.shouldSyncToVector()) {
                 syncToVectorIfNeeded(memory)
             } else {
                 deleteVectorCopy(memory.id)
