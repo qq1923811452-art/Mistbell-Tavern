@@ -192,6 +192,7 @@ object LlmClient {
     private fun maxAttemptsFor(config: LlmConfig): Int = 1 + config.retries.coerceIn(0, 5)
 
     private const val LOG_TAG = "LlmUsage"
+    private const val PERCENT_MULTIPLIER = 100.0
 
     /**
      * Merge usage fields from stream frames without counting repeated cumulative values twice.
@@ -248,7 +249,7 @@ object LlmClient {
         val cacheTokens = hit.toLong() + miss.toLong()
         val rate =
             if (cacheTokens > 0L) {
-                String.format(Locale.US, "%.1f%%", hit.toDouble() * 100.0 / cacheTokens)
+                String.format(Locale.US, "%.1f%%", hit.toDouble() * PERCENT_MULTIPLIER / cacheTokens)
             } else {
                 "n/a"
             }
