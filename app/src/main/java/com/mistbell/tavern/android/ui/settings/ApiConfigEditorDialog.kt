@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Label
 import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.filled.Star
@@ -29,6 +30,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenu
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FilterChip
@@ -145,7 +147,6 @@ private fun ApiKeyField(
     onApiKeyChange: (String) -> Unit,
 ) {
     var showApiKey by remember { mutableStateOf(false) }
-
     OutlinedTextField(
         value = apiKey,
         onValueChange = onApiKeyChange,
@@ -182,7 +183,6 @@ private fun DialogConfirmButtons(
     onConfirm: () -> Unit,
 ) {
     val canConfirm = name.isNotBlank() && apiUrl.isNotBlank() && apiKey.isNotBlank() && model.isNotBlank()
-
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -194,7 +194,6 @@ private fun DialogConfirmButtons(
         ) {
             Text("取消")
         }
-
         Button(
             onClick = onConfirm,
             modifier = Modifier.weight(1f),
@@ -265,7 +264,6 @@ private fun ApiModelField(
                 Text("获取模型")
             }
         }
-
         if (fetchedModels.isNotEmpty()) {
             Row(
                 modifier =
@@ -307,7 +305,6 @@ private fun DialogConnectionTestRow(
 ) {
     var testing by remember { mutableStateOf(false) }
     var testResult by remember { mutableStateOf<ApiTestResult?>(null) }
-
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -366,7 +363,6 @@ private fun ApiTypeSelectorField(
     onTypeChange: (String) -> Unit,
 ) {
     var typeExpanded by remember { mutableStateOf(false) }
-
     ExposedDropdownMenuBox(
         expanded = typeExpanded,
         onExpandedChange = { typeExpanded = it },
@@ -404,7 +400,8 @@ private fun ApiTypeSelectorField(
  * API 配置编辑对话框。
  *
  * 功能：接口类型选择（OpenAI 兼容 / Anthropic / Gemini / 自定义）、获取模型列表、
- * 连接测试（按类型走对应协议）、1M 上下文开关、设为默认。
+ * 连接测试（按类型走对应协议）、SSE 流式传输、1M 上下文开关、
+ * 禁用思考模式（仅对 OpenAI 兼容网关生效）、设为默认。
  *
  * 协议边界：当前版本对话请求固定为 OpenAI 兼容格式（LlmClient 单协议）；
  * 选择 Anthropic/Gemini 时连接测试与模型列表按其官方协议真实可用，
@@ -426,6 +423,7 @@ fun ApiConfigEditorDialog(
         type: String,
         context1M: Boolean,
         streamingEnabled: Boolean,
+        thinkingDisabled: Boolean,
     ) -> Unit,
 ) {
     var name by remember { mutableStateOf(apiConfig?.name ?: "") }
@@ -435,13 +433,12 @@ fun ApiConfigEditorDialog(
     var model by remember { mutableStateOf(apiConfig?.model ?: "") }
     var context1M by remember { mutableStateOf(apiConfig?.context1M ?: false) }
     var streamingEnabled by remember { mutableStateOf(apiConfig?.streamingEnabled ?: true) }
+    // 思考开关：新增配置时默认 ON（= 禁用思考）；编辑时沿用已存值
+    var thinkingDisabled by remember { mutableStateOf(apiConfig?.thinkingDisabled ?: true) }
     var setAsDefault by remember { mutableStateOf(apiConfig?.isDefault ?: false) }
-    var showApiKey by remember { mutableStateOf(false) }
-
     val fetchedModels by viewModel?.fetchedModels?.collectAsState() ?: remember { mutableStateOf(emptyList<String>()) }
     val fetchingModels by viewModel?.fetchingModels?.collectAsState() ?: remember { mutableStateOf(false) }
     val fetchModelsError by viewModel?.fetchModelsError?.collectAsState() ?: remember { mutableStateOf<String?>(null) }
-
     Dialog(onDismissRequest = onDismiss) {
         Surface(
             shape = RoundedCornerShape(28.dp),
@@ -473,7 +470,6 @@ fun ApiConfigEditorDialog(
                         fontWeight = FontWeight.Bold,
                     )
                 }
-
                 // 配置名称
                 OutlinedTextField(
                     value = name,
@@ -487,7 +483,6 @@ fun ApiConfigEditorDialog(
                     singleLine = true,
                     shape = RoundedCornerShape(16.dp),
                 )
-
                 // 接口类型（选中自动填充预设地址）
                 ApiTypeSelectorField(
                     type = type,
@@ -496,7 +491,6 @@ fun ApiConfigEditorDialog(
                         apiUrl = resolvePresetUrl(newType, apiUrl)
                     },
                 )
-
                 // 一键填入 Odys 中转站公开配置；API Key 由用户自行填写，不内置或上传密钥。
                 OutlinedButton(
                     onClick = {
@@ -516,7 +510,6 @@ fun ApiConfigEditorDialog(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-
                 // API 地址
                 OutlinedTextField(
                     value = apiUrl,
@@ -533,13 +526,11 @@ fun ApiConfigEditorDialog(
                     shape = RoundedCornerShape(16.dp),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
                 )
-
                 // API 密钥
                 ApiKeyField(
                     apiKey = apiKey,
                     onApiKeyChange = { apiKey = it },
                 )
-
                 // 模型 + 获取模型 + 拉取结果 + 连接测试
                 ApiModelField(
                     model = model,
@@ -552,7 +543,6 @@ fun ApiConfigEditorDialog(
                     fetchingModels = fetchingModels,
                     fetchModelsError = fetchModelsError,
                 )
-
                 DialogConnectionTestRow(
                     apiUrl = apiUrl,
                     apiKey = apiKey,
@@ -560,7 +550,6 @@ fun ApiConfigEditorDialog(
                     type = type,
                     viewModel = viewModel,
                 )
-
                 // SSE 流式传输开关：按当前 API 配置保存，关闭后聊天使用整包响应
                 SettingsSwitchRow(
                     title = "SSE 流式传输",
@@ -568,7 +557,6 @@ fun ApiConfigEditorDialog(
                     checked = streamingEnabled,
                     onCheckedChange = { streamingEnabled = it },
                 )
-
                 // 1M 上下文开关
                 SettingsSwitchRow(
                     title = "1M 上下文",
@@ -576,7 +564,15 @@ fun ApiConfigEditorDialog(
                     checked = context1M,
                     onCheckedChange = { context1M = it },
                 )
-
+                // 禁用思考模式开关（项目①）：按当前 API 配置持久化；
+                // 请求层仅对 OpenAI 兼容网关注入 thinking 关闭参数（协议隔离）
+                SettingsSwitchRow(
+                    title = "禁用思考模式",
+                    subtitle = "仅对 OpenAI 兼容网关生效，关闭模型的思考输出",
+                    icon = Icons.Default.Psychology,
+                    checked = thinkingDisabled,
+                    onCheckedChange = { thinkingDisabled = it },
+                )
                 // 设为默认
                 SettingsSwitchRow(
                     title = "设为默认配置",
@@ -585,7 +581,6 @@ fun ApiConfigEditorDialog(
                     checked = setAsDefault,
                     onCheckedChange = { setAsDefault = it },
                 )
-
                 // 按钮
                 DialogConfirmButtons(
                     isAdd = apiConfig == null,
@@ -595,7 +590,17 @@ fun ApiConfigEditorDialog(
                     model = model,
                     onDismiss = onDismiss,
                     onConfirm = {
-                        onConfirm(name, apiUrl, apiKey, model, setAsDefault, type, context1M, streamingEnabled)
+                        onConfirm(
+                            name,
+                            apiUrl,
+                            apiKey,
+                            model,
+                            setAsDefault,
+                            type,
+                            context1M,
+                            streamingEnabled,
+                            thinkingDisabled,
+                        )
                     },
                 )
             }
