@@ -56,7 +56,6 @@ fun MessageBubble(
     var showMenu by remember { mutableStateOf(false) }
     // 有思维链的消息进入聊天页时直接显示正文；仍可点击标题收起，避免用户误以为思维链没有生成。
     var thinkingExpanded by remember { mutableStateOf(true) }
-
     // 兼容早期版本：部分消息把 <think>...</think> 保存在 content，而没有单独写入 thinking 列。
     // 先从正文拆出再渲染，避免 Markdown 处理 HTML 标签后把思维链完全吞掉。
     val (inlineContent, inlineThinking) = remember(message.content, message.thinking) {
@@ -64,7 +63,6 @@ fun MessageBubble(
     }
     val displayedContent = if (inlineThinking != null) inlineContent else message.content
     val displayedThinking = message.thinking?.takeIf { it.isNotBlank() } ?: inlineThinking
-
     val bubbleShape = MaterialTheme.shapes.medium
     val cardBackgroundColor =
         if (isUser) {
@@ -90,7 +88,6 @@ fun MessageBubble(
         } else {
             Color.Black.copy(alpha = 0.04f)
         }
-
     Column(
         modifier =
             Modifier
@@ -127,7 +124,6 @@ fun MessageBubble(
                 )
             }
         }
-
         // 思考过程显示在对应回复上方，与消息保持同一侧对齐，但仍作为独立区域。
         if (!displayedThinking.isNullOrBlank()) {
             thinkingSection(
@@ -142,7 +138,6 @@ fun MessageBubble(
                     ),
             )
         }
-
         // Message row
         Row(
             modifier =
@@ -153,7 +148,6 @@ fun MessageBubble(
             verticalAlignment = Alignment.Top,
         ) {
             // No avatar - it's now in the background
-
             // Bubble with long-press menu
             Box {
                 Box(
@@ -192,7 +186,6 @@ fun MessageBubble(
                         )
                     }
                 }
-
                 // Long-press context menu
                 DropdownMenu(
                     expanded = showMenu,
@@ -268,7 +261,6 @@ fun MessageBubble(
                     }
                 }
             }
-
             // Swipe indicator and controls for AI messages with multiple swipes
             if (!isUser && message.swipes != null && message.swipes.size > 1) {
                 Row(
@@ -296,14 +288,12 @@ fun MessageBubble(
                                 },
                         )
                     }
-
                     Text(
                         text = "${message.swipeIndex + 1}/${message.swipes.size}",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(horizontal = 4.dp),
                     )
-
                     IconButton(
                         onClick = onSwipeRight,
                         modifier = Modifier.size(24.dp),
@@ -323,10 +313,8 @@ fun MessageBubble(
                     }
                 }
             }
-
             // 头像已完全移除
         }
-
         // 项目②：API 实测用量 + 本地估算对照。仅在助手消息且网关确实上报了 usage 时渲染——
         // usage 为 null（网关不返回）时整行不出现，绝不用 0 或估算值冒充实测。
         if (!isUser) {
