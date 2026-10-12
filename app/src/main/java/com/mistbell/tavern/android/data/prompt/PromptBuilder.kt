@@ -935,13 +935,12 @@ object PromptBuilder {
                     buildHybridMemoryContextForPrompt(
                         vectorResults = vectorResults,
                         lexicalItems = lexicalItems,
-                        alreadyInjected = recalledContents,
+                        alreadyInjected = alreadyInjected,
                         limit = topK,
                     )
-                if (hybridContext.isNotBlank()) {
-                    recallBlock = ChatMessage(role = "system", content = hybridContext)
+                hybridContext.takeIf { it.isNotBlank() }?.let { context ->
+                    ChatMessage(role = "system", content = context)
                 }
-        return recallBlock
     }
 
     private fun selectRelevantMemories(
