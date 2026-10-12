@@ -28,13 +28,14 @@ suspend fun storeUserMessageVector(
         try {
             val vectorMemoryService = TavernApplication.instance.container.vectorMemoryService
 
+            // VectorMemory.ContentType.USER_MESSAGE
             vectorMemoryService.storeMessage(
                 content = content,
                 ownerId = ownerId,
                 characterId = characterId,
                 sessionId = sessionId,
                 messageId = messageId,
-                contentType = "user_message", // VectorMemory.ContentType.USER_MESSAGE
+                contentType = "user_message",
             )
 
             Log.d(TAG, "Stored user message vector: $messageId")
@@ -60,13 +61,14 @@ suspend fun storeAssistantMessageVector(
         try {
             val vectorMemoryService = TavernApplication.instance.container.vectorMemoryService
 
+            // VectorMemory.ContentType.AI_MESSAGE
             vectorMemoryService.storeMessage(
                 content = content,
                 ownerId = ownerId,
                 characterId = characterId,
                 sessionId = sessionId,
                 messageId = messageId,
-                contentType = "ai_message", // VectorMemory.ContentType.AI_MESSAGE
+                contentType = "ai_message",
             )
 
             Log.d(TAG, "Stored assistant message vector: $messageId")
