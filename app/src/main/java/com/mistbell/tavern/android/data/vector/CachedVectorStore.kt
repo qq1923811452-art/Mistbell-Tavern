@@ -9,16 +9,17 @@ import kotlinx.coroutines.sync.withLock
  * 带缓存的向量存储装饰器
  *
  * 优化策略：
- * - 缓存搜索结果（基于查询向量哈希 + 过滤条件）
+ * - 按完整查询向量和过滤条件缓存搜索结果，避免仅使用哈希值导致碰撞误命中
  * - LRU 缓存策略，避免内存过度占用
- * - 写操作自动清除相关缓存
+ * - 写操作完成后使搜索缓存失效，并防止并发中的旧搜索结果重新写入缓存
  */
 class CachedVectorStore(
     private val delegate: VectorStore,
     cacheSize: Int = 50,
 ) : VectorStore {
-    private val searchCache = LruCache<SearchCacheKey, List<VectorStore.SearchResult>>(cacheSize)
+    private val searchCache = LruCache<SearchCacheKey, List<VectorStore.SearchResult>>(cacheSize.coerceAtLeast(1))
     private val cacheMutex = Mutex()
+    private var cacheGeneration: Long = 0
 
     companion object {
         private const val TAG = "CachedVectorStore"
@@ -45,26 +46,28 @@ class CachedVectorStore(
     ): List<VectorStore.SearchResult> {
         val cacheKey =
             SearchCacheKey(
-                vectorHash = queryVector.contentHashCode(),
+                queryVector = queryVector.toList(),
                 topK = topK,
-                filters = filters,
+                filters = filters.toMap(),
             )
-
-        // 尝试从缓存获取
-        cacheMutex.withLock {
-            searchCache.get(cacheKey)?.let { cached ->
-                Log.d(TAG, "Cache hit for search (hash=${cacheKey.vectorHash})")
-                return cached
+        val generationAtLookup =
+            cacheMutex.withLock {
+                searchCache.get(cacheKey)?.let { cached ->
+                    Log.d(TAG, "Cache hit for search (dimension=" + queryVector.size + ")")
+                    return cached
+                }
+                cacheGeneration
             }
-        }
 
-        // 缓存未命中，执行实际搜索
-        Log.d(TAG, "Cache miss for search (hash=${cacheKey.vectorHash})")
+        Log.d(TAG, "Cache miss for search (dimension=" + queryVector.size + ")")
         val results = delegate.search(queryVector, topK, filters)
 
-        // 缓存结果
         cacheMutex.withLock {
-            searchCache.put(cacheKey, results)
+            // If a write invalidated the cache while search was running, don't
+            // reinsert results computed against the pre-write store state.
+            if (generationAtLookup == cacheGeneration) {
+                searchCache.put(cacheKey, results.toList())
+            }
         }
 
         return results
@@ -96,16 +99,20 @@ class CachedVectorStore(
         invalidateCache()
     }
 
-    private fun invalidateCache() {
-        searchCache.evictAll()
+    private suspend fun invalidateCache() {
+        cacheMutex.withLock {
+            cacheGeneration++
+            searchCache.evictAll()
+        }
         Log.d(TAG, "Cache invalidated")
     }
 
     /**
-     * 搜索缓存键
+     * 搜索缓存键使用向量快照，而不是单独使用 contentHashCode，
+     * 以免不同查询向量发生哈希碰撞时返回错误的缓存结果。
      */
     private data class SearchCacheKey(
-        val vectorHash: Int,
+        val queryVector: List<Float>,
         val topK: Int,
         val filters: Map<String, Any>,
     )
