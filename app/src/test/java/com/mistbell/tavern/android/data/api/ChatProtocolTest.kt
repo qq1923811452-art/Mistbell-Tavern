@@ -160,6 +160,16 @@ class ChatProtocolTest {
     }
 
     @Test
+    fun `gemini key 中的特殊字符会正确编码且可还原`() {
+        val apiKey = "key+with&reserved=chars%"
+        val config = geminiConfig().copy(apiKey = apiKey)
+        val request = GeminiChatProtocol.buildRequest(config, messages, stream = true)
+
+        assertEquals(apiKey, request.url.queryParameter("key"))
+        assertEquals("sse", request.url.queryParameter("alt"))
+    }
+
+    @Test
     fun `gemini assistant 映射为 model 且 system 走 systemInstruction`() {
         val body = bodyOf(GeminiChatProtocol.buildRequest(geminiConfig(), messages, stream = false))
 
