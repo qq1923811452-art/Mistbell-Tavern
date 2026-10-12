@@ -215,17 +215,17 @@ class ApiTestService {
 
         return client.newCall(request).execute().use { response ->
             when {
-            response.isSuccessful -> {
-                val body = response.body?.string()
-                if (body != null && runCatching { JSONObject(body).has("choices") }.getOrDefault(false)) {
-                    ApiTestResult.Success("连接成功")
-                } else {
-                    ApiTestResult.Error("响应格式异常")
+                response.isSuccessful -> {
+                    val body = response.body?.string()
+                    if (body != null && runCatching { JSONObject(body).has("choices") }.getOrDefault(false)) {
+                        ApiTestResult.Success("连接成功")
+                    } else {
+                        ApiTestResult.Error("响应格式异常")
+                    }
                 }
-            }
-            response.code == 401 -> ApiTestResult.Error("API 密钥无效 (401)")
-            response.code == 429 -> ApiTestResult.Error("请求过于频繁 (429)")
-            response.code == 404 -> ApiTestResult.Error("API 端点未找到 (404)")
+                response.code == 401 -> ApiTestResult.Error("API 密钥无效 (401)")
+                response.code == 429 -> ApiTestResult.Error("请求过于频繁 (429)")
+                response.code == 404 -> ApiTestResult.Error("API 端点未找到 (404)")
                 else -> ApiTestResult.Error("请求失败 (${response.code})")
             }
         }
@@ -270,8 +270,8 @@ class ApiTestService {
 
         return client.newCall(request).execute().use { response ->
             when {
-            response.isSuccessful -> ApiTestResult.Success("连接成功")
-            response.code == 401 -> ApiTestResult.Error("API 密钥无效 (401)")
+                response.isSuccessful -> ApiTestResult.Success("连接成功")
+                response.code == 401 -> ApiTestResult.Error("API 密钥无效 (401)")
                 else -> ApiTestResult.Error("请求失败 (${response.code})")
             }
         }
@@ -321,9 +321,9 @@ class ApiTestService {
 
         return client.newCall(request).execute().use { response ->
             when {
-            response.isSuccessful -> ApiTestResult.Success("连接成功")
-            response.code == HTTP_BAD_REQUEST || response.code == HTTP_FORBIDDEN ->
-                ApiTestResult.Error("API 密钥无效 (${response.code})")
+                response.isSuccessful -> ApiTestResult.Success("连接成功")
+                response.code == HTTP_BAD_REQUEST || response.code == HTTP_FORBIDDEN ->
+                    ApiTestResult.Error("API 密钥无效 (${response.code})")
                 else -> ApiTestResult.Error("请求失败 (${response.code})")
             }
         }
