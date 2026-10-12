@@ -424,7 +424,14 @@ object LlmClient {
                         data: String,
                     ) {
                         when (val result = protocol.parseStreamData(data)) {
-                            is StreamParseResult.Delta -> trySend(ChatDelta(result.text, result.thinking))
+                            is StreamParseResult.Delta -> {
+                                // 少数网关把 usage 与正文/思维链增量放在同一帧；不能只转发文本而丢掉用量。
+                                result.usage?.let { usage ->
+                                    sawUsage = true
+                                    logUsage(usage, config.model, "stream")
+                                }
+                                trySend(ChatDelta(result.text, result.thinking))
+                            }
                             is StreamParseResult.UsageUpdate -> {
                                 sawUsage = true
                                 logUsage(result.usage, config.model, "stream")
