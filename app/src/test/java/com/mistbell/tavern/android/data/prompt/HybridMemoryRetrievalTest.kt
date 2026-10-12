@@ -1,10 +1,8 @@
 package com.mistbell.tavern.android.data.prompt
 
-import com.mistbell.tavern.android.data.api.Usage
 import com.mistbell.tavern.android.data.local.entity.MessageEntity
 import com.mistbell.tavern.android.data.vector.VectorStore
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -55,7 +53,7 @@ class HybridMemoryRetrievalTest {
             limit = 0,
         )
 
-        assertFalse(result.isNotEmpty())
+        assertEquals("", result)
     }
 
     private fun message(content: String) =
