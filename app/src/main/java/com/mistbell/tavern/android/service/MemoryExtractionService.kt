@@ -8,6 +8,7 @@ import com.mistbell.tavern.android.data.api.LlmClient
 import com.mistbell.tavern.android.data.api.LlmConfig
 import com.mistbell.tavern.android.data.api.model.StructuredMemory
 import com.mistbell.tavern.android.data.repository.StructuredMemoryRepository
+import com.mistbell.tavern.android.data.memory.MemoryConflictResolver
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
@@ -93,6 +94,23 @@ class MemoryExtractionService(
                                 sessionId = sessionId,
                                 messageIds = messageIds,
                             )
+                        // Keep temporal history when a newer extracted fact changes an existing value.
+                        val existing =
+                            structuredMemoryRepository.getMemoriesByCharacter(ownerId, characterId).first()
+                        val fact =
+                            candidate.let {
+                                MemoryConflictResolver.findSuperseded(
+                                    subject = it.subject,
+                                    relation = it.relation,
+                                    value = it.objValue,
+                                    existing = existing,
+                                )
+                            }
+                        fact.forEach { previous ->
+                            structuredMemoryRepository.updateMemory(
+                                MemoryConflictResolver.markSuperseded(previous, memory.content),
+                            )
+                        }
                         structuredMemoryRepository.createMemory(memory)
                         savedCount++
                         Log.d(TAG, "Saved memory candidate #$savedCount")
@@ -479,6 +497,11 @@ class MemoryExtractionService(
         if (candidateContent.isBlank()) return true
 
         return existing.any { memory ->
+            // A different value for the same structured fact is an update, not a duplicate.
+            if (MemoryConflictResolver.conflictsWith(candidate.subject, candidate.relation, candidate.objValue, memory)) {
+                return@any false
+            }
+            if (MemoryConflictResolver.isSuperseded(memory)) return@any false
             val existingContent = normalizeForCompare(memory.content)
             if (existingContent.isBlank()) return@any false
             if (
