@@ -44,6 +44,10 @@ class CachedVectorStore(
         topK: Int,
         filters: Map<String, Any>,
     ): List<VectorStore.SearchResult> {
+        // Avoid unnecessary delegate work and prevent take(negative) failures
+        // in underlying stores for invalid result limits.
+        if (topK <= 0) return emptyList()
+
         val cacheKey =
             SearchCacheKey(
                 queryVector = queryVector.toList(),
