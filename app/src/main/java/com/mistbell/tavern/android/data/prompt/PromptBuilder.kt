@@ -89,7 +89,15 @@ object PromptBuilder {
                         .values
                         .flatMap { group ->
                             if (group.first().entry.groupName.isBlank()) group
-                            else listOf(group.maxWithOrNull(compareBy<Candidate> { it.score }.thenByDescending { it.primaryHits }.thenBy { it.entry.order })!!)
+                            else {
+                                listOf(
+                                    group.maxWithOrNull(
+                                        compareBy<Candidate> { it.score }
+                                            .thenByDescending { it.primaryHits }
+                                            .thenBy { it.entry.order },
+                                    )!!,
+                                )
+                            }
                         }.sortedWith(compareBy<Candidate> { it.entry.order }.thenBy { it.key })
                 if (winners.isEmpty()) return@repeat
                 val newlyActivated = mutableListOf<String>()
@@ -104,7 +112,10 @@ object PromptBuilder {
                     entryState.sticky = entry.sticky
                 }
                 if (newlyActivated.isEmpty()) return@repeat
-                corpus += "\n" + entries.filter { "${it.bookId}:${it.id}" in newlyActivated }.joinToString("\n") { it.content }
+                corpus +=
+                    "\\n" + entries
+                        .filter { "${it.bookId}:${it.id}" in newlyActivated }
+                        .joinToString("\\n") { it.content }
             }
             return activated
         }
@@ -114,7 +125,8 @@ object PromptBuilder {
                 if (keysJson.isBlank()) emptyList() else Json.decodeFromString<List<String>>(keysJson)
             }.getOrDefault(emptyList())
 
-        private fun matchingKeywords(keysJson: String, text: String): Int = matchingKeywords(parseKeywords(keysJson), text)
+        private fun matchingKeywords(keysJson: String, text: String): Int =
+            matchingKeywords(parseKeywords(keysJson), text)
 
         private fun matchingKeywords(keys: List<String>, text: String): Int =
             keys.count { key ->
@@ -263,7 +275,10 @@ object PromptBuilder {
         if (instructions.isBlank()) return null
         // fallbackChar 仅在 mctx.char 为空时兜底，保证 {{char}} 不会渲染成空串
         val ctx = if (mctx.char.isBlank()) mctx.copy(char = fallbackChar) else mctx
-        return Segment(ChatMessage(role = "system", content = MacroEngine.render(instructions, ctx)), SOURCE_POST_HISTORY)
+        return Segment(
+            ChatMessage(role = "system", content = MacroEngine.render(instructions, ctx)),
+            SOURCE_POST_HISTORY,
+        )
     }
 
     // token 估算的字符/token 比率：ASCII 按 4；CJK 按 **1.5**（实测标定，见下）。
@@ -380,20 +395,26 @@ object PromptBuilder {
                 val characterParts = mutableListOf<String>()
                 characterParts.add("$roleLabel: ${participant.name}")
                 // 参与组装的角色文本先过宏引擎渲染（{{char}}/{{user}} 等）
-                if (participant.description.isNotBlank()) characterParts.add(MacroEngine.render(participant.description, mctx))
+                if (participant.description.isNotBlank()) {
+                    characterParts.add(MacroEngine.render(participant.description, mctx))
+                }
                 if (participant.personality.isNotBlank()) {
                     characterParts.add(
                         "Personality: ${MacroEngine.render(participant.personality, mctx)}",
                     )
                 }
-                if (participant.scenario.isNotBlank()) characterParts.add("Scenario: ${MacroEngine.render(participant.scenario, mctx)}")
+                if (participant.scenario.isNotBlank()) {
+                    characterParts.add("Scenario: ${MacroEngine.render(participant.scenario, mctx)}")
+                }
                 if (participant.dataJson.isNotBlank()) {
                     try {
                         val charData =
                             kotlinx.serialization.json.Json.decodeFromString<com.mistbell.tavern.android.data.api.model.CharacterData>(
                                 participant.dataJson,
                             )
-                        if (charData.systemPrompt.isNotBlank()) characterParts.add(1, MacroEngine.render(charData.systemPrompt, mctx))
+                        if (charData.systemPrompt.isNotBlank()) {
+                            characterParts.add(1, MacroEngine.render(charData.systemPrompt, mctx))
+                        }
                     } catch (_: Exception) {
                     }
                 }
@@ -416,7 +437,9 @@ object PromptBuilder {
             val rules =
                 ChatSettingsResolver.applyUserNamePlaceholder(
                     MacroEngine.render(
-                        ChatSettingsResolver.groupChatRules(settingsDao.getValue(ChatSettingsResolver.KEY_GROUP_CHAT_RULES)),
+                        ChatSettingsResolver.groupChatRules(
+                            settingsDao.getValue(ChatSettingsResolver.KEY_GROUP_CHAT_RULES),
+                        ),
                         mctx,
                     ),
                     mctx.user,
@@ -662,7 +685,8 @@ object PromptBuilder {
                     insertionPosition = segment.insertionPosition ?: "prompt[$index]",
                     protocolConversionResult =
                         segment.protocolConversionResult
-                            ?: "ChatMessage(role=${segment.message.role}, content) kept; provider adapter maps this role/content",
+                            ?: "ChatMessage(role=${segment.message.role}, content) kept; " +
+                                "provider adapter maps this role/content",
                 )
             }
 
