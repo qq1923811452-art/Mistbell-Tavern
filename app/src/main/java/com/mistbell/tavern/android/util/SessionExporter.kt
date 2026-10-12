@@ -108,8 +108,19 @@ object SessionExporter {
         fileName: String = buildFileName(session.title, session.id, SessionExportFormat.JSONL.extension),
     ): SessionExportResult? {
         return try {
-            val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
-            val lines = buildString {
+            val lines = buildJsonlLines(session, messages)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    private fun buildJsonlLines(
+        session: SessionSummary,
+        messages: List<Message>,
+    ): String {
+        val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
+        return buildString {
                 appendLine(
                     buildJsonObject {
                         put("type", "session")
@@ -156,10 +167,6 @@ object SessionExporter {
                     )
                 }
             }
-            saveBytes(context, fileName, SessionExportFormat.JSONL.mimeType, lines.toByteArray(Charsets.UTF_8))
-        } catch (e: Exception) {
-            e.printStackTrace()
-            null
         }
     }
 
