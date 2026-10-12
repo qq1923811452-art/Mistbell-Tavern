@@ -580,7 +580,8 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
                 com.mistbell.tavern.android.data.local.entity.MessageEntity(
                     id = "msg-${System.currentTimeMillis()}-${(0..9999).random()}",
                     ownerId = ownerId,
-                    // Preserve per-message speaker attribution for group chats; legacy exports fall back to the session character.
+                    // Preserve per-message speaker attribution for group chats.
+                    // Legacy exports fall back to the session character.
                     characterId = messageCharacterId,
                     sessionId = sessionId,
                     role = message.role,
