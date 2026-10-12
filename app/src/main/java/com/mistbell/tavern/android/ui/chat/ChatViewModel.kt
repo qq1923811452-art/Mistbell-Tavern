@@ -23,7 +23,6 @@ import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
-
     private val db = TavernApplication.instance.container.database
 
     private val repo = ChatRepository(application)

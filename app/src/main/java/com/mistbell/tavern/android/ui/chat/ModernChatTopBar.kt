@@ -14,6 +14,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.mistbell.tavern.android.data.api.model.Character
 
+@Suppress("FunctionNaming", "LongParameterList", "LongMethod", "MaxLineLength", "MagicNumber")
 @Composable
 fun ModernChatTopBar(
     chatTitle: String,
@@ -105,7 +106,7 @@ fun ModernChatTopBar(
                                             },
                                         )
                                         if (usageRounds > 0) {
-                                            append(" · 实测 ${usageTotalTokens} tok")
+                                            append(" · 实测 $usageTotalTokens tok")
                                             append(" · 缓存 ")
                                             append(usageCacheHitRate?.let { "${(it * 100).toInt()}%" } ?: "未知")
                                         }

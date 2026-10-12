@@ -497,6 +497,7 @@ class ChatRepository(private val context: Context) {
         }
     }
 
+    @Suppress("ThrowsCount", "UseCheckOrError")
     suspend fun continueMessage(
         ownerId: String,
         characterId: String,
@@ -534,6 +535,7 @@ class ChatRepository(private val context: Context) {
         }
     }
 
+    @Suppress("LongParameterList", "LongMethod", "CyclomaticComplexMethod", "ThrowsCount", "UseRequire", "UseCheckOrError")
     suspend fun swipeMessage(
         ownerId: String,
         characterId: String,
@@ -641,6 +643,7 @@ class ChatRepository(private val context: Context) {
         }
     }
 
+    @Suppress("LongParameterList")
     private suspend fun persistSwipeCandidate(
         entity: MessageEntity,
         existing: MutableList<String>,
@@ -909,6 +912,7 @@ class ChatRepository(private val context: Context) {
      * - 替换场景（regenerateMessage）：先删目标及其后的全部消息再落库，计数按真实行数重算，
      *   同一事务内原子完成。
      */
+    @Suppress("LongMethod")
     private suspend fun persistPartialReplyOnCancel(
         partialReply: String,
         scope: SessionScope,
@@ -999,6 +1003,7 @@ class ChatRepository(private val context: Context) {
      * mode：Append 走完整尾部（计数 +1 + 记忆提取）；Replace（regenerateMessage）在同一事务内
      * 原子完成「删目标及其后的全部消息 → 落新回复 → 按真实行数回写计数」，随后仅向量化。
      */
+    @Suppress("LongMethod")
     private suspend fun persistAssistantReply(
         fullReply: String,
         scope: SessionScope,

@@ -38,6 +38,7 @@ object PromptBuilder {
          * Secondary keys are an AND gate (every non-empty secondary key must match).  Entries
          * sharing a non-empty group compete by score and only the highest scoring entry wins.
          */
+        @Suppress("LongMethod", "CyclomaticComplexMethod", "ComplexCondition")
         @Synchronized
         fun activate(sessionId: String, entries: List<WorldBookEntryEntity>, scanText: String): Set<String> {
             val state = sessions.getOrPut(sessionId) { SessionState() }

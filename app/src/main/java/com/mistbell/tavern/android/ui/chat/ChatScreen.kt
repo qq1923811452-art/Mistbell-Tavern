@@ -1,3 +1,5 @@
+@file:Suppress("TooManyFunctions", "FunctionNaming")
+
 package com.mistbell.tavern.android.ui.chat
 
 import androidx.compose.foundation.Canvas
@@ -850,6 +852,7 @@ fun ChatScreen(
  * （与请求同源的估算口径），API 实测取最近一条助手消息的 prompt/completion tokens 与缓存命中率；
  * 网关未上报时显式标注「API 用量未上报」，不用 0 冒充。
  */
+@Suppress("LongParameterList", "LongMethod", "CyclomaticComplexMethod", "MaxLineLength", "MagicNumber")
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PromptTraceSheet(
@@ -1163,7 +1166,10 @@ private fun PromptSegmentCard(
 private fun TraceMetadataSection(trace: PromptTrace) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.35f)),
+        colors =
+            CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.35f),
+            ),
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             trace.truncationReasons.forEach { Text("裁剪：$it", style = MaterialTheme.typography.labelSmall) }

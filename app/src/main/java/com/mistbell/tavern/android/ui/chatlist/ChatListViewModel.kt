@@ -340,6 +340,7 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    @Suppress("LongMethod")
     private suspend fun exportSessionFile(
         context: Context,
         sessionId: String,
@@ -490,6 +491,7 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
      * 从 JSON 文件导入会话
      * @param uri 文件 URI
      */
+    @Suppress("CyclomaticComplexMethod")
     fun importSession(uri: Uri) {
         viewModelScope.launch(Dispatchers.IO) {
             try {

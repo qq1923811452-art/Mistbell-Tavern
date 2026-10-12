@@ -165,4 +165,6 @@ ktlint {
     android.set(true)
     verbose.set(true)
     outputToConsole.set(true)
+    // Apply the repository's checked-in baseline for existing style debt; new violations still fail CI.
+    baseline = file("$projectDir/config/ktlint/baseline.xml")
 }

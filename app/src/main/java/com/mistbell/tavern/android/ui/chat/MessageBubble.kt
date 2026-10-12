@@ -29,6 +29,8 @@ import com.mistbell.tavern.android.data.prompt.PromptBuilder
 import com.mistbell.tavern.android.ui.theme.*
 import java.time.format.DateTimeFormatter
 
+private const val PERCENT_MULTIPLIER = 100
+
 // 时间格式化器提为常量：原先每条消息格式化时间都 ofPattern 重新编译一次，
 // 消息多时开销可观；DateTimeFormatter 线程安全，可全局复用
 private val TIME_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
@@ -319,7 +321,10 @@ fun MessageBubble(
         // usage 为 null（网关不返回）时整行不出现，绝不用 0 或估算值冒充实测。
         if (!isUser) {
             message.usage?.let { usage ->
-                val localEstimatedTokens = remember(displayedContent) { PromptBuilder.estimateTokensOf(displayedContent) }
+                val localEstimatedTokens =
+                    remember(displayedContent) {
+                        PromptBuilder.estimateTokensOf(displayedContent)
+                    }
                 Text(
                     text = messageUsageLabel(usage, localEstimatedTokens),
                     style = MaterialTheme.typography.labelSmall,
@@ -360,7 +365,7 @@ private fun messageUsageLabel(
     usage: Usage,
     localEstimatedTokens: Int,
 ): String {
-    val hitRateText = usage.cacheHitRateOrNull()?.let { "${(it * 100).toInt()}%" } ?: "未知"
+    val hitRateText = usage.cacheHitRateOrNull()?.let { "${(it * PERCENT_MULTIPLIER).toInt()}%" } ?: "未知"
     return "实测 输入 ${usage.promptTokens} · 输出 ${usage.completionTokens} · 总计 ${usage.totalTokens}" +
         " · 缓存 $hitRateText｜本地估算 ~$localEstimatedTokens"
 }
