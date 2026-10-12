@@ -60,12 +60,11 @@ jobs:
           CHECK_EXIT=$?
           set -e
           git diff HEAD~10..HEAD -- '*.kt' > /tmp/recent-kotlin.diff || true
-          python3 - <<'PY'
+          CHECK_EXIT="$CHECK_EXIT" python3 - <<'PY'
           from pathlib import Path
-          import json
+          import json, os
           log = Path("/tmp/style-check.log").read_text(errors="replace")
           diff = Path("/tmp/recent-kotlin.diff").read_text(errors="replace")
-          # Keep the request bounded while preserving the actionable diagnostics.
           relevant = [line for line in log.splitlines() if any(
               key in line for key in ("MaxLineLength", "LongMethod", "LongParameterList",
                                       "Analysis failed", "BUILD FAILED", "BUILD SUCCESSFUL",
@@ -73,8 +72,8 @@ jobs:
           )]
           context = {
               "branch": "feature",
-              "checks_exit_code": int("$CHECK_EXIT"),
-              "diagnostics": "\n".join(relevant[-100:]),
+              "checks_exit_code": int(os.environ["CHECK_EXIT"]),
+              "diagnostics": "\\n".join(relevant[-100:]),
               "recent_kotlin_diff": diff[-26000:],
           }
           Path("/tmp/relay-context.json").write_text(json.dumps(context, ensure_ascii=False))
