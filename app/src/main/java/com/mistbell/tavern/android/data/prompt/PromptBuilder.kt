@@ -876,6 +876,7 @@ object PromptBuilder {
             db.structuredMemoryDao()
                 .getPromptCandidates(ownerId, characterId, MEMORY_CANDIDATE_LIMIT)
                 .map { it.toDomain() }
+                .filterNot(MemoryConflictResolver::isSuperseded)
 
         val recalledMemories = selectRelevantMemories(memories, userMessage)
         val recalledContents = recalledMemories.map { it.content }.filter { it.isNotBlank() }
