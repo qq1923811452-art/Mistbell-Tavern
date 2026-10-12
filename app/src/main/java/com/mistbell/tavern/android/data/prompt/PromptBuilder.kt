@@ -876,14 +876,14 @@ object PromptBuilder {
 
         // Hybrid retrieval: semantic vectors and exact lexical history run together.
         // Reciprocal-rank fusion avoids assuming the two retrievers' scores share a scale.
-        try {
-            val vectorMemoryService = TavernApplication.instance.container.vectorMemoryService
-            val topK = ChatSettingsResolver.memoryRecallTopK(db.settingsDao().getValue("memory_recall_top_k"))
-            val threshold =
-                ChatSettingsResolver.memorySimilarityThreshold(
-                    db.settingsDao().getValue("memory_similarity_threshold"),
-                )
-            val vectorResults =
+        val topK = ChatSettingsResolver.memoryRecallTopK(db.settingsDao().getValue("memory_recall_top_k"))
+        val threshold =
+            ChatSettingsResolver.memorySimilarityThreshold(
+                db.settingsDao().getValue("memory_similarity_threshold"),
+            )
+        val vectorMemoryService = TavernApplication.instance.container.vectorMemoryService
+        val vectorResults =
+            try {
                 if (vectorMemoryService.available) {
                     vectorMemoryService.searchRelevantMemories(
                         query = userMessage,
@@ -895,24 +895,30 @@ object PromptBuilder {
                 } else {
                     emptyList()
                 }
-
-            // Lexical search is not merely a fallback: it recovers exact names, quoted phrases,
-            // and literal details that embeddings can rank poorly.
-            val lexical = LexicalMemoryService(TavernApplication.instance)
-            val lexicalItems = lexical.searchRelevantHistory(ownerId, characterId, sessionId, userMessage, topK = topK)
-            val hybridContext =
-                buildHybridMemoryContextForPrompt(
-                    vectorResults = vectorResults,
-                    lexicalItems = lexicalItems,
-                    alreadyInjected = recalledContents,
-                    limit = topK,
-                )
-            if (hybridContext.isNotBlank()) {
-                recallBlock = ChatMessage(role = "system", content = hybridContext)
+            } catch (e: Exception) {
+                android.util.Log.e("PromptBuilder", "Semantic memory search failed: ${e.message}", e)
+                emptyList()
             }
-        } catch (e: Exception) {
-            // Retrieval failures never block the chat response.
-            android.util.Log.e("PromptBuilder", "Memory search failed: ${e.message}", e)
+
+        // Lexical search is not merely a fallback: it recovers exact names, quoted phrases,
+        // and literal details that embeddings can rank poorly.
+        val lexicalItems =
+            try {
+                LexicalMemoryService(TavernApplication.instance)
+                    .searchRelevantHistory(ownerId, characterId, sessionId, userMessage, topK = topK)
+            } catch (e: Exception) {
+                android.util.Log.e("PromptBuilder", "Lexical memory search failed: ${e.message}", e)
+                emptyList()
+            }
+        val hybridContext =
+            buildHybridMemoryContextForPrompt(
+                vectorResults = vectorResults,
+                lexicalItems = lexicalItems,
+                alreadyInjected = recalledContents,
+                limit = topK,
+            )
+        if (hybridContext.isNotBlank()) {
+            recallBlock = ChatMessage(role = "system", content = hybridContext)
         }
 
         return MemoryContext(structuredBlock = structuredBlock, recallBlock = recallBlock)
