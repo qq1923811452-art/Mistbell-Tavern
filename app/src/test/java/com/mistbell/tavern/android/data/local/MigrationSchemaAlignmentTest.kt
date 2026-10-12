@@ -457,4 +457,40 @@ class MigrationSchemaAlignmentTest {
             referenced,
         )
     }
+
+    @Test
+    fun `v26 迁移真实 SQL 的 messages api_configs 新列与实体注解对齐`() {
+        // 项目②/项目①：messages.usage_json（真实 API usage 落库；可空、无 SQL 默认值）
+        // + api_configs.thinkingDisabled（思考模式开关；DEFAULT 0 与实体
+        // @ColumnInfo(defaultValue = "0") 逐字符一致）。
+        // 沿用修复5模式：直接断言迁移实际执行的常量，而非测试自拼接的字符串
+        assertEquals(
+            listOf(
+                "ALTER TABLE messages ADD COLUMN usage_json TEXT",
+                "ALTER TABLE api_configs ADD COLUMN thinkingDisabled INTEGER NOT NULL DEFAULT 0",
+            ),
+            AppDatabase.MIGRATION_25_26_SQL,
+        )
+    }
+
+    @Test
+    fun `v26 迁移仅加列不触碰索引与其他表`() {
+        // 防呆：v26 是纯加列迁移，只允许触碰 messages/api_configs，且不得创建/删除任何索引
+        assertTrue(
+            "v26 迁移不应包含索引 DDL",
+            extractIndexNames(AppDatabase.MIGRATION_25_26_SQL).isEmpty() &&
+                extractDroppedIndexNames(AppDatabase.MIGRATION_25_26_SQL).isEmpty(),
+        )
+        val tableRefRegex = Regex("""(?:TABLE|INTO)\s+(?:IF\s+NOT\s+EXISTS\s+)?(\w+)""", RegexOption.IGNORE_CASE)
+        val referenced =
+            AppDatabase.MIGRATION_25_26_SQL
+                .flatMap { sql -> tableRefRegex.findAll(sql).map { it.groupValues[1] } }
+                .toSet()
+        assertEquals(
+            "v26 迁移只允许触碰 messages/api_configs",
+            setOf("messages", "api_configs"),
+            referenced,
+        )
+    }
+
 }
