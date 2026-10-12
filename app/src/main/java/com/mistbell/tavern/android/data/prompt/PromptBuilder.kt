@@ -1096,9 +1096,9 @@ object PromptBuilder {
             if (trimmed.isBlank() || isDuplicateOfInjected(trimmed, alreadyInjected)) return
             val keyContent =
                 trimmed
-                    .replace(Regex("^\\\\[[^]]+]\\\\s*"), "")
-                    .replace(Regex("^(user|assistant|system|角色|用户):\\\\s*", RegexOption.IGNORE_CASE), "")
-            val key = keyContent.lowercase().replace(Regex("[\\s\\p{Punct}，。！？、；：“”‘’（）【】《》]+"), "")
+                    .replace(Regex("""^\[[^]]+\]\s*"""), "")
+                    .replace(Regex("""^(user|assistant|system|角色|用户):\s*""", RegexOption.IGNORE_CASE), "")
+            val key = keyContent.lowercase().replace(Regex("""[\s\p{Punct}，。！？、；：“”‘’（）【】《》]+"""), "")
             if (key.isBlank()) return
             val contribution = 1.0 / (60.0 + rank)
             val candidate = candidates[key]
