@@ -125,7 +125,7 @@ data class Memory(
     val layer: String = "",
     val subject: String = "",
     val relation: String = "",
-    `object`: String = "",
+    val `object`: String = "",
     val importance: Double = 0.5,
     val stability: Double = 1.0,
     val status: String = "active",
