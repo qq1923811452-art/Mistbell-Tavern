@@ -592,8 +592,9 @@ class ChatRepository(private val context: Context) {
                     groupContext = loadGroupContext(ownerId, characterId, sessionId),
                 )
             val sb = StringBuilder()
+            var usage: Usage? = null
             try {
-                collectReply(config, prompt, sb, onPartial)
+                usage = collectReply(config, prompt, sb, onPartial)
             } catch (e: CancellationException) {
                 // A stopped swipe still owns a valid partial candidate. Persist it
                 // before propagating cancellation so Room and the UI stay aligned.

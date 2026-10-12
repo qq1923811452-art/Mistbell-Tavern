@@ -902,7 +902,7 @@ internal fun resolveMentionTarget(
  * 会话级用量聚合（API 实测）。只统计携带真实 usage 的助手消息；无 usage 的消息整条跳过——
  * 缺失不填 0（不拿估算值或零值冒充实测）。
  */
-internal data class UsageSummary(
+data class UsageSummary(
     val messageCount: Int,
     val promptTokens: Int,
     val completionTokens: Int,

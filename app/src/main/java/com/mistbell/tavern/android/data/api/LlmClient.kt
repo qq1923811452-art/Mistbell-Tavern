@@ -193,6 +193,23 @@ object LlmClient {
     private const val LOG_TAG = "LlmUsage"
 
     /**
+     * Merge cumulative usage values emitted by compatible gateways.
+     * A gateway may repeat usage on more than one stream frame, so use per-field maxima
+     * rather than summing and accidentally double-counting the same request.
+     */
+    private fun mergeUsage(current: Usage?, incoming: Usage?): Usage? {
+        if (incoming == null) return current
+        if (current == null) return incoming
+        return Usage(
+            promptTokens = maxOf(current.promptTokens, incoming.promptTokens),
+            completionTokens = maxOf(current.completionTokens, incoming.completionTokens),
+            totalTokens = maxOf(current.totalTokens, incoming.totalTokens),
+            cacheHitTokens = maxOf(current.cacheHitTokens, incoming.cacheHitTokens),
+            cacheMissTokens = maxOf(current.cacheMissTokens, incoming.cacheMissTokens),
+        )
+    }
+
+    /**
      * 用量/前缀缓存命中日志（统一 LlmUsage 标签：`adb logcat -s LlmUsage`）。
      *
      * 前缀缓存只认同「从第 0 条消息起逐字节相同」的前缀——命中率低说明提示词头部有易变内容在漂移，
