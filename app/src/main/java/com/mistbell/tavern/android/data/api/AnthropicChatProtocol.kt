@@ -90,7 +90,6 @@ internal object AnthropicChatProtocol : ChatProtocol {
             messages
                 .filter { it.role != "system" }
                 .map { AnthropicMessage(role = it.role, content = it.content) }
-
         val requestBody =
             AnthropicRequest(
                 model = config.model,
@@ -102,11 +101,9 @@ internal object AnthropicChatProtocol : ChatProtocol {
                 topP = config.topP,
                 topK = config.topK,
             )
-
         val bodyJson = json.encodeToString(AnthropicRequest.serializer(), requestBody)
         val base = config.baseUrl.trimEnd('/')
         val url = if (base.endsWith("/v1")) "$base/messages" else "$base/v1/messages"
-
         return Request.Builder()
             .url(url)
             .addHeader("Content-Type", "application/json")
@@ -149,14 +146,27 @@ internal object AnthropicChatProtocol : ChatProtocol {
                     StreamParseResult.Ignore
                 }
             }
-            // message_start 携带 input_tokens；message_delta 携带累计 output_tokens
-            "message_start", "message_delta" ->
+            // message_start 携带真实 input_tokens（提示词用量）
+            "message_start" ->
                 event.usage?.let {
                     StreamParseResult.UsageUpdate(
                         Usage(
                             promptTokens = it.inputTokens,
                             completionTokens = it.outputTokens,
                             totalTokens = it.inputTokens + it.outputTokens,
+                        ),
+                    )
+                } ?: StreamParseResult.Ignore
+            // message_delta 只带累计 output_tokens，input_tokens 缺省为 0。
+            // 这里把 totalTokens 也置 0（=本帧未提供），交给 LlmClient 用量合并器：
+            // prompt 保留 message_start 的真实值，total 取 prompt+completion —— 不再覆盖成 0（修 P2-1）
+            "message_delta" ->
+                event.usage?.let {
+                    StreamParseResult.UsageUpdate(
+                        Usage(
+                            promptTokens = it.inputTokens,
+                            completionTokens = it.outputTokens,
+                            totalTokens = 0,
                         ),
                     )
                 } ?: StreamParseResult.Ignore
