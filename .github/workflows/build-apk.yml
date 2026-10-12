@@ -1,4 +1,4 @@
-name: Build Debug APK
+name: Build Verified Debug APK
 
 on:
   workflow_dispatch:
@@ -25,14 +25,14 @@ permissions:
   contents: read
 
 concurrency:
-  group: build-apk-${{ github.ref }}
+  group: build-verified-apk-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  build:
-    name: Build and package APK
+  verify-and-build:
+    name: Quality gate and package APK
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
@@ -49,10 +49,11 @@ jobs:
       - name: Make Gradle wrapper executable
         run: chmod +x ./gradlew
 
-      - name: Build debug APK
-        run: ./gradlew :app:assembleDebug --no-daemon
+      - name: Run full quality gate and build APK
+        run: ./gradlew :app:assembleDebug :app:testDebugUnitTest :app:detekt :app:ktlintCheck licenseGuard --continue --no-daemon
 
       - name: Generate SHA-256 checksum
+        if: success()
         shell: bash
         run: |
           set -euo pipefail
@@ -62,10 +63,22 @@ jobs:
           cd build-artifacts
           sha256sum *.apk | tee SHA256SUMS.txt
 
-      - name: Upload APK and checksum
+      - name: Upload verified APK and checksum
+        if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: mistbell-debug-apk-${{ github.run_number }}
+          name: mistbell-verified-debug-apk-${{ github.run_number }}
           path: build-artifacts/*
           if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verification-reports-${{ github.run_number }}
+          path: |
+            app/build/reports/**
+            build/reports/**
+          if-no-files-found: ignore
           retention-days: 14
