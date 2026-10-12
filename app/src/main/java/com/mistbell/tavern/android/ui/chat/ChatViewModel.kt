@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.mistbell.tavern.android.TavernApplication
+import com.mistbell.tavern.android.data.api.Usage
 import com.mistbell.tavern.android.data.api.model.*
 import com.mistbell.tavern.android.data.network.NetworkMonitor
 import com.mistbell.tavern.android.data.prompt.PromptBuilder
@@ -22,9 +23,13 @@ import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
+
     private val db = TavernApplication.instance.container.database
+
     private val repo = ChatRepository(application)
+
     private val networkMonitor = NetworkMonitor(application)
+
     private val themeRepo = ThemePackRepository(application)
 
     val isOnline: StateFlow<Boolean> = networkMonitor.isOnline
@@ -40,6 +45,25 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _isLoadingOlder = MutableStateFlow(false)
     val isLoadingOlder: StateFlow<Boolean> = _isLoadingOlder.asStateFlow()
+
+    /**
+     * 会话级用量聚合（API 实测）：会话顶栏「缓存命中率」与调试面板「本地估算 vs API 实测」用。
+     * 只统计当前窗口内携带真实 usage 的助手消息；网关不返回 usage 时保持 EMPTY——
+     * 缺失不填 0（不拿估算值或零值冒充实测）。
+     */
+    val usageSummary: StateFlow<UsageSummary> =
+        _messages
+            .map { summarizeUsage(it) }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), UsageSummary.EMPTY)
+
+    /**
+     * 最近一条携带真实 usage 的助手消息的用量（供「本地估算 vs API 实测」对照）；
+     * null = 尚无 API 实测数据（不得用 0 或本地估算顶替）。
+     */
+    val latestAssistantUsage: StateFlow<Usage?> =
+        _messages
+            .map { msgs -> msgs.lastOrNull { it.role == "assistant" && it.usage != null }?.usage }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     // 已 prepend 的更旧消息（按 createdAt 升序）：观察流只发最新窗口，prepend 结果在此累积，
     // 每次窗口发射时经 mergeMessageWindow 与窗口合并；会话切换/清空历史时重置
@@ -160,8 +184,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 val rendered = greetingOptions.value.getOrNull(index) ?: return@launch
                 val sessionId = _activeSessionId.value
                 if (sessionId.isBlank()) return@launch
-                val entity =
-                    db.messageDao().getById(messageId, sessionId, ownerId) ?: return@launch
+                val entity = db.messageDao().getById(messageId, sessionId, ownerId) ?: return@launch
                 if (entity.content == rendered) return@launch
                 db.messageDao().upsert(entity.copy(content = rendered))
             } catch (e: Exception) {
@@ -171,7 +194,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // ---- 提示词预览（聊天页「查看提示词」） ----
-
     // 预览中的提示词分段（null = 未加载）。由 [loadPromptTrace] 填充，抽屉展示时读取
     private val _promptTrace = MutableStateFlow<PromptTrace?>(null)
     val promptTrace: StateFlow<PromptTrace?> = _promptTrace.asStateFlow()
@@ -243,7 +265,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         // 显示全局默认配置，与会话实际使用的模型/端点不一致
         val config = repo.effectiveLlmConfig(_activeSessionId.value)
         val preset = db.settingsDao().getValue("sampling_preset") ?: "balanced"
-
         fun num(value: Double?): String = value?.toString() ?: "未设置（不发送）"
         return buildList {
             add("模型" to config.model.ifBlank { "未配置" })
@@ -337,14 +358,16 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         private set
 
     private var currentCharacterId = ""
+
     private var isSessionExplicitlySet = false
+
     private var messageObserverJob: kotlinx.coroutines.Job? = null
+
     private var characterObserverJob: kotlinx.coroutines.Job? = null
 
     init {
         networkMonitor.start()
         // 不在 init 中调用 loadLocalState()，等待显式的 loadSession() 调用
-
         // 移除自动同步 - 安卓和Web数据完全隔离，本地优先
         // 用户如果需要同步可以手动触发
     }
@@ -354,7 +377,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         sessionId: String? = null,
     ) {
         val charId = characterId ?: currentCharacterId
-
         // Observe characters
         viewModelScope.launch {
             repo.observeCharacters().collect { chars ->
@@ -366,14 +388,12 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
         }
-
         // Observe recent sessions
         viewModelScope.launch {
             repo.observeRecentSessions(ownerId).collect { sessions ->
                 _recentSessions.value = sessions
             }
         }
-
         // Load active session and observe messages
         viewModelScope.launch {
             if (!isSessionExplicitlySet) {
@@ -464,7 +484,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val beforeCreatedAt = oldest.createdAt
         val beforeId = oldest.id
         val characterId = char.id
-
         // 修复1：Job 存字段，会话切换经 resetMessageWindowState 可取消；挂起返回后再校验
         // 会话/角色未变，防止切换瞬间已过挂起点、旧结果污染新会话状态
         loadOlderJob =
@@ -526,14 +545,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     ) {
         // 进入新会话前抽掉上一会话不足一批的记忆抽取尾巴（首次进入时缓冲为空，天然 no-op）
         repo.flushPendingMemoryExtractions()
-
         // 取消之前的观察
         messageObserverJob?.cancel()
         characterObserverJob?.cancel()
-
         // 切换会话：重置窗口分页状态（prepend 历史/加载标记/到头标记）
         resetMessageWindowState()
-
         _activeSessionId.value = sessionId
         currentCharacterId = characterId
         _activeCharacterId.value = characterId
@@ -554,7 +570,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     if (target != null) {
                         _currentCharacter.value = target
                     }
-
                     val participantIds = session?.participantCharacterIds() ?: listOf(characterId)
                     _participantCharacters.value =
                         participantIds
@@ -562,7 +577,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                             .ifEmpty { target?.let { listOf(it) } ?: emptyList() }
                 }
             }
-
         // 加载消息
         startObservingMessages(ownerId, characterId, sessionId)
     }
@@ -570,7 +584,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     fun sendMessage(content: String) {
         val char = _currentCharacter.value ?: return
         if (content.isBlank()) return
-
         // 群聊模式：组装 GroupChatContext（参与者 id→名字 + @提及 解析出的 targetSpeakerId）；
         // 经典模式传 null（提示词路径零变化）。落库的用户消息内容保留原文——这里不改 content，
         // 仅把提及目标作为 groupContext 传入，剥前缀与回复归属由仓库层处理
@@ -583,7 +596,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             } else {
                 null
             }
-
         // 存入 generationJob 以支持"停止生成"；onPartial 经时间窗节流后把累计全文推给 UI 流式渲染
         launchGeneration("发送失败") {
             repo.sendMessage(
@@ -868,17 +880,13 @@ internal fun resolveMentionTarget(
     participants: List<Character>,
 ): String? {
     if (!content.startsWith("@") || participants.isEmpty()) return null
-
     val tail = content.substring(1)
     val separatorPattern = "^[\\s\\uFF1A:]".toRegex()
-
     // 按名字长度降序，保证前缀重叠时最长名字优先
     val sortedParticipants = participants.sortedByDescending { it.name.trim().length }
-
     for (character in sortedParticipants) {
         val name = character.name.trim()
         if (name.isEmpty()) continue
-
         if (tail.startsWith(name, ignoreCase = true)) {
             val afterName = tail.substring(name.length)
             // @名字 后必须紧跟分隔符（空白/冒号），直接结束或非分隔符字符均不命中
@@ -887,6 +895,66 @@ internal fun resolveMentionTarget(
             }
         }
     }
-
     return null
+}
+
+/**
+ * 会话级用量聚合（API 实测）。只统计携带真实 usage 的助手消息；无 usage 的消息整条跳过——
+ * 缺失不填 0（不拿估算值或零值冒充实测）。
+ */
+internal data class UsageSummary(
+    val messageCount: Int,
+    val promptTokens: Int,
+    val completionTokens: Int,
+    val totalTokens: Int,
+    val cacheHitTokens: Int,
+    val cacheMissTokens: Int,
+) {
+    /**
+     * 前缀缓存命中率：**仅当命中 + 未命中两字段有真实数据（和 > 0）时非空**；
+     * 否则返回 null（UI 显示「未知」）——绝不把缺失的缓存字段当 0 参与计算。
+     */
+    val cacheHitRate: Double?
+        get() {
+            val denominator = cacheHitTokens + cacheMissTokens
+            return if (denominator > 0) cacheHitTokens.toDouble() / denominator else null
+        }
+
+    companion object {
+        val EMPTY =
+            UsageSummary(
+                messageCount = 0,
+                promptTokens = 0,
+                completionTokens = 0,
+                totalTokens = 0,
+                cacheHitTokens = 0,
+                cacheMissTokens = 0,
+            )
+    }
+}
+
+/** 纯函数（便于单测）：汇总窗口内助手消息的 API 实测 usage；无 usage 的消息跳过（缺失不填 0）。 */
+internal fun summarizeUsage(messages: List<Message>): UsageSummary {
+    var count = 0
+    var prompt = 0
+    var completion = 0
+    var total = 0
+    var hit = 0
+    var miss = 0
+    for (message in messages) {
+        val usage = message.usage ?: continue
+        count++
+        prompt += usage.promptTokens
+        completion += usage.completionTokens
+        total += usage.totalTokens
+        hit += usage.cacheHitTokens
+        miss += usage.cacheMissTokens
+    }
+    return UsageSummary(count, prompt, completion, total, hit, miss)
+}
+
+/** 单条 usage 的缓存命中率：仅当两个缓存字段有真实数据时非空（缺失不填 0）。 */
+internal fun Usage.cacheHitRateOrNull(): Double? {
+    val denominator = cacheHitTokens + cacheMissTokens
+    return if (denominator > 0) cacheHitTokens.toDouble() / denominator else null
 }
