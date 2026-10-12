@@ -134,7 +134,9 @@ object SessionExporter {
                                 put(
                                     "swipes",
                                     json.encodeToJsonElement(
-                                        kotlinx.serialization.builtins.ListSerializer(kotlinx.serialization.serializer<String>()),
+                                        kotlinx.serialization.builtins.ListSerializer(
+                                            kotlinx.serialization.serializer<String>(),
+                                        ),
                                         it,
                                     ),
                                 )
