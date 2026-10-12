@@ -34,7 +34,9 @@ object SessionImporter {
 
     fun importFromJsonl(context: Context, uri: Uri): SessionExportData? {
         return try {
-            val text = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: return null
+            val text =
+                context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+                    ?: return null
             parseJsonlSessionData(text)
         } catch (e: Exception) {
             e.printStackTrace()
