@@ -46,26 +46,20 @@ import com.mistbell.tavern.android.ui.theme.*
 import com.mistbell.tavern.android.ui.utils.clearFocusOnTap
 
 // —— 常量：集中定义，避免散落的魔法数字 ——
-
 // 判定“贴底”的余量：最后可见项 index >= totalItemsCount - 2 即视为贴底
 private const val BOTTOM_ANCHOR_SLACK = 2
-
 // 判定“接近顶部需加载更旧消息”的阈值：第一个可见项 index <= 1
 private const val LOAD_OLDER_THRESHOLD_INDEX = 1
-
 // 流式占位 item 的固定 key：保证 streamingText 增量只重组该 item
 private const val STREAMING_ITEM_KEY = "streaming"
 private const val BOTTOM_ANCHOR_ITEM_KEY = "bottom-anchor"
-
 // 列表顶/底渐隐遮罩高度（覆盖层绘制用）
 private val MessageListTopFadeHeight = 72.dp
 private val MessageListBottomFadeHeight = 88.dp
-
 // 角色背景大图解码上限（px）：整屏显示 1280 已足够清晰，无需原始分辨率
 private const val BACKGROUND_BITMAP_MAX_DIM_PX = 1280
 private val DefaultChatInputSurfaceHeight = 64.dp
 private val MessageToInputGap = 10.dp
-
 // 背景图只作为氛围层，不能和消息正文争夺对比度。
 private const val CHARACTER_BACKGROUND_ALPHA = 0.5f
 
@@ -187,6 +181,9 @@ fun ChatScreen(
     val groupMode by viewModel.groupMode.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
     val isOnline by viewModel.isOnline.collectAsStateWithLifecycle()
+    // 项目②：会话级 API 实测用量聚合（顶栏命中率）与最近一条实测（调试面板对照）
+    val usageSummary by viewModel.usageSummary.collectAsStateWithLifecycle()
+    val latestAssistantUsage by viewModel.latestAssistantUsage.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
     val displayCharacters =
         participantCharacters.ifEmpty {
@@ -229,21 +226,18 @@ fun ChatScreen(
     // 最后一条消息 id 只需算一次：原先在每个 item 内读 messages.lastOrNull()，
     // 相当于每个 item 都订阅整个列表状态
     val lastMessageId = messages.lastOrNull()?.id
-
     // 开场白切换（聊天界面）：仅当会话只剩开场白这一条 AI 消息（没人接话）且有多个
     // 选项时提供入口——已有对话历史后开场白属于既成上下文，不允许改写
     val greetingOptions by viewModel.greetingOptions.collectAsStateWithLifecycle()
     val greetingMessage = messages.singleOrNull()?.takeIf { it.role == "assistant" }
     val canSwapGreeting = greetingMessage != null && greetingOptions.size > 1
     var showGreetingSheet by remember { mutableStateOf(false) }
-
     // 提示词预览（顶栏文档图标 → 底部抽屉）：列出本次请求真实发出的全部 message
     val promptTrace by viewModel.promptTrace.collectAsStateWithLifecycle()
     val promptRequestParams by viewModel.promptRequestParams.collectAsStateWithLifecycle()
     val isLoadingPromptTrace by viewModel.isLoadingPromptTrace.collectAsStateWithLifecycle()
     val promptTraceError by viewModel.promptTraceError.collectAsStateWithLifecycle()
     var showPromptSheet by remember { mutableStateOf(false) }
-
     // “贴底”判定：derivedStateOf 只在最后可见项 index 跨过阈值时才触发重组
     val atBottom by remember {
         derivedStateOf {
@@ -254,19 +248,15 @@ fun ChatScreen(
                 visibleItems.last().index >= layoutInfo.totalItemsCount - BOTTOM_ANCHOR_SLACK
         }
     }
-
     // 区分首次加载与用户阅读历史：会话切换（sessionId 变化）时重置
     var jumpedToBottom by remember(sessionId) { mutableStateOf(false) }
-
     // 修复2：上滚 prepend 旧消息的阅读位置锚点（解释见 PrependAnchor 注释）。
     // 只在"即将触发加载"的瞬间被赋值，列表增长后消费并清空
     var pendingAnchor by remember { mutableStateOf<PrependAnchor?>(null) }
-
     // 切换会话时丢弃旧会话的分页锚点，避免异步加载结果回到新会话后误用旧位置。
     LaunchedEffect(sessionId) {
         pendingAnchor = null
     }
-
     // 修复2：列表增长后按锚点恢复阅读位置。
     // key 必须是 messages.size：prepend 后 size 变化触发本 effect，用 scrollToItem
     // （瞬时、无动画）恢复到 原firstVisibleIndex + delta，像素偏移也一并还原，
@@ -280,7 +270,6 @@ fun ChatScreen(
         // delta<=0（加载失败/空结果）同样清空，避免过期锚点被后续加载误用
         pendingAnchor = null
     }
-
     // 修复1：key 必须含 sessionId —— loadSession 不清空 _messages，两个长会话都是
     // 200 条时 messages.size 不变，仅靠 (size, isTyping) 做 key 时 effect 不重启；
     // jumpedToBottom 虽被 remember(sessionId) 复位，却没有任何 effect 再执行，
@@ -300,7 +289,6 @@ fun ChatScreen(
             listState.scrollToItem(bottomAnchorIndex)
         }
     }
-
     LaunchedEffect(imeBottom, inputSurfaceHeight) {
         if (imeBottom > 0 && (messages.isNotEmpty() || isTyping)) {
             if (!jumpedToBottom || atBottom) {
@@ -309,7 +297,6 @@ fun ChatScreen(
             }
         }
     }
-
     // 顶部加载旧消息：第一个可见项接近列表头时触发；
     // 防并发/防重入/到头返回由 ViewModel 内部实现
     val shouldLoadOlder by remember {
@@ -336,7 +323,6 @@ fun ChatScreen(
             viewModel.loadOlderMessages()
         }
     }
-
     val snackbarHostState = remember { SnackbarHostState() }
     LaunchedEffect(error) {
         error?.let {
@@ -344,7 +330,6 @@ fun ChatScreen(
             viewModel.clearError()
         }
     }
-
     val toast by viewModel.toast.collectAsStateWithLifecycle()
     LaunchedEffect(toast) {
         toast?.let {
@@ -352,10 +337,8 @@ fun ChatScreen(
             viewModel.clearToast()
         }
     }
-
     // 已读标记不再由 UI 触发：改由 ChatViewModel 在消息流首次发射后自动执行
     // （仅未读数 > 0 时写库），避免进页面必然多一次写库
-
     // 主题包状态：tokens / 背景图 / 深色模式（三态判定与 Theme.kt 保持一致，避免 dark 覆盖错配）
     val characterTokens by viewModel.characterTokens.collectAsStateWithLifecycle()
     val characterBackgroundFile by viewModel.characterBackgroundFile.collectAsStateWithLifecycle()
@@ -369,7 +352,6 @@ fun ChatScreen(
         }
     // 记忆化：tokens/深色态不变时 resolved() 只计算一次
     val eff = remember(characterTokens, isDark) { characterTokens?.resolved(isDark) }
-
     // 主角色气泡颜色：解析提入 remember（角色不变则只解析一次）；
     // 主题回退色在组合期读取，避免 remember 块内读 snapshot state 被固化
     val primaryCharacterColor =
@@ -382,13 +364,11 @@ fun ChatScreen(
                 }
             }
         } ?: MaterialTheme.colorScheme.primary
-
     // 背景图异步采样解码：复用公共工具 + LRU 缓存，不再在组合线程同步解码大图
     val bgBitmap = rememberFileBitmap(characterBackgroundFile?.absolutePath, BACKGROUND_BITMAP_MAX_DIM_PX)
     val avatarData = primaryDisplayCharacter?.avatarData.orEmpty()
     val avatarBitmap = rememberBitmap(avatarData.takeIf { it.isNotBlank() }, BACKGROUND_BITMAP_MAX_DIM_PX)
     val hasChatBackground = bgBitmap != null || avatarBitmap != null
-
     // 原有聊天内容整体作为 lambda，按需包裹主题覆盖与背景图
     val chatContent: @Composable () -> Unit = {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -433,7 +413,6 @@ fun ChatScreen(
                     }
                 }
             }
-
             // Main content
             Scaffold(
                 contentWindowInsets = WindowInsets(0.dp),
@@ -449,6 +428,10 @@ fun ChatScreen(
                             showPromptSheet = true
                         },
                         onSettingsClick = onSettingsClick,
+                        // 项目②：会话级 API 实测用量（0 轮 = 网关未上报 → 顶栏不显示用量）
+                        usageRounds = usageSummary.messageCount,
+                        usageTotalTokens = usageSummary.totalTokens,
+                        usageCacheHitRate = usageSummary.cacheHitRate,
                     )
                 },
                 snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -467,7 +450,6 @@ fun ChatScreen(
                 ) {
                     // 修复5：离线横幅已移到渐隐遮罩覆盖层之后组合（见下方），
                     // 避免横幅落在遮罩渐变高 alpha 区被"遮花"
-
                     // Message list area
                     Box(
                         modifier =
@@ -585,7 +567,6 @@ fun ChatScreen(
                                     }
                                 }
                             }
-
                             if (isTyping) {
                                 item(key = STREAMING_ITEM_KEY) {
                                     // 流式文本订阅下放到 StreamingSlot：
@@ -607,11 +588,9 @@ fun ChatScreen(
                             }
                         }
                     }
-
                     // 统一的上下渐隐覆盖层。它在消息列表之后绘制，保证遮罩始终可见；
                     // 底部预留区先铺实体背景，再叠加渐隐，遮罩结束后不会露出角色背景图。
                     ChatFadeOverlay(surfaceHeight = effectiveInputSurfaceHeight)
-
                     // 修复5：离线横幅移到渐隐遮罩覆盖层【之后】组合——Box 子级按声明顺序
                     // 绘制，后声明的横幅盖在遮罩之上，不再落在渐变高 alpha 区被遮花
                     if (!isOnline) {
@@ -636,7 +615,6 @@ fun ChatScreen(
                             }
                         }
                     }
-
                     // 底部容器与顶部栏使用同一不透明背景，输入组件自身保持紧凑。
                     Surface(
                         modifier =
@@ -665,7 +643,6 @@ fun ChatScreen(
                             // 回调 remember 化：闭包引用稳定（continueGroupChat 在 VM 内部自校验
                             // 群聊模式与生成中状态，调用时机安全）
                             val onContinueGroup = remember { { viewModel.continueGroupChat() } }
-
                             Column {
                                 // 群聊模式：显示参与者快速选择栏
                                 if (groupMode && participantCharacters.isNotEmpty()) {
@@ -684,7 +661,6 @@ fun ChatScreen(
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             modifier = Modifier.align(Alignment.CenterVertically),
                                         )
-
                                         // 参与者头像列表
                                         participantCharacters.forEach { character ->
                                             Surface(
@@ -708,7 +684,6 @@ fun ChatScreen(
                                                 }
                                             }
                                         }
-
                                         // "继续对话"按钮
                                         OutlinedButton(
                                             onClick = onContinueGroup,
@@ -728,7 +703,6 @@ fun ChatScreen(
                                         }
                                     }
                                 }
-
                                 MessageInput(
                                     onSend = { viewModel.sendMessage(it) },
                                     enabled = !isTyping,
@@ -745,7 +719,6 @@ fun ChatScreen(
             }
         }
     }
-
     // 应用主题包：tokens 覆盖 scheme + 背景图铺底
     Box(
         modifier =
@@ -783,7 +756,6 @@ fun ChatScreen(
             chatContent()
         }
     }
-
     // 开场白切换抽屉：列出渲染后的开场白选项，选中项按消息正文匹配打勾，点选即原位替换
     if (showGreetingSheet && canSwapGreeting) {
         ModalBottomSheet(
@@ -848,7 +820,6 @@ fun ChatScreen(
             Spacer(modifier = Modifier.navigationBarsPadding().height(16.dp))
         }
     }
-
     // 提示词预览抽屉：逐条列出本次请求真实发出的 message（role + 来源 + 估算 token + 全文）
     if (showPromptSheet) {
         PromptTraceSheet(
@@ -856,6 +827,10 @@ fun ChatScreen(
             requestParams = promptRequestParams,
             isLoading = isLoadingPromptTrace,
             error = promptTraceError,
+            // 项目②：API 实测（最近一条带 usage 的助手消息；null = 网关未上报，显示「未上报」而非 0）
+            apiPromptTokens = latestAssistantUsage?.promptTokens,
+            apiCompletionTokens = latestAssistantUsage?.completionTokens,
+            apiCacheHitRate = latestAssistantUsage?.cacheHitRateOrNull(),
             onCopyAll = { viewModel.copyPromptTraceText() },
             onDismiss = {
                 showPromptSheet = false
@@ -870,6 +845,10 @@ fun ChatScreen(
  *
  * 内容与真实请求**同一次装配**（PromptBuilder.buildPromptTrace），因此这里看到的就是
  * 发给模型的那份，逐字节一致——不存在"预览一份、发送另一份"的漂移。
+ *
+ * 项目②：顶部「本地估算 vs API 实测」对照——本地估算来自 [PromptTrace.totalEstimatedTokens]
+ * （与请求同源的估算口径），API 实测取最近一条助手消息的 prompt/completion tokens 与缓存命中率；
+ * 网关未上报时显式标注「API 用量未上报」，不用 0 冒充。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -878,6 +857,9 @@ private fun PromptTraceSheet(
     requestParams: List<Pair<String, String>>,
     isLoading: Boolean,
     error: String?,
+    apiPromptTokens: Int? = null,
+    apiCompletionTokens: Int? = null,
+    apiCacheHitRate: Double? = null,
     onCopyAll: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -899,6 +881,20 @@ private fun PromptTraceSheet(
                         Text(
                             text = "${it.segments.size} 条消息 · 约 ${it.totalEstimatedTokens} tokens" +
                                 if (it.truncationReasons.isNotEmpty()) " · 已裁剪" else "",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        // 本地估算 vs API 实测（同一请求口径对照）
+                        Text(
+                            text =
+                                if (apiPromptTokens != null) {
+                                    "本地估算 ~${it.totalEstimatedTokens} tok · API 实测 prompt $apiPromptTokens" +
+                                        (apiCompletionTokens?.let { c -> " / completion $c" } ?: "") +
+                                        " · 缓存 " +
+                                        (apiCacheHitRate?.let { r -> "${(r * 100).toInt()}%" } ?: "未知")
+                                } else {
+                                    "本地估算 ~${it.totalEstimatedTokens} tok · API 用量未上报"
+                                },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -928,7 +924,6 @@ private fun PromptTraceSheet(
             Spacer(modifier = Modifier.height(8.dp))
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         }
-
         when {
             isLoading -> {
                 Box(
@@ -968,19 +963,19 @@ private fun PromptTraceSheet(
                                 RequestParamsSection(params = requestParams)
                             }
                         }
-                items(
+                        items(
                             count = trace.segments.size,
                             key = { index -> "prompt-${trace.segments[index].message.role}-$index" },
                             contentType = { "prompt-segment" },
-                ) { index ->
+                        ) { index ->
                             PromptSegmentCard(trace.segments[index], index + 1, trace.tokensOf(trace.segments[index]))
                         }
                     }
-                        if (trace.truncationReasons.isNotEmpty() || trace.protocolConversionResults.isNotEmpty()) {
-                            item(key = "__trace_meta__") {
-                                TraceMetadataSection(trace)
-                            }
+                    if (trace.truncationReasons.isNotEmpty() || trace.protocolConversionResults.isNotEmpty()) {
+                        item(key = "__trace_meta__") {
+                            TraceMetadataSection(trace)
                         }
+                    }
                     item { Spacer(modifier = Modifier.height(8.dp)) }
                 }
                 Spacer(modifier = Modifier.navigationBarsPadding().height(12.dp))
