@@ -8,6 +8,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
@@ -42,6 +43,8 @@ data class ChatCompletionRequest(
     val stream: Boolean = false,
     // 思考模式开关（DeepSeek OpenAI 格式）：null 时不发送该字段，保持对任意网关的默认行为
     val thinking: ThinkingConfig? = null,
+    // 流式用量开关：stream=true 且网关支持时带上，最后一片返回真实 usage
+    @SerialName("stream_options") val streamOptions: StreamOptions? = null,
 )
 
 /** DeepSeek 思考模式开关：type = "enabled" / "disabled" */
@@ -50,10 +53,22 @@ data class ThinkingConfig(
     val type: String,
 )
 
+/**
+ * OpenAI 兼容流式用量开关。include_usage=true 时网关会在流末尾追加一片仅含 usage 的 chunk，
+ * 这是拿到"真实用量 + 前缀缓存命中统计"的唯一途径（开启它不影响正文增量）。
+ */
+@Serializable
+data class StreamOptions(
+    @SerialName("include_usage") val includeUsage: Boolean = false,
+)
+
 /** 流式响应中的一帧，正文与思维链分开，避免把 reasoning 当成可见正文。 */
 data class ChatDelta(
     val text: String = "",
     val thinking: String? = null,
+    // 流结束时的最终用量（仅在最后一帧携带；此前各帧为 null）。
+    // 供上层落库/展示"真实 API 用量"，不再只写日志。
+    val usage: Usage? = null,
 )
 
 /**
@@ -236,7 +251,6 @@ object LlmClient {
     ): String {
         return withContext(Dispatchers.IO) {
             var lastException: Exception? = null
-
             val maxAttempts = maxAttemptsFor(config)
             repeat(maxAttempts) { attempt ->
                 try {
@@ -272,7 +286,6 @@ object LlmClient {
                     }
                 }
             }
-
             // 所有重试都失败
             throw lastException ?: Exception("LLM request failed after $maxAttempts retries")
         }
@@ -295,13 +308,11 @@ object LlmClient {
         messages: List<ChatMessage>,
     ): ProtocolContent {
         val request = buildChatRequest(config, messages, stream = false)
-
         val response = clientFor(config).newCall(request).execute()
         if (!response.isSuccessful) {
             val errorBody = response.body?.string() ?: "No error details"
             throw Exception("LLM API error: ${response.code} ${response.message} - $errorBody")
         }
-
         val responseBody = response.body?.string() ?: throw Exception("Empty response")
         val content = chatProtocolFor(config.type).parseContent(responseBody)
         logUsage(content.usage, config.model, "non-stream")
@@ -368,9 +379,13 @@ object LlmClient {
     fun chatStream(
         config: LlmConfig,
         messages: List<ChatMessage>,
-    ): Flow<String> = chatStreamWithThinking(config, messages).map { it.text }
+    ): Flow<String> =
+        chatStreamWithThinking(config, messages)
+            .map { it.text }
+            // 流末尾会附带一帧"仅用量"的 delta（text 为空）：只取正文的接口过滤掉它
+            .filter { it.isNotEmpty() }
 
-    /** 流式正文接口的增强版，保留思维链增量。 */
+    /** 流式正文接口的增强版，保留思维链增量（最后一帧可能只带 [ChatDelta.usage]）。 */
     fun chatStreamWithThinking(
         config: LlmConfig,
         messages: List<ChatMessage>,
@@ -413,8 +428,8 @@ object LlmClient {
         callbackFlow {
             val request = buildChatRequest(config, messages, stream = true)
             val protocol = chatProtocolFor(config.type)
-            // usage 是否已随 chunk 返回（用于在流结束时如实记录"网关未提供用量统计"）
-            var sawUsage = false
+            // 逐帧合并的真实用量；流结束时若仍为 null，则如实记录"网关未提供用量统计"
+            var mergedUsage: Usage? = null
             val listener =
                 object : EventSourceListener() {
                     override fun onEvent(
@@ -425,23 +440,21 @@ object LlmClient {
                     ) {
                         when (val result = protocol.parseStreamData(data)) {
                             is StreamParseResult.Delta -> {
-                                // 少数网关把 usage 与正文/思维链增量放在同一帧；不能只转发文本而丢掉用量。
-                                result.usage?.let { usage ->
-                                    sawUsage = true
-                                    logUsage(usage, config.model, "stream")
-                                }
+                                mergedUsage = mergeUsage(mergedUsage, result.usage)
                                 trySend(ChatDelta(result.text, result.thinking))
                             }
-                            is StreamParseResult.UsageUpdate -> {
-                                sawUsage = true
-                                logUsage(result.usage, config.model, "stream")
-                            }
+                            is StreamParseResult.UsageUpdate ->
+                                mergedUsage = mergeUsage(mergedUsage, result.usage)
                             StreamParseResult.Ignore -> Unit
                         }
                     }
 
                     override fun onClosed(eventSource: EventSource) {
-                        if (!sawUsage) {
+                        if (mergedUsage != null) {
+                            logUsage(mergedUsage, config.model, "stream")
+                            // 把合并后的真实用量随最后一帧交给上层（落库/展示），不再只写日志
+                            trySend(ChatDelta(text = "", thinking = null, usage = mergedUsage))
+                        } else {
                             logUsage(null, config.model, "stream")
                         }
                         close() // 服务端正常结束
