@@ -15,8 +15,11 @@ import java.util.*
  */
 @Suppress("TooManyFunctions") // CRUD + 测试连接 + 模型拉取的聚合 VM
 class ApiConfigViewModel(application: Application) : AndroidViewModel(application) {
+
     private val db = TavernApplication.instance.container.database
+
     private val apiConfigDao = db.apiConfigDao()
+
     private val apiTestService = com.mistbell.tavern.android.data.api.ApiTestService()
 
     // 所有 API 配置
@@ -101,6 +104,8 @@ class ApiConfigViewModel(application: Application) : AndroidViewModel(applicatio
                 model = "gpt-4o",
                 isDefault = true,
                 streamingEnabled = true,
+                // 新装即默认禁用思考（思考输出不进前缀缓存，是最大成本项）
+                thinkingDisabled = true,
                 sortOrder = 0,
             )
         apiConfigDao.insert(defaultConfig)
@@ -119,6 +124,7 @@ class ApiConfigViewModel(application: Application) : AndroidViewModel(applicatio
         type: String = "openai",
         context1M: Boolean = false,
         streamingEnabled: Boolean = true,
+        thinkingDisabled: Boolean = false,
     ) {
         viewModelScope.launch {
             try {
@@ -134,13 +140,12 @@ class ApiConfigViewModel(application: Application) : AndroidViewModel(applicatio
                         type = type,
                         context1m = context1M,
                         streamingEnabled = streamingEnabled,
+                        thinkingDisabled = thinkingDisabled,
                     )
                 apiConfigDao.insert(newConfig)
-
                 if (setAsDefault) {
                     setDefaultApiConfig(newConfig.id)
                 }
-
                 _message.value = "已添加 API 配置"
             } catch (e: Exception) {
                 _message.value = "添加失败: ${e.message}"
@@ -212,7 +217,6 @@ class ApiConfigViewModel(application: Application) : AndroidViewModel(applicatio
                     status = "TESTING",
                     time = System.currentTimeMillis(),
                 )
-
                 // 执行真实的 API 测试（按配置的接口类型走对应协议）
                 val result =
                     apiTestService.testConnection(
@@ -221,7 +225,6 @@ class ApiConfigViewModel(application: Application) : AndroidViewModel(applicatio
                         model = apiConfig.model,
                         type = apiConfig.type,
                     )
-
                 // 根据测试结果更新状态
                 when (result) {
                     is com.mistbell.tavern.android.data.api.ApiTestResult.Success -> {
@@ -253,7 +256,6 @@ class ApiConfigViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     // ---- 编辑对话框：获取模型 / 对话框内连接测试 ----
-
     private val _fetchedModels = MutableStateFlow<List<String>>(emptyList())
     val fetchedModels: StateFlow<List<String>> = _fetchedModels.asStateFlow()
 
@@ -381,6 +383,7 @@ private fun ApiConfigEntity.toApiConfig(): ApiConfig {
         type = type,
         context1M = context1m,
         streamingEnabled = streamingEnabled,
+        thinkingDisabled = thinkingDisabled,
     )
 }
 
@@ -406,6 +409,7 @@ private fun ApiConfig.toEntity(): ApiConfigEntity {
         type = type,
         context1m = context1M,
         streamingEnabled = streamingEnabled,
+        thinkingDisabled = thinkingDisabled,
         // 待实现：实现排序逻辑，目前默认 sortOrder = 0
         sortOrder = 0,
         createdAt = System.currentTimeMillis(),
