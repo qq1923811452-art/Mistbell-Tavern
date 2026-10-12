@@ -100,8 +100,10 @@ class InMemoryVectorStore(
         queryVector: FloatArray,
         topK: Int,
         filters: Map<String, Any>,
-    ): List<VectorStore.SearchResult> =
-        withContext(Dispatchers.Default) {
+    ): List<VectorStore.SearchResult> {
+        if (topK <= 0) return emptyList()
+
+        return withContext(Dispatchers.Default) {
             mutex.withLock {
                 ensureLoaded()
                 vectors.values
@@ -119,6 +121,7 @@ class InMemoryVectorStore(
                     .take(topK)
             }
         }
+    }
 
     override suspend fun get(id: String): VectorStore.VectorEntry? {
         return mutex.withLock {
