@@ -23,7 +23,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.mistbell.tavern.android.data.api.Usage
 import com.mistbell.tavern.android.data.api.model.Message
+import com.mistbell.tavern.android.data.prompt.PromptBuilder
 import com.mistbell.tavern.android.ui.theme.*
 import java.time.format.DateTimeFormatter
 
@@ -325,6 +327,24 @@ fun MessageBubble(
             // 头像已完全移除
         }
 
+        // 项目②：API 实测用量 + 本地估算对照。仅在助手消息且网关确实上报了 usage 时渲染——
+        // usage 为 null（网关不返回）时整行不出现，绝不用 0 或估算值冒充实测。
+        if (!isUser) {
+            message.usage?.let { usage ->
+                val localEstimatedTokens = remember(displayedContent) { PromptBuilder.estimateTokensOf(displayedContent) }
+                Text(
+                    text = messageUsageLabel(usage, localEstimatedTokens),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+                    modifier =
+                        Modifier.padding(
+                            top = 4.dp,
+                            start = 16.dp,
+                            end = 0.dp,
+                        ),
+                )
+            }
+        }
         // Timestamp
         if (isLastInGroup && message.createdAt.isNotBlank()) {
             // 记忆化：同一消息的时间戳只格式化一次，重组时直接复用结果
@@ -342,6 +362,19 @@ fun MessageBubble(
             )
         }
     }
+}
+
+/**
+ * 单条消息用量标签（消息详情）：API 实测（输入/输出/总计 + 缓存命中率）+ 本地估算（该条正文）对照。
+ * 缓存命中率只取自真实缓存字段（命中/未命中两字段之和 > 0 才算得出），缺失显示「未知」。
+ */
+private fun messageUsageLabel(
+    usage: Usage,
+    localEstimatedTokens: Int,
+): String {
+    val hitRateText = usage.cacheHitRateOrNull()?.let { "${(it * 100).toInt()}%" } ?: "未知"
+    return "实测 输入 ${usage.promptTokens} · 输出 ${usage.completionTokens} · 总计 ${usage.totalTokens}" +
+        " · 缓存 $hitRateText｜本地估算 ~$localEstimatedTokens"
 }
 
 /** 可复用的思维链折叠区，正式消息与流式占位消息保持同一交互。 */
