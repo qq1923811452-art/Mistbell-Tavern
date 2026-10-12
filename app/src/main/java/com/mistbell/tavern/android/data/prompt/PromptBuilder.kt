@@ -6,6 +6,7 @@ import com.mistbell.tavern.android.data.api.model.GroupChatContext
 import com.mistbell.tavern.android.data.api.model.StructuredMemory
 import com.mistbell.tavern.android.data.local.AppDatabase
 import com.mistbell.tavern.android.data.local.entity.MessageEntity
+import com.mistbell.tavern.android.data.memory.MemoryRanking
 import com.mistbell.tavern.android.data.local.entity.WorldBookEntryEntity
 import com.mistbell.tavern.android.data.repository.ChatSettingsResolver
 import com.mistbell.tavern.android.data.repository.LexicalMemoryService
@@ -1055,7 +1056,8 @@ object PromptBuilder {
     }
 
     private fun memoryComparator(): Comparator<StructuredMemory> =
-        compareByDescending<StructuredMemory> { it.importance }
+        compareByDescending<StructuredMemory> { MemoryRanking.score(it) }
+            .thenByDescending { it.importance }
             .thenByDescending { it.accessCount }
             .thenByDescending { it.updatedAt }
 
