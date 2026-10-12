@@ -1,8 +1,10 @@
 package com.mistbell.tavern.android.data.api.model
 
 import androidx.compose.runtime.Immutable
+import com.mistbell.tavern.android.data.api.Usage
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 
@@ -64,7 +66,6 @@ data class CharacterData(
 // 两侧代理（数据层/UI）必须引用同一份常量，禁止手写字符串字面量。
 const val SESSION_MODE_CLASSIC = "classic"
 const val SESSION_MODE_GROUP = "group"
-
 // 模式②「扮演」骨架常量：实装前创建页仅作占位展示，禁止以此值建会话（无对应提示词链路）
 const val SESSION_MODE_ROLEPLAY = "roleplay"
 
@@ -109,6 +110,11 @@ data class Message(
     val swipes: List<String>? = null,
     @SerialName("swipeIndex") val swipeIndex: Int = 0,
     @SerialName("thinkingSwipes") val thinkingSwipes: List<String>? = null,
+    // 本条消息的真实用量（仅本地展示链路：API → Room → UI）。
+    // 非流式来自 ProtocolContent.usage；流式来自聊天流合并后的最终用量。
+    // @Transient：不参与对外 StateResponse JSON 序列化/反序列化，
+    // 避免污染 Web 对接/导出消费者契约；真值持久化在 Room（messages.usage_json）。
+    @Transient val usage: Usage? = null,
 )
 
 @Serializable
@@ -119,7 +125,7 @@ data class Memory(
     val layer: String = "",
     val subject: String = "",
     val relation: String = "",
-    val `object`: String = "",
+    `object`: String = "",
     val importance: Double = 0.5,
     val stability: Double = 1.0,
     val status: String = "active",
