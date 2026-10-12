@@ -13,6 +13,7 @@ on:
   push:
     branches:
       - feature
+      - mistbell-2.0
     paths:
       - "app/**"
       - "gradle/**"
