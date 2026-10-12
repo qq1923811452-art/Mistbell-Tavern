@@ -263,7 +263,29 @@ object LlmClient {
     /** 疑似"思考参数被拒"：错误正文提到 thinking，或 HTTP 400（请求格式错误） */
     private fun isThinkingParamRejected(e: Exception): Boolean {
         val message = e.message.orEmpty()
-        return message.contains("thinking", ignoreCase = true) || message.contains("400")
+        val mentionsThinking = message.contains("thinking", ignoreCase = true)
+        if (!mentionsThinking) return false
+
+        // A generic HTTP 400 can mean malformed JSON, invalid model, or another request
+        // problem. Only fall back when the response looks like a parameter/field rejection.
+        val parameterRejectionTerms =
+            listOf(
+                "unrecognized",
+                "unknown parameter",
+                "unsupported parameter",
+                "invalid parameter",
+                "not allowed",
+                "unexpected field",
+                "unknown field",
+                "extra inputs",
+                "not supported",
+            )
+        val explicitlyRejected = parameterRejectionTerms.any { message.contains(it, ignoreCase = true) }
+        val isBadRequest = Regex("""\\b400\\b""").containsMatchIn(message)
+        val mentionsRequestField =
+            listOf("parameter", "argument", "field").any { message.contains(it, ignoreCase = true) }
+
+        return explicitlyRejected || (isBadRequest && mentionsRequestField)
     }
 
     private suspend fun chatWithRetries(
