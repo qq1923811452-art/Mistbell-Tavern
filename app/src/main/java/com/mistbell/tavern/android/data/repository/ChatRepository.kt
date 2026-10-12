@@ -279,7 +279,12 @@ class ChatRepository(private val context: Context) {
                         db.sessionDao().upsert(
                             sessionForRollback.copy(
                                 messageCount = db.messageDao().getBySession(sessionId, ownerId).first().size,
-                                title = if (sessionForRollback.title == message.take(26)) "" else sessionForRollback.title,
+                                title =
+                                    if (sessionForRollback.title == message.take(26)) {
+                                        ""
+                                    } else {
+                                        sessionForRollback.title
+                                    },
                             ),
                         )
                     }
@@ -528,7 +533,9 @@ class ChatRepository(private val context: Context) {
             try {
                 usage = collectReply(config, prompt, sb, onPartial)
             } catch (e: CancellationException) {
-                if (sb.isNotEmpty()) appendContinuation(target, sb.toString(), SessionScope(ownerId, characterId, sessionId))
+                if (sb.isNotEmpty()) {
+                    appendContinuation(target, sb.toString(), SessionScope(ownerId, characterId, sessionId))
+                }
                 throw e
             }
             appendContinuation(target, sb.toString(), SessionScope(ownerId, characterId, sessionId), usage)
@@ -572,7 +579,13 @@ class ChatRepository(private val context: Context) {
                     ),
                 )
                 deleteMessageVectors(messageId)
-                storeAssistantMessageVector(existing[nextIndex], ownerId, entity.characterId.ifBlank { characterId }, sessionId, messageId)
+                storeAssistantMessageVector(
+                    existing[nextIndex],
+                    ownerId,
+                    entity.characterId.ifBlank { characterId },
+                    sessionId,
+                    messageId,
+                )
                 return@withContext
             }
             val lastUser =
@@ -626,7 +639,11 @@ class ChatRepository(private val context: Context) {
                 throw e
             }
             val (newContent, newThinking, storedCharacterId) =
-                resolveReplyAttribution(sb.toString(), loadGroupContext(ownerId, characterId, sessionId)?.speakerNames, characterId)
+                resolveReplyAttribution(
+                    sb.toString(),
+                    loadGroupContext(ownerId, characterId, sessionId)?.speakerNames,
+                    characterId,
+                )
             if (newContent.isBlank() && newThinking.isNullOrBlank()) return@withContext
             persistSwipeCandidate(
                 entity,
@@ -710,7 +727,10 @@ class ChatRepository(private val context: Context) {
                 scope.characterId,
             )
         if (continuation.isBlank() && continuationThinking.isNullOrBlank()) return
-        val mergedContent = listOf(target.content.trimEnd(), continuation.trimStart()).filter { it.isNotBlank() }.joinToString("\n")
+        val mergedContent =
+            listOf(target.content.trimEnd(), continuation.trimStart())
+                .filter { it.isNotBlank() }
+                .joinToString("\n")
         val mergedThinking =
             listOfNotNull(target.thinking?.takeIf { it.isNotBlank() }, continuationThinking)
                 .joinToString("\n\n")
@@ -731,7 +751,8 @@ class ChatRepository(private val context: Context) {
                 content = mergedContent,
                 thinking = mergedThinking,
                 swipesJson = if (swipes.isEmpty()) target.swipesJson else encodeStringList(swipes),
-                thinkingSwipesJson = if (swipes.isEmpty()) target.thinkingSwipesJson else encodeStringList(thinkingSwipes),
+                thinkingSwipesJson =
+                    if (swipes.isEmpty()) target.thinkingSwipesJson else encodeStringList(thinkingSwipes),
                 usageJson = encodeUsage(combinedUsage),
             ),
         )
