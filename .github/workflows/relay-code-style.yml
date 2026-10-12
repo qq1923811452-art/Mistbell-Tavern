@@ -1,6 +1,11 @@
 name: AI Relay Code Style
 
 on:
+  push:
+    branches: [ feature ]
+    paths:
+      - "app/src/main/java/**/*.kt"
+      - ".github/workflows/relay-code-style.yml"
   workflow_dispatch:
     inputs:
       scope:
@@ -20,7 +25,7 @@ concurrency:
 
 jobs:
   standardize:
-    if: github.ref == 'refs/heads/feature'
+    if: github.ref == 'refs/heads/feature' && github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -148,6 +153,15 @@ jobs:
             echo "The relay returned no applicable patch; refusing to invent changes."
             exit 1
           fi
+          python3 - <<'PY'
+          from pathlib import Path
+          import re, sys
+          patch = Path("/tmp/relay-style.patch").read_text(encoding="utf-8")
+          paths = re.findall(r"^\\+\\+\\+ b/(.+)$", patch, re.MULTILINE)
+          if not paths or any(not p.endswith(".kt") or p.startswith("/") or ".." in Path(p).parts for p in paths):
+              sys.exit("Refusing patch: only tracked Kotlin source files may be changed")
+          print("Validated Kotlin-only patch paths:", ", ".join(paths))
+          PY
           git apply --check /tmp/relay-style.patch
           git apply /tmp/relay-style.patch
           git diff --check
