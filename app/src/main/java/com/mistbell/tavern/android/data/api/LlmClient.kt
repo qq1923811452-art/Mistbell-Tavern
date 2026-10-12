@@ -281,7 +281,7 @@ object LlmClient {
                 "not supported",
             )
         val explicitlyRejected = parameterRejectionTerms.any { message.contains(it, ignoreCase = true) }
-        val isBadRequest = Regex("""\\b400\\b""").containsMatchIn(message)
+        val isBadRequest = Regex("""\b400\b""").containsMatchIn(message)
         val mentionsRequestField =
             listOf("parameter", "argument", "field").any { message.contains(it, ignoreCase = true) }
 
