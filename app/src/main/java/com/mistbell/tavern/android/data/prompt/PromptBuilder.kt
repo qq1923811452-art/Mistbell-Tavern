@@ -952,7 +952,7 @@ object PromptBuilder {
                         alreadyInjected = alreadyInjected,
                         limit = topK,
                     )
-                hybridContext.takeIf { it.isNotBlank() }?.let { context ->
+                return hybridContext.takeIf { it.isNotBlank() }?.let { context ->
                     ChatMessage(role = "system", content = context)
                 }
     }
