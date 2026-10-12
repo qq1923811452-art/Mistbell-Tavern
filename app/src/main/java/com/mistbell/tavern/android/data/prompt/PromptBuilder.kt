@@ -874,17 +874,17 @@ object PromptBuilder {
                 )
         }
 
-        // 记忆检索：有真实 embedding 服务（API 或本地 ONNX，F3）→ 向量检索；否则词法回退（F3-FTS）
+        // Hybrid retrieval: semantic vectors and exact lexical history run together.
+        // Reciprocal-rank fusion avoids assuming the two retrievers' scores share a scale.
         try {
             val vectorMemoryService = TavernApplication.instance.container.vectorMemoryService
-            if (vectorMemoryService.available) {
-                // S2 召回设置：top-k 与相似度阈值全局可配（读取时解析，存储为纯数值）
-                val topK = ChatSettingsResolver.memoryRecallTopK(db.settingsDao().getValue("memory_recall_top_k"))
-                val threshold =
-                    ChatSettingsResolver.memorySimilarityThreshold(
-                        db.settingsDao().getValue("memory_similarity_threshold"),
-                    )
-                val vectorResults =
+            val topK = ChatSettingsResolver.memoryRecallTopK(db.settingsDao().getValue("memory_recall_top_k"))
+            val threshold =
+                ChatSettingsResolver.memorySimilarityThreshold(
+                    db.settingsDao().getValue("memory_similarity_threshold"),
+                )
+            val vectorResults =
+                if (vectorMemoryService.available) {
                     vectorMemoryService.searchRelevantMemories(
                         query = userMessage,
                         ownerId = ownerId,
@@ -892,27 +892,26 @@ object PromptBuilder {
                         sessionId = sessionId,
                         topK = topK * 2,
                     ).filter { it.score >= threshold }
-                        .take(topK)
+                } else {
+                    emptyList()
+                }
 
-                if (vectorResults.isNotEmpty()) {
-                    // 去重：重要度≥7 的记忆会同步一份 summary 进向量库，与结构化召回内容重复——
-                    // 内容已被本提示词覆盖的向量行直接丢弃，同一事实不再烧两次 token
-                    val vectorContext = buildVectorMemoryContextForPrompt(vectorResults, recalledContents)
-                    if (vectorContext.isNotBlank()) {
-                        recallBlock = ChatMessage(role = "system", content = vectorContext)
-                    }
-                }
-            } else {
-                // 无 embedding API：诚实的关键词词法召回（OMate 式历史全文检索思路）
-                val lexical = LexicalMemoryService(TavernApplication.instance)
-                val items = lexical.searchRelevantHistory(ownerId, characterId, sessionId, userMessage)
-                val lexicalContext = lexical.formatHistory(items)
-                if (lexicalContext.isNotBlank()) {
-                    recallBlock = ChatMessage(role = "system", content = lexicalContext)
-                }
+            // Lexical search is not merely a fallback: it recovers exact names, quoted phrases,
+            // and literal details that embeddings can rank poorly.
+            val lexical = LexicalMemoryService(TavernApplication.instance)
+            val lexicalItems = lexical.searchRelevantHistory(ownerId, characterId, sessionId, userMessage, topK = topK)
+            val hybridContext =
+                buildHybridMemoryContextForPrompt(
+                    vectorResults = vectorResults,
+                    lexicalItems = lexicalItems,
+                    alreadyInjected = recalledContents,
+                    limit = topK,
+                )
+            if (hybridContext.isNotBlank()) {
+                recallBlock = ChatMessage(role = "system", content = hybridContext)
             }
         } catch (e: Exception) {
-            // 检索失败不应阻塞对话
+            // Retrieval failures never block the chat response.
             android.util.Log.e("PromptBuilder", "Memory search failed: ${e.message}", e)
         }
 
@@ -1072,6 +1071,58 @@ object PromptBuilder {
             "preference",
             "relationship",
         )
+
+    /**
+     * Fuse semantic and lexical retrieval using Reciprocal Rank Fusion (RRF).
+     * Candidate scores are ranks, not raw similarity values, so unlike score addition
+     * this remains stable when providers use different similarity scales.
+     */
+    internal fun buildHybridMemoryContextForPrompt(
+        vectorResults: List<VectorStore.SearchResult>,
+        lexicalItems: List<MessageEntity>,
+        alreadyInjected: List<String>,
+        limit: Int = 8,
+    ): String {
+        if (limit <= 0) return ""
+        data class Candidate(
+            val content: String,
+            var score: Double,
+            val sources: MutableSet<String>,
+        )
+
+        val candidates = linkedMapOf<String, Candidate>()
+        fun add(content: String, rank: Int, source: String) {
+            val trimmed = content.trim()
+            if (trimmed.isBlank() || isDuplicateOfInjected(trimmed, alreadyInjected)) return
+            val key = trimmed.lowercase().replace(Regex("[\\s\\p{Punct}，。！？、；：“”‘’（）【】《》]+"), "")
+            if (key.isBlank()) return
+            val contribution = 1.0 / (60.0 + rank)
+            val candidate = candidates[key]
+            if (candidate == null) {
+                candidates[key] = Candidate(trimmed, contribution, linkedSetOf(source))
+            } else {
+                candidate.score += contribution
+                candidate.sources.add(source)
+            }
+        }
+
+        vectorResults
+            .filter { it.score > 0.5f }
+            .forEachIndexed { index, result -> add(result.content, index + 1, "语义") }
+        lexicalItems.forEachIndexed { index, message ->
+            val stamp = message.createdAt.take(16).replace('T', ' ')
+            add("[$stamp] ${message.role}: ${message.content.take(240)}", index + 1, "关键词")
+        }
+
+        val ranked = candidates.values.sortedByDescending { it.score }.take(limit)
+        if (ranked.isEmpty()) return ""
+        return buildString {
+            appendLine("## Relevant Past Conversations")
+            ranked.forEachIndexed { index, candidate ->
+                appendLine("${index + 1}. [${candidate.sources.joinToString("+")}] ${candidate.content}")
+            }
+        }.trim()
+    }
 
     /**
      * 构建向量记忆上下文（用于 Prompt 注入）。
