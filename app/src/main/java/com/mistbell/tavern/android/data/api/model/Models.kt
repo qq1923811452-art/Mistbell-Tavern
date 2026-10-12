@@ -66,6 +66,7 @@ data class CharacterData(
 // 两侧代理（数据层/UI）必须引用同一份常量，禁止手写字符串字面量。
 const val SESSION_MODE_CLASSIC = "classic"
 const val SESSION_MODE_GROUP = "group"
+
 // 模式②「扮演」骨架常量：实装前创建页仅作占位展示，禁止以此值建会话（无对应提示词链路）
 const val SESSION_MODE_ROLEPLAY = "roleplay"
 

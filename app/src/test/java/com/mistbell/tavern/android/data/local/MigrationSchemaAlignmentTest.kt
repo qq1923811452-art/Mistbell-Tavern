@@ -492,5 +492,4 @@ class MigrationSchemaAlignmentTest {
             referenced,
         )
     }
-
 }

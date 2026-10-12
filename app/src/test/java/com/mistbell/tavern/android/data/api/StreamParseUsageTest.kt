@@ -18,11 +18,11 @@ import org.junit.Test
  *   交由上层合并器「新值为 0 = 缺省 → 保留旧值」保住 message_start 的输入量（P2-1）。
  */
 class StreamParseUsageTest {
-
     @Test
     fun `openai 同帧正文与 usage 时 Delta 携带 usage`() {
         val data =
-            """{"choices":[{"delta":{"content":"答"}}],"usage":{"prompt_tokens":10,"completion_tokens":2,"total_tokens":12}}"""
+            """{"choices":[{"delta":{"content":"答"}}],
+                "usage":{"prompt_tokens":10,"completion_tokens":2,"total_tokens":12}}"""
         val result = OpenAiChatProtocol.parseStreamData(data)
         assertTrue("同帧正文+usage 应产出 Delta", result is StreamParseResult.Delta)
         val delta = result as StreamParseResult.Delta
@@ -34,7 +34,9 @@ class StreamParseUsageTest {
     @Test
     fun `openai 仅 usage 帧产出 UsageUpdate 且缓存字段映射正确`() {
         val data =
-            """{"choices":[],"usage":{"prompt_tokens":100,"completion_tokens":5,"total_tokens":105,"prompt_cache_hit_tokens":90,"prompt_cache_miss_tokens":10}}"""
+            """{"choices":[],
+                "usage":{"prompt_tokens":100,"completion_tokens":5,"total_tokens":105,
+                    "prompt_cache_hit_tokens":90,"prompt_cache_miss_tokens":10}}"""
         val result = OpenAiChatProtocol.parseStreamData(data)
         assertTrue("仅 usage 帧应产出 UsageUpdate", result is StreamParseResult.UsageUpdate)
         val usage = (result as StreamParseResult.UsageUpdate).usage
@@ -57,7 +59,8 @@ class StreamParseUsageTest {
     @Test
     fun `gemini 同帧正文与用量时 Delta 携带 usage`() {
         val data =
-            """{"candidates":[{"content":{"parts":[{"text":"答"}],"role":"model"},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":8,"candidatesTokenCount":20,"totalTokenCount":28}}"""
+            """{"candidates":[{"content":{"parts":[{"text":"答"}],"role":"model"},"finishReason":"STOP"}],
+                "usageMetadata":{"promptTokenCount":8,"candidatesTokenCount":20,"totalTokenCount":28}}"""
         val result = GeminiChatProtocol.parseStreamData(data)
         assertTrue("同帧正文+用量应产出 Delta", result is StreamParseResult.Delta)
         val delta = result as StreamParseResult.Delta
@@ -70,7 +73,8 @@ class StreamParseUsageTest {
     @Test
     fun `gemini 仅用量帧产出 UsageUpdate`() {
         val data =
-            """{"candidates":[{"content":{"parts":[{"text":""}],"role":"model"},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":8,"candidatesTokenCount":20,"totalTokenCount":28}}"""
+            """{"candidates":[{"content":{"parts":[{"text":""}],"role":"model"},"finishReason":"STOP"}],
+                "usageMetadata":{"promptTokenCount":8,"candidatesTokenCount":20,"totalTokenCount":28}}"""
         val result = GeminiChatProtocol.parseStreamData(data)
         assertTrue("无正文仅用量帧应产出 UsageUpdate", result is StreamParseResult.UsageUpdate)
         assertEquals(28, (result as StreamParseResult.UsageUpdate).usage.totalTokens)

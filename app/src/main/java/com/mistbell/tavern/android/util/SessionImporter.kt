@@ -52,6 +52,7 @@ object SessionImporter {
         }
     }
 
+    @Suppress("CyclomaticComplexMethod")
     fun parseJsonlSessionData(jsonl: String): SessionExportData? {
         val lines = jsonl.lineSequence().map { it.trim() }.filter { it.isNotBlank() }.toList()
         if (lines.isEmpty()) return null

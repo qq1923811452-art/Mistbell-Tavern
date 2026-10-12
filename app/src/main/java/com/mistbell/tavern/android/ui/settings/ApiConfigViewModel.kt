@@ -15,7 +15,6 @@ import java.util.*
  */
 @Suppress("TooManyFunctions") // CRUD + 测试连接 + 模型拉取的聚合 VM
 class ApiConfigViewModel(application: Application) : AndroidViewModel(application) {
-
     private val db = TavernApplication.instance.container.database
 
     private val apiConfigDao = db.apiConfigDao()

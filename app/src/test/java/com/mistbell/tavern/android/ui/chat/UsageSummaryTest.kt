@@ -15,7 +15,6 @@ import org.junit.Test
  * - 全未命中（真值 0 命中）应算得出 0%，而不是「未知」。
  */
 class UsageSummaryTest {
-
     private fun assistantMessage(
         id: String,
         usage: Usage?,
