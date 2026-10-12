@@ -508,13 +508,14 @@ fun ModernChatListItem(
             title = { Text("导出") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    val exportFormatLabel =
+                        if (exportFileName.endsWith(".${SessionExportFormat.JSONL.extension}", ignoreCase = true)) {
+                            "格式：酒馆 JSONL"
+                        } else {
+                            "格式：JSON"
+                        }
                     Text(
-                        text = "格式：" +
-                            if (exportFileName.endsWith(".${SessionExportFormat.JSONL.extension}", ignoreCase = true)) {
-                                "酒馆 JSONL"
-                            } else {
-                                "JSON"
-                            },
+                        text = exportFormatLabel,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
