@@ -1,8 +1,11 @@
 package com.mistbell.tavern.android.ui.settings
 
-import androidx.compose.animation.animateContentSize
-import androidx.compose.foundation.BorderStroke
+import android.graphics.drawable.ColorDrawable
+import android.os.Build
+import android.view.WindowManager
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,162 +18,303 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Cloud
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Error
-import androidx.compose.material.icons.filled.Help
-import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import java.util.UUID
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
+import androidx.compose.ui.zIndex
+import kotlinx.coroutines.launch
+
+// 无限循环 carousel 的页数放大倍数：N 张卡 → N×500 页，双向滚动均不到边界
+private const val CIRCULAR_PAGE_FACTOR = 500
+// 预览 Dialog 的 blurBehind 半径（WindowManager 限制 0..150，API 31+ 生效）。
+// 取小值：半径过大把背后设置页的轮廓全抹掉，用户要求能辨认轮廓
+private const val PREVIEW_BLUR_BEHIND_RADIUS = 18
+// 预览 Dialog 背景透明度：越低越透（能越清楚看到背后的设置页）；
+// 0.4 时背后轮廓可辨且网格卡片文字仍可读
+private const val PREVIEW_BG_ALPHA = 0.4f
+// 预览顶栏与网格卡片透明度（与背景同档，整体一致半透明）
+private const val PREVIEW_CONTENT_ALPHA = 0.7f
 
 /**
- * API 配置数据类
+ * 设置页内联的 API 卡片管理区。
+ *
+ * - 左右滑动（HorizontalPager）切换配置卡片，与设置页垂直滚动无手势冲突；
+ * - 长按当前卡片进入全屏预览（所有配置网格）；
+ * - 添加/编辑走 [ApiConfigEditorDialog]，测试/删除直连 [ApiConfigViewModel]。
+ *
+ * 原独立页 StackedApiManagerScreen（垂直滑动版）已删除，此为唯一入口。
  */
-data class ApiConfig(
-    val id: String = UUID.randomUUID().toString(),
-    val name: String,
-    val apiUrl: String,
-    val apiKey: String,
-    val model: String,
-    val isDefault: Boolean = false,
-    val lastTestStatus: ConnectionStatus = ConnectionStatus.UNKNOWN,
-    val lastTestTime: Long = 0L,
-    // 接口类型：openai / anthropic / gemini / custom
-    val type: String = "openai",
-    // 1M 上下文开关
-    val context1M: Boolean = false,
-    // SSE 流式传输开关
-    val streamingEnabled: Boolean = true,
-    // 禁用思考模式（true = 请求体发 thinking:{"type":"disabled"}；仅对 OpenAI 兼容网关生效）
-    val thinkingDisabled: Boolean = false,
-)
-
-/**
- * 连接状态
- */
-enum class ConnectionStatus {
-    UNKNOWN, // 未测试
-    TESTING, // 测试中
-    SUCCESS, // 成功
-    FAILED, // 失败
-}
-
-/**
- * 总览网格视图（长按预览模式复用；原堆叠页已收敛为 InlineApiCardsSection）
- */
-@Suppress("FunctionNaming", "LongParameterList") // Compose 组件按官方约定 PascalCase 命名
+@Suppress("FunctionNaming", "LongMethod", "MagicNumber") // coerceIn 范围为堆叠视觉设计常量
 @Composable
-fun OverviewGridView(
-    apiConfigs: List<ApiConfig>,
-    selectedIndex: Int,
-    onCardClick: (Int) -> Unit,
-    onEditApi: (ApiConfig) -> Unit,
-    onDeleteApi: (String) -> Unit,
+fun InlineApiCardsSection(
+    viewModel: ApiConfigViewModel,
     modifier: Modifier = Modifier,
-    cardAlpha: Float = 1f,
 ) {
-    LazyVerticalGrid(
-        columns = GridCells.Fixed(2),
-        modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        items(apiConfigs, key = { it.id }) { apiConfig ->
-            val index = apiConfigs.indexOf(apiConfig)
-            val isSelected = index == selectedIndex
-            ApiCardMini(
-                apiConfig = apiConfig,
-                isSelected = isSelected,
-                onClick = { onCardClick(index) },
-                onEdit = { onEditApi(apiConfig) },
-                onDelete = { onDeleteApi(apiConfig.id) },
-                alpha = cardAlpha,
-            )
+    val apiConfigs by viewModel.apiConfigs.collectAsState()
+    val currentIndex by viewModel.currentApiIndex.collectAsState()
+    val message by viewModel.message.collectAsState()
+    val snackbarHostState = remember { SnackbarHostState() }
+    var showAddDialog by remember { mutableStateOf(false) }
+    var editingConfig by remember { mutableStateOf<ApiConfig?>(null) }
+    var showPreview by remember { mutableStateOf(false) }
+    LaunchedEffect(message) {
+        message?.let {
+            snackbarHostState.showSnackbar(it)
+            viewModel.clearMessage()
         }
+    }
+    Box(modifier = modifier.fillMaxWidth()) {
+        if (apiConfigs.isEmpty()) {
+            EmptyInlineApiState(onAdd = { showAddDialog = true })
+        } else {
+            // 无限循环：页数放大为 N×CIRCULAR_PAGE_FACTOR，真实索引 = page % N。
+            // 起始页对齐到中间圈的 currentIndex，双向都有充足页数可滚。
+            val pageCount = apiConfigs.size * CIRCULAR_PAGE_FACTOR
+            val middlePage = pageCount / 2
+            val startPage = middlePage - (middlePage % apiConfigs.size) + currentIndex.coerceIn(0, apiConfigs.size - 1)
+            val pagerState = rememberPagerState(initialPage = startPage) { pageCount }
+            val scope = rememberCoroutineScope()
+            // 外部索引变化（预览点选/默认配置变更）→ 滚到当前圈的目标页（mod 相同的最近页）
+            LaunchedEffect(currentIndex) {
+                val target =
+                    (pagerState.currentPage / apiConfigs.size) * apiConfigs.size +
+                        currentIndex.coerceIn(0, apiConfigs.size - 1)
+                if (pagerState.currentPage % apiConfigs.size != currentIndex &&
+                    target in 0 until pageCount
+                ) {
+                    pagerState.animateScrollToPage(target)
+                }
+            }
+            // 滑动切换 → 回写真实索引（mod 映射）
+            LaunchedEffect(pagerState.currentPage) {
+                val realIndex = pagerState.currentPage % apiConfigs.size
+                if (realIndex != currentIndex) {
+                    viewModel.setCurrentApiIndex(realIndex)
+                }
+            }
+            Column(modifier = Modifier.fillMaxWidth()) {
+                HorizontalPager(
+                    state = pagerState,
+                    modifier = Modifier.fillMaxWidth(),
+                    // 左右各露出相邻卡片：三卡 carousel（中间在前、两侧在后）
+                    contentPadding = PaddingValues(horizontal = 56.dp),
+                    pageSpacing = 4.dp,
+                ) { page ->
+                    val pageOffset =
+                        (page - pagerState.currentPage - pagerState.currentPageOffsetFraction)
+                            .coerceIn(-1.5f, 1.5f)
+                    val realIndex = page % apiConfigs.size
+                    InlineApiCard(
+                        apiConfig = apiConfigs[realIndex],
+                        pageOffset = pageOffset,
+                        isCurrentCard = page == pagerState.currentPage,
+                        onClick = {
+                            if (page != pagerState.currentPage) {
+                                scope.launch { pagerState.animateScrollToPage(page) }
+                            }
+                        },
+                        onLongPress = { showPreview = true },
+                        onTest = { viewModel.testConnection(apiConfigs[realIndex]) },
+                        modifier =
+                            Modifier
+                                .zIndex(1f - kotlin.math.abs(pageOffset)),
+                    )
+                }
+                // 指示器 + 添加按钮（卡片下方独立一行，不与卡内按钮重叠）
+                Row(
+                    modifier =
+                        Modifier
+                            .align(Alignment.CenterHorizontally)
+                            .padding(top = 4.dp, bottom = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    CardIndicator(
+                        totalCards = apiConfigs.size,
+                        currentIndex = pagerState.currentPage % apiConfigs.size,
+                    )
+                    IconButton(onClick = { showAddDialog = true }) {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = "添加配置",
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                }
+            }
+        }
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
+    }
+    // 长按 → 全屏预览（所有配置网格）
+    if (showPreview && apiConfigs.isNotEmpty()) {
+        ApiPreviewDialog(
+            apiConfigs = apiConfigs,
+            selectedIndex = currentIndex,
+            onSelect = { index ->
+                showPreview = false
+                viewModel.setCurrentApiIndex(index)
+            },
+            onEdit = { config -> editingConfig = config },
+            onDelete = { id -> viewModel.deleteApiConfig(id) },
+            onDismiss = { showPreview = false },
+        )
+    }
+    // 添加对话框
+    if (showAddDialog) {
+        ApiConfigEditorDialog(
+            apiConfig = null,
+            viewModel = viewModel,
+            onDismiss = { showAddDialog = false },
+            onConfirm = { name, apiUrl, apiKey, model, setAsDefault, type, context1M, streamingEnabled, thinkingDisabled ->
+                viewModel.addApiConfig(
+                    name = name,
+                    apiUrl = apiUrl,
+                    apiKey = apiKey,
+                    model = model,
+                    setAsDefault = setAsDefault,
+                    type = type,
+                    context1M = context1M,
+                    streamingEnabled = streamingEnabled,
+                    thinkingDisabled = thinkingDisabled,
+                )
+                showAddDialog = false
+            },
+        )
+    }
+    // 编辑对话框
+    editingConfig?.let { config ->
+        ApiConfigEditorDialog(
+            apiConfig = config,
+            viewModel = viewModel,
+            onDismiss = { editingConfig = null },
+            onConfirm = { name, apiUrl, apiKey, model, setAsDefault, type, context1M, streamingEnabled, thinkingDisabled ->
+                viewModel.updateApiConfig(
+                    config.copy(
+                        name = name,
+                        apiUrl = apiUrl,
+                        apiKey = apiKey,
+                        model = model,
+                        isDefault = setAsDefault || config.isDefault,
+                        type = type,
+                        context1M = context1M,
+                        streamingEnabled = streamingEnabled,
+                        thinkingDisabled = thinkingDisabled,
+                    ),
+                )
+                if (setAsDefault) {
+                    viewModel.setDefaultApiConfig(config.id)
+                }
+                editingConfig = null
+            },
+        )
     }
 }
 
 /**
- * 迷你 API 卡片（总览/预览模式）
+ * 内联单张 API 卡片（三卡 carousel：中间完整在前，左右缩小半透在后）。
+ * pageOffset 由 Pager 实时驱动，无需额外动画即可跟手；
+ * 点击/长按经 combinedClickable，涟漪从按下的位置扩散。
  */
-@OptIn(ExperimentalMaterial3Api::class)
-@Suppress("FunctionNaming", "LongMethod", "LongParameterList") // Compose 组件按官方约定 PascalCase 命名
+@OptIn(ExperimentalFoundationApi::class)
+@Suppress("FunctionNaming", "LongMethod", "LongParameterList", "MagicNumber")
 @Composable
-fun ApiCardMini(
+private fun InlineApiCard(
     apiConfig: ApiConfig,
-    isSelected: Boolean,
+    pageOffset: Float,
+    isCurrentCard: Boolean,
     onClick: () -> Unit,
-    onEdit: () -> Unit,
-    onDelete: () -> Unit,
-    alpha: Float = 1f,
+    onLongPress: () -> Unit,
+    onTest: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    var showMenu by remember { mutableStateOf(false) }
+    val absOffset = kotlin.math.abs(pageOffset).coerceIn(0f, 1.5f)
+    val scale = 1f - (0.16f * absOffset).coerceAtMost(0.32f)
+    val alpha = 1f - (0.45f * absOffset).coerceAtMost(0.7f)
     Card(
-        onClick = onClick,
         modifier =
-            Modifier
+            modifier
                 .fillMaxWidth()
-                .height(180.dp),
-        shape = RoundedCornerShape(20.dp),
+                .height(160.dp)
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                    this.alpha = alpha
+                }
+                .combinedClickable(
+                    onClick = onClick,
+                    onLongClick = onLongPress,
+                ),
+        shape = RoundedCornerShape(24.dp),
         colors =
             CardDefaults.cardColors(
-                containerColor =
-                    (
-                        if (isSelected) {
-                            MaterialTheme.colorScheme.primaryContainer
-                        } else {
-                            MaterialTheme.colorScheme.surface
-                        }
-                    ).copy(alpha = alpha),
+                containerColor = MaterialTheme.colorScheme.surface,
             ),
         elevation =
             CardDefaults.cardElevation(
-                defaultElevation = if (isSelected) 8.dp else 2.dp,
+                defaultElevation = if (isCurrentCard) 8.dp else 4.dp,
             ),
-        border =
-            if (isSelected) {
-                BorderStroke(
-                    2.dp,
-                    MaterialTheme.colorScheme.primary,
-                )
-            } else {
-                null
-            },
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .background(
+                            brush =
+                                Brush.verticalGradient(
+                                    // 低饱和 surface 容器渐变：与设置页分组卡片同色系，
+                                    // 避免高饱和彩色卡片在深色系中突兀
+                                    colors =
+                                        listOf(
+                                            MaterialTheme.colorScheme.surfaceContainerHigh,
+                                            MaterialTheme.colorScheme.surfaceContainerHighest,
+                                        ),
+                                ),
+                        ),
+            )
             Column(
                 modifier =
                     Modifier
@@ -178,106 +322,71 @@ fun ApiCardMini(
                         .padding(16.dp),
                 verticalArrangement = Arrangement.SpaceBetween,
             ) {
-                // 顶部
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.Top,
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = apiConfig.name,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = apiConfig.model,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                    // 选中标记与更多菜单并排占位，避免右上角叠加
+                // 顶部：名称、默认标记与最近测试状态
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(
-                        horizontalArrangement = Arrangement.spacedBy(2.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        if (isSelected) {
-                            Icon(
-                                imageVector = Icons.Default.CheckCircle,
-                                contentDescription = "已选中",
-                                modifier = Modifier.size(20.dp),
-                                tint = MaterialTheme.colorScheme.primary,
-                            )
-                        }
-                        Box {
-                            IconButton(
-                                onClick = { showMenu = true },
-                                modifier = Modifier.size(32.dp),
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.MoreVert,
-                                    contentDescription = "更多",
-                                    modifier = Modifier.size(20.dp),
-                                )
-                            }
-                            DropdownMenu(
-                                expanded = showMenu,
-                                onDismissRequest = { showMenu = false },
-                            ) {
-                                DropdownMenuItem(
-                                    text = { Text("编辑") },
-                                    onClick = {
-                                        showMenu = false
-                                        onEdit()
-                                    },
-                                    leadingIcon = {
-                                        Icon(Icons.Default.Edit, null)
-                                    },
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("删除") },
-                                    onClick = {
-                                        showMenu = false
-                                        onDelete()
-                                    },
-                                    leadingIcon = {
-                                        Icon(
-                                            Icons.Default.Delete,
-                                            null,
-                                            tint = MaterialTheme.colorScheme.error,
-                                        )
-                                    },
-                                )
-                            }
-                        }
-                    }
-                }
-                // 底部：状态和标记
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ConnectionStatusChip(status = apiConfig.lastTestStatus)
-                    if (apiConfig.isDefault) {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Star,
-                                contentDescription = null,
-                                modifier = Modifier.size(14.dp),
-                                tint = MaterialTheme.colorScheme.primary,
-                            )
-                            Text(
-                                text = "默认配置",
-                                style = MaterialTheme.typography.labelSmall,
+                        Text(
+                            text = apiConfig.name,
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                        if (apiConfig.isDefault) {
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
                                 color = MaterialTheme.colorScheme.primary,
-                            )
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Star,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(14.dp),
+                                        tint = MaterialTheme.colorScheme.onPrimary,
+                                    )
+                                    Text(
+                                        text = "默认",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onPrimary,
+                                    )
+                                }
+                            }
                         }
                     }
+                    // 模型
+                    Text(
+                        text = apiConfig.model,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    // 最近一次连接测试状态
+                    ConnectionStatusChip(status = apiConfig.lastTestStatus)
+                }
+                // 底部：测试连接
+                FilledTonalButton(
+                    onClick = onTest,
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = isCurrentCard,
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Wifi,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("测试连接")
                 }
             }
         }
@@ -285,134 +394,113 @@ fun ApiCardMini(
 }
 
 /**
- * 连接状态芯片（小版本）
+ * 长按触发的全屏预览：所有 API 配置网格。
  */
+@Suppress("FunctionNaming", "LongParameterList")
 @Composable
-fun ConnectionStatusChip(status: ConnectionStatus) {
-    Surface(
-        shape = RoundedCornerShape(8.dp),
-        color =
-            when (status) {
-                ConnectionStatus.SUCCESS -> Color(0xFF4CAF50).copy(alpha = 0.2f)
-                ConnectionStatus.FAILED -> MaterialTheme.colorScheme.errorContainer
-                ConnectionStatus.TESTING -> MaterialTheme.colorScheme.primaryContainer
-                ConnectionStatus.UNKNOWN -> MaterialTheme.colorScheme.surfaceVariant
-            },
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                imageVector =
-                    when (status) {
-                        ConnectionStatus.SUCCESS -> Icons.Default.CheckCircle
-                        ConnectionStatus.FAILED -> Icons.Default.Error
-                        ConnectionStatus.TESTING -> Icons.Default.Sync
-                        ConnectionStatus.UNKNOWN -> Icons.Default.Help
-                    },
-                contentDescription = null,
-                modifier = Modifier.size(12.dp),
-                tint = statusTint(status),
-            )
-            Text(
-                text =
-                    when (status) {
-                        ConnectionStatus.SUCCESS -> "正常"
-                        ConnectionStatus.FAILED -> "失败"
-                        ConnectionStatus.TESTING -> "测试中"
-                        ConnectionStatus.UNKNOWN -> "未测试"
-                    },
-                style = MaterialTheme.typography.labelSmall,
-                color = statusTint(status),
-            )
-        }
-    }
-}
-
-/**
- * 卡片指示器
- */
-@Composable
-fun CardIndicator(
-    totalCards: Int,
-    currentIndex: Int,
-    modifier: Modifier = Modifier,
+private fun ApiPreviewDialog(
+    apiConfigs: List<ApiConfig>,
+    selectedIndex: Int,
+    onSelect: (Int) -> Unit,
+    onEdit: (ApiConfig) -> Unit,
+    onDelete: (String) -> Unit,
+    onDismiss: () -> Unit,
 ) {
-    Row(
-        modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically,
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties =
+            DialogProperties(
+                usePlatformDefaultWidth = false,
+                decorFitsSystemWindows = true,
+            ),
     ) {
-        repeat(totalCards) { index ->
-            val isSelected = index == currentIndex
-            Box(
-                modifier =
-                    Modifier
-                        .size(
-                            width = if (isSelected) 24.dp else 8.dp,
-                            height = 8.dp,
-                        )
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(
-                            if (isSelected) {
-                                MaterialTheme.colorScheme.primary
-                            } else {
-                                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
-                            },
-                        )
-                        .animateContentSize(),
+        // API 31+：窗口级背景模糊（blurBehind 模糊 Dialog 背后的主窗口内容）；
+        // 低版本退化为半透明背景。radius 取值范围 0..150（WindowManager 限制）
+        val dialogWindow = (LocalView.current.parent as? DialogWindowProvider)?.window
+        SideEffect {
+            dialogWindow?.apply {
+                setBackgroundDrawable(ColorDrawable(android.graphics.Color.TRANSPARENT))
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
+                    attributes.blurBehindRadius = PREVIEW_BLUR_BEHIND_RADIUS
+                    attributes = attributes
+                }
+            }
+        }
+        Scaffold(
+            // 半透明底：配合 blurBehind 呈现"毛玻璃"层次；无模糊的低版本仍有可读蒙层
+            containerColor = MaterialTheme.colorScheme.background.copy(alpha = PREVIEW_BG_ALPHA),
+            topBar = {
+                ApiPreviewTopBar(onClose = onDismiss)
+            },
+        ) { paddingValues ->
+            OverviewGridView(
+                apiConfigs = apiConfigs,
+                selectedIndex = selectedIndex,
+                onCardClick = { index -> onSelect(index) },
+                onEditApi = onEdit,
+                onDeleteApi = onDelete,
+                cardAlpha = PREVIEW_CONTENT_ALPHA,
+                modifier = Modifier.padding(paddingValues),
             )
         }
     }
 }
 
-/**
- * 空状态（全屏场景；设置页内联场景用 InlineApiCardsSection 的紧凑版）
- */
+@OptIn(ExperimentalMaterial3Api::class)
+@Suppress("FunctionNaming") // Compose 组件按官方约定 PascalCase 命名
 @Composable
-fun EmptyApiState(onAdd: () -> Unit) {
+private fun ApiPreviewTopBar(onClose: () -> Unit) {
+    TopAppBar(
+        title = {
+            Text(
+                text = "所有配置",
+                fontWeight = FontWeight.Bold,
+            )
+        },
+        navigationIcon = {
+            IconButton(onClick = onClose) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = "关闭",
+                )
+            }
+        },
+        colors =
+            TopAppBarDefaults.topAppBarColors(
+                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = PREVIEW_CONTENT_ALPHA),
+            ),
+    )
+}
+
+/**
+ * 内联空状态（设置页上下文，非全屏）
+ */
+@Suppress("FunctionNaming")
+@Composable
+private fun EmptyInlineApiState(onAdd: () -> Unit) {
     Column(
         modifier =
             Modifier
-                .fillMaxSize()
-                .padding(32.dp),
+                .fillMaxWidth()
+                .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Icon(
-            imageVector = Icons.Default.Cloud,
-            contentDescription = null,
-            modifier = Modifier.size(80.dp),
-            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f),
-        )
-        Spacer(modifier = Modifier.height(16.dp))
         Text(
             text = "还没有 API 配置",
-            style = MaterialTheme.typography.titleLarge,
+            style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
         )
-        Spacer(modifier = Modifier.height(8.dp))
         Text(
             text = "添加你的第一个 API 配置开始使用",
-            style = MaterialTheme.typography.bodyMedium,
+            style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Spacer(modifier = Modifier.height(24.dp))
         Button(onClick = onAdd) {
-            Icon(Icons.Default.Add, null)
+            Icon(Icons.Default.Add, contentDescription = null)
             Spacer(modifier = Modifier.width(8.dp))
             Text("添加配置")
         }
     }
 }
-
-@Composable
-private fun statusTint(status: ConnectionStatus): Color =
-    when (status) {
-        ConnectionStatus.SUCCESS -> Color(0xFF4CAF50)
-        ConnectionStatus.FAILED -> MaterialTheme.colorScheme.error
-        ConnectionStatus.TESTING -> MaterialTheme.colorScheme.primary
-        ConnectionStatus.UNKNOWN -> MaterialTheme.colorScheme.onSurfaceVariant
-    }
