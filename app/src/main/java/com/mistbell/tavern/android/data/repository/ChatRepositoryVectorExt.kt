@@ -84,7 +84,11 @@ suspend fun deleteMessageVectors(messageId: String) = withContext(Dispatchers.IO
     TavernApplication.instance.container.vectorMemoryService.deleteByMessageId(messageId)
 }
 
-suspend fun deleteSessionVectors(ownerId: String, characterId: String, sessionId: String) = withContext(Dispatchers.IO) {
+suspend fun deleteSessionVectors(
+    ownerId: String,
+    characterId: String,
+    sessionId: String,
+) = withContext(Dispatchers.IO) {
     if (!TavernApplication.instance.container.vectorMemoryService.available) return@withContext
     TavernApplication.instance.container.vectorMemoryService.deleteSessionVectors(ownerId, characterId, sessionId)
 }
