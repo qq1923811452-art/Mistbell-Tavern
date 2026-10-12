@@ -19,8 +19,8 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Android SDK（固定版本，避免 runner 镜像漂移）
-        uses: android-actions/setup-android@v3
+      # GitHub 托管的 ubuntu-latest runner 已预装 Android SDK，
+      # 不再调用 setup-android 安装旧的 "tools" 包，避免 sdkmanager 报错。
 
       - name: Set up Gradle（缓存与校验）
         uses: gradle/actions/setup-gradle@v4
@@ -31,6 +31,15 @@ jobs:
       - name: Build & Verify
         # 与本地 `gradlew checkAll` 等价：构建 + 单测 + detekt + ktlint + 许可证红线
         run: ./gradlew :app:assembleDebug :app:testDebugUnitTest :app:detekt :app:ktlintCheck licenseGuard --continue
+
+      - name: Upload debug APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mistbell-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Upload reports (on failure)
         if: failure()
