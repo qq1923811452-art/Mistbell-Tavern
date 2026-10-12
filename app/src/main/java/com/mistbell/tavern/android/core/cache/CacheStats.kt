@@ -5,14 +5,29 @@ package com.mistbell.tavern.android.core.cache
  *
  * Tracks real cache behavior instead of only displaying estimated values.
  */
-data class CacheStats(
-    val hitCount: Long = 0,
-    val missCount: Long = 0,
-    val writeCount: Long = 0
-) {
+class CacheStats {
+    var hitCount: Long = 0
+        private set
+    var missCount: Long = 0
+        private set
+    var writeCount: Long = 0
+        private set
+
     val totalRequests: Long
         get() = hitCount + missCount
 
     val hitRate: Float
         get() = if (totalRequests == 0L) 0f else hitCount.toFloat() / totalRequests.toFloat()
+
+    fun recordHit() {
+        hitCount++
+    }
+
+    fun recordMiss() {
+        missCount++
+    }
+
+    fun recordWrite() {
+        writeCount++
+    }
 }
