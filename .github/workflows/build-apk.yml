@@ -49,6 +49,9 @@ jobs:
       - name: Make Gradle wrapper executable
         run: chmod +x ./gradlew
 
+      - name: Apply Kotlin formatting
+        run: ./gradlew :app:ktlintFormat --no-daemon
+
       - name: Run full quality gate and build APK
         run: ./gradlew :app:assembleDebug :app:testDebugUnitTest :app:detekt :app:ktlintCheck licenseGuard --continue --no-daemon
 
