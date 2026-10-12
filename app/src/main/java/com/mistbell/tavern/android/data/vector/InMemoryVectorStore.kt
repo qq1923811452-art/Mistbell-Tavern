@@ -242,6 +242,9 @@ class InMemoryVectorStore(
             if (vectors.size > capacity) {
                 val toRemove = vectors.size - capacity
                 vectors.keys.take(toRemove).forEach { vectors.remove(it) }
+                // Persist the trimmed collection so oversized legacy files do
+                // not keep consuming disk space and get reprocessed on launch.
+                saveToDisk()
                 Log.d(TAG, "Memory limit reached during load, removed $toRemove oldest vectors")
             }
 
