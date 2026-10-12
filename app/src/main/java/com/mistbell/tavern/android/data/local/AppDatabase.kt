@@ -25,7 +25,7 @@ import com.mistbell.tavern.android.data.local.entity.*
         ApiConfigEntity::class,
         CustomPromptEntity::class,
     ],
-    version = 25,
+    version = 26,
     // schema 导出到 app/schemas/，Room 编译期校验 + 迁移测试基线（ROADMAP"防静默清库"）
     exportSchema = true,
 )
@@ -546,6 +546,23 @@ abstract class AppDatabase : RoomDatabase() {
                 }
             }
 
+        // v25→v26：messages 新增 usage_json（真实 API usage 落库；NULL = 未知/未上报，不填 0）；
+        // api_configs 新增 thinkingDisabled（思考模式开关）。
+        // thinkingDisabled 的 DEFAULT 0 与 ApiConfigEntity 的 @ColumnInfo(defaultValue = "0") 一致。
+        internal val MIGRATION_25_26_SQL: List<String> =
+            listOf(
+                "ALTER TABLE messages ADD COLUMN usage_json TEXT",
+                "ALTER TABLE api_configs ADD COLUMN thinkingDisabled INTEGER NOT NULL DEFAULT 0",
+            )
+
+        @Suppress("MagicNumber")
+        internal val MIGRATION_25_26 =
+            object : Migration(25, 26) {
+                override fun migrate(db: SupportSQLiteDatabase) {
+                    MIGRATION_25_26_SQL.forEach(db::execSQL)
+                }
+            }
+
         fun getInstance(context: Context): AppDatabase {
             return instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
@@ -576,6 +593,7 @@ abstract class AppDatabase : RoomDatabase() {
                         MIGRATION_22_23,
                         MIGRATION_23_24,
                         MIGRATION_24_25,
+                        MIGRATION_25_26,
                     )
                     // 不移除上面的任何迁移，也不加 fallbackToDestructiveMigration：
                     // 遇到未覆盖的版本 Room 会直接抛 IllegalStateException（明确失败），
