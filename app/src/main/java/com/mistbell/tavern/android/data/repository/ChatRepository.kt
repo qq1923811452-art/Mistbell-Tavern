@@ -528,10 +528,10 @@ class ChatRepository(private val context: Context) {
             try {
                 usage = collectReply(config, prompt, sb, onPartial)
             } catch (e: CancellationException) {
-                if (sb.isNotEmpty()) appendContinuation(target, sb.toString(), ownerId, characterId, sessionId)
+                if (sb.isNotEmpty()) appendContinuation(target, sb.toString(), SessionScope(ownerId, characterId, sessionId))
                 throw e
             }
-            appendContinuation(target, sb.toString(), ownerId, characterId, sessionId, usage = usage)
+            appendContinuation(target, sb.toString(), SessionScope(ownerId, characterId, sessionId), usage)
         }
     }
 
@@ -700,13 +700,15 @@ class ChatRepository(private val context: Context) {
     private suspend fun appendContinuation(
         target: MessageEntity,
         rawReply: String,
-        ownerId: String,
-        characterId: String,
-        sessionId: String,
+        scope: SessionScope,
         usage: Usage? = null,
     ) {
         val (continuation, continuationThinking, storedCharacterId) =
-            resolveReplyAttribution(rawReply, loadGroupContext(ownerId, characterId, sessionId)?.speakerNames, characterId)
+            resolveReplyAttribution(
+                rawReply,
+                loadGroupContext(scope.ownerId, scope.characterId, scope.sessionId)?.speakerNames,
+                scope.characterId,
+            )
         if (continuation.isBlank() && continuationThinking.isNullOrBlank()) return
         val mergedContent = listOf(target.content.trimEnd(), continuation.trimStart()).filter { it.isNotBlank() }.joinToString("\n")
         val mergedThinking =
@@ -734,8 +736,8 @@ class ChatRepository(private val context: Context) {
             ),
         )
         deleteMessageVectors(target.id)
-        storeAssistantMessageVector(mergedContent, ownerId, storedCharacterId, sessionId, target.id)
-        db.sessionDao().get(sessionId, ownerId, characterId)?.let { session ->
+        storeAssistantMessageVector(mergedContent, scope.ownerId, storedCharacterId, scope.sessionId, target.id)
+        db.sessionDao().get(scope.sessionId, scope.ownerId, scope.characterId)?.let { session ->
             db.sessionDao().upsert(
                 session.copy(updatedAt = java.time.Instant.now().toString()),
             )
