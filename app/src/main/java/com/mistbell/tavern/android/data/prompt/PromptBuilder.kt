@@ -103,7 +103,11 @@ object PromptBuilder {
                 val newlyActivated = mutableListOf<String>()
                 winners.forEach { candidate ->
                     val entry = candidate.entry
-                    if (entry.probability < 1.0 && kotlin.random.Random.nextDouble() >= entry.probability) return@forEach
+                    if (entry.probability < 1.0 &&
+                        kotlin.random.Random.nextDouble() >= entry.probability
+                    ) {
+                        return@forEach
+                    }
                     activated += candidate.key
                     newlyActivated += candidate.key
                     entry.groupName.takeIf { it.isNotBlank() }?.let(selectedGroups::add)
