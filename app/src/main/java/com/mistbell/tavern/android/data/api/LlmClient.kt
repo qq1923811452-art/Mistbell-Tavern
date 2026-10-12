@@ -203,14 +203,26 @@ object LlmClient {
         when {
             current == null -> incoming
             incoming == null -> current
-            else ->
+            else -> {
+                val promptTokens = maxOf(current.promptTokens, incoming.promptTokens)
+                val completionTokens = maxOf(current.completionTokens, incoming.completionTokens)
+                // Some protocols (notably Anthropic message_delta) omit input/total fields
+                // on later cumulative frames. Preserve known totals and derive a minimum
+                // consistent total from the best known prompt and completion counts.
+                val totalTokens =
+                    maxOf(
+                        current.totalTokens,
+                        incoming.totalTokens,
+                        promptTokens + completionTokens,
+                    )
                 Usage(
-                    promptTokens = maxOf(current.promptTokens, incoming.promptTokens),
-                    completionTokens = maxOf(current.completionTokens, incoming.completionTokens),
-                    totalTokens = maxOf(current.totalTokens, incoming.totalTokens),
+                    promptTokens = promptTokens,
+                    completionTokens = completionTokens,
+                    totalTokens = totalTokens,
                     cacheHitTokens = maxOf(current.cacheHitTokens, incoming.cacheHitTokens),
                     cacheMissTokens = maxOf(current.cacheMissTokens, incoming.cacheMissTokens),
                 )
+            }
         }
 
     /**
