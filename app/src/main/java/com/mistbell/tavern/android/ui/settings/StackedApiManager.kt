@@ -73,6 +73,8 @@ data class ApiConfig(
     val context1M: Boolean = false,
     // SSE 流式传输开关
     val streamingEnabled: Boolean = true,
+    // 禁用思考模式（true = 请求体发 thinking:{"type":"disabled"}；仅对 OpenAI 兼容网关生效）
+    val thinkingDisabled: Boolean = false,
 )
 
 /**
@@ -109,7 +111,6 @@ fun OverviewGridView(
         items(apiConfigs, key = { it.id }) { apiConfig ->
             val index = apiConfigs.indexOf(apiConfig)
             val isSelected = index == selectedIndex
-
             ApiCardMini(
                 apiConfig = apiConfig,
                 isSelected = isSelected,
@@ -137,7 +138,6 @@ fun ApiCardMini(
     alpha: Float = 1f,
 ) {
     var showMenu by remember { mutableStateOf(false) }
-
     Card(
         onClick = onClick,
         modifier =
@@ -201,7 +201,6 @@ fun ApiCardMini(
                             overflow = TextOverflow.Ellipsis,
                         )
                     }
-
                     // 选中标记与更多菜单并排占位，避免右上角叠加
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(2.dp),
@@ -215,7 +214,6 @@ fun ApiCardMini(
                                 tint = MaterialTheme.colorScheme.primary,
                             )
                         }
-
                         Box {
                             IconButton(
                                 onClick = { showMenu = true },
@@ -227,7 +225,6 @@ fun ApiCardMini(
                                     modifier = Modifier.size(20.dp),
                                 )
                             }
-
                             DropdownMenu(
                                 expanded = showMenu,
                                 onDismissRequest = { showMenu = false },
@@ -260,11 +257,9 @@ fun ApiCardMini(
                         }
                     }
                 }
-
                 // 底部：状态和标记
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     ConnectionStatusChip(status = apiConfig.lastTestStatus)
-
                     if (apiConfig.isDefault) {
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -392,25 +387,19 @@ fun EmptyApiState(onAdd: () -> Unit) {
             modifier = Modifier.size(80.dp),
             tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f),
         )
-
         Spacer(modifier = Modifier.height(16.dp))
-
         Text(
             text = "还没有 API 配置",
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold,
         )
-
         Spacer(modifier = Modifier.height(8.dp))
-
         Text(
             text = "添加你的第一个 API 配置开始使用",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-
         Spacer(modifier = Modifier.height(24.dp))
-
         Button(onClick = onAdd) {
             Icon(Icons.Default.Add, null)
             Spacer(modifier = Modifier.width(8.dp))
