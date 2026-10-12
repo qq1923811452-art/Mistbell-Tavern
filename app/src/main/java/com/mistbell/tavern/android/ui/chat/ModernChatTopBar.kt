@@ -23,13 +23,18 @@ fun ModernChatTopBar(
     onPromptClick: () -> Unit,
     onSettingsClick: () -> Unit,
     modifier: Modifier = Modifier,
+    // 项目②：会话级 API 实测用量聚合（来自 ChatViewModel.usageSummary）。
+    // usageRounds = 0 表示本会话尚无任何带真实 usage 的助手消息（网关未上报）——
+    // 此时不显示用量，而不是显示 0。
+    usageRounds: Int = 0,
+    usageTotalTokens: Int = 0,
+    usageCacheHitRate: Double? = null,
 ) {
     // 滚动时只增加很轻的层级，避免聊天内容被一条厚重阴影切开。
     val elevation by animateDpAsState(
         targetValue = if (isScrolled) 2.dp else 0.dp,
         label = "elevation",
     )
-
     Surface(
         modifier = modifier.fillMaxWidth(),
         shadowElevation = elevation,
@@ -39,7 +44,6 @@ fun ModernChatTopBar(
         Column {
             // 状态栏占位
             Spacer(modifier = Modifier.statusBarsPadding())
-
             // 主导航栏
             Row(
                 modifier =
@@ -60,7 +64,6 @@ fun ModernChatTopBar(
                         tint = MaterialTheme.colorScheme.onSurface,
                     )
                 }
-
                 // 中间：头像 + 标题
                 Row(
                     modifier =
@@ -75,9 +78,7 @@ fun ModernChatTopBar(
                         characters = displayCharacters,
                         modifier = Modifier.size(36.dp),
                     )
-
                     Spacer(modifier = Modifier.width(12.dp))
-
                     // 标题和副标题
                     Column(
                         modifier = Modifier.weight(1f),
@@ -91,15 +92,23 @@ fun ModernChatTopBar(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
-
-                        // 副标题：显示角色数量
+                        // 副标题：参与者数量；有 API 实测用量时追加「实测 token + 缓存命中率」
                         if (displayCharacters.isNotEmpty()) {
                             Text(
                                 text =
-                                    if (displayCharacters.size > 1) {
-                                        "${displayCharacters.size} 位参与者"
-                                    } else {
-                                        "单人对话"
+                                    buildString {
+                                        append(
+                                            if (displayCharacters.size > 1) {
+                                                "${displayCharacters.size} 位参与者"
+                                            } else {
+                                                "单人对话"
+                                            },
+                                        )
+                                        if (usageRounds > 0) {
+                                            append(" · 实测 ${usageTotalTokens} tok")
+                                            append(" · 缓存 ")
+                                            append(usageCacheHitRate?.let { "${(it * 100).toInt()}%" } ?: "未知")
+                                        }
                                     },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -109,7 +118,6 @@ fun ModernChatTopBar(
                         }
                     }
                 }
-
                 // 右侧按钮组
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -126,7 +134,6 @@ fun ModernChatTopBar(
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-
                     // 设置按钮
                     IconButton(
                         onClick = onSettingsClick,
@@ -140,7 +147,6 @@ fun ModernChatTopBar(
                     }
                 }
             }
-
             // 底部分割线（滚动时显示）
             if (isScrolled) {
                 HorizontalDivider(
