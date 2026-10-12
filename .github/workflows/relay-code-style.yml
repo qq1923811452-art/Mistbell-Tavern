@@ -97,11 +97,11 @@ jobs:
           context = open("/tmp/relay-context.json", encoding="utf-8").read()
           prompt = """你是这个 Kotlin Android 仓库的资深维护者。请根据下面的真实 Detekt/Ktlint 诊断和近期 Kotlin diff，生成最小、可验证的代码规范修复补丁。
           硬性规则：
-          1. 只输出标准 unified diff（以 diff --git 开始），不要 Markdown 代码围栏或解释。
+          1. 只输出标准 unified diff（以 diff --git 开始），不要 Markdown 代码围栏或解释。每次最多修改 3 个文件，优先处理最明确的 3 个诊断；不要为了覆盖所有问题而输出超长补丁。
           2. 只做格式、超长方法的合理拆分、参数对象整理等与诊断直接相关的改动；不得改变产品行为、API 协议、Room schema/migration、streaming include_usage、usage 缺失时显示规则、thinking 开关语义或资源释放行为。
           3. 不要关闭/放宽 Detekt、Ktlint，不要添加 suppress，不要改 baseline，不要改测试来掩盖问题。
-          4. 补丁必须匹配给出的当前 diff；不确定时输出空补丁，不要臆造上下文。
-          5. 优先处理新增/修改代码中的诊断。保持 Kotlin 风格，避免只为缩短行而制造难读代码。
+          4. 补丁必须匹配给出的当前 diff；不确定时输出空补丁，不要臆造上下文。禁止输出 index 行或虚构 blob hash；每个 hunk 的上下文与行数必须完整，必须以完整 hunk 结束，不得截断。
+          5. 优先处理新增/修改代码中的诊断。保持 Kotlin 风格，避免只为缩短行而制造难读代码。只改动能够从上下文确定的格式问题；每个补丁必须完整且可由 git apply --check 校验。
           以下是 JSON 格式的诊断和近期改动：
           """ + context
           payload = {
