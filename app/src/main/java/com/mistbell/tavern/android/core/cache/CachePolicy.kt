@@ -7,10 +7,18 @@ package com.mistbell.tavern.android.core.cache
  * prompt/context/vector caches can use the same rules later.
  */
 data class CachePolicy(
-    val maxEntries: Int = 256,
-    val ttlMillis: Long = 30 * 60 * 1000L
+    val maxEntries: Int = DEFAULT_MAX_ENTRIES,
+    val ttlMillis: Long = DEFAULT_TTL_MILLIS,
 ) {
-    fun isExpired(createdAt: Long, now: Long = System.currentTimeMillis()): Boolean {
-        return now - createdAt > ttlMillis
+    fun isExpired(createdAt: Long, now: Long = System.currentTimeMillis()): Boolean =
+        now - createdAt > ttlMillis
+
+    companion object {
+        private const val DEFAULT_MAX_ENTRIES = 256
+        private const val DEFAULT_TTL_MINUTES = 30L
+        private const val MILLIS_PER_SECOND = 1000L
+        private const val SECONDS_PER_MINUTE = 60L
+        private const val DEFAULT_TTL_MILLIS =
+            DEFAULT_TTL_MINUTES * SECONDS_PER_MINUTE * MILLIS_PER_SECOND
     }
 }
