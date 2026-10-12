@@ -7,6 +7,7 @@ import com.mistbell.tavern.android.data.api.ApiClient
 import com.mistbell.tavern.android.data.api.ChatMessage
 import com.mistbell.tavern.android.data.api.LlmClient
 import com.mistbell.tavern.android.data.api.LlmConfig
+import com.mistbell.tavern.android.data.api.Usage
 import com.mistbell.tavern.android.data.api.model.*
 import com.mistbell.tavern.android.data.local.entity.*
 import com.mistbell.tavern.android.data.prompt.PromptBuilder
@@ -232,7 +233,7 @@ class ChatRepository(private val context: Context) {
                             currentMessageId = msgId,
                             groupContext = effectiveGroupContext,
                         )
-                    collectReply(llmConfig, promptMessages, sb, onPartial)
+                    val usage = collectReply(llmConfig, promptMessages, sb, onPartial)
                     // 公共尾部：群聊归属解析 + 落库 + 向量化 + 计数回写 + 记忆提取
                     // （classic 时 speakerNames 为 null，归属/内容与改动前逐字节一致）
                     val assistantMsg =
@@ -241,6 +242,7 @@ class ChatRepository(private val context: Context) {
                             scope = scope,
                             speakerNames = effectiveGroupContext?.speakerNames,
                             mode = ReplyTailMode.Append(userMessageForMemory = message, userMessageId = msgId),
+                            usage = usage,
                         )
                     insertedAssistantId = assistantMsg.id
 
@@ -326,7 +328,7 @@ class ChatRepository(private val context: Context) {
                         groupContext = groupContext,
                         groupNudge = GROUP_CONTINUE_NUDGE,
                     )
-                collectReply(llmConfig, promptMessages, sb, onPartial)
+                val usage = collectReply(llmConfig, promptMessages, sb, onPartial)
                 // 公共尾部：归属解析/落库/计数回写与 sendMessage 完全一致；本轮无用户消息参与记忆提取
                 val assistantMsg =
                     persistAssistantReply(
@@ -334,6 +336,7 @@ class ChatRepository(private val context: Context) {
                         scope = scope,
                         speakerNames = groupContext.speakerNames,
                         mode = ReplyTailMode.Append(userMessageForMemory = "", userMessageId = null),
+                        usage = usage,
                     )
                 insertedAssistantId = assistantMsg.id
 
@@ -458,12 +461,13 @@ class ChatRepository(private val context: Context) {
                     groupContext = groupContext,
                 )
             val sb = StringBuilder()
+            var usage: Usage? = null
             val replacedMessageIds =
                 userMessages
                     .dropWhile { it.id != messageId }
                     .map { it.id }
             try {
-                collectReply(llmConfig, prompt, sb, onPartial)
+                usage = collectReply(llmConfig, prompt, sb, onPartial)
             } catch (e: CancellationException) {
                 // 用户主动停止重新生成：不触发失败回滚。
                 // 已收到部分回复则按替换事务落库（群聊先做与成功路径一致的归属解析，
@@ -487,6 +491,7 @@ class ChatRepository(private val context: Context) {
                 scope = scope,
                 speakerNames = groupContext?.speakerNames,
                 mode = ReplyTailMode.Replace(fromMessageId = messageId),
+                usage = usage,
             )
             replacedMessageIds.forEach { deleteMessageVectors(it) }
         }
@@ -518,8 +523,9 @@ class ChatRepository(private val context: Context) {
                     groupContext = loadGroupContext(ownerId, characterId, sessionId),
                 )
             val sb = StringBuilder()
+            var usage: Usage? = null
             try {
-                collectReply(config, prompt, sb, onPartial)
+                usage = collectReply(config, prompt, sb, onPartial)
             } catch (e: CancellationException) {
                 if (sb.isNotEmpty()) appendContinuation(target, sb.toString(), ownerId, characterId, sessionId)
                 throw e
@@ -629,6 +635,7 @@ class ChatRepository(private val context: Context) {
                 ownerId,
                 characterId,
                 sessionId,
+                usage = usage,
             )
         }
     }
@@ -644,6 +651,7 @@ class ChatRepository(private val context: Context) {
         ownerId: String,
         characterId: String,
         sessionId: String,
+        usage: Usage? = null,
     ) {
         if (step > 0) {
             existing += content
@@ -665,6 +673,7 @@ class ChatRepository(private val context: Context) {
                 swipesJson = encodeStringList(existing),
                 swipeIndex = newIndex,
                 thinkingSwipesJson = encodeStringList(thinkingSwipes),
+                usageJson = encodeUsage(usage),
             ),
         )
         deleteMessageVectors(entity.id)
@@ -732,6 +741,8 @@ class ChatRepository(private val context: Context) {
             kotlinx.serialization.builtins.ListSerializer(kotlinx.serialization.serializer<String>()),
             values,
         )
+
+    private fun encodeUsage(usage: Usage?): String? = usage?.let { Json.encodeToString(Usage.serializer(), it) }
 
     // null = 跟随全局默认（读取时解析）；显式值才会压过全局——建会话不再快照全局默认
     suspend fun createSession(
@@ -803,19 +814,23 @@ class ChatRepository(private val context: Context) {
         promptMessages: List<ChatMessage>,
         sb: StringBuilder,
         onPartial: ((String) -> Unit)?,
-    ) {
+    ): Usage? {
         if (llmConfig.streamingEnabled) {
             val thinking = StringBuilder()
             val content = StringBuilder()
+            var usage: Usage? = null
             LlmClient.chatStreamWithThinking(llmConfig, promptMessages).collect { delta ->
                 if (!delta.thinking.isNullOrBlank()) thinking.append(delta.thinking)
                 if (delta.text.isNotEmpty()) content.append(delta.text)
+                delta.usage?.let { usage = it }
                 sb.replace(0, sb.length, formatReply(content.toString(), thinking.toString()))
                 onPartial?.invoke(sb.toString())
             }
+            return usage
         } else {
             val response = LlmClient.chatWithThinking(llmConfig, promptMessages)
             sb.append(formatReply(response.text, response.thinking))
+            return response.usage
         }
     }
 
@@ -988,6 +1003,7 @@ class ChatRepository(private val context: Context) {
         scope: SessionScope,
         speakerNames: Map<String, String>?,
         mode: ReplyTailMode,
+        usage: Usage? = null,
     ): Message {
         // 回复清洗 + 群聊归属解析（与取消路径共用 resolveReplyAttribution）
         val (storedContent, replyThinking, storedCharacterId) =
@@ -1003,6 +1019,7 @@ class ChatRepository(private val context: Context) {
                 memoryIds = null,
                 swipes = null,
                 swipeIndex = 0,
+                usage = usage,
             )
 
         when (mode) {
@@ -1140,6 +1157,7 @@ class ChatRepository(private val context: Context) {
                 model = session.modelId.ifBlank { apiConfig.model },
                 type = apiConfig.type,
                 streamingEnabled = apiConfig.streamingEnabled,
+                disableThinking = apiConfig.thinkingDisabled,
             )
         } else {
             base
