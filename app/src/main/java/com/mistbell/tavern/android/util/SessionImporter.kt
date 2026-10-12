@@ -64,7 +64,10 @@ object SessionImporter {
             val element = json.parseToJsonElement(line).jsonObject
             if (element["type"]?.jsonPrimitive?.contentOrNull == "session") {
                 session = element["session"]?.let { json.decodeFromJsonElement<SessionSummary>(it) }
-            } else if (element["chat_metadata"] != null || element["type"]?.jsonPrimitive?.contentOrNull == "metadata") {
+            } else if (
+                element["chat_metadata"] != null ||
+                element["type"]?.jsonPrimitive?.contentOrNull == "metadata"
+            ) {
                 // Native Tavern JSONL may contain a metadata line before messages.
                 return@forEach
             } else {
@@ -86,7 +89,8 @@ object SessionImporter {
                         thinking = element["thinking"]?.jsonPrimitive?.contentOrNull,
                         characterId =
                             element["characterId"]?.jsonPrimitive?.contentOrNull
-                                ?: element["name"]?.jsonPrimitive?.contentOrNull.takeIf { role == "assistant" }.orEmpty(),
+                                ?: element["name"]?.jsonPrimitive?.contentOrNull
+                                    .takeIf { role == "assistant" }.orEmpty(),
                         createdAt = element["createdAt"]?.jsonPrimitive?.contentOrNull
                             ?: element["send_date"]?.jsonPrimitive?.contentOrNull.orEmpty(),
                         swipeIndex = element["swipeIndex"]?.jsonPrimitive?.intOrNull ?: 0,
