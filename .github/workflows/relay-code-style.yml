@@ -157,7 +157,7 @@ jobs:
           from pathlib import Path
           import re, sys
           patch = Path("/tmp/relay-style.patch").read_text(encoding="utf-8")
-          paths = re.findall(r"^\\+\\+\\+ b/(.+)$", patch, re.MULTILINE)
+          paths = re.findall(r"^\+\+\+ b/(.+)$", patch, re.MULTILINE)
           if not paths or any(not p.endswith(".kt") or p.startswith("/") or ".." in Path(p).parts for p in paths):
               sys.exit("Refusing patch: only tracked Kotlin source files may be changed")
           print("Validated Kotlin-only patch paths:", ", ".join(paths))
