@@ -1108,45 +1108,52 @@ object PromptBuilder {
         lexicalItems: List<MessageEntity>,
         alreadyInjected: List<String>,
         limit: Int = 8,
-    ): String {
-        if (limit <= 0) return ""
-        val candidates = linkedMapOf<String, HybridCandidate>()
-        fun add(content: String, rank: Int, source: String) {
-            val trimmed = content.trim()
-            if (trimmed.isBlank() || isDuplicateOfInjected(trimmed, alreadyInjected)) return
-            val keyContent =
-                trimmed
-                    .replace(Regex("""^\[[^]]+\]\s*"""), "")
-                    .replace(Regex("""^(user|assistant|system|角色|用户):\s*""", RegexOption.IGNORE_CASE), "")
-            val key = keyContent.lowercase().replace(Regex("""[\s\p{Punct}，。！？、；：“”‘’（）【】《》]+"""), "")
-            if (key.isBlank()) return
-            val contribution = 1.0 / (RRF_RANK_CONSTANT + rank)
-            val candidate = candidates[key]
-            if (candidate == null) {
-                candidates[key] = HybridCandidate(trimmed, contribution, linkedSetOf(source))
+    ): String =
+        if (limit <= 0) {
+            ""
+        } else {
+            val candidates = linkedMapOf<String, HybridCandidate>()
+            fun add(content: String, rank: Int, source: String) {
+                val trimmed = content.trim()
+                if (trimmed.isBlank() || isDuplicateOfInjected(trimmed, alreadyInjected)) return
+                val keyContent =
+                    trimmed
+                        .replace(Regex("""^\[[^]]+\]\s*"""), "")
+                        .replace(Regex("""^(user|assistant|system|角色|用户):\s*""", RegexOption.IGNORE_CASE), "")
+                val key =
+                    keyContent.lowercase()
+                        .replace(Regex("""[\s\p{Punct}，。！？、；：“”‘’（）【】《》]+"""), "")
+                if (key.isBlank()) return
+                val contribution = 1.0 / (RRF_RANK_CONSTANT + rank)
+                val candidate = candidates[key]
+                if (candidate == null) {
+                    candidates[key] = HybridCandidate(trimmed, contribution, linkedSetOf(source))
+                } else {
+                    candidate.score += contribution
+                    candidate.sources.add(source)
+                }
+            }
+
+            vectorResults
+                .filter { it.score > MIN_HYBRID_VECTOR_SCORE }
+                .forEachIndexed { index, result -> add(result.content, index + 1, "语义") }
+            lexicalItems.forEachIndexed { index, message ->
+                val stamp = message.createdAt.take(16).replace('T', ' ')
+                add("[$stamp] ${message.role}: ${message.content.take(MAX_LEXICAL_CONTENT_CHARS)}", index + 1, "关键词")
+            }
+
+            val ranked = candidates.values.sortedByDescending { it.score }.take(limit)
+            if (ranked.isEmpty()) {
+                ""
             } else {
-                candidate.score += contribution
-                candidate.sources.add(source)
+                buildString {
+                    appendLine("## Relevant Past Conversations")
+                    ranked.forEachIndexed { index, candidate ->
+                        appendLine("${index + 1}. [${candidate.sources.joinToString("+")}] ${candidate.content}")
+                    }
+                }.trim()
             }
         }
-
-        vectorResults
-            .filter { it.score > MIN_HYBRID_VECTOR_SCORE }
-            .forEachIndexed { index, result -> add(result.content, index + 1, "语义") }
-        lexicalItems.forEachIndexed { index, message ->
-            val stamp = message.createdAt.take(16).replace('T', ' ')
-            add("[$stamp] ${message.role}: ${message.content.take(MAX_LEXICAL_CONTENT_CHARS)}", index + 1, "关键词")
-        }
-
-        val ranked = candidates.values.sortedByDescending { it.score }.take(limit)
-        if (ranked.isEmpty()) return ""
-        return buildString {
-            appendLine("## Relevant Past Conversations")
-            ranked.forEachIndexed { index, candidate ->
-                appendLine("${index + 1}. [${candidate.sources.joinToString("+")}] ${candidate.content}")
-            }
-        }.trim()
-    }
 
     /**
      * 构建向量记忆上下文（用于 Prompt 注入）。
