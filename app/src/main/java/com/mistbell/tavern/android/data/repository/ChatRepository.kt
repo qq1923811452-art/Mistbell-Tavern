@@ -542,7 +542,14 @@ class ChatRepository(private val context: Context) {
         }
     }
 
-    @Suppress("LongParameterList", "LongMethod", "CyclomaticComplexMethod", "ThrowsCount", "UseRequire", "UseCheckOrError")
+    @Suppress(
+        "LongParameterList",
+        "LongMethod",
+        "CyclomaticComplexMethod",
+        "ThrowsCount",
+        "UseRequire",
+        "UseCheckOrError",
+    )
     suspend fun swipeMessage(
         ownerId: String,
         characterId: String,
