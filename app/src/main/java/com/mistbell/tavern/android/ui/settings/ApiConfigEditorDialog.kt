@@ -497,6 +497,26 @@ fun ApiConfigEditorDialog(
                     },
                 )
 
+                // 一键填入 Odys 中转站公开配置；API Key 由用户自行填写，不内置或上传密钥。
+                OutlinedButton(
+                    onClick = {
+                        name = "Odys 中转站"
+                        type = ApiType.CUSTOM
+                        apiUrl = "https://api.odys.work/v1"
+                        model = "Deepseek-V4.1-Flash"
+                        streamingEnabled = true
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                ) {
+                    Text("填入 Odys 中转站配置")
+                }
+                Text(
+                    text = "额度查询：https://api.odys.work/balance-check（需在浏览器打开）",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+
                 // API 地址
                 OutlinedTextField(
                     value = apiUrl,
