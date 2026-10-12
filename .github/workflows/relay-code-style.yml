@@ -162,8 +162,8 @@ jobs:
               sys.exit("Refusing patch: only tracked Kotlin source files may be changed")
           print("Validated Kotlin-only patch paths:", ", ".join(paths))
           PY
-          git apply --check /tmp/relay-style.patch
-          git apply /tmp/relay-style.patch
+          git apply --recount --check /tmp/relay-style.patch
+          git apply --recount /tmp/relay-style.patch
           git diff --check
           git diff --stat
 
