@@ -509,7 +509,12 @@ fun ModernChatListItem(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(
-                        text = "格式：${if (exportFileName.endsWith(".${SessionExportFormat.JSONL.extension}", ignoreCase = true)) "酒馆 JSONL" else "JSON"}",
+                        text = "格式：" +
+                            if (exportFileName.endsWith(".${SessionExportFormat.JSONL.extension}", ignoreCase = true)) {
+                                "酒馆 JSONL"
+                            } else {
+                                "JSON"
+                            },
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
