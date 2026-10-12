@@ -4,6 +4,7 @@ import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import com.mistbell.tavern.android.data.api.Usage
 import com.mistbell.tavern.android.data.api.model.Message
 import kotlinx.serialization.Serializable
 
@@ -37,6 +38,9 @@ data class MessageEntity(
     @ColumnInfo(name = "swipe_index") val swipeIndex: Int,
     @ColumnInfo(name = "thinking_swipes_json") val thinkingSwipesJson: String,
     @ColumnInfo(name = "is_read", defaultValue = "1") val isRead: Boolean = true,
+    // 真实 API usage（Usage 的 JSON 序列化）。NULL = 未知/未上报——
+    // 铁律「缺失数据不得填 0」：无 usage 时保持 NULL，不写 0 占位
+    @ColumnInfo(name = "usage_json") val usageJson: String? = null,
 ) {
     fun toDomain(): Message {
         val memoryIds =
@@ -49,7 +53,6 @@ data class MessageEntity(
             } catch (_: Exception) {
                 null
             }
-
         val swipes =
             try {
                 if (swipesJson.isNotBlank()) {
@@ -60,7 +63,6 @@ data class MessageEntity(
             } catch (_: Exception) {
                 null
             }
-
         val thinkingSwipes =
             try {
                 if (thinkingSwipesJson.isNotBlank()) {
@@ -71,7 +73,16 @@ data class MessageEntity(
             } catch (_: Exception) {
                 null
             }
-
+        val usage =
+            try {
+                if (!usageJson.isNullOrBlank()) {
+                    kotlinx.serialization.json.Json.decodeFromString(Usage.serializer(), usageJson)
+                } else {
+                    null
+                }
+            } catch (_: Exception) {
+                null
+            }
         return Message(
             id = id,
             role = role,
@@ -83,6 +94,7 @@ data class MessageEntity(
             swipes = swipes,
             swipeIndex = swipeIndex,
             thinkingSwipes = thinkingSwipes,
+            usage = usage,
         )
     }
 
@@ -94,10 +106,14 @@ data class MessageEntity(
             characterId: String,
         ): MessageEntity {
             val json = kotlinx.serialization.json.Json
-            val stringListSerializer = kotlinx.serialization.builtins.ListSerializer(kotlinx.serialization.serializer<String>())
+            val stringListSerializer =
+                kotlinx.serialization.builtins.ListSerializer(kotlinx.serialization.serializer<String>())
             val memIds = m.memoryIds?.let { json.encodeToString(stringListSerializer, it) } ?: ""
             val swipes = m.swipes?.let { json.encodeToString(stringListSerializer, it) } ?: ""
             val thinkingSwipes = m.thinkingSwipes?.let { json.encodeToString(stringListSerializer, it) } ?: ""
+            // usage 缺失时保持 null（不写 ""，也不写 0）——落库为 NULL
+            val usage = m.usage?.let { json.encodeToString(Usage.serializer(), it) }
+
             return MessageEntity(
                 id = m.id,
                 sessionId = sessionId,
@@ -111,6 +127,7 @@ data class MessageEntity(
                 swipesJson = swipes,
                 swipeIndex = m.swipeIndex,
                 thinkingSwipesJson = thinkingSwipes,
+                usageJson = usage,
             )
         }
     }
