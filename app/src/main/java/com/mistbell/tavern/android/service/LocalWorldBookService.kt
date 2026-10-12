@@ -70,14 +70,14 @@ class LocalWorldBookService {
                 continue
             }
 
-            // 激活该条目（使用默认值填充缺失字段）
+            // 激活该条目（使用默认值填充缺失字段）；position 默认为 before。
             activated.add(
                 ActivatedEntry(
                     id = entry.id,
                     comment = entry.comment,
                     content = entry.content,
                     keys = keys,
-                    position = "before", // 默认位置
+                    position = "before",
                     depth = null,
                     order = entry.order,
                     probability = entry.probability,
