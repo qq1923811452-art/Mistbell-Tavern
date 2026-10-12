@@ -31,7 +31,7 @@ jobs:
       - name: Apply Kotlin formatting
         # Keep CI formatting behavior aligned with the verified APK workflow.
         # The ktlintCheck task below remains a required gate after formatting.
-        run: ./gradlew :app:ktlintFormat --no-daemon || echo "Formatting reported baseline/style issues; continuing to the required ktlintCheck gate."
+        run: ./gradlew :app:ktlintFormat --rerun-tasks --no-daemon || echo "Formatting reported baseline/style issues; continuing to the required ktlintCheck gate."
 
       - name: Build & Verify
         # Build + unit tests + detekt + ktlint + license guard; no quality checks are skipped.
