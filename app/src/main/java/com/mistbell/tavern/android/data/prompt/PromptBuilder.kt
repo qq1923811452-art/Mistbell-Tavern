@@ -175,6 +175,7 @@ object PromptBuilder {
     private const val RRF_RANK_CONSTANT = 60.0
     private const val MIN_HYBRID_VECTOR_SCORE = 0.5f
     private const val MAX_LEXICAL_CONTENT_CHARS = 240
+    private const val HISTORY_TIMESTAMP_PREFIX_LENGTH = 16
     private const val VECTOR_RECALL_MULTIPLIER = 2
     private data class HybridCandidate(
         val content: String,
@@ -1150,7 +1151,7 @@ object PromptBuilder {
                 .filter { it.score > MIN_HYBRID_VECTOR_SCORE }
                 .forEachIndexed { index, result -> add(result.content, index + 1, "语义") }
             lexicalItems.forEachIndexed { index, message ->
-                val stamp = message.createdAt.take(16).replace('T', ' ')
+                val stamp = message.createdAt.take(HISTORY_TIMESTAMP_PREFIX_LENGTH).replace('T', ' ')
                 add("[$stamp] ${message.role}: ${message.content.take(MAX_LEXICAL_CONTENT_CHARS)}", index + 1, "关键词")
             }
 
