@@ -172,6 +172,14 @@ object PromptBuilder {
     // 记忆重复注入判定的最小长度：短于该值的正文不做"内容包含"比对，避免误伤不同事实
     private const val MIN_DUPLICATE_LENGTH = 8
     private const val MEMORY_CANDIDATE_LIMIT = 100
+    private const val RRF_RANK_CONSTANT = 60.0
+    private const val MIN_HYBRID_VECTOR_SCORE = 0.5f
+    private const val MAX_LEXICAL_CONTENT_CHARS = 240
+    private data class HybridCandidate(
+        val content: String,
+        var score: Double,
+        val sources: MutableSet<String>,
+    )
     private val THINKING_BLOCK_REGEX = Regex("(?s)<think>[\\s\\S]*?</think>")
 
     // ---- 提示词溯源（聊天页「查看提示词」用） ----
@@ -1090,13 +1098,7 @@ object PromptBuilder {
         limit: Int = 8,
     ): String {
         if (limit <= 0) return ""
-        data class Candidate(
-            val content: String,
-            var score: Double,
-            val sources: MutableSet<String>,
-        )
-
-        val candidates = linkedMapOf<String, Candidate>()
+        val candidates = linkedMapOf<String, HybridCandidate>()
         fun add(content: String, rank: Int, source: String) {
             val trimmed = content.trim()
             if (trimmed.isBlank() || isDuplicateOfInjected(trimmed, alreadyInjected)) return
@@ -1106,10 +1108,10 @@ object PromptBuilder {
                     .replace(Regex("""^(user|assistant|system|角色|用户):\s*""", RegexOption.IGNORE_CASE), "")
             val key = keyContent.lowercase().replace(Regex("""[\s\p{Punct}，。！？、；：“”‘’（）【】《》]+"""), "")
             if (key.isBlank()) return
-            val contribution = 1.0 / (60.0 + rank)
+            val contribution = 1.0 / (RRF_RANK_CONSTANT + rank)
             val candidate = candidates[key]
             if (candidate == null) {
-                candidates[key] = Candidate(trimmed, contribution, linkedSetOf(source))
+                candidates[key] = HybridCandidate(trimmed, contribution, linkedSetOf(source))
             } else {
                 candidate.score += contribution
                 candidate.sources.add(source)
@@ -1117,11 +1119,11 @@ object PromptBuilder {
         }
 
         vectorResults
-            .filter { it.score > 0.5f }
+            .filter { it.score > MIN_HYBRID_VECTOR_SCORE }
             .forEachIndexed { index, result -> add(result.content, index + 1, "语义") }
         lexicalItems.forEachIndexed { index, message ->
             val stamp = message.createdAt.take(16).replace('T', ' ')
-            add("[$stamp] ${message.role}: ${message.content.take(240)}", index + 1, "关键词")
+            add("[$stamp] ${message.role}: ${message.content.take(MAX_LEXICAL_CONTENT_CHARS)}", index + 1, "关键词")
         }
 
         val ranked = candidates.values.sortedByDescending { it.score }.take(limit)
