@@ -50,7 +50,9 @@ jobs:
         run: chmod +x ./gradlew
 
       - name: Apply Kotlin formatting
-        run: ./gradlew :app:ktlintFormat --no-daemon
+        # ktlintFormat can exit non-zero when baseline entries are encountered.
+        # Keep verification authoritative: ktlintCheck below must still pass.
+        run: ./gradlew :app:ktlintFormat --no-daemon || echo "Formatting reported baseline/style issues; continuing to the required ktlintCheck gate."
 
       - name: Run full quality gate and build APK
         run: ./gradlew :app:assembleDebug :app:testDebugUnitTest :app:detekt :app:ktlintCheck licenseGuard --continue --no-daemon
