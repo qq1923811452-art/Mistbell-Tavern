@@ -4,7 +4,7 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 data class LlmConfig(
-    val baseUrl: String = "https://api.odys.work/v1",
+    val baseUrl: String = "",
     val apiKey: String = "",
     val model: String = "",
     val temperature: Double = 0.8,
