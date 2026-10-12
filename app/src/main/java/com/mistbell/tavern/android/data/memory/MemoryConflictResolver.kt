@@ -66,12 +66,15 @@ internal object MemoryConflictResolver {
     }
 
     private fun readFact(raw: String?): Fact? {
-        val obj = readObject(raw) ?: return null
-        val subject = obj["subject"]?.jsonPrimitive?.contentOrNull.orEmpty()
-        val relation = obj["relation"]?.jsonPrimitive?.contentOrNull.orEmpty()
-        val value = obj["object"]?.jsonPrimitive?.contentOrNull.orEmpty()
-        if (subject.isBlank() || relation.isBlank() || value.isBlank()) return null
-        return Fact(subject, relation, value)
+        val obj = readObject(raw)
+        val subject = obj?.get("subject")?.jsonPrimitive?.contentOrNull.orEmpty()
+        val relation = obj?.get("relation")?.jsonPrimitive?.contentOrNull.orEmpty()
+        val value = obj?.get("object")?.jsonPrimitive?.contentOrNull.orEmpty()
+        return if (obj == null || subject.isBlank() || relation.isBlank() || value.isBlank()) {
+            null
+        } else {
+            Fact(subject, relation, value)
+        }
     }
 
     private fun readObject(raw: String?) =
@@ -82,5 +85,8 @@ internal object MemoryConflictResolver {
         }
 
     private fun normalize(value: String): String =
-        value.lowercase().replace(Regex("[\\s\\p{Punct}，。！？、；：“”‘’（）【】《》]+"), "").trim()
+        value
+            .lowercase()
+            .replace(Regex("[\\s\\p{Punct}，。！？、；：“”‘’（）【】《》]+"), "")
+            .trim()
 }
