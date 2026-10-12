@@ -1,0 +1,75 @@
+name: AI Relay Task
+
+on:
+  workflow_dispatch:
+    inputs:
+      prompt:
+        description: "Prompt to send to the relay"
+        required: true
+        type: string
+        default: "请简要介绍你自己。"
+
+permissions:
+  contents: read
+
+jobs:
+  relay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Validate configuration
+        env:
+          ODYS_API_KEY: ${{ secrets.ODYS_API_KEY }}
+          ODYS_MODEL: ${{ secrets.ODYS_MODEL }}
+        run: |
+          test -n "$ODYS_API_KEY" || { echo "::error::Missing repository secret ODYS_API_KEY"; exit 1; }
+          test -n "$ODYS_MODEL" || { echo "::error::Missing repository secret ODYS_MODEL"; exit 1; }
+      - name: Call AI relay
+        env:
+          ODYS_API_KEY: ${{ secrets.ODYS_API_KEY }}
+          ODYS_MODEL: ${{ secrets.ODYS_MODEL }}
+          USER_PROMPT: ${{ inputs.prompt }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, urllib.request, urllib.error
+          url = "https://api.odys.work/v1/chat/completions"
+          payload = {
+              "model": os.environ["ODYS_MODEL"],
+              "messages": [{"role": "user", "content": os.environ["USER_PROMPT"]}],
+              "stream": False
+          }
+          req = urllib.request.Request(
+              url,
+              data=json.dumps(payload).encode("utf-8"),
+              headers={
+                  "Authorization": "Bearer " + os.environ["ODYS_API_KEY"],
+                  "Content-Type": "application/json"
+              },
+              method="POST"
+          )
+          try:
+              with urllib.request.urlopen(req, timeout=90) as response:
+                  body = response.read().decode("utf-8")
+                  print("HTTP", response.status)
+          except urllib.error.HTTPError as exc:
+              print("Request failed with HTTP", exc.code)
+              raise SystemExit(1)
+          except Exception as exc:
+              print("Request failed:", type(exc).__name__)
+              raise SystemExit(1)
+          try:
+              data = json.loads(body)
+          except json.JSONDecodeError:
+              print("Relay returned a non-JSON response.")
+              raise SystemExit(1)
+          choices = data.get("choices") or []
+          if not choices:
+              print("Response received but no choices returned.")
+              print(json.dumps(data, ensure_ascii=False)[:4000])
+              raise SystemExit(1)
+          content = choices[0].get("message", {}).get("content", "")
+          print("Model:", data.get("model", os.environ["ODYS_MODEL"]))
+          print("Response:")
+          print(content)
+          PY
