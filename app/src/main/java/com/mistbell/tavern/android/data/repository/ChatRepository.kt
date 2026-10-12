@@ -531,7 +531,7 @@ class ChatRepository(private val context: Context) {
                 if (sb.isNotEmpty()) appendContinuation(target, sb.toString(), ownerId, characterId, sessionId)
                 throw e
             }
-            appendContinuation(target, sb.toString(), ownerId, characterId, sessionId)
+            appendContinuation(target, sb.toString(), ownerId, characterId, sessionId, usage = usage)
         }
     }
 
@@ -702,6 +702,7 @@ class ChatRepository(private val context: Context) {
         ownerId: String,
         characterId: String,
         sessionId: String,
+        usage: Usage? = null,
     ) {
         val (continuation, continuationThinking, storedCharacterId) =
             resolveReplyAttribution(rawReply, loadGroupContext(ownerId, characterId, sessionId)?.speakerNames, characterId)
@@ -717,6 +718,7 @@ class ChatRepository(private val context: Context) {
             swipes[currentIndex] = mergedContent
             thinkingSwipes[currentIndex] = mergedThinking.orEmpty()
         }
+        val combinedUsage = sumUsage(target.toDomain().usage, usage)
         db.messageDao().upsert(
             target.copy(
                 characterId = storedCharacterId,
@@ -724,6 +726,7 @@ class ChatRepository(private val context: Context) {
                 thinking = mergedThinking,
                 swipesJson = if (swipes.isEmpty()) target.swipesJson else encodeStringList(swipes),
                 thinkingSwipesJson = if (swipes.isEmpty()) target.thinkingSwipesJson else encodeStringList(thinkingSwipes),
+                usageJson = encodeUsage(combinedUsage),
             ),
         )
         deleteMessageVectors(target.id)
@@ -747,6 +750,24 @@ class ChatRepository(private val context: Context) {
         )
 
     private fun encodeUsage(usage: Usage?): String? = usage?.let { Json.encodeToString(Usage.serializer(), it) }
+
+    /**
+     * A continued answer represents multiple API calls in one saved message, so their actual
+     * token usage is additive. If the latest call did not report usage, retain the earlier value.
+     */
+    private fun sumUsage(previous: Usage?, next: Usage?): Usage? =
+        when {
+            previous == null -> next
+            next == null -> previous
+            else ->
+                Usage(
+                    promptTokens = previous.promptTokens + next.promptTokens,
+                    completionTokens = previous.completionTokens + next.completionTokens,
+                    totalTokens = previous.totalTokens + next.totalTokens,
+                    cacheHitTokens = previous.cacheHitTokens + next.cacheHitTokens,
+                    cacheMissTokens = previous.cacheMissTokens + next.cacheMissTokens,
+                )
+        }
 
     // null = 跟随全局默认（读取时解析）；显式值才会压过全局——建会话不再快照全局默认
     suspend fun createSession(
