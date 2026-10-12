@@ -86,7 +86,6 @@ internal object GeminiChatProtocol : ChatProtocol {
                         parts = listOf(GeminiContent.GeminiPart(text = it.content)),
                     )
                 }
-
         val requestBody =
             GeminiRequest(
                 contents = contents,
@@ -102,7 +101,6 @@ internal object GeminiChatProtocol : ChatProtocol {
                         topK = config.topK,
                     ),
             )
-
         val bodyJson = json.encodeToString(GeminiRequest.serializer(), requestBody)
         val base = config.baseUrl.trimEnd('/')
         val modelPath = "models/${config.model}:generateContent"
@@ -112,7 +110,6 @@ internal object GeminiChatProtocol : ChatProtocol {
                 append("?key=${config.apiKey}")
                 if (stream) append("&alt=sse")
             }
-
         return Request.Builder()
             .url(url)
             .addHeader("Content-Type", "application/json")
@@ -165,18 +162,18 @@ internal object GeminiChatProtocol : ChatProtocol {
                 .filter(GeminiContent.GeminiPart::thought)
                 .joinToString("") { it.text }
                 .takeIf { it.isNotBlank() }
-        val usageUpdate =
+        val usage =
             response.usageMetadata?.let {
-                StreamParseResult.UsageUpdate(
-                    Usage(
-                        promptTokens = it.promptTokens,
-                        completionTokens = it.candidatesTokens,
-                        totalTokens = it.totalTokens,
-                    ),
+                Usage(
+                    promptTokens = it.promptTokens,
+                    completionTokens = it.candidatesTokens,
+                    totalTokens = it.totalTokens,
                 )
             }
+        val usageUpdate = usage?.let { StreamParseResult.UsageUpdate(it) }
         return if (deltaText != null || deltaThinking != null) {
-            StreamParseResult.Delta(deltaText.orEmpty(), deltaThinking)
+            // 同帧可能既带正文又带 usageMetadata：一并交给上层合并，避免丢用量（P2-4）
+            StreamParseResult.Delta(deltaText.orEmpty(), deltaThinking, usage)
         } else {
             usageUpdate ?: StreamParseResult.Ignore
         }
