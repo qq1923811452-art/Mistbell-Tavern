@@ -9,6 +9,7 @@ import com.mistbell.tavern.android.data.api.LlmConfig
 import com.mistbell.tavern.android.data.api.model.StructuredMemory
 import com.mistbell.tavern.android.data.memory.MemoryConflictResolver
 import com.mistbell.tavern.android.data.repository.StructuredMemoryRepository
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
@@ -95,15 +96,19 @@ class MemoryExtractionService(
                         )
                         savedCount++
                         Log.d(TAG, "Saved memory candidate #$savedCount")
+                    } catch (e: CancellationException) {
+                        throw e
                     } catch (e: Exception) {
-                        Log.e(TAG, "Failed to save memory: ${e.message}", e)
+                        Log.e(TAG, "Failed to save memory (${e.javaClass.simpleName})")
                     }
                 }
 
                 Log.d(TAG, "Extraction complete: ${candidates.size} candidates, ${validated.size} valid, $savedCount saved")
                 savedCount
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                Log.e(TAG, "Memory extraction failed: ${e.message}", e)
+                Log.e(TAG, "Memory extraction failed (${e.javaClass.simpleName})")
                 0
             }
         }
@@ -125,17 +130,21 @@ class MemoryExtractionService(
             )
         // Keep temporal history when a newer extracted fact changes an existing value.
         val existing = structuredMemoryRepository.getMemoriesByCharacter(ownerId, characterId).first()
-        MemoryConflictResolver.findSuperseded(
-            subject = candidate.subject,
-            relation = candidate.relation,
-            value = candidate.objValue,
-            existing = existing,
-        ).forEach { previous ->
+        val superseded =
+            MemoryConflictResolver.findSuperseded(
+                subject = candidate.subject,
+                relation = candidate.relation,
+                value = candidate.objValue,
+                existing = existing,
+            )
+        // Persist the replacement first. If insertion fails, the currently active fact remains intact.
+        structuredMemoryRepository.createMemory(memory)
+        superseded.forEach { previous ->
             structuredMemoryRepository.updateMemory(
                 MemoryConflictResolver.markSuperseded(previous, memory.content),
+                preserveUpdatedAt = true,
             )
         }
-        structuredMemoryRepository.createMemory(memory)
     }
 
     // 多轮拼接：轮间空行分隔；无用户消息的轮次（群聊"让TA继续"）省略 User 行
@@ -224,8 +233,10 @@ class MemoryExtractionService(
                 config,
                 listOf(ChatMessage(role = "user", content = prompt + NO_REASONING_SUFFIX)),
             )
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            Log.e(TAG, "Retry after blank content failed: ${e.message}")
+            Log.e(TAG, "Retry after blank content failed (${e.javaClass.simpleName})")
             first
         }
     }
