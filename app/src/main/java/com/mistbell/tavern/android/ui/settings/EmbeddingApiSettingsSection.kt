@@ -49,7 +49,10 @@ fun EmbeddingApiSettingsSection() {
         )
     }
     val presetModels = listOf("text-embedding-3-small", "text-embedding-ada-002")
-    val storedModel = remember(context) { prefs.getString("embedding_model", "text-embedding-3-small") ?: "text-embedding-3-small" }
+    val storedModel =
+        remember(context) {
+            prefs.getString("embedding_model", "text-embedding-3-small") ?: "text-embedding-3-small"
+        }
     var selectedModel by remember { mutableStateOf(if (storedModel in presetModels) storedModel else "自定义模型 ID") }
     var customModel by remember { mutableStateOf(if (storedModel in presetModels) "" else storedModel) }
     var modelMenuExpanded by remember { mutableStateOf(false) }
@@ -85,7 +88,9 @@ fun EmbeddingApiSettingsSection() {
                     modifier = Modifier.fillMaxWidth().menuAnchor(),
                     label = { Text("Embedding 模型") },
                     trailingIcon = {
-                        androidx.compose.material3.ExposedDropdownMenuDefaults.TrailingIcon(expanded = modelMenuExpanded)
+                        androidx.compose.material3.ExposedDropdownMenuDefaults.TrailingIcon(
+                            expanded = modelMenuExpanded,
+                        )
                     },
                     singleLine = true,
                 )
@@ -132,7 +137,8 @@ fun EmbeddingApiSettingsSection() {
                 onClick = {
                     val normalizedUrl =
                         baseUrl.trim().trimEnd('/').ifBlank { "https://api.openai.com/v1" }
-                    val normalizedModel = (if (selectedModel == "自定义模型 ID") customModel else selectedModel).trim()
+                    val normalizedModel =
+                        (if (selectedModel == "自定义模型 ID") customModel else selectedModel).trim()
                     prefs.edit()
                         .putString("embedding_api_key", SecureStore.wrap(apiKey.trim()))
                         .putString("embedding_base_url", normalizedUrl)
