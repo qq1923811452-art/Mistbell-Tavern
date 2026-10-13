@@ -120,7 +120,7 @@ fun EmbeddingApiSettingsSection() {
                 )
             }
             Text(
-                text = "提示：向量维度由服务端模型决定；切换模型后，系统会按模型标识隔离旧向量，避免跨模型比较。",
+                text = "提示：向量维度由服务端模型决定；切换模型后会隔离不兼容向量，仅复用可确认兼容的旧向量。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
