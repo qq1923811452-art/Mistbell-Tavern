@@ -138,6 +138,7 @@ class CachedVectorStore(
      * changed the delegate but a concurrent lookup can still return a pre-write cached result.
      * In-flight misses are also prevented from repopulating the cache by the generation change.
      */
+    @Suppress("TooGenericExceptionCaught")
     private suspend fun <T> mutateStore(
         shouldInvalidate: (T) -> Boolean = { true },
         mutation: suspend () -> T,
