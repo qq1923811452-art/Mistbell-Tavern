@@ -16,16 +16,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.platform.LocalContext
 import com.mistbell.tavern.android.TavernApplication
+import com.mistbell.tavern.android.ui.common.ModernSettingsGroup
 import com.mistbell.tavern.android.util.SecureStore
 import kotlinx.coroutines.launch
 
-/**
- * Minimal Embedding API configuration. Keys are encrypted with AndroidKeyStore before persistence.
- */
+/** 简单的 Embedding API 配置入口；密钥使用 AndroidKeyStore 加密保存。 */
+@Suppress("FunctionNaming", "LongMethod", "MaxLineLength")
 @Composable
 fun EmbeddingApiSettingsSection() {
     val context = LocalContext.current
@@ -37,7 +37,10 @@ fun EmbeddingApiSettingsSection() {
         mutableStateOf(SecureStore.unwrap(prefs.getString("embedding_api_key", "") ?: ""))
     }
     var baseUrl by remember {
-        mutableStateOf(prefs.getString("embedding_base_url", "https://api.openai.com/v1") ?: "https://api.openai.com/v1")
+        mutableStateOf(
+            prefs.getString("embedding_base_url", "https://api.openai.com/v1")
+                ?: "https://api.openai.com/v1",
+        )
     }
     var status by remember { mutableStateOf<String?>(null) }
 
@@ -70,7 +73,8 @@ fun EmbeddingApiSettingsSection() {
             )
             Button(
                 onClick = {
-                    val normalizedUrl = baseUrl.trim().trimEnd('/').ifBlank { "https://api.openai.com/v1" }
+                    val normalizedUrl =
+                        baseUrl.trim().trimEnd('/').ifBlank { "https://api.openai.com/v1" }
                     prefs.edit()
                         .putString("embedding_api_key", SecureStore.wrap(apiKey.trim()))
                         .putString("embedding_base_url", normalizedUrl)
@@ -79,7 +83,8 @@ fun EmbeddingApiSettingsSection() {
                     status = "配置已保存，正在刷新记忆服务…"
                     scope.launch {
                         val source = runCatching {
-                            TavernApplication.instance.container.database.settingsDao().getValue("embedding_source") ?: "auto"
+                            TavernApplication.instance.container.database.settingsDao()
+                                .getValue("embedding_source") ?: "auto"
                         }.getOrDefault("auto")
                         val active = runCatching {
                             TavernApplication.instance.container.refreshEmbeddingSource(source)
