@@ -1,6 +1,5 @@
 package com.mistbell.tavern.android.data.repository
 
-import android.util.Log
 import com.mistbell.tavern.android.data.local.AppDatabase
 import com.mistbell.tavern.android.data.local.entity.ApiConfigEntity
 import com.mistbell.tavern.android.data.local.entity.SettingsEntity
@@ -51,7 +50,6 @@ internal data class ProviderConfig(
  * - 激活提供商的高级采样参数继续平铺写入 llm_* 覆盖键（getLlmConfig 后半段机制不变）。
  */
 object ApiConfigMigration {
-    private const val TAG = "ApiConfigMigration"
     const val MIGRATED_FLAG_KEY = "providers_migrated_v1"
 
     /** 纯函数：解密后的 providers_json → ProviderConfig 列表（坏 JSON/空串容错为空） */
@@ -104,6 +102,14 @@ object ApiConfigMigration {
         encryptLegacyApiKeys(db)
         val settingsDao = db.settingsDao()
 
+        // Encrypt legacy settings before any early return, including already-migrated installs.
+        listOf("providers_json", "llm_api_key").forEach { key ->
+            val value = settingsDao.getValue(key).orEmpty()
+            if (value.isNotBlank() && !SecureStore.isEncrypted(value)) {
+                settingsDao.upsert(SettingsEntity(key, SecureStore.wrap(value)))
+            }
+        }
+
         // 已迁移 / api_configs 已有数据（恢复备份场景）：置标志后返回
         val alreadyMigrated =
             settingsDao.getValue(MIGRATED_FLAG_KEY) == "1" || db.apiConfigDao().getCount() > 0
@@ -137,17 +143,13 @@ object ApiConfigMigration {
     }
 
     /**
-     * Encrypt API keys created by earlier versions. If the device Keystore is temporarily
-     * unavailable, keep the existing value intact and retry on the next configuration visit.
+     * Encrypt API keys created by earlier versions. Encryption errors deliberately propagate:
+     * silently retaining plaintext would violate the storage security guarantee.
      */
     private suspend fun encryptLegacyApiKeys(db: AppDatabase) {
         db.apiConfigDao().getAll().forEach { entity ->
             if (entity.apiKey.isNotBlank() && !SecureStore.isEncrypted(entity.apiKey)) {
-                try {
-                    db.apiConfigDao().update(entity.copy(apiKey = SecureStore.wrap(entity.apiKey)))
-                } catch (e: Exception) {
-                    Log.e(TAG, "Could not encrypt legacy API key for config ${entity.id}; retaining existing value", e)
-                }
+                db.apiConfigDao().update(entity.copy(apiKey = SecureStore.wrap(entity.apiKey)))
             }
         }
     }
