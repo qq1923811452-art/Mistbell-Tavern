@@ -46,7 +46,8 @@ class VectorMemoryServiceInstrumentedTest {
                 messageId = "message-1",
                 contentType = "user_message",
             )
-            val results = service.searchRelevantMemories(
+            val results =
+                service.searchRelevantMemories(
                 query = "The user prefers concise replies",
                 ownerId = "owner",
                 characterId = "character",
@@ -63,7 +64,8 @@ class VectorMemoryServiceInstrumentedTest {
     @Test
     fun vectorsFromDifferentModelIdentitiesAreNeverMixed() {
         runBlocking {
-            val original = VectorMemoryService(
+            val original =
+                VectorMemoryService(
                 store,
                 CountingEmbeddingService("model-a", floatArrayOf(1f, 0f, 0f)),
             )
@@ -76,11 +78,13 @@ class VectorMemoryServiceInstrumentedTest {
                 contentType = "user_message",
             )
 
-            val switched = VectorMemoryService(
+            val switched =
+                VectorMemoryService(
                 store,
                 CountingEmbeddingService("model-b", floatArrayOf(1f, 0f, 0f)),
             )
-            val results = switched.searchRelevantMemories(
+            val results =
+                switched.searchRelevantMemories(
                 query = "A remembered fact",
                 ownerId = "owner",
                 characterId = "character",
@@ -89,7 +93,8 @@ class VectorMemoryServiceInstrumentedTest {
             )
 
             assertTrue("Different embedding spaces must not return each other's vectors", results.isEmpty())
-            val originalResults = original.searchRelevantMemories(
+            val originalResults =
+                original.searchRelevantMemories(
                 query = "A remembered fact",
                 ownerId = "owner",
                 characterId = "character",
@@ -106,7 +111,8 @@ class VectorMemoryServiceInstrumentedTest {
             store.add(
                 id = "persisted-vector",
                 vector = floatArrayOf(1f, 0f),
-                metadata = mapOf(
+                metadata =
+                    mapOf(
                     "owner_id" to "owner",
                     "embedding_model" to "persist-model",
                     "content" to "persistent fact",
@@ -114,7 +120,8 @@ class VectorMemoryServiceInstrumentedTest {
             )
 
             val reopened = InMemoryVectorStore(context)
-            val results = reopened.search(
+            val results =
+                reopened.search(
                 queryVector = floatArrayOf(1f, 0f),
                 topK = 1,
                 filters = mapOf("owner_id" to "owner", "embedding_model" to "persist-model"),
