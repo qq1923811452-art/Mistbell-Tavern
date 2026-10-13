@@ -233,6 +233,7 @@ class ChatRepository(private val context: Context) {
                             message,
                             currentMessageId = msgId,
                             groupContext = effectiveGroupContext,
+                            cacheSnapshotEnabled = supportsPromptPrefixSnapshots(llmConfig),
                         )
                     val usage = collectReply(llmConfig, promptMessages, sb, onPartial)
                     // 公共尾部：群聊归属解析 + 落库 + 向量化 + 计数回写 + 记忆提取
@@ -333,6 +334,7 @@ class ChatRepository(private val context: Context) {
                         userMessage = "",
                         groupContext = groupContext,
                         groupNudge = GROUP_CONTINUE_NUDGE,
+                        cacheSnapshotEnabled = supportsPromptPrefixSnapshots(llmConfig),
                     )
                 val usage = collectReply(llmConfig, promptMessages, sb, onPartial)
                 // 公共尾部：归属解析/落库/计数回写与 sendMessage 完全一致；本轮无用户消息参与记忆提取
@@ -465,6 +467,7 @@ class ChatRepository(private val context: Context) {
                     currentMessageId = lastUserMsg.id,
                     excludeFromMessageId = messageId,
                     groupContext = groupContext,
+                    cacheSnapshotEnabled = supportsPromptPrefixSnapshots(llmConfig),
                 )
             val sb = StringBuilder()
             var usage: Usage? = null
@@ -530,6 +533,7 @@ class ChatRepository(private val context: Context) {
                     sessionId,
                     userMessage = "请自然地继续上一条助手回复，不要重复已经说过的内容。",
                     groupContext = loadGroupContext(ownerId, characterId, sessionId),
+                    cacheSnapshotEnabled = supportsPromptPrefixSnapshots(config),
                 )
             val sb = StringBuilder()
             var usage: Usage? = null
@@ -617,6 +621,7 @@ class ChatRepository(private val context: Context) {
                     currentMessageId = lastUser.id,
                     excludeFromMessageId = messageId,
                     groupContext = loadGroupContext(ownerId, characterId, sessionId),
+                    cacheSnapshotEnabled = supportsPromptPrefixSnapshots(config),
                 )
             val sb = StringBuilder()
             var usage: Usage? = null
@@ -874,6 +879,10 @@ class ChatRepository(private val context: Context) {
     }
 
     // --- Helpers ---
+
+    /** Snapshot/replay message order for OpenAI-compatible prefix caches only. */
+    private fun supportsPromptPrefixSnapshots(config: LlmConfig): Boolean =
+        config.type == "openai" || config.type == "custom"
 
     // 收集完整回复：流式开 → SSE 逐增量累计，onPartial 每次回调累计全文供 UI 渲染；流式关 → 整包返回不调 onPartial。
     // sb 由调用方持有（作用域覆盖其 try/catch），取消/异常路径可据此判断并保存部分回复。
