@@ -2,6 +2,9 @@ package com.mistbell.tavern.android.data.vector
 
 import android.util.Log
 import android.util.LruCache
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -24,6 +27,8 @@ class CachedVectorStore(
     private var cacheMissCount: Long = 0
     private var cacheWriteCount: Long = 0
     private var cacheInvalidationCount: Long = 0
+    private val _cacheStatistics = MutableStateFlow(VectorCacheStatistics(0, 0, 0, 0, 0))
+    val cacheStatistics: StateFlow<VectorCacheStatistics> = _cacheStatistics.asStateFlow()
 
     companion object {
         private const val TAG = "CachedVectorStore"
@@ -65,6 +70,7 @@ class CachedVectorStore(
                     } else {
                         cacheHitCount++
                     }
+                    publishCacheStatistics()
                     cached to cacheGeneration
                 }
             val cached = lookup.first
@@ -80,6 +86,7 @@ class CachedVectorStore(
                     if (lookup.second == cacheGeneration) {
                         searchCache.put(cacheKey, results.toList())
                         cacheWriteCount++
+                        publishCacheStatistics()
                     }
                 }
                 results
@@ -117,21 +124,27 @@ class CachedVectorStore(
      * Searches with non-positive topK bypass the cache and are not counted.
      */
     suspend fun getCacheStatistics(): VectorCacheStatistics =
-        cacheMutex.withLock {
-            VectorCacheStatistics(
-                hitCount = cacheHitCount,
-                missCount = cacheMissCount,
-                writeCount = cacheWriteCount,
-                invalidationCount = cacheInvalidationCount,
-                entryCount = searchCache.size(),
-            )
-        }
+        cacheMutex.withLock { snapshotCacheStatistics() }
+
+    private fun snapshotCacheStatistics(): VectorCacheStatistics =
+        VectorCacheStatistics(
+            hitCount = cacheHitCount,
+            missCount = cacheMissCount,
+            writeCount = cacheWriteCount,
+            invalidationCount = cacheInvalidationCount,
+            entryCount = searchCache.size(),
+        )
+
+    private fun publishCacheStatistics() {
+        _cacheStatistics.value = snapshotCacheStatistics()
+    }
 
     private suspend fun invalidateCache() {
         cacheMutex.withLock {
             cacheGeneration++
             cacheInvalidationCount++
             searchCache.evictAll()
+            publishCacheStatistics()
         }
         Log.d(TAG, "Cache invalidated")
     }
