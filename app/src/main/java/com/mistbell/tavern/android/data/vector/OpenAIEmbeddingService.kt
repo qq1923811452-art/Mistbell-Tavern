@@ -85,7 +85,14 @@ class OpenAIEmbeddingService(
                 }
             }
 
-            throw lastException ?: Exception("Embedding request failed after $MAX_RETRIES retries")
+            val failure = lastException ?: Exception("Embedding request failed after $MAX_RETRIES retries")
+            ApiCallTrace.log(
+                traceId,
+                source,
+                "FAILURE",
+                "engine=remote operation=single model=$model elapsedMs=${System.currentTimeMillis() - startedAt} error=${failure.javaClass.simpleName}",
+            )
+            throw failure
         }
 
     private fun executeEmbedRequest(text: String, traceId: String, source: String, startedAt: Long, attempt: Int): FloatArray {
@@ -175,7 +182,14 @@ class OpenAIEmbeddingService(
                 }
             }
 
-            throw lastException ?: Exception("Batch embedding request failed after $MAX_RETRIES retries")
+            val failure = lastException ?: Exception("Batch embedding request failed after $MAX_RETRIES retries")
+            ApiCallTrace.log(
+                traceId,
+                source,
+                "FAILURE",
+                "engine=remote operation=batch model=$model itemCount=${texts.size} elapsedMs=${System.currentTimeMillis() - startedAt} error=${failure.javaClass.simpleName}",
+            )
+            throw failure
         }
 
     private fun executeEmbedBatchRequest(texts: List<String>, traceId: String, source: String, startedAt: Long, attempt: Int): List<FloatArray> {
