@@ -56,25 +56,52 @@ class AppContainer(private val appContext: Context) {
      * - api：强制 API（无 key 则 Mock）；
      * - local：本地 ONNX（bge-small-zh）；初始化失败回退 Mock 并记日志。
      */
-    @Suppress("TooGenericExceptionCaught")
-    val embeddingService: EmbeddingService by lazy {
-        // runBlocking 限定在装配边界：lazy 首触发出自协程（PromptBuilder 等在 IO 线程），
-        // 且整个装配只在应用生命周期内执行一次
+    @Volatile
+    private var runtimeEmbeddingService: EmbeddingService? = null
+
+    @Volatile
+    private var runtimeVectorMemoryService: VectorMemoryService? = null
+
+    private val initialEmbeddingService: EmbeddingService by lazy {
         kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
             assembleEmbeddingService()
         }
     }
 
-    private suspend fun assembleEmbeddingService(): EmbeddingService {
+    val embeddingService: EmbeddingService
+        get() = runtimeEmbeddingService ?: initialEmbeddingService
+
+    /**
+     * Rebuild both services after the user changes embedding source.
+     * The vector store itself is intentionally retained so existing memories and cache statistics survive.
+     * Returns true only when a real local or remote embedding implementation is active.
+     */
+    suspend fun refreshEmbeddingSource(source: String): Boolean {
+        val service = assembleEmbeddingService(source)
+        synchronized(this) {
+            runtimeEmbeddingService = service
+            runtimeVectorMemoryService = VectorMemoryService(vectorStore, service)
+        }
+        Log.i(TAG, "Embedding source switched: requested=$source, active=${service::class.java.simpleName}")
+        return service is OpenAIEmbeddingService || service is LocalEmbeddingService
+    }
+
+    @Suppress("TooGenericExceptionCaught")
+    private suspend fun assembleEmbeddingService(sourceOverride: String? = null): EmbeddingService {
         val source =
-            runCatching { database.settingsDao().getValue("embedding_source") }.getOrNull()
+            sourceOverride ?: runCatching {
+                database.settingsDao().getValue("embedding_source")
+            }.getOrNull()
         return try {
             when (source) {
                 "local" -> {
-                    Log.d(TAG, "Embedding source=local: loading bge-small-zh (ONNX, lazy)")
-                    runCatching { LocalEmbeddingService.create(appContext) }
-                        .onFailure { Log.e(TAG, "Local embedding init failed, fallback to mock", it) }
-                        .getOrElse { MockEmbeddingService() }
+                    Log.d(TAG, "Embedding source=local: loading bge-small-zh (ONNX)")
+                    try {
+                        LocalEmbeddingService.create(appContext)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Local embedding init failed; remote fallback is disabled", e)
+                        MockEmbeddingService()
+                    }
                 }
                 "api" -> openAiEmbeddingOrMock()
                 else ->
@@ -107,7 +134,7 @@ class AppContainer(private val appContext: Context) {
         }
     }
 
-    val vectorMemoryService: VectorMemoryService by lazy {
+    private val initialVectorMemoryService: VectorMemoryService by lazy {
         try {
             VectorMemoryService(
                 vectorStore = vectorStore,
@@ -120,6 +147,9 @@ class AppContainer(private val appContext: Context) {
             VectorMemoryService(vectorStore, embeddingService)
         }
     }
+
+    val vectorMemoryService: VectorMemoryService
+        get() = runtimeVectorMemoryService ?: initialVectorMemoryService
 
     private fun getEmbeddingApiKey(): String {
         val prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
