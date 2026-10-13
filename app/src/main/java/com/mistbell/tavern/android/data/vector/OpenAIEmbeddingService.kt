@@ -30,7 +30,7 @@ class OpenAIEmbeddingService(
         OkHttpClient.Builder()
             .followRedirects(false)
             .followSslRedirects(false)
-            .connectTimeout(30, TimeUnit.SECONDS
+            .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(60, TimeUnit.SECONDS)
             .build()
 
