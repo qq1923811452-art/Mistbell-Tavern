@@ -78,6 +78,20 @@ interface MessageDao {
         ownerId: String,
     ): MessageEntity?
 
+    @Query(
+        """
+        UPDATE messages
+        SET prompt_context_snapshot_json = :snapshotJson
+        WHERE id = :messageId AND session_id = :sessionId AND owner_id = :ownerId
+        """,
+    )
+    suspend fun updatePromptContextSnapshot(
+        messageId: String,
+        sessionId: String,
+        ownerId: String,
+        snapshotJson: String,
+    )
+
     @Upsert
     suspend fun upsert(msg: MessageEntity)
 
