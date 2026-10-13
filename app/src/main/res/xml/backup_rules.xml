@@ -6,4 +6,6 @@
     <exclude domain="database" path="tavern.db" />
     <exclude domain="database" path="tavern.db-wal" />
     <exclude domain="database" path="tavern.db-shm" />
+    <!-- Vector metadata includes conversation text; use the explicit in-app backup flow instead. -->
+    <exclude domain="file" path="vector_store.json" />
 </full-backup-content>
