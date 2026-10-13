@@ -103,6 +103,70 @@ class ChatProtocolTest {
     }
 
     @Test
+    fun `openai compatible usage maps cached_tokens to cache hit and miss counters`() {
+        val body =
+            """{"choices":[{"message":{"role":"assistant","content":"ok"}}],"usage":{"prompt_tokens":100,"completion_tokens":3,"total_tokens":103,"prompt_tokens_details":{"cached_tokens":80}}}"""
+        val usage = OpenAiChatProtocol.parseContent(body).usage
+
+        assertEquals(100, usage?.promptTokens)
+        assertEquals(80, usage?.cacheHitTokens)
+        assertEquals(20, usage?.cacheMissTokens)
+    }
+
+    @Test
+    fun `deepseek cache token fields stay authoritative when supplied directly`() {
+        val body =
+            """{"choices":[{"message":{"role":"assistant","content":"ok"}}],"usage":{"prompt_tokens":100,"completion_tokens":3,"total_tokens":103,"prompt_cache_hit_tokens":70,"prompt_cache_miss_tokens":30}}"""
+        val usage = OpenAiChatProtocol.parseContent(body).usage
+
+        assertEquals(70, usage?.cacheHitTokens)
+        assertEquals(30, usage?.cacheMissTokens)
+    }
+
+    @Test
+    fun `anthropic non streaming usage includes cache reads and creations`() {
+        val body =
+            """{"content":[{"type":"text","text":"ok"}],"usage":{"input_tokens":20,"output_tokens":3,"cache_creation_input_tokens":30,"cache_read_input_tokens":70}}"""
+        val usage = AnthropicChatProtocol.parseContent(body).usage
+
+        assertEquals(120, usage?.promptTokens)
+        assertEquals(70, usage?.cacheHitTokens)
+        assertEquals(50, usage?.cacheMissTokens)
+        assertEquals(123, usage?.totalTokens)
+    }
+
+    @Test
+    fun `anthropic message_start reads nested cache metrics and delta preserves totals`() {
+        val start =
+            AnthropicChatProtocol.parseStreamData(
+                """{"type":"message_start","message":{"usage":{"input_tokens":20,"output_tokens":1,"cache_creation_input_tokens":30,"cache_read_input_tokens":70}}}""",
+            )
+        val delta =
+            AnthropicChatProtocol.parseStreamData(
+                """{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":8}}""",
+            )
+
+        val startUsage = (start as StreamParseResult.UsageUpdate).usage
+        val deltaUsage = (delta as StreamParseResult.UsageUpdate).usage
+        assertEquals(120, startUsage.promptTokens)
+        assertEquals(70, startUsage.cacheHitTokens)
+        assertEquals(50, startUsage.cacheMissTokens)
+        assertEquals(8, deltaUsage.completionTokens)
+        assertEquals(0, deltaUsage.promptTokens)
+    }
+
+    @Test
+    fun `gemini cachedContentTokenCount maps to provider cache hit counters`() {
+        val body =
+            """{"candidates":[{"content":{"parts":[{"text":"ok"}],"role":"model"},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":100,"candidatesTokenCount":3,"totalTokenCount":103,"cachedContentTokenCount":80}}"""
+        val usage = GeminiChatProtocol.parseContent(body).usage
+
+        assertEquals(100, usage?.promptTokens)
+        assertEquals(80, usage?.cacheHitTokens)
+        assertEquals(20, usage?.cacheMissTokens)
+    }
+
+    @Test
     fun `openai 流式解析 reasoning_content 增量`() {
         val data =
             """{"choices":[{"delta":{"role":"assistant","content":"","reasoning_content":"推理"}}]}"""
