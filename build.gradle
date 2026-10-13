@@ -1,5 +1,5 @@
 plugins {
-    id "com.android.application" version '8.13.0' apply false
+    id "com.android.application" version '9.1.1' apply false
     id "org.jetbrains.kotlin.android" version '2.4.21' apply false
     id "org.jetbrains.kotlin.plugin.compose" version '2.4.21' apply false
     id "org.jetbrains.kotlin.plugin.serialization" version '2.4.21' apply false
@@ -8,13 +8,13 @@ plugins {
     // F0 质量门（见 docs/FOUNDATION.md）：静态检查 + 许可证审计
     id "io.gitlab.arturbosch.detekt" version "1.23.8" apply false
     id "org.jlleitschuh.gradle.ktlint" version "12.1.1" apply false
-    id "com.github.jk1.dependency-license-report" version "2.9"
+    id "com.github.jk1.dependency-license-report" version "3.1.4"
 }
 
 // 依赖许可证报告：只扫 :app（JSON 输出供 licenseGuard 消费）
 licenseReport {
     projects = [project(':app')]
-    outputDir = "$buildDir/reports/licenses"
+    outputDir = layout.buildDirectory.dir("reports/licenses").get().asFile.absolutePath
     renderers = [new com.github.jk1.license.render.JsonReportRenderer("index.json", false)]
 }
 
@@ -33,7 +33,7 @@ tasks.register('licenseGuard') {
     description = 'Fails if any dependency license hits copyleft red lines (GPL/AGPL/AFFERO/SSPL).'
     doLast {
         def forbidden = ~/AGPL|AFFERO|SSPL|(^|[^A-Za-z])GPL/
-        def dir = file("${buildDir}/reports/licenses")
+        def dir = layout.buildDirectory.dir("reports/licenses").get().asFile
         if (!dir.isDirectory()) {
             throw new GradleException("licenseGuard: 许可证报告不存在（$dir）——请先运行 licenseReport")
         }

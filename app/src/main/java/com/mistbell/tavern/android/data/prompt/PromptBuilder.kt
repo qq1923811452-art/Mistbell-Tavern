@@ -6,6 +6,7 @@ import com.mistbell.tavern.android.data.api.model.GroupChatContext
 import com.mistbell.tavern.android.data.api.model.StructuredMemory
 import com.mistbell.tavern.android.data.local.AppDatabase
 import com.mistbell.tavern.android.data.local.entity.MessageEntity
+import com.mistbell.tavern.android.data.memory.MemoryConflictResolver
 import com.mistbell.tavern.android.data.memory.MemoryRanking
 import com.mistbell.tavern.android.data.local.entity.WorldBookEntryEntity
 import com.mistbell.tavern.android.data.repository.ChatSettingsResolver
@@ -876,6 +877,7 @@ object PromptBuilder {
             db.structuredMemoryDao()
                 .getPromptCandidates(ownerId, characterId, MEMORY_CANDIDATE_LIMIT)
                 .map { it.toDomain() }
+                .filterNot(MemoryConflictResolver::isSuperseded)
 
         val recalledMemories = selectRelevantMemories(memories, userMessage)
         val recalledContents = recalledMemories.map { it.content }.filter { it.isNotBlank() }
