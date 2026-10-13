@@ -63,7 +63,8 @@ internal object MemoryConflictResolver {
                 put("supersededBy", replacement)
                 put("supersededAt", now)
             }
-        return memory.copy(structuredData = updatedJson.toString(), updatedAt = now)
+        // Keep updatedAt as the fact's original timestamp; supersededAt records this lifecycle change.
+        return memory.copy(structuredData = updatedJson.toString())
     }
 
     private fun readFact(raw: String?): Fact? {

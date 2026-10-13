@@ -13,10 +13,13 @@ class MemoryConflictResolverTest {
         val conflicts = MemoryConflictResolver.findSuperseded("user", "name", "Jordan", listOf(old))
 
         assertEquals(listOf(old.id), conflicts.map { it.id })
-        val historical = MemoryConflictResolver.markSuperseded(old, "user 的名字是 Jordan")
+        val supersededAt = "2026-10-13T12:00:00Z"
+        val historical = MemoryConflictResolver.markSuperseded(old, "user 的名字是 Jordan", supersededAt)
         assertTrue(MemoryConflictResolver.isSuperseded(historical))
         assertTrue(historical.structuredData!!.contains("Alex"))
         assertTrue(historical.structuredData!!.contains("Jordan"))
+        assertEquals(old.updatedAt, historical.updatedAt)
+        assertTrue(historical.structuredData!!.contains(supersededAt))
     }
 
     @Test
