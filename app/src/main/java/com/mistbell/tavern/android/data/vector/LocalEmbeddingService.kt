@@ -52,6 +52,8 @@ class LocalEmbeddingService private constructor(
 
     private val env: OrtEnvironment get() = OrtEnvironment.getEnvironment()
 
+    override fun modelId(): String = "local:bge-small-zh-v1.5-int8:$DIM"
+
     override fun getDimension(): Int = DIM
 
     override suspend fun embed(text: String): FloatArray =
