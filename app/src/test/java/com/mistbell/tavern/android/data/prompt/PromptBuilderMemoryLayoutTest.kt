@@ -184,6 +184,29 @@ class PromptBuilderMemoryLayoutTest {
         assertEquals(listOf(recall), context.messagesFor(historyTruncated = true))
     }
 
+    @Test
+    fun `提示词缓存指纹稳定且固定提示词变更后失效`() {
+        val original =
+            listOf(
+                "prompt-cache-fingerprint-v1",
+                "owner-1",
+                "character-1",
+                "session-1",
+                "deepseek-flash",
+                "system",
+                "固定角色提示词",
+                "世界书作者注释",
+            )
+        val fingerprint = PromptBuilder.promptCacheFingerprint(original)
+
+        assertEquals(fingerprint, PromptBuilder.promptCacheFingerprint(original.toList()))
+        assertTrue(
+            fingerprint != PromptBuilder.promptCacheFingerprint(original.mapIndexed { index, value ->
+                if (index == 6) "修改后的角色提示词" else value
+            }),
+        )
+    }
+
     // ---- SseParser：流式 usage（缓存统计）解析 ----
 
     @Test
