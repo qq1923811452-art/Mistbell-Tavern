@@ -2,6 +2,7 @@ package com.mistbell.tavern.android.data.repository
 
 import com.mistbell.tavern.android.data.local.AppDatabase
 import com.mistbell.tavern.android.data.local.entity.ApiConfigEntity
+import android.util.Log
 import com.mistbell.tavern.android.data.local.entity.SettingsEntity
 import com.mistbell.tavern.android.util.SecureStore
 import kotlinx.serialization.SerialName
@@ -50,6 +51,7 @@ internal data class ProviderConfig(
  * - 激活提供商的高级采样参数继续平铺写入 llm_* 覆盖键（getLlmConfig 后半段机制不变）。
  */
 object ApiConfigMigration {
+    private const val TAG = "ApiConfigMigration"
     const val MIGRATED_FLAG_KEY = "providers_migrated_v1"
 
     /** 纯函数：解密后的 providers_json → ProviderConfig 列表（坏 JSON/空串容错为空） */
@@ -99,6 +101,7 @@ object ApiConfigMigration {
      * 幂等迁移入口：已迁移 / api_configs 已有数据 / 无 providers_json 都直接置标志返回。
      */
     suspend fun migrateIfNeeded(db: AppDatabase) {
+        encryptLegacyApiKeys(db)
         val settingsDao = db.settingsDao()
 
         // 已迁移 / api_configs 已有数据（恢复备份场景）：置标志后返回
@@ -119,7 +122,11 @@ object ApiConfigMigration {
         val activeId = settingsDao.getValue("active_provider_id") ?: ""
         val now = System.currentTimeMillis()
 
-        db.apiConfigDao().insertAll(toApiConfigEntities(providers, activeId, now))
+        db.apiConfigDao().insertAll(
+            toApiConfigEntities(providers, activeId, now).map { entity ->
+                entity.copy(apiKey = SecureStore.wrap(entity.apiKey))
+            },
+        )
 
         val active = providers.firstOrNull { it.id == activeId } ?: providers.first()
         activeProviderOverrides(active).forEach { (key, value) ->
@@ -127,5 +134,21 @@ object ApiConfigMigration {
         }
 
         settingsDao.upsert(SettingsEntity(MIGRATED_FLAG_KEY, "1"))
+    }
+
+    /**
+     * Encrypt API keys created by earlier versions. If the device Keystore is temporarily
+     * unavailable, keep the existing value intact and retry on the next configuration visit.
+     */
+    private suspend fun encryptLegacyApiKeys(db: AppDatabase) {
+        db.apiConfigDao().getAll().forEach { entity ->
+            if (entity.apiKey.isNotBlank() && !SecureStore.isEncrypted(entity.apiKey)) {
+                try {
+                    db.apiConfigDao().update(entity.copy(apiKey = SecureStore.wrap(entity.apiKey)))
+                } catch (e: Exception) {
+                    Log.e(TAG, "Could not encrypt legacy API key for config ${entity.id}; retaining existing value", e)
+                }
+            }
+        }
     }
 }
