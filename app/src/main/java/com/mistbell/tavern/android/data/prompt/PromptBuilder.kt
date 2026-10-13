@@ -355,9 +355,6 @@ object PromptBuilder {
         // continueGroupChat 场景的系统级推动语（由 ChatRepository 传入，本类不做特判）；
         // 非 null 时不再追加最终用户消息，改为注入这条 system 消息
         groupNudge: String? = null,
-        // Replay prompt suffix snapshots only for OpenAI-compatible providers that preserve
-        // message order. Anthropic/Gemini adapters reshape system messages and use native cache rules.
-        cacheSnapshotEnabled: Boolean = false,
     ): List<ChatMessage> {
         val trace =
             buildPromptTrace(
@@ -370,9 +367,8 @@ object PromptBuilder {
                 excludeFromMessageId,
                 groupContext,
                 groupNudge,
-                cacheSnapshotEnabled,
             )
-        if (cacheSnapshotEnabled && !currentMessageId.isNullOrBlank() && groupNudge == null) {
+        if (!currentMessageId.isNullOrBlank() && groupNudge == null && trace.cacheContextSnapshot.isNotEmpty()) {
             val snapshotJson =
                 Json.encodeToString(
                     ListSerializer(ChatMessage.serializer()),
@@ -409,11 +405,12 @@ object PromptBuilder {
         excludeFromMessageId: String? = null,
         groupContext: GroupChatContext? = null,
         groupNudge: String? = null,
-        cacheSnapshotEnabled: Boolean = false,
     ): PromptTrace {
         val messages = mutableListOf<Segment>()
 
         val session = db.sessionDao().get(sessionId, ownerId, characterId)
+        // Snapshots only preserve message-order prefixes for OpenAI-compatible chat protocols.
+        val cacheSnapshotEnabled = supportsPromptPrefixSnapshots(db, session?.providerId)
         // 三态覆盖语义（SETTINGS.md 分层原则）：会话显式值 > 全局当前默认 > 内置兜底，
         // 统一经 ChatSettingsResolver 解析——不再在此硬编码 4096 兜底
         val settingsDao = db.settingsDao()
@@ -960,6 +957,16 @@ object PromptBuilder {
 
         /** 预算用：一律按含召回块计算（偏保守，不会撑爆上下文） */
         fun allMessages(): List<ChatMessage> = listOfNotNull(structuredBlock, recallBlock)
+    }
+
+    private suspend fun supportsPromptPrefixSnapshots(
+        db: AppDatabase,
+        sessionProviderId: String?,
+    ): Boolean {
+        val selectedConfig =
+            sessionProviderId?.takeIf { it.isNotBlank() }?.let { db.apiConfigDao().getById(it) }
+                ?: db.apiConfigDao().getDefault()
+        return selectedConfig == null || selectedConfig.type == "openai" || selectedConfig.type == "custom"
     }
 
     private suspend fun buildMemoryContext(
