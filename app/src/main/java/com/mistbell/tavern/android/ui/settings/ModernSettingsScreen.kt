@@ -156,7 +156,8 @@ fun ModernSettingsScreen(
                     TextButton(onClick = { showAdvancedSettings = !showAdvancedSettings }) {
                         Text(if (showAdvancedSettings) "收起" else "展开")
                         Icon(
-                            imageVector = if (showAdvancedSettings) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                            imageVector =
+                                if (showAdvancedSettings) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
                             contentDescription = null,
                         )
                     }
