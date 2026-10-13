@@ -52,7 +52,7 @@ class SettingsRepository(private val context: Context) {
         val globalStreamingEnabled = dao.getValue("streaming_enabled") != "0"
         return LlmConfig(
             baseUrl = defaultApiConfig?.apiUrl ?: dao.getValue("llm_base_url") ?: "",
-            apiKey = defaultApiConfig?.apiKey ?: SecureStore.unwrap(dao.getValue("llm_api_key") ?: ""),
+            apiKey = defaultApiConfig?.apiKey?.let(SecureStore::unwrap) ?: SecureStore.unwrap(dao.getValue("llm_api_key") ?: ""),
             model = defaultApiConfig?.model ?: dao.getValue("llm_model") ?: "",
             type = defaultApiConfig?.type ?: "openai",
             temperature = resolveTemperature(llmTemp, legacyTemp, preset),
