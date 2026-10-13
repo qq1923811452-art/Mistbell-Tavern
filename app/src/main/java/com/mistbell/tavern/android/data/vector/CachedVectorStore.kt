@@ -119,24 +119,15 @@ class CachedVectorStore(
         invalidateCache()
     }
 
-    /**
-     * Returns a consistent snapshot of cache operations under the cache mutex.
-     * Searches with non-positive topK bypass the cache and are not counted.
-     */
-    suspend fun getCacheStatistics(): VectorCacheStatistics =
-        cacheMutex.withLock { snapshotCacheStatistics() }
-
-    private fun snapshotCacheStatistics(): VectorCacheStatistics =
-        VectorCacheStatistics(
-            hitCount = cacheHitCount,
-            missCount = cacheMissCount,
-            writeCount = cacheWriteCount,
-            invalidationCount = cacheInvalidationCount,
-            entryCount = searchCache.size(),
-        )
-
     private fun publishCacheStatistics() {
-        _cacheStatistics.value = snapshotCacheStatistics()
+        _cacheStatistics.value =
+            VectorCacheStatistics(
+                hitCount = cacheHitCount,
+                missCount = cacheMissCount,
+                writeCount = cacheWriteCount,
+                invalidationCount = cacheInvalidationCount,
+                entryCount = searchCache.size(),
+            )
     }
 
     private suspend fun invalidateCache() {
