@@ -206,14 +206,14 @@ jobs:
           PR_EXIT=$?
           set -e
           if [ "$PR_EXIT" -ne 0 ]; then
-            printf '%s\\n' "$PR_OUTPUT"
+            printf '%s\n' "$PR_OUTPUT"
             if [[ "$PR_OUTPUT" == *"GitHub Actions is not permitted to create or approve pull requests"* ]]; then
               PR_URL="https://github.com/${GITHUB_REPOSITORY}/pull/new/${BRANCH}"
               echo "::warning::Verified changes were pushed, but the repository blocks pull-request creation from GitHub Actions."
               {
                 echo "### Manual pull request creation required"
                 echo
-                echo "The Kotlin style changes passed the full `checkAll` gate and were pushed to `$BRANCH`."
+                echo "The Kotlin style changes passed the full checkAll gate and were pushed to $BRANCH."
                 echo
                 echo "[Open the pull request form]($PR_URL)"
                 echo
