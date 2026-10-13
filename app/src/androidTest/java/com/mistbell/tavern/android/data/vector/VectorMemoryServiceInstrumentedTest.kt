@@ -153,7 +153,10 @@ class VectorMemoryServiceInstrumentedTest {
                     characterId = "character",
                     sessionId = "session",
                 )
-            assertTrue("Unknown legacy vector space must not be mixed into custom models", incompatibleResults.isEmpty())
+            assertTrue(
+                "Unknown legacy vector space must not be mixed into custom models",
+                incompatibleResults.isEmpty(),
+            )
         }
     }
 
