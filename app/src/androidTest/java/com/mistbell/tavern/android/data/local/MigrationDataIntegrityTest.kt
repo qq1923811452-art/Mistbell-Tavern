@@ -314,7 +314,7 @@ class MigrationDataIntegrityTest {
         raw.close()
     }
 
-    /** 打开数据库并执行迁移（用生产同款迁移链——AppDatabase 伴生对象的 internal 成员，直达最新版本 21） */
+    /** 打开数据库并执行生产迁移链，直达当前最新数据库版本 27。 */
     private fun openWithRoom(): AppDatabase {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         return Room.databaseBuilder(context, AppDatabase::class.java, dbName)
