@@ -8,6 +8,12 @@ package com.mistbell.tavern.android.data.vector
  */
 interface EmbeddingService {
     /**
+     * Stable identity for the vector space produced by this implementation.
+     * Include model and endpoint identity when a provider can be configured.
+     */
+    fun modelId(): String = this::class.java.name
+
+    /**
      * 将文本转换为向量
      *
      * @param text 输入文本
