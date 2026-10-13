@@ -375,8 +375,10 @@ object LlmClient {
         val request = buildChatRequest(config, messages, stream = false)
         val response = clientFor(config).newCall(request).execute()
         if (!response.isSuccessful) {
-            val errorBody = response.body?.string() ?: "No error details"
-            throw Exception("LLM API error: ${response.code} ${response.message} - $errorBody")
+            val statusCode = response.code
+            response.close()
+            // Never surface untrusted gateway error bodies, which may echo prompts or credentials.
+            throw IllegalStateException("LLM API returned HTTP $statusCode")
         }
         val responseBody = response.body?.string() ?: throw Exception("Empty response")
         val content = chatProtocolFor(config.type).parseContent(responseBody)
@@ -537,13 +539,9 @@ object LlmClient {
                             return
                         }
                         if (response != null) {
-                            val summary =
-                                try {
-                                    response.body?.string()?.take(300) ?: "No error details"
-                                } catch (_: Exception) {
-                                    "No error details"
-                                }
-                            close(IllegalStateException("LLM API error: ${response.code} ${response.message} - $summary"))
+                            val statusCode = response.code
+                            response.close()
+                            close(IllegalStateException("LLM API returned HTTP $statusCode"))
                         } else {
                             close(IOException("LLM stream failed: ${t?.message}", t))
                         }
