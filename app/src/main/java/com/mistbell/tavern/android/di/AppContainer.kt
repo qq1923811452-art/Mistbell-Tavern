@@ -73,7 +73,8 @@ class AppContainer(private val appContext: Context) {
 
     /**
      * Rebuild both services after the user changes embedding source.
-     * The vector store itself is intentionally retained so existing memories and cache statistics survive.
+     * The vector store is retained, but retrieval is filtered by embedding model identity so
+     * vectors produced by incompatible models are never compared. Existing cache statistics survive.
      * Returns true only when a real local or remote embedding implementation is active.
      */
     suspend fun refreshEmbeddingSource(source: String): Boolean {
