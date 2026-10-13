@@ -536,7 +536,8 @@ object LlmClient {
                             traceId,
                             "LLM_CHAT_WITH_THINKING",
                             "SUCCESS",
-                            "caller=$caller fallback=without-thinking elapsedMs=${System.currentTimeMillis() - startedAt}",
+                            "caller=$caller fallback=without-thinking " +
+                                "elapsedMs=${System.currentTimeMillis() - startedAt}",
                         )
                     }
                 } catch (fallbackError: Exception) {
