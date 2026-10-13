@@ -7,6 +7,7 @@
         <exclude domain="database" path="tavern.db" />
         <exclude domain="database" path="tavern.db-wal" />
         <exclude domain="database" path="tavern.db-shm" />
+        <exclude domain="file" path="vector_store.json" />
     </cloud-backup>
     <device-transfer>
         <exclude domain="sharedpref" path="tavern_settings.xml" />
@@ -14,5 +15,6 @@
         <exclude domain="database" path="tavern.db" />
         <exclude domain="database" path="tavern.db-wal" />
         <exclude domain="database" path="tavern.db-shm" />
+        <exclude domain="file" path="vector_store.json" />
     </device-transfer>
 </data-extraction-rules>
