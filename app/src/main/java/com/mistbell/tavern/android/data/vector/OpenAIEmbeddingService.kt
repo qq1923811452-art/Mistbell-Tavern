@@ -42,6 +42,8 @@ class OpenAIEmbeddingService(
         private const val DIMENSION = 1536
         private const val MAX_RETRIES = 3
         private const val INITIAL_RETRY_DELAY_MS = 1000L
+        private const val ENDPOINT_FINGERPRINT_BYTES = 8
+        private const val ENDPOINT_FINGERPRINT_HEX_LENGTH = ENDPOINT_FINGERPRINT_BYTES * 2
     }
 
     override suspend fun embed(text: String): FloatArray =
@@ -214,8 +216,10 @@ class OpenAIEmbeddingService(
         val endpointFingerprint =
             java.security.MessageDigest.getInstance("SHA-256")
                 .digest(baseUrl.trimEnd('/').toByteArray())
-                .take(8)
-                .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+                .take(ENDPOINT_FINGERPRINT_BYTES)
+                .joinToString("") {
+                    ("%0" + ENDPOINT_FINGERPRINT_HEX_LENGTH + "x").format(it.toInt() and 0xff)
+                }
         return "openai-compatible:$model:$endpointFingerprint"
     }
 
