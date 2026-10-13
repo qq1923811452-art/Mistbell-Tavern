@@ -1,6 +1,7 @@
 package com.mistbell.tavern.android.data.api
 
 import kotlinx.coroutines.CancellationException
+import com.mistbell.tavern.android.data.api.ApiCallTrace
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.awaitClose
@@ -270,17 +271,21 @@ object LlmClient {
     suspend fun chat(
         config: LlmConfig,
         messages: List<ChatMessage>,
-    ): String =
-        try {
+    ): String {
+        val traceId = ApiCallTrace.newId()
+        ApiCallTrace.log(traceId, "LLM_CHAT", "START", "caller=${ApiCallTrace.caller()} protocol=${config.type} model=${config.model} endpoint=${ApiCallTrace.safeEndpoint(config.baseUrl)} mode=non-stream")
+        return try {
             chatWithRetries(config, messages)
         } catch (e: Exception) {
             if (config.disableThinking && isThinkingParamRejected(e)) {
                 android.util.Log.w("LlmClient", "thinking 参数被网关拒绝，回退为不发送后重试: ${e.message}")
                 chatWithRetries(config.copy(disableThinking = false), messages)
             } else {
+                ApiCallTrace.log(traceId, "LLM_CHAT", "FAILURE", "caller=${ApiCallTrace.caller()} error=${e.javaClass.simpleName}")
                 throw e
             }
         }
+    }
 
     /** 疑似"思考参数被拒"：错误正文提到 thinking，或 HTTP 400（请求格式错误） */
     private fun isThinkingParamRejected(e: Exception): Boolean {
@@ -397,17 +402,21 @@ object LlmClient {
     suspend fun chatWithThinking(
         config: LlmConfig,
         messages: List<ChatMessage>,
-    ): ProtocolContent =
-        try {
+    ): ProtocolContent {
+        val traceId = ApiCallTrace.newId()
+        ApiCallTrace.log(traceId, "LLM_CHAT_WITH_THINKING", "START", "caller=${ApiCallTrace.caller()} protocol=${config.type} model=${config.model} endpoint=${ApiCallTrace.safeEndpoint(config.baseUrl)} mode=non-stream")
+        return try {
             chatContentWithRetries(config, messages)
         } catch (e: Exception) {
             if (config.disableThinking && isThinkingParamRejected(e)) {
                 android.util.Log.w("LlmClient", "thinking 参数被网关拒绝，回退为不发送后重试: ${e.message}")
                 chatContentWithRetries(config.copy(disableThinking = false), messages)
             } else {
+                ApiCallTrace.log(traceId, "LLM_CHAT_WITH_THINKING", "FAILURE", "caller=${ApiCallTrace.caller()} error=${e.javaClass.simpleName}")
                 throw e
             }
         }
+    }
 
     private suspend fun chatContentWithRetries(
         config: LlmConfig,
@@ -456,6 +465,8 @@ object LlmClient {
         messages: List<ChatMessage>,
     ): Flow<ChatDelta> =
         flow {
+            val traceId = ApiCallTrace.newId()
+            ApiCallTrace.log(traceId, "LLM_CHAT_STREAM", "START", "caller=${ApiCallTrace.caller()} protocol=${config.type} model=${config.model} endpoint=${ApiCallTrace.safeEndpoint(config.baseUrl)} mode=stream")
             val maxAttempts = maxAttemptsFor(config) // S1: 复用配置重试上限（流式）
             for (attempt in 0 until maxAttempts) {
                 var emittedAny = false
