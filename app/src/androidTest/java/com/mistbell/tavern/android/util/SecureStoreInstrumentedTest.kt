@@ -25,4 +25,19 @@ class SecureStoreInstrumentedTest {
 
         assertEquals(legacy, SecureStore.unwrap(legacy))
     }
+
+    @Test
+    fun backupCannotRestoreCredentialKeyAsPlaintextWhenSensitiveFlagIsFalse() {
+        val entry =
+            com.mistbell.tavern.android.data.repository.BackupManager.SettingsBackupEntry(
+                key = "llm_api_key",
+                value = "backup-api-key",
+                sensitive = false,
+            )
+
+        val restored = com.mistbell.tavern.android.data.repository.BackupManager.toSettingsEntity(entry)
+
+        assertTrue(SecureStore.isEncrypted(restored.value))
+        assertEquals("backup-api-key", SecureStore.unwrap(restored.value))
+    }
 }
