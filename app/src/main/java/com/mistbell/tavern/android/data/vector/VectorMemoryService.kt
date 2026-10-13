@@ -214,7 +214,7 @@ class VectorMemoryService(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to delete session vectors: ${e.message}", e)
+            Log.e(TAG, "Failed to delete session vectors (${e.javaClass.simpleName})")
             return 0
         }
     }
@@ -240,7 +240,7 @@ class VectorMemoryService(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to delete character vectors: ${e.message}", e)
+            Log.e(TAG, "Failed to delete character vectors (${e.javaClass.simpleName})")
             return 0
         }
     }
@@ -258,7 +258,7 @@ class VectorMemoryService(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to delete vectors by messageId: ${e.message}", e)
+            Log.e(TAG, "Failed to delete vectors by messageId (${e.javaClass.simpleName})")
             0
         }
     }
@@ -287,7 +287,7 @@ class VectorMemoryService(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to delete summary vectors: ${e.message}", e)
+            Log.e(TAG, "Failed to delete summary vectors (${e.javaClass.simpleName})")
             0
         }
     }
@@ -305,7 +305,7 @@ class VectorMemoryService(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to get statistics: ${e.message}", e)
+            Log.e(TAG, "Failed to get statistics (${e.javaClass.simpleName})")
             VectorStatistics(0, 0)
         }
     }
