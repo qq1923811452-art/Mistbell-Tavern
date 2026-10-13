@@ -28,7 +28,9 @@ class OpenAIEmbeddingService(
 ) : EmbeddingService {
     private val client =
         OkHttpClient.Builder()
-            .connectTimeout(30, TimeUnit.SECONDS)
+            .followRedirects(false)
+            .followSslRedirects(false)
+            .connectTimeout(30, TimeUnit.SECONDS
             .readTimeout(60, TimeUnit.SECONDS)
             .build()
 
