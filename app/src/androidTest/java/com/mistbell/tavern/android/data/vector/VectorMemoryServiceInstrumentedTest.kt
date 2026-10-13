@@ -106,6 +106,58 @@ class VectorMemoryServiceInstrumentedTest {
     }
 
     @Test
+    fun legacyVectorsAreUsedOnlyWhenTheEmbeddingSpaceIsKnownCompatible() {
+        runBlocking {
+            store.add(
+                id = "legacy-vector",
+                vector = floatArrayOf(1f, 0f, 0f),
+                metadata =
+                    mapOf(
+                        "owner_id" to "owner",
+                        "character_id" to "character",
+                        "session_id" to "session",
+                        "content" to "legacy fact",
+                    ),
+            )
+
+            val compatible =
+                VectorMemoryService(
+                    store,
+                    CountingEmbeddingService(
+                        identity = "known-default",
+                        vector = floatArrayOf(1f, 0f, 0f),
+                        legacyCompatible = true,
+                    ),
+                )
+            val compatibleResults =
+                compatible.searchRelevantMemories(
+                    query = "legacy fact",
+                    ownerId = "owner",
+                    characterId = "character",
+                    sessionId = "session",
+                )
+            assertEquals(1, compatibleResults.size)
+
+            val incompatible =
+                VectorMemoryService(
+                    store,
+                    CountingEmbeddingService(
+                        identity = "custom-model",
+                        vector = floatArrayOf(1f, 0f, 0f),
+                    ),
+                )
+            val incompatibleResults =
+                incompatible.searchRelevantMemories(
+                    query = "legacy fact",
+                    ownerId = "owner",
+                    characterId = "character",
+                    sessionId = "session",
+                )
+            assertTrue("Unknown legacy vector space must not be mixed into custom models", incompatibleResults.isEmpty())
+        }
+    }
+
+    @Test
     fun vectorStorePersistsEntriesAcrossInstances() {
         runBlocking {
             store.add(
@@ -135,11 +187,14 @@ class VectorMemoryServiceInstrumentedTest {
     private class CountingEmbeddingService(
         private val identity: String,
         private val vector: FloatArray,
+        private val legacyCompatible: Boolean = false,
     ) : EmbeddingService {
         var calls: Int = 0
             private set
 
         override fun modelId(): String = identity
+
+        override fun supportsLegacyVectors(): Boolean = legacyCompatible
 
         override suspend fun embed(text: String): FloatArray {
             calls++
