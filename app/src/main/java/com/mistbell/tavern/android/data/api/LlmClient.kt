@@ -373,7 +373,10 @@ object LlmClient {
                     // 网络错误可重试
                     if (attempt < maxAttempts - 1) {
                         val delayMs = INITIAL_RETRY_DELAY_MS * (1 shl attempt)
-                        android.util.Log.w("LlmClient", "Network error, retry ${attempt + 1}/$maxAttempts after ${delayMs}ms (${e.javaClass.simpleName})")
+                        android.util.Log.w(
+                            "LlmClient",
+                            "Network error, retry ${attempt + 1}/$maxAttempts after ${delayMs}ms (${e.javaClass.simpleName})",
+                        )
                         delay(delayMs)
                     }
                 } catch (e: Exception) {
