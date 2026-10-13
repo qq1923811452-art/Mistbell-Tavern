@@ -80,6 +80,12 @@ class OpenAIEmbeddingService(
                             delay(delayMs)
                         }
                     } else {
+                        ApiCallTrace.log(
+                            traceId,
+                            source,
+                            "FAILURE",
+                            "engine=remote operation=single model=$model elapsedMs=${System.currentTimeMillis() - startedAt} error=${e.javaClass.simpleName}",
+                        )
                         throw e
                     }
                 }
@@ -177,6 +183,12 @@ class OpenAIEmbeddingService(
                             delay(delayMs)
                         }
                     } else {
+                        ApiCallTrace.log(
+                            traceId,
+                            source,
+                            "FAILURE",
+                            "engine=remote operation=batch model=$model itemCount=${texts.size} elapsedMs=${System.currentTimeMillis() - startedAt} error=${e.javaClass.simpleName}",
+                        )
                         throw e
                     }
                 }
