@@ -20,6 +20,10 @@ class CachedVectorStore(
     private val searchCache = LruCache<SearchCacheKey, List<VectorStore.SearchResult>>(cacheSize.coerceAtLeast(1))
     private val cacheMutex = Mutex()
     private var cacheGeneration: Long = 0
+    private var cacheHitCount: Long = 0
+    private var cacheMissCount: Long = 0
+    private var cacheWriteCount: Long = 0
+    private var cacheInvalidationCount: Long = 0
 
     companion object {
         private const val TAG = "CachedVectorStore"
@@ -55,7 +59,13 @@ class CachedVectorStore(
                 )
             val lookup =
                 cacheMutex.withLock {
-                    searchCache.get(cacheKey) to cacheGeneration
+                    val cached = searchCache.get(cacheKey)
+                    if (cached == null) {
+                        cacheMissCount++
+                    } else {
+                        cacheHitCount++
+                    }
+                    cached to cacheGeneration
                 }
             val cached = lookup.first
             if (cached != null) {
@@ -69,6 +79,7 @@ class CachedVectorStore(
                     // reinsert results computed against the pre-write store state.
                     if (lookup.second == cacheGeneration) {
                         searchCache.put(cacheKey, results.toList())
+                        cacheWriteCount++
                     }
                 }
                 results
@@ -101,9 +112,25 @@ class CachedVectorStore(
         invalidateCache()
     }
 
+    /**
+     * Returns a consistent snapshot of cache operations under the cache mutex.
+     * Searches with non-positive topK bypass the cache and are not counted.
+     */
+    suspend fun getCacheStatistics(): VectorCacheStatistics =
+        cacheMutex.withLock {
+            VectorCacheStatistics(
+                hitCount = cacheHitCount,
+                missCount = cacheMissCount,
+                writeCount = cacheWriteCount,
+                invalidationCount = cacheInvalidationCount,
+                entryCount = searchCache.size(),
+            )
+        }
+
     private suspend fun invalidateCache() {
         cacheMutex.withLock {
             cacheGeneration++
+            cacheInvalidationCount++
             searchCache.evictAll()
         }
         Log.d(TAG, "Cache invalidated")
