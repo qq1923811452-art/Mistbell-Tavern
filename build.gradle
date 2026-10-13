@@ -11,7 +11,7 @@ plugins {
     id "com.github.jk1.dependency-license-report" version "3.1.4"
 }
 
-// 依赖许可证报告：只扫 :app（JSON 输出供 licenseGuard 消费）
+// 依赖许可证报告：通过根项目扩展扫描 :app 的 releaseRuntimeClasspath（CSV 输出供 licenseGuard 消费）
 licenseReport {
     projects = [project, project(':app')]
     configurations = ['releaseRuntimeClasspath']
