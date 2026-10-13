@@ -243,7 +243,9 @@ fun ChatSetupScreen(
                                 Modifier
                                     .fillMaxWidth()
                                     .menuAnchor(),
-                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = showProviderDropdown) },
+                            trailingIcon = {
+                                ExposedDropdownMenuDefaults.TrailingIcon(expanded = showProviderDropdown)
+                            },
                             colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
                         )
 
@@ -311,7 +313,9 @@ fun ChatSetupScreen(
                                 Modifier
                                     .fillMaxWidth()
                                     .menuAnchor(),
-                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = showWorldBookDropdown) },
+                            trailingIcon = {
+                                ExposedDropdownMenuDefaults.TrailingIcon(expanded = showWorldBookDropdown)
+                            },
                             colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
                         )
 
