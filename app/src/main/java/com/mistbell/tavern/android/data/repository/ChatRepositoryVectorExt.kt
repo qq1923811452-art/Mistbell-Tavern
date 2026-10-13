@@ -2,6 +2,7 @@ package com.mistbell.tavern.android.data.repository
 
 import android.util.Log
 import com.mistbell.tavern.android.TavernApplication
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -39,6 +40,8 @@ suspend fun storeUserMessageVector(
             )
 
             Log.d(TAG, "Stored user message vector: $messageId")
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             // 向量存储失败不应影响主流程
             Log.e(TAG, "Failed to store user message vector: ${e.message}", e)
@@ -72,6 +75,8 @@ suspend fun storeAssistantMessageVector(
             )
 
             Log.d(TAG, "Stored assistant message vector: $messageId")
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             // 向量存储失败不应影响主流程
             Log.e(TAG, "Failed to store assistant message vector: ${e.message}", e)
