@@ -49,9 +49,6 @@ class AppContainer(private val appContext: Context) {
             ?: MutableStateFlow(VectorCacheStatistics(0, 0, 0, 0, 0))
     }
 
-    suspend fun getVectorCacheStatistics(): VectorCacheStatistics? =
-        (vectorStore as? CachedVectorStore)?.getCacheStatistics()
-
     /**
      * Embedding 服务（延迟初始化，源路由：settings `embedding_source`）
      *
