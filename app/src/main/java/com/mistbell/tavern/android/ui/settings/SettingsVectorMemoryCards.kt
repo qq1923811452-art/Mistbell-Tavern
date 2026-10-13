@@ -59,7 +59,6 @@ internal fun VectorMemorySettingsCard(viewModel: SettingsViewModel) {
 
             VectorCacheStatisticsSection(cacheStats, cacheHitRatePercent)
 
-
             Text(
                 text =
                     "「本地 ONNX」（bge-small-zh，约 24MB 模型随应用内置）无需 API Key 即可使用语义记忆；" +
