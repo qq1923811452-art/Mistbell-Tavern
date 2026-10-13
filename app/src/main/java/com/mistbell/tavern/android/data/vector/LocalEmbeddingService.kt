@@ -2,9 +2,9 @@ package com.mistbell.tavern.android.data.vector
 
 import ai.onnxruntime.OnnxTensor
 import ai.onnxruntime.OrtEnvironment
-import com.mistbell.tavern.android.data.api.ApiCallTrace
 import ai.onnxruntime.OrtSession
 import android.content.Context
+import com.mistbell.tavern.android.data.api.ApiCallTrace
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.nio.LongBuffer
