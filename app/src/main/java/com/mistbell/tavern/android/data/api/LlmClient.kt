@@ -91,9 +91,10 @@ data class Usage(
         return if (cacheHitTokens > 0 || cacheMissTokens > 0 || cachedTokens == null) {
             this
         } else {
+            val normalizedHits = cachedTokens.coerceIn(0, promptTokens.coerceAtLeast(0))
             copy(
-                cacheHitTokens = cachedTokens.coerceAtLeast(0),
-                cacheMissTokens = (promptTokens - cachedTokens).coerceAtLeast(0),
+                cacheHitTokens = normalizedHits,
+                cacheMissTokens = (promptTokens - normalizedHits).coerceAtLeast(0),
             )
         }
     }
