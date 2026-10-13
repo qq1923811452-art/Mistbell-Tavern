@@ -106,6 +106,11 @@ private fun VectorCacheStatisticsSection(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Text(
+            text = "此处只统计向量搜索缓存，不统计聊天 API 请求或词法记忆召回。长期记忆关闭或 Embedding 不可用时，向量查询数会保持为 0。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
             text = "统计在应用进程存活期间累计，重启应用后重新计数。",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
