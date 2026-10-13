@@ -45,8 +45,11 @@ class OpenAIEmbeddingService(
     private val cacheLock = Any()
     private val embeddingCache =
         object : LinkedHashMap<String, FloatArray>(EMBEDDING_CACHE_SIZE + 1, CACHE_LOAD_FACTOR, true) {
-            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, FloatArray>?): Boolean =
-                size > EMBEDDING_CACHE_SIZE
+            override fun removeEldestEntry(
+                eldest: MutableMap.MutableEntry<String, FloatArray>?,
+            ): Boolean {
+                return size > EMBEDDING_CACHE_SIZE
+            }
         }
 
     private fun cacheKey(text: String): String {
@@ -62,7 +65,10 @@ class OpenAIEmbeddingService(
         }
     }
 
-    private fun rememberEmbedding(text: String, embedding: FloatArray) {
+    private fun rememberEmbedding(
+        text: String,
+        embedding: FloatArray,
+    ) {
         synchronized(cacheLock) {
             embeddingCache[cacheKey(text)] = embedding.clone()
         }
