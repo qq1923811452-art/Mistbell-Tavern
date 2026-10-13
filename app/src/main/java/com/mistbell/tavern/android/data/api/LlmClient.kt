@@ -279,7 +279,8 @@ object LlmClient {
             traceId,
             "LLM_CHAT",
             "START",
-            "caller=$caller protocol=${config.type} model=${config.model} endpoint=${ApiCallTrace.safeEndpoint(config.baseUrl)} mode=non-stream",
+            "caller=$caller protocol=${config.type} model=${config.model} " +
+                "endpoint=${ApiCallTrace.safeEndpoint(config.baseUrl)} mode=non-stream",
         )
         return try {
             chatWithRetries(config, messages).also {
@@ -437,7 +438,8 @@ object LlmClient {
             traceId,
             "LLM_CHAT_WITH_THINKING",
             "START",
-            "caller=$caller protocol=${config.type} model=${config.model} endpoint=${ApiCallTrace.safeEndpoint(config.baseUrl)} mode=non-stream",
+            "caller=$caller protocol=${config.type} model=${config.model} " +
+                "endpoint=${ApiCallTrace.safeEndpoint(config.baseUrl)} mode=non-stream",
         )
         return try {
             chatContentWithRetries(config, messages).also {
@@ -450,7 +452,7 @@ object LlmClient {
             }
         } catch (e: Exception) {
             if (config.disableThinking && isThinkingParamRejected(e)) {
-                android.util.Log.w("LlmClient", "thinking 参数被网关拒绝，回退为不发送后重试: ${e.message}")
+                android.util.Log.w("LlmClient", "thinking 参数被网关拒绝，回退为不发送后重试 (${e.javaClass.simpleName})")
                 try {
                     chatContentWithRetries(config.copy(disableThinking = false), messages).also {
                         ApiCallTrace.log(
@@ -535,7 +537,8 @@ object LlmClient {
                 traceId,
                 "LLM_CHAT_STREAM",
                 "START",
-                "caller=$caller protocol=${config.type} model=${config.model} endpoint=${ApiCallTrace.safeEndpoint(config.baseUrl)} mode=stream",
+                "caller=$caller protocol=${config.type} model=${config.model} " +
+                    "endpoint=${ApiCallTrace.safeEndpoint(config.baseUrl)} mode=stream",
             )
             val maxAttempts = maxAttemptsFor(config) // S1: 复用配置重试上限（流式）
             for (attempt in 0 until maxAttempts) {
@@ -545,28 +548,54 @@ object LlmClient {
                         emittedAny = true
                         emit(delta)
                     }
-                    ApiCallTrace.log(traceId, "LLM_CHAT_STREAM", "SUCCESS", "caller=$caller attempts=${attempt + 1} elapsedMs=${System.currentTimeMillis() - startedAt}")
+                    ApiCallTrace.log(
+                        traceId,
+                        "LLM_CHAT_STREAM",
+                        "SUCCESS",
+                        "caller=$caller attempts=${attempt + 1} elapsedMs=${System.currentTimeMillis() - startedAt}",
+                    )
                     return@flow
                 } catch (e: CancellationException) {
-                    ApiCallTrace.log(traceId, "LLM_CHAT_STREAM", "CANCELLED", "caller=$caller elapsedMs=${System.currentTimeMillis() - startedAt}")
+                    ApiCallTrace.log(
+                        traceId,
+                        "LLM_CHAT_STREAM",
+                        "CANCELLED",
+                        "caller=$caller elapsedMs=${System.currentTimeMillis() - startedAt}",
+                    )
                     throw e // 取消不重试
                 } catch (e: Exception) {
                     // 已发出增量后不再重试
                     if (emittedAny) {
-                        ApiCallTrace.log(traceId, "LLM_CHAT_STREAM", "FAILURE", "caller=$caller emittedAny=true error=${e.javaClass.simpleName} elapsedMs=${System.currentTimeMillis() - startedAt}")
+                        ApiCallTrace.log(
+                            traceId,
+                            "LLM_CHAT_STREAM",
+                            "FAILURE",
+                            "caller=$caller emittedAny=true error=${e.javaClass.simpleName} elapsedMs=${System.currentTimeMillis() - startedAt}",
+                        )
                         throw e
                     }
                     val retryable = e is IOException || e.message?.contains("429") == true
                     if (attempt < maxAttempts - 1 && retryable) {
                         val delayMs = 1000L * (1 shl attempt) * (if (e.message?.contains("429") == true) 2 else 1)
-                        ApiCallTrace.log(traceId, "LLM_CHAT_STREAM", "RETRY", "caller=$caller attempt=${attempt + 1} error=${e.javaClass.simpleName} delayMs=$delayMs")
+                        ApiCallTrace.log(
+                            traceId,
+                            "LLM_CHAT_STREAM",
+                            "RETRY",
+                            "caller=$caller attempt=${attempt + 1} error=${e.javaClass.simpleName} delayMs=$delayMs",
+                        )
                         android.util.Log.w(
                             "LlmClient",
-                            "Stream failed before first token, retry ${attempt + 1}/$maxAttempts after ${delayMs}ms (${e.javaClass.simpleName})",
+                            "Stream failed before first token, retry ${attempt + 1}/$maxAttempts " +
+                                "after ${delayMs}ms (${e.javaClass.simpleName})",
                         )
                         delay(delayMs)
                     } else {
-                        ApiCallTrace.log(traceId, "LLM_CHAT_STREAM", "FAILURE", "caller=$caller emittedAny=false error=${e.javaClass.simpleName} elapsedMs=${System.currentTimeMillis() - startedAt}")
+                        ApiCallTrace.log(
+                            traceId,
+                            "LLM_CHAT_STREAM",
+                            "FAILURE",
+                            "caller=$caller emittedAny=false error=${e.javaClass.simpleName} elapsedMs=${System.currentTimeMillis() - startedAt}",
+                        )
                         throw e
                     }
                 }
