@@ -147,25 +147,30 @@ class ChatProtocolTest {
     // ---- Gemini 请求 ----
 
     @Test
-    fun `gemini 端点 key 在 query 流式加 alt sse`() {
+    fun `gemini API key stays in header and streaming adds alt sse`() {
         val nonStream = GeminiChatProtocol.buildRequest(geminiConfig(), messages, stream = false)
         val stream = GeminiChatProtocol.buildRequest(geminiConfig(), messages, stream = true)
 
         assertEquals(
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash" +
-                ":generateContent?key=gemini-key",
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent",
             nonStream.url.toString(),
         )
-        assertTrue(stream.url.toString().contains("&alt=sse"))
+        assertEquals(
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?alt=sse",
+            stream.url.toString(),
+        )
+        assertEquals("gemini-key", nonStream.header("x-goog-api-key"))
+        assertEquals(null, nonStream.url.queryParameter("key"))
     }
 
     @Test
-    fun `gemini key 中的特殊字符会正确编码且可还原`() {
+    fun `gemini key 中的特殊字符不会进入 URL`() {
         val apiKey = "key+with&reserved=chars%"
         val config = geminiConfig().copy(apiKey = apiKey)
         val request = GeminiChatProtocol.buildRequest(config, messages, stream = true)
 
-        assertEquals(apiKey, request.url.queryParameter("key"))
+        assertEquals(apiKey, request.header("x-goog-api-key"))
+        assertEquals(null, request.url.queryParameter("key"))
         assertEquals("sse", request.url.queryParameter("alt"))
     }
 
