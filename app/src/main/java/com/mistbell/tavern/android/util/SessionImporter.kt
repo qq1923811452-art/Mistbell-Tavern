@@ -6,10 +6,37 @@ import com.mistbell.tavern.android.data.api.model.Message
 import com.mistbell.tavern.android.data.api.model.SESSION_MODE_CLASSIC
 import com.mistbell.tavern.android.data.api.model.SessionSummary
 import kotlinx.serialization.json.*
+import java.io.ByteArrayOutputStream
 import java.io.InputStream
 
 object SessionImporter {
+    private const val MAX_IMPORT_BYTES = 32 * 1024 * 1024
+    private const val MAX_IMPORT_MESSAGES = 100_000
+    private const val MAX_IMPORT_LINE_CHARS = 1_000_000
+
     private val json = Json { ignoreUnknownKeys = true }
+
+    private fun readBoundedText(input: InputStream): String {
+        val output = ByteArrayOutputStream()
+        val buffer = ByteArray(8 * 1024)
+        var total = 0
+        while (true) {
+            val read = input.read(buffer)
+            if (read < 0) break
+            total += read
+            require(total <= MAX_IMPORT_BYTES) { "导入文件超过 32 MiB 限制" }
+            output.write(buffer, 0, read)
+        }
+        return output.toByteArray().toString(Charsets.UTF_8)
+    }
+
+    private fun validateImportData(data: SessionExportData): SessionExportData {
+        require(data.messages.size <= MAX_IMPORT_MESSAGES) { "导入会话的消息数量超出限制" }
+        require(data.messages.all { it.content.length <= MAX_IMPORT_LINE_CHARS }) {
+            "导入会话中存在超长消息"
+        }
+        return data
+    }
 
     /**
      * 从 JSON 文件导入会话
@@ -22,12 +49,10 @@ object SessionImporter {
         uri: Uri,
     ): SessionExportData? {
         return try {
-            val inputStream: InputStream? = context.contentResolver.openInputStream(uri)
-            val jsonString = inputStream?.bufferedReader()?.use { it.readText() } ?: return null
-
-            json.decodeFromString<SessionExportData>(jsonString)
-        } catch (e: Exception) {
-            e.printStackTrace()
+            val jsonString =
+                context.contentResolver.openInputStream(uri)?.use(::readBoundedText) ?: return null
+            validateImportData(json.decodeFromString<SessionExportData>(jsonString))
+        } catch (_: Exception) {
             null
         }
     }
@@ -37,12 +62,9 @@ object SessionImporter {
         uri: Uri,
     ): SessionExportData? {
         return try {
-            val text =
-                context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
-                    ?: return null
-            parseJsonlSessionData(text)
-        } catch (e: Exception) {
-            e.printStackTrace()
+            val text = context.contentResolver.openInputStream(uri)?.use(::readBoundedText) ?: return null
+            parseJsonlSessionData(text)?.let(::validateImportData)
+        } catch (_: Exception) {
             null
         }
     }
@@ -52,21 +74,29 @@ object SessionImporter {
         context: Context,
         uri: Uri,
     ): SessionExportData? {
-        val text = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: return null
         return try {
-            json.decodeFromString<SessionExportData>(text)
+            val text = context.contentResolver.openInputStream(uri)?.use(::readBoundedText) ?: return null
+            val data =
+                try {
+                    json.decodeFromString<SessionExportData>(text)
+                } catch (_: Exception) {
+                    parseJsonlSessionData(text)
+                }
+            data?.let(::validateImportData)
         } catch (_: Exception) {
-            parseJsonlSessionData(text)
+            null
         }
     }
 
     @Suppress("CyclomaticComplexMethod")
     fun parseJsonlSessionData(jsonl: String): SessionExportData? {
-        val lines = jsonl.lineSequence().map { it.trim() }.filter { it.isNotBlank() }.toList()
-        if (lines.isEmpty()) return null
+        if (jsonl.length > MAX_IMPORT_BYTES) return null
         var session: SessionSummary? = null
         val messages = mutableListOf<Message>()
-        lines.forEach { line ->
+        jsonl.lineSequence().forEach { rawLine ->
+            val line = rawLine.trim()
+            if (line.isBlank()) return@forEach
+            require(line.length <= MAX_IMPORT_LINE_CHARS) { "JSONL 行长度超出限制" }
             val element = json.parseToJsonElement(line).jsonObject
             if (element["type"]?.jsonPrimitive?.contentOrNull == "session") {
                 session = element["session"]?.let { json.decodeFromJsonElement<SessionSummary>(it) }
@@ -88,6 +118,7 @@ object SessionImporter {
                     element["content"]?.jsonPrimitive?.contentOrNull
                         ?: element["mes"]?.jsonPrimitive?.contentOrNull
                         ?: ""
+                require(messages.size < MAX_IMPORT_MESSAGES) { "导入会话的消息数量超出限制" }
                 messages +=
                     Message(
                         id = element["id"]?.jsonPrimitive?.contentOrNull ?: "",
@@ -121,6 +152,7 @@ object SessionImporter {
      * 解析会话和消息（兼容旧格式）
      */
     fun parseSessionData(jsonString: String): Pair<SessionSummary, List<Message>>? {
+        if (jsonString.length > MAX_IMPORT_BYTES) return null
         return try {
             val jsonElement = json.parseToJsonElement(jsonString)
             val jsonObject = jsonElement.jsonObject
