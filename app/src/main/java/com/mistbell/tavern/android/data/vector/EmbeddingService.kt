@@ -42,7 +42,7 @@ interface EmbeddingService {
     ): List<FloatArray> = embedBatch(texts)
 
     /**
-     * 获取向量维度
+     * 获取向量维度。远程服务在首次成功响应前返回 0，之后返回实际维度。
      */
     fun getDimension(): Int
 }
