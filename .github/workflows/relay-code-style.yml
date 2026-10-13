@@ -5,7 +5,6 @@ on:
     branches: [ feature ]
     paths:
       - "app/src/main/java/**/*.kt"
-      - ".github/workflows/relay-code-style.yml"
   workflow_dispatch:
     inputs:
       scope:
@@ -198,11 +197,32 @@ jobs:
           git commit -m "Apply verified Kotlin style cleanup"
           BRANCH="automation/relay-style-${GITHUB_RUN_ID}"
           git push origin "HEAD:refs/heads/${BRANCH}"
-          gh pr create \
+          set +e
+          PR_OUTPUT="$(gh pr create \
             --base feature \
             --head "${BRANCH}" \
             --title "style: apply verified relay Kotlin fixes" \
-            --body "Automated Kotlin style patch proposed by the configured AI relay. The workflow ran ./gradlew checkAll before creating this PR. Review the diff before merging."
+            --body "Automated Kotlin style patch proposed by the configured AI relay. The workflow ran ./gradlew checkAll before creating this PR. Review the diff before merging." 2>&1)"
+          PR_EXIT=$?
+          set -e
+          if [ "$PR_EXIT" -ne 0 ]; then
+            printf '%s\\n' "$PR_OUTPUT"
+            if [[ "$PR_OUTPUT" == *"GitHub Actions is not permitted to create or approve pull requests"* ]]; then
+              PR_URL="https://github.com/${GITHUB_REPOSITORY}/pull/new/${BRANCH}"
+              echo "::warning::Verified changes were pushed, but the repository blocks pull-request creation from GitHub Actions."
+              {
+                echo "### Manual pull request creation required"
+                echo
+                echo "The Kotlin style changes passed the full `checkAll` gate and were pushed to `$BRANCH`."
+                echo
+                echo "[Open the pull request form]($PR_URL)"
+                echo
+                echo "For automatic PR creation, enable **Allow GitHub Actions to create and approve pull requests** in repository Settings → Actions → General."
+              } >> "$GITHUB_STEP_SUMMARY"
+            else
+              exit "$PR_EXIT"
+            fi
+          fi
 
       - name: Upload patch and diagnostics
         if: always()
