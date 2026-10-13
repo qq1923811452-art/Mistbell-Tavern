@@ -61,6 +61,8 @@ internal object AnthropicChatProtocol : ChatProtocol {
         data class AnthropicUsage(
             @SerialName("input_tokens") val inputTokens: Int = 0,
             @SerialName("output_tokens") val outputTokens: Int = 0,
+            @SerialName("cache_creation_input_tokens") val cacheCreationInputTokens: Int = 0,
+            @SerialName("cache_read_input_tokens") val cacheReadInputTokens: Int = 0,
         )
     }
 
@@ -124,9 +126,12 @@ internal object AnthropicChatProtocol : ChatProtocol {
         val usage =
             response.usage?.let {
                 Usage(
-                    promptTokens = it.inputTokens,
+                    promptTokens = it.inputTokens + it.cacheCreationInputTokens + it.cacheReadInputTokens,
                     completionTokens = it.outputTokens,
-                    totalTokens = it.inputTokens + it.outputTokens,
+                    totalTokens =
+                        it.inputTokens + it.cacheCreationInputTokens + it.cacheReadInputTokens + it.outputTokens,
+                    cacheHitTokens = it.cacheReadInputTokens,
+                    cacheMissTokens = it.inputTokens + it.cacheCreationInputTokens,
                 )
             }
         // stop_reason=max_tokens 对应截断（同 OpenAI 的 finish_reason=length）
