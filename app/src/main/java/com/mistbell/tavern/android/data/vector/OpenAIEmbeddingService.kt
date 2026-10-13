@@ -65,7 +65,7 @@ class OpenAIEmbeddingService(
     private var lastKnownDimension = 0
 
     private fun cacheKey(text: String): String {
-        val input = "${modelId()}\\u0000$text".toByteArray(StandardCharsets.UTF_8)
+        val input = "${modelId()}\u0000$text".toByteArray(StandardCharsets.UTF_8)
         return MessageDigest.getInstance("SHA-256").digest(input)
             .joinToString("") { byte -> "%02x".format(byte.toInt() and BYTE_MASK) }
     }
@@ -85,7 +85,12 @@ class OpenAIEmbeddingService(
             val traceId = ApiCallTrace.newId()
             val startedAt = System.currentTimeMillis()
             cachedEmbedding(text)?.let { cached ->
-                ApiCallTrace.log(traceId, source, "CACHE_HIT", "engine=remote model=$model dimension=${cached.size}")
+                ApiCallTrace.log(
+                    traceId,
+                    source,
+                    "CACHE_HIT",
+                    "engine=remote model=$model dimension=${cached.size}",
+                )
                 return@withContext cached
             }
             ApiCallTrace.log(
@@ -102,7 +107,8 @@ class OpenAIEmbeddingService(
                     traceId,
                     source,
                     "SUCCESS",
-                    "engine=remote model=$model dimension=${embedding.size} elapsedMs=${System.currentTimeMillis() - startedAt}",
+                    "engine=remote model=$model dimension=${embedding.size} " +
+                        "elapsedMs=${System.currentTimeMillis() - startedAt}",
                 )
                 embedding.clone()
             } catch (e: CancellationException) {
@@ -226,9 +232,11 @@ class OpenAIEmbeddingService(
                     traceId,
                     source,
                     "SUCCESS",
-                    "engine=remote model=$model itemCount=${embeddings.size} dimension=${embeddings.firstOrNull()?.size ?: 0} elapsedMs=${System.currentTimeMillis() - startedAt}",
+                    "engine=remote model=$model itemCount=${embeddings.size} " +
+                        "dimension=${embeddings.firstOrNull()?.size ?: 0} " +
+                        "elapsedMs=${System.currentTimeMillis() - startedAt}",
                 )
-                embeddings.map(FloatArray::clone)
+                embeddings.map { it.clone() }
             } catch (e: CancellationException) {
                 ApiCallTrace.log(traceId, source, "CANCELLED", "engine=remote model=$model operation=batch")
                 throw e
@@ -237,7 +245,8 @@ class OpenAIEmbeddingService(
                     traceId,
                     source,
                     "FAILURE",
-                    "engine=remote model=$model operation=batch elapsedMs=${System.currentTimeMillis() - startedAt} error=${e.javaClass.simpleName}",
+                    "engine=remote model=$model operation=batch " +
+                        "elapsedMs=${System.currentTimeMillis() - startedAt} error=${e.javaClass.simpleName}",
                 )
                 throw e
             }
