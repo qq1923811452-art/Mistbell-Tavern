@@ -1354,8 +1354,10 @@ class ChatRepository(private val context: Context) {
                         config = extractionConfig,
                     )
                 android.util.Log.d("ChatRepository", "Memory extraction completed, saved $savedCount memories")
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                android.util.Log.e("ChatRepository", "Memory extraction failed: ${e.message}", e)
+                android.util.Log.e("ChatRepository", "Memory extraction failed (${e.javaClass.simpleName})")
             }
         }
     }
