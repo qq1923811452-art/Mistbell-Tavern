@@ -339,6 +339,9 @@ object PromptBuilder {
     private const val ASCII_CHARS_PER_TOKEN = 4.0
     private const val CJK_CHARS_PER_TOKEN = 1.5
     private const val PROMPT_CACHE_SNAPSHOT_MAX_TOKENS = 4096
+    private const val PROMPT_CACHE_REPLY_RESERVE_TOKENS = 768
+    private const val MIN_HISTORY_BUDGET_TOKENS = 256
+    private const val HISTORY_MESSAGE_OVERHEAD_TOKENS = 4
 
     suspend fun buildPrompt(
         db: AppDatabase,
@@ -618,10 +621,32 @@ object PromptBuilder {
                                 )
                         }.getOrNull()?.takeIf { it.second.isNotEmpty() }
                     }
-                }.toMap()
+                }.toMap().toMutableMap()
             } else {
-                emptyMap()
+                mutableMapOf()
             }
+        val currentMessagesForBudget = messages.map { it.message } + memoryContext.allMessages()
+        val fixedTokens = currentMessagesForBudget.sumOf { estimateTokens(it.content) }
+        val currentUserTokens = estimateTokens(userMessage)
+        val historyBudget =
+            (contextTokenLimit - fixedTokens - currentUserTokens - PROMPT_CACHE_REPLY_RESERVE_TOKENS)
+                .coerceAtLeast(MIN_HISTORY_BUDGET_TOKENS)
+        // The newest history entry is normally kept even when over budget. Its cache snapshot,
+        // however, is optional: drop that snapshot if replaying it would push an already-large
+        // newest user turn over the remaining history budget (notably during regeneration).
+        val newestHistoryMessage = recentMessages.lastOrNull()
+        if (newestHistoryMessage?.role == "user") {
+            val snapshot = promptCacheSnapshots[newestHistoryMessage.id].orEmpty()
+            val savedUser = snapshot.lastOrNull()?.takeIf { it.role == "user" }
+            val replayedSuffix = if (savedUser != null) snapshot.dropLast(1) else snapshot
+            val snapshotTurnTokens =
+                estimateTokens(savedUser?.content ?: newestHistoryMessage.content) +
+                    HISTORY_MESSAGE_OVERHEAD_TOKENS +
+                    replayedSuffix.sumOf { estimateTokens(it.content) + HISTORY_MESSAGE_OVERHEAD_TOKENS }
+            if (snapshotTurnTokens > historyBudget) {
+                promptCacheSnapshots.remove(newestHistoryMessage.id)
+            }
+        }
         val history: List<MessageEntity> =
             selectHistoryWithinBudget(
                 recentMessages = recentMessages,
@@ -884,12 +909,11 @@ object PromptBuilder {
         contextTokenLimit: Int,
         promptCacheSnapshots: Map<String, List<ChatMessage>> = emptyMap(),
     ): List<MessageEntity> {
-        val reservedForReply = 768
         val fixedTokens = currentMessages.sumOf { estimateTokens(it.content) }
         val currentUserTokens = estimateTokens(currentUserMessage)
         val historyBudget =
-            (contextTokenLimit - fixedTokens - currentUserTokens - reservedForReply)
-                .coerceAtLeast(256)
+            (contextTokenLimit - fixedTokens - currentUserTokens - PROMPT_CACHE_REPLY_RESERVE_TOKENS)
+                .coerceAtLeast(MIN_HISTORY_BUDGET_TOKENS)
 
         val selected = ArrayDeque<MessageEntity>()
         var usedTokens = 0
@@ -902,8 +926,9 @@ object PromptBuilder {
             val replayedUserMessage = savedSnapshot.lastOrNull()?.takeIf { it.role == "user" }
             val replayedSuffix =
                 if (replayedUserMessage != null) savedSnapshot.dropLast(1) else savedSnapshot
-            val messageTokens = estimateTokens(replayedUserMessage?.content ?: message.content) + 4
-            val snapshotTokens = replayedSuffix.sumOf { estimateTokens(it.content) + 4 }
+            val messageTokens =
+                estimateTokens(replayedUserMessage?.content ?: message.content) + HISTORY_MESSAGE_OVERHEAD_TOKENS
+            val snapshotTokens = replayedSuffix.sumOf { estimateTokens(it.content) + HISTORY_MESSAGE_OVERHEAD_TOKENS }
             val turnTokens = messageTokens + snapshotTokens
             if (i > 0 && usedTokens + turnTokens > historyBudget) {
                 break
