@@ -341,6 +341,7 @@ object PromptBuilder {
     // 当成"估算偏低"），实测证明 1.6 只差 5%，1.15 反而高估 26%
     private const val ASCII_CHARS_PER_TOKEN = 4.0
     private const val CJK_CHARS_PER_TOKEN = 1.5
+
     @Serializable
     private data class PromptCacheSnapshotEnvelope(
         val fingerprint: String,
