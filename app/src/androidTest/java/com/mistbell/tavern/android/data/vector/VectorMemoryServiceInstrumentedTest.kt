@@ -48,12 +48,12 @@ class VectorMemoryServiceInstrumentedTest {
             )
             val results =
                 service.searchRelevantMemories(
-                query = "The user prefers concise replies",
-                ownerId = "owner",
-                characterId = "character",
-                sessionId = "session",
-                topK = 5,
-            )
+                    query = "The user prefers concise replies",
+                    ownerId = "owner",
+                    characterId = "character",
+                    sessionId = "session",
+                    topK = 5,
+                )
 
             assertEquals(1, embedding.calls)
             assertEquals(1, results.size)
@@ -66,9 +66,9 @@ class VectorMemoryServiceInstrumentedTest {
         runBlocking {
             val original =
                 VectorMemoryService(
-                store,
-                CountingEmbeddingService("model-a", floatArrayOf(1f, 0f, 0f)),
-            )
+                    store,
+                    CountingEmbeddingService("model-a", floatArrayOf(1f, 0f, 0f)),
+                )
             original.storeMessage(
                 content = "A remembered fact",
                 ownerId = "owner",
@@ -80,27 +80,27 @@ class VectorMemoryServiceInstrumentedTest {
 
             val switched =
                 VectorMemoryService(
-                store,
-                CountingEmbeddingService("model-b", floatArrayOf(1f, 0f, 0f)),
-            )
+                    store,
+                    CountingEmbeddingService("model-b", floatArrayOf(1f, 0f, 0f)),
+                )
             val results =
                 switched.searchRelevantMemories(
-                query = "A remembered fact",
-                ownerId = "owner",
-                characterId = "character",
-                sessionId = "session",
-                topK = 5,
-            )
+                    query = "A remembered fact",
+                    ownerId = "owner",
+                    characterId = "character",
+                    sessionId = "session",
+                    topK = 5,
+                )
 
             assertTrue("Different embedding spaces must not return each other's vectors", results.isEmpty())
             val originalResults =
                 original.searchRelevantMemories(
-                query = "A remembered fact",
-                ownerId = "owner",
-                characterId = "character",
-                sessionId = "session",
-                topK = 5,
-            )
+                    query = "A remembered fact",
+                    ownerId = "owner",
+                    characterId = "character",
+                    sessionId = "session",
+                    topK = 5,
+                )
             assertEquals(1, originalResults.size)
         }
     }
@@ -113,19 +113,19 @@ class VectorMemoryServiceInstrumentedTest {
                 vector = floatArrayOf(1f, 0f),
                 metadata =
                     mapOf(
-                    "owner_id" to "owner",
-                    "embedding_model" to "persist-model",
-                    "content" to "persistent fact",
-                ),
+                        "owner_id" to "owner",
+                        "embedding_model" to "persist-model",
+                        "content" to "persistent fact",
+                    ),
             )
 
             val reopened = InMemoryVectorStore(context)
             val results =
                 reopened.search(
-                queryVector = floatArrayOf(1f, 0f),
-                topK = 1,
-                filters = mapOf("owner_id" to "owner", "embedding_model" to "persist-model"),
-            )
+                    queryVector = floatArrayOf(1f, 0f),
+                    topK = 1,
+                    filters = mapOf("owner_id" to "owner", "embedding_model" to "persist-model"),
+                )
 
             assertEquals(1, results.size)
             assertEquals("persistent fact", results.single().content)
