@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -55,6 +56,7 @@ fun ChatSetupScreen(
 
     var showProviderDropdown by remember { mutableStateOf(false) }
     var showWorldBookDropdown by remember { mutableStateOf(false) }
+    val dropdownMaxHeight = (LocalConfiguration.current.screenHeightDp * 0.6f).dp
 
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
@@ -244,6 +246,7 @@ fun ChatSetupScreen(
                         )
 
                         ExposedDropdownMenu(
+                            modifier = Modifier.heightIn(max = dropdownMaxHeight),
                             expanded = showProviderDropdown,
                             onDismissRequest = { showProviderDropdown = false },
                         ) {
@@ -311,6 +314,7 @@ fun ChatSetupScreen(
                         )
 
                         ExposedDropdownMenu(
+                            modifier = Modifier.heightIn(max = dropdownMaxHeight),
                             expanded = showWorldBookDropdown,
                             onDismissRequest = { showWorldBookDropdown = false },
                         ) {
