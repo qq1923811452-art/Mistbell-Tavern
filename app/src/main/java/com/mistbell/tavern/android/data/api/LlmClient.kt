@@ -175,7 +175,10 @@ object SseParser {
 object LlmClient {
     private val client =
         OkHttpClient.Builder()
-            .connectTimeout(30, TimeUnit.SECONDS)
+            // API credentials must never be forwarded through an untrusted redirect.
+            .followRedirects(false)
+            .followSslRedirects(false)
+            .connectTimeout(30, TimeUnit.SECONDS
             .readTimeout(120, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
             .build()
