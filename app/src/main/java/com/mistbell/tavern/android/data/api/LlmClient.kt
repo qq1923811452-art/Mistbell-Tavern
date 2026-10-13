@@ -267,6 +267,7 @@ object LlmClient {
      * 重试一次——思考开关是 DeepSeek 系参数，OpenAI 兼容网关未必认（400 Unrecognized request argument），
      * 不回退的话一次参数差异就会打死整轮调用。
      */
+    @Suppress("TooGenericExceptionCaught")
     suspend fun chat(
         config: LlmConfig,
         messages: List<ChatMessage>,
@@ -274,20 +275,35 @@ object LlmClient {
         val traceId = ApiCallTrace.newId()
         val startedAt = System.currentTimeMillis()
         val caller = ApiCallTrace.caller()
-        ApiCallTrace.log(traceId, "LLM_CHAT", "START", "caller=$caller protocol=${config.type} model=${config.model} endpoint=${ApiCallTrace.safeEndpoint(config.baseUrl)} mode=non-stream")
+        ApiCallTrace.log(
+            traceId,
+            "LLM_CHAT",
+            "START",
+            "caller=$caller protocol=${config.type} model=${config.model} endpoint=${ApiCallTrace.safeEndpoint(config.baseUrl)} mode=non-stream",
+        )
         return try {
             chatWithRetries(config, messages).also {
                 ApiCallTrace.log(traceId, "LLM_CHAT", "SUCCESS", "caller=$caller elapsedMs=${System.currentTimeMillis() - startedAt}")
             }
         } catch (e: Exception) {
             if (config.disableThinking && isThinkingParamRejected(e)) {
-                android.util.Log.w("LlmClient", "thinking 参数被网关拒绝，回退为不发送后重试: ${e.message}")
+                android.util.Log.w("LlmClient", "thinking 参数被网关拒绝，回退为不发送后重试 (${e.javaClass.simpleName})")
                 try {
                     chatWithRetries(config.copy(disableThinking = false), messages).also {
-                        ApiCallTrace.log(traceId, "LLM_CHAT", "SUCCESS", "caller=$caller fallback=without-thinking elapsedMs=${System.currentTimeMillis() - startedAt}")
+                        ApiCallTrace.log(
+                            traceId,
+                            "LLM_CHAT",
+                            "SUCCESS",
+                            "caller=$caller fallback=without-thinking elapsedMs=${System.currentTimeMillis() - startedAt}",
+                        )
                     }
                 } catch (fallbackError: Exception) {
-                    ApiCallTrace.log(traceId, "LLM_CHAT", "FAILURE", "caller=$caller fallback=without-thinking error=${fallbackError.javaClass.simpleName}")
+                    ApiCallTrace.log(
+                        traceId,
+                        "LLM_CHAT",
+                        "FAILURE",
+                        "caller=$caller fallback=without-thinking error=${fallbackError.javaClass.simpleName}",
+                    )
                     throw fallbackError
                 }
             } else {
@@ -409,6 +425,7 @@ object LlmClient {
     }
 
     /** 非流式响应的正文与思维链，供聊天落库使用；普通 [chat] 保持只返回正文的兼容接口。 */
+    @Suppress("TooGenericExceptionCaught")
     suspend fun chatWithThinking(
         config: LlmConfig,
         messages: List<ChatMessage>,
@@ -416,24 +433,49 @@ object LlmClient {
         val traceId = ApiCallTrace.newId()
         val startedAt = System.currentTimeMillis()
         val caller = ApiCallTrace.caller()
-        ApiCallTrace.log(traceId, "LLM_CHAT_WITH_THINKING", "START", "caller=$caller protocol=${config.type} model=${config.model} endpoint=${ApiCallTrace.safeEndpoint(config.baseUrl)} mode=non-stream")
+        ApiCallTrace.log(
+            traceId,
+            "LLM_CHAT_WITH_THINKING",
+            "START",
+            "caller=$caller protocol=${config.type} model=${config.model} endpoint=${ApiCallTrace.safeEndpoint(config.baseUrl)} mode=non-stream",
+        )
         return try {
             chatContentWithRetries(config, messages).also {
-                ApiCallTrace.log(traceId, "LLM_CHAT_WITH_THINKING", "SUCCESS", "caller=$caller elapsedMs=${System.currentTimeMillis() - startedAt}")
+                ApiCallTrace.log(
+                    traceId,
+                    "LLM_CHAT_WITH_THINKING",
+                    "SUCCESS",
+                    "caller=$caller elapsedMs=${System.currentTimeMillis() - startedAt}",
+                )
             }
         } catch (e: Exception) {
             if (config.disableThinking && isThinkingParamRejected(e)) {
                 android.util.Log.w("LlmClient", "thinking 参数被网关拒绝，回退为不发送后重试: ${e.message}")
                 try {
                     chatContentWithRetries(config.copy(disableThinking = false), messages).also {
-                        ApiCallTrace.log(traceId, "LLM_CHAT_WITH_THINKING", "SUCCESS", "caller=$caller fallback=without-thinking elapsedMs=${System.currentTimeMillis() - startedAt}")
+                        ApiCallTrace.log(
+                            traceId,
+                            "LLM_CHAT_WITH_THINKING",
+                            "SUCCESS",
+                            "caller=$caller fallback=without-thinking elapsedMs=${System.currentTimeMillis() - startedAt}",
+                        )
                     }
                 } catch (fallbackError: Exception) {
-                    ApiCallTrace.log(traceId, "LLM_CHAT_WITH_THINKING", "FAILURE", "caller=$caller fallback=without-thinking error=${fallbackError.javaClass.simpleName}")
+                    ApiCallTrace.log(
+                        traceId,
+                        "LLM_CHAT_WITH_THINKING",
+                        "FAILURE",
+                        "caller=$caller fallback=without-thinking error=${fallbackError.javaClass.simpleName}",
+                    )
                     throw fallbackError
                 }
             } else {
-                ApiCallTrace.log(traceId, "LLM_CHAT_WITH_THINKING", "FAILURE", "caller=${ApiCallTrace.caller()} error=${e.javaClass.simpleName}")
+                ApiCallTrace.log(
+                    traceId,
+                    "LLM_CHAT_WITH_THINKING",
+                    "FAILURE",
+                    "caller=${ApiCallTrace.caller()} error=${e.javaClass.simpleName}",
+                )
                 throw e
             }
         }
@@ -489,7 +531,12 @@ object LlmClient {
             val traceId = ApiCallTrace.newId()
             val startedAt = System.currentTimeMillis()
             val caller = ApiCallTrace.caller()
-            ApiCallTrace.log(traceId, "LLM_CHAT_STREAM", "START", "caller=$caller protocol=${config.type} model=${config.model} endpoint=${ApiCallTrace.safeEndpoint(config.baseUrl)} mode=stream")
+            ApiCallTrace.log(
+                traceId,
+                "LLM_CHAT_STREAM",
+                "START",
+                "caller=$caller protocol=${config.type} model=${config.model} endpoint=${ApiCallTrace.safeEndpoint(config.baseUrl)} mode=stream",
+            )
             val maxAttempts = maxAttemptsFor(config) // S1: 复用配置重试上限（流式）
             for (attempt in 0 until maxAttempts) {
                 var emittedAny = false
@@ -515,7 +562,7 @@ object LlmClient {
                         ApiCallTrace.log(traceId, "LLM_CHAT_STREAM", "RETRY", "caller=$caller attempt=${attempt + 1} error=${e.javaClass.simpleName} delayMs=$delayMs")
                         android.util.Log.w(
                             "LlmClient",
-                            "Stream failed before first token, retry ${attempt + 1}/$maxAttempts after ${delayMs}ms: ${e.message}",
+                            "Stream failed before first token, retry ${attempt + 1}/$maxAttempts after ${delayMs}ms (${e.javaClass.simpleName})",
                         )
                         delay(delayMs)
                     } else {
