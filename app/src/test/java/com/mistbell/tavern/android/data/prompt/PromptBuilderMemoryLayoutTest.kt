@@ -200,11 +200,11 @@ class PromptBuilderMemoryLayoutTest {
         val fingerprint = PromptBuilder.promptCacheFingerprint(original)
 
         assertEquals(fingerprint, PromptBuilder.promptCacheFingerprint(original.toList()))
-        assertTrue(
-            fingerprint != PromptBuilder.promptCacheFingerprint(original.mapIndexed { index, value ->
+        val changedPrompt =
+            original.mapIndexed { index, value ->
                 if (index == 6) "修改后的角色提示词" else value
-            }),
-        )
+            }
+        assertTrue(fingerprint != PromptBuilder.promptCacheFingerprint(changedPrompt))
     }
 
     // ---- SseParser：流式 usage（缓存统计）解析 ----
