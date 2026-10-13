@@ -364,6 +364,9 @@ class OpenAIEmbeddingService(
         return "openai-compatible:$model:$endpointFingerprint"
     }
 
+    override fun supportsLegacyVectors(): Boolean =
+        model == "text-embedding-3-small" && baseUrl.trimEnd('/') == "https://api.openai.com/v1"
+
     override fun getDimension(): Int = lastKnownDimension
 
     @Serializable
