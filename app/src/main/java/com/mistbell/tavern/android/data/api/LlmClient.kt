@@ -488,7 +488,12 @@ object LlmClient {
                 isThinkingParameterRejected(statusCode, responseBody),
             )
         }
-        val responseBody = response.body?.string() ?: throw Exception("Empty response")
+        val responseBody =
+            response.body?.string()
+                ?: run {
+                    response.close()
+                    throw IllegalStateException("Empty response")
+                }
         val content = chatProtocolFor(config.type).parseContent(responseBody)
         logUsage(content.usage, config.model, "non-stream")
         // 截断是最隐蔽的失败：JSON 写到一半被 max_tokens 砍断，调用方只看到"解析失败/空结果"
