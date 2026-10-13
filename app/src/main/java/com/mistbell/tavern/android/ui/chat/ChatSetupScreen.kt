@@ -4,7 +4,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -19,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -27,6 +27,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.mistbell.tavern.android.data.api.model.SESSION_MODE_CLASSIC
 import com.mistbell.tavern.android.data.api.model.SESSION_MODE_GROUP
 import kotlinx.coroutines.launch
+
+private const val DROPDOWN_MAX_SCREEN_HEIGHT_FRACTION = 0.6f
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -56,7 +58,7 @@ fun ChatSetupScreen(
 
     var showProviderDropdown by remember { mutableStateOf(false) }
     var showWorldBookDropdown by remember { mutableStateOf(false) }
-    val dropdownMaxHeight = (LocalConfiguration.current.screenHeightDp * 0.6f).dp
+    val dropdownMaxHeight = (LocalConfiguration.current.screenHeightDp * DROPDOWN_MAX_SCREEN_HEIGHT_FRACTION).dp
 
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
