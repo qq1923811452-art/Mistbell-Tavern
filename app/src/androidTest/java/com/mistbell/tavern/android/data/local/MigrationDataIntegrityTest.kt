@@ -337,6 +337,12 @@ class MigrationDataIntegrityTest {
                 AppDatabase.Companion.MIGRATION_18_19,
                 AppDatabase.Companion.MIGRATION_19_20,
                 AppDatabase.Companion.MIGRATION_20_21,
+                AppDatabase.Companion.MIGRATION_21_22,
+                AppDatabase.Companion.MIGRATION_22_23,
+                AppDatabase.Companion.MIGRATION_23_24,
+                AppDatabase.Companion.MIGRATION_24_25,
+                AppDatabase.Companion.MIGRATION_25_26,
+                AppDatabase.Companion.MIGRATION_26_27,
             )
             .allowMainThreadQueries()
             .build()
