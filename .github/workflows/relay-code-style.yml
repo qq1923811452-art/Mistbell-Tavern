@@ -57,36 +57,43 @@ jobs:
           test -n "$ODYS_API_KEY" || { echo "::error::Missing repository secret ODYS_API_KEY"; exit 1; }
           test -n "$ODYS_MODEL" || { echo "::error::Missing repository secret ODYS_MODEL"; exit 1; }
 
+      - name: Apply deterministic Kotlin formatting
+        # Let ktlint make safe, deterministic style changes before asking the relay model.
+        run: ./gradlew :app:ktlintFormat --rerun-tasks --no-daemon --no-configuration-cache || echo "Formatter reported remaining style issues; collecting exact diagnostics."
+
       - name: Collect diagnostics and recent Kotlin changes
         id: context
         shell: bash
         run: |
           set +e
-          ./gradlew :app:detekt :app:ktlintCheck --continue --no-daemon > /tmp/style-check.log 2>&1
+          ./gradlew :app:detekt :app:ktlintCheck --continue --no-daemon --no-configuration-cache > /tmp/style-check.log 2>&1
           CHECK_EXIT=$?
           set -e
           git diff HEAD~10..HEAD -- '*.kt' > /tmp/recent-kotlin.diff || true
+          git diff HEAD -- '*.kt' > /tmp/working-kotlin.diff || true
           CHECK_EXIT="$CHECK_EXIT" python3 - <<'PY'
           from pathlib import Path
           import json, os
           log = Path("/tmp/style-check.log").read_text(errors="replace")
-          diff = Path("/tmp/recent-kotlin.diff").read_text(errors="replace")
-          relevant = [line for line in log.splitlines() if any(
-              key in line for key in ("MaxLineLength", "LongMethod", "LongParameterList",
-                                      "Analysis failed", "BUILD FAILED", "BUILD SUCCESSFUL",
-                                      "e: file:", "error:")
-          )]
+          recent_diff = Path("/tmp/recent-kotlin.diff").read_text(errors="replace")
+          working_diff = Path("/tmp/working-kotlin.diff").read_text(errors="replace")
+          exit_code = int(os.environ["CHECK_EXIT"])
           context = {
               "branch": "feature",
-              "checks_exit_code": int(os.environ["CHECK_EXIT"]),
-              "diagnostics": "\\n".join(relevant[-100:]),
-              "recent_kotlin_diff": diff[-26000:],
+              "checks_exit_code": exit_code,
+              "diagnostics": log[-24000:],
+              "recent_kotlin_diff": recent_diff[-12000:],
+              "working_tree_format_diff": working_diff[-24000:],
           }
           Path("/tmp/relay-context.json").write_text(json.dumps(context, ensure_ascii=False))
-          print("Captured diagnostics and recent Kotlin diff for the relay model.")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write("needs_ai=" + ("true" if exit_code != 0 else "false") + "\n")
+          print("Captured complete checker output plus recent and formatter-produced Kotlin diffs.")
+          print("AI patch required:", "yes" if exit_code != 0 else "no")
           PY
 
       - name: Ask relay AI for a minimal style-only patch
+        if: steps.context.outputs.needs_ai == 'true'
         id: ai
         env:
           ODYS_API_KEY: ${{ secrets.ODYS_API_KEY }}
@@ -98,11 +105,11 @@ jobs:
           context = open("/tmp/relay-context.json", encoding="utf-8").read()
           prompt = """你是这个 Kotlin Android 仓库的资深维护者。请根据下面的真实 Detekt/Ktlint 诊断和近期 Kotlin diff，生成最小、可验证的代码规范修复补丁。
           硬性规则：
-          1. 只输出标准 unified diff（以 diff --git 开始），不要 Markdown 代码围栏或解释。每次只修改 1 个 Kotlin 文件，并且只处理该文件中最明确的 1 个诊断；补丁尽量控制在 20 行以内。若需多个文件，留给后续运行逐次处理。
+          1. 只输出标准 unified diff（以 diff --git 开始），不要 Markdown 代码围栏或解释。优先修复诊断日志中所有明确、可安全修复的问题；补丁最多修改 8 个 Kotlin 文件，只改与实际诊断直接相关的行。若诊断无法在安全范围内一次修复，宁可输出空补丁。
           2. 只做格式、超长方法的合理拆分、参数对象整理等与诊断直接相关的改动；不得改变产品行为、API 协议、Room schema/migration、streaming include_usage、usage 缺失时显示规则、thinking 开关语义或资源释放行为。
           3. 不要关闭/放宽 Detekt、Ktlint，不要添加 suppress，不要改 baseline，不要改测试来掩盖问题。
           4. 补丁必须匹配给出的当前 diff；不确定时输出空补丁，不要臆造上下文。禁止输出 index 行或虚构 blob hash；每个 hunk 的上下文与行数必须完整，必须以完整 hunk 结束，不得截断。
-          5. 优先处理新增/修改代码中的诊断。保持 Kotlin 风格，避免只为缩短行而制造难读代码。只改动能够从上下文确定的格式问题；每个补丁必须完整且可由 git apply --check 校验。不要输出超过一个 diff --git 文件段。
+          5. 优先处理新增/修改代码中的诊断。保持 Kotlin 风格，避免只为缩短行而制造难读代码。只改动能够从上下文确定且与诊断直接相关的问题；每个补丁必须完整且可由 git apply --check 校验。最多输出八个 diff --git 文件段，且每个文件都必须是 Kotlin 源码。
           以下是 JSON 格式的诊断和近期改动：
           """ + context
           payload = {
@@ -149,6 +156,7 @@ jobs:
           PY
 
       - name: Validate and apply AI patch
+        if: steps.context.outputs.needs_ai == 'true'
         id: patch
         shell: bash
         run: |
@@ -172,7 +180,7 @@ jobs:
           git diff --stat
 
       - name: Run complete quality gate
-        run: ./gradlew checkAll --continue --no-daemon
+        run: ./gradlew checkAll --continue --no-daemon --no-configuration-cache
 
       - name: Commit verified AI cleanup to an isolated branch and open a PR
         env:
@@ -187,7 +195,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -- '*.kt'
-          git commit -m "Apply relay AI Kotlin style fixes"
+          git commit -m "Apply verified Kotlin style cleanup"
           BRANCH="automation/relay-style-${GITHUB_RUN_ID}"
           git push origin "HEAD:refs/heads/${BRANCH}"
           gh pr create \
