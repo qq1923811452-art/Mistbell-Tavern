@@ -14,7 +14,7 @@ plugins {
 // 依赖许可证报告：只扫 :app（JSON 输出供 licenseGuard 消费）
 licenseReport {
     projects = [project(':app')]
-    outputDir = "$buildDir/reports/licenses"
+    outputDir = layout.buildDirectory.dir("reports/licenses").get().asFile.absolutePath
     renderers = [new com.github.jk1.license.render.JsonReportRenderer("index.json", false)]
 }
 
@@ -33,7 +33,7 @@ tasks.register('licenseGuard') {
     description = 'Fails if any dependency license hits copyleft red lines (GPL/AGPL/AFFERO/SSPL).'
     doLast {
         def forbidden = ~/AGPL|AFFERO|SSPL|(^|[^A-Za-z])GPL/
-        def dir = file("${buildDir}/reports/licenses")
+        def dir = layout.buildDirectory.dir("reports/licenses").get().asFile
         if (!dir.isDirectory()) {
             throw new GradleException("licenseGuard: 许可证报告不存在（$dir）——请先运行 licenseReport")
         }
