@@ -103,7 +103,7 @@ class BackupManager(private val context: Context) {
         private const val MAX_BACKUP_ENTRIES = 4096
         private const val MAX_BACKUP_ENTRY_BYTES = 32L * 1024L * 1024L
         private const val MAX_BACKUP_TOTAL_BYTES = 128L * 1024L * 1024L
-        private val SAFE_THEME_PACK_ID = Regex("[A-Za-z0-9_-]{1,128}")
+        private val SAFE_THEME_PACK_ID = Regex("[A-Za-z0-9._-]{1,128}")
 
         internal val json =
             Json {
@@ -191,7 +191,7 @@ class BackupManager(private val context: Context) {
             )
 
         internal fun validateThemePackId(id: String) {
-            require(SAFE_THEME_PACK_ID.matches(id)) {
+            require(id != "." && id != ".." && SAFE_THEME_PACK_ID.matches(id)) {
                 "备份文件非法：主题包 ID 包含不安全的路径字符"
             }
         }
