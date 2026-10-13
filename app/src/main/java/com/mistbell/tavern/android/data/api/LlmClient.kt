@@ -321,6 +321,14 @@ object LlmClient {
                     "caller=$caller elapsedMs=${System.currentTimeMillis() - startedAt}",
                 )
             }
+        } catch (e: CancellationException) {
+            ApiCallTrace.log(
+                traceId,
+                "LLM_CHAT",
+                "CANCELLED",
+                "caller=$caller elapsedMs=${System.currentTimeMillis() - startedAt}",
+            )
+            throw e
         } catch (e: Exception) {
             if (config.disableThinking && isThinkingParamRejected(e)) {
                 android.util.Log.w("LlmClient", "thinking 参数被网关拒绝，回退为不发送后重试 (${e.javaClass.simpleName})")
@@ -533,6 +541,14 @@ object LlmClient {
                     "caller=$caller elapsedMs=${System.currentTimeMillis() - startedAt}",
                 )
             }
+        } catch (e: CancellationException) {
+            ApiCallTrace.log(
+                traceId,
+                "LLM_CHAT_WITH_THINKING",
+                "CANCELLED",
+                "caller=$caller elapsedMs=${System.currentTimeMillis() - startedAt}",
+            )
+            throw e
         } catch (e: Exception) {
             if (config.disableThinking && isThinkingParamRejected(e)) {
                 android.util.Log.w("LlmClient", "thinking 参数被网关拒绝，回退为不发送后重试 (${e.javaClass.simpleName})")
