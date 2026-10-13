@@ -112,7 +112,7 @@ class OpenAIEmbeddingService(
             val statusCode = response.code
             response.close()
             // Do not log untrusted gateway error bodies: some relays echo request headers or credentials.
-            throw IllegalStateException("Embedding API returned HTTP $statusCode")
+            error("Embedding API returned HTTP $statusCode")
         }
 
         val responseBody =
