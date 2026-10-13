@@ -15,6 +15,9 @@ interface EmbeddingService {
      */
     suspend fun embed(text: String): FloatArray
 
+    /** Same embedding operation with a diagnostic source label; default keeps third-party implementations compatible. */
+    suspend fun embed(text: String, source: String): FloatArray = embed(text)
+
     /**
      * 批量转换文本为向量
      *
@@ -22,6 +25,9 @@ interface EmbeddingService {
      * @return 向量列表
      */
     suspend fun embedBatch(texts: List<String>): List<FloatArray>
+
+    /** Batch variant with a diagnostic source label. */
+    suspend fun embedBatch(texts: List<String>, source: String): List<FloatArray> = embedBatch(texts)
 
     /**
      * 获取向量维度
