@@ -92,7 +92,8 @@ class OpenAIEmbeddingService(
                             traceId,
                             source,
                             "FAILURE",
-                            "engine=remote operation=single model=$model elapsedMs=${System.currentTimeMillis() - startedAt} error=${e.javaClass.simpleName}",
+                            "engine=remote operation=single model=$model " +
+                                "elapsedMs=${System.currentTimeMillis() - startedAt} error=${e.javaClass.simpleName}",
                         )
                         throw e
                     }
@@ -104,7 +105,8 @@ class OpenAIEmbeddingService(
                 traceId,
                 source,
                 "FAILURE",
-                "engine=remote operation=single model=$model elapsedMs=${System.currentTimeMillis() - startedAt} error=${failure.javaClass.simpleName}",
+                "engine=remote operation=single model=$model " +
+                    "elapsedMs=${System.currentTimeMillis() - startedAt} error=${failure.javaClass.simpleName}",
             )
             throw failure
         }
@@ -141,7 +143,9 @@ class OpenAIEmbeddingService(
             traceId,
             source,
             "HTTP",
-            "attempt=$attempt status=${response.code} endpoint=${ApiCallTrace.safeEndpoint(request.url.toString())} elapsedMs=${System.currentTimeMillis() - startedAt}",
+            "attempt=$attempt status=${response.code} " +
+                "endpoint=${ApiCallTrace.safeEndpoint(request.url.toString())} " +
+                "elapsedMs=${System.currentTimeMillis() - startedAt}",
         )
 
         if (!response.isSuccessful) {
@@ -185,7 +189,8 @@ class OpenAIEmbeddingService(
                 traceId,
                 source,
                 "START",
-                "engine=remote model=$model endpoint=${ApiCallTrace.safeEndpoint("$baseUrl/embeddings")} operation=batch itemCount=${texts.size}",
+                "engine=remote model=$model endpoint=${ApiCallTrace.safeEndpoint("$baseUrl/embeddings")} " +
+                "operation=batch itemCount=${texts.size}",
             )
             var lastException: Exception? = null
 
@@ -219,7 +224,8 @@ class OpenAIEmbeddingService(
                             traceId,
                             source,
                             "FAILURE",
-                            "engine=remote operation=batch model=$model itemCount=${texts.size} elapsedMs=${System.currentTimeMillis() - startedAt} error=${e.javaClass.simpleName}",
+                            "engine=remote operation=batch model=$model itemCount=${texts.size} " +
+                                "elapsedMs=${System.currentTimeMillis() - startedAt} error=${e.javaClass.simpleName}",
                         )
                         throw e
                     }
@@ -231,7 +237,8 @@ class OpenAIEmbeddingService(
                 traceId,
                 source,
                 "FAILURE",
-                "engine=remote operation=batch model=$model itemCount=${texts.size} elapsedMs=${System.currentTimeMillis() - startedAt} error=${failure.javaClass.simpleName}",
+                "engine=remote operation=batch model=$model itemCount=${texts.size} " +
+                    "elapsedMs=${System.currentTimeMillis() - startedAt} error=${failure.javaClass.simpleName}",
             )
             throw failure
         }
@@ -264,11 +271,18 @@ class OpenAIEmbeddingService(
                 .build()
 
         val response = client.newCall(request).execute()
-        ApiCallTrace.log(traceId, source, "HTTP", "attempt=$attempt status=${response.code} endpoint=${ApiCallTrace.safeEndpoint(request.url.toString())} elapsedMs=${System.currentTimeMillis() - startedAt}")
+        ApiCallTrace.log(
+            traceId,
+            source,
+            "HTTP",
+            "attempt=$attempt status=${response.code} " +
+                "endpoint=${ApiCallTrace.safeEndpoint(request.url.toString())} " +
+                "elapsedMs=${System.currentTimeMillis() - startedAt}",
+        )
 
         if (!response.isSuccessful) {
-            val errorBody = response.body?.string() ?: "Unknown error"
-            throw Exception("OpenAI API error: ${response.code} - $errorBody")
+            response.body?.close()
+            throw Exception("OpenAI API error: ${response.code}")
         }
 
         val responseBody =
@@ -285,7 +299,8 @@ class OpenAIEmbeddingService(
             traceId,
             source,
             "SUCCESS",
-            "attempt=$attempt model=$model dimension=${embeddingResponse.data.first().embedding.size} itemCount=${embeddingResponse.data.size} elapsedMs=${System.currentTimeMillis() - startedAt}",
+            "attempt=$attempt model=$model dimension=${embeddingResponse.data.first().embedding.size} " +
+                "itemCount=${embeddingResponse.data.size} elapsedMs=${System.currentTimeMillis() - startedAt}",
         )
         Log.d(TAG, "Generated ${embeddingResponse.data.size} embeddings in batch")
 
