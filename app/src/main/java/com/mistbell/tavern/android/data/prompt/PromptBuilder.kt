@@ -643,21 +643,26 @@ object PromptBuilder {
                 )
             }
         history.forEachIndexed { index, msg: MessageEntity ->
-            // For OpenAI-compatible providers, reinsert exactly the suffix that preceded
-            // each historical user turn. This lets the next request extend the prior prefix.
-            if (msg.role == "user") {
-                promptCacheSnapshots[msg.id].orEmpty().forEachIndexed { snapshotIndex, snapshot ->
-                    messages.add(Segment(snapshot, "历史缓存快照·${snapshotIndex + 1}"))
-                }
+            // For OpenAI-compatible providers, replay the exact per-turn suffix immediately
+            // before that historical user message, preserving the prior request's token prefix.
+            val savedSnapshot = if (msg.role == "user") promptCacheSnapshots[msg.id].orEmpty() else emptyList()
+            val replayedUserMessage = savedSnapshot.lastOrNull()?.takeIf { it.role == "user" }
+            val replayedSuffix =
+                if (replayedUserMessage != null) savedSnapshot.dropLast(1) else savedSnapshot
+            replayedSuffix.forEachIndexed { snapshotIndex, snapshot ->
+                messages.add(Segment(snapshot, "历史缓存快照·${snapshotIndex + 1}"))
             }
             if (annotatedGroupHistory != null) {
-                messages.add(Segment(annotatedGroupHistory[index], "历史·群聊"))
+                messages.add(Segment(replayedUserMessage ?: annotatedGroupHistory[index], "历史·群聊"))
             } else {
-                // 历史消息不做宏二次渲染（生成时已解析）；仅剔除 <think>…</think> 块，
-                // 思考型模型的历史推理不进上下文（展示层不动）
+                // Historical user content comes from the exact prior request when a snapshot
+                // exists; otherwise keep the stored message and do not re-render old macros.
+                val historicalMessage =
+                    replayedUserMessage
+                        ?: ChatMessage(role = msg.role, content = stripThinkingBlocks(msg.content))
                 messages.add(
                     Segment(
-                        ChatMessage(role = msg.role, content = stripThinkingBlocks(msg.content)),
+                        historicalMessage,
                         "历史第 ${index + 1}/${history.size} 条",
                         truncationReason = if (historyTruncated) "上下文预算裁剪后保留的最近窗口" else null,
                     ),
@@ -742,9 +747,23 @@ object PromptBuilder {
         // @D 深度块按深度升序注入（D=1 最后，最靠近生成点）
         messages.addAll(depthBlocks)
 
-        // The snapshot excludes the final user message: when replayed next turn, it is
-        // restored immediately before that same historical user message.
-        val candidateCacheSnapshot = messages.drop(currentTurnContextStartIndex).map { it.message }
+        // Keep the exact rendered final user content alongside the dynamic suffix. On replay,
+        // this avoids a cache-prefix mismatch when the original input contained macros or a
+        // group-speaker prefix that cannot be reconstructed from the raw database message.
+        val finalUserMessage =
+            if (groupNudge == null) {
+                val renderedUserMessage = MacroEngine.render(userMessage, mctx)
+                if (groupContext != null) {
+                    groupCurrentUserMessage(userName = mctx.user, renderedUserMessage = renderedUserMessage)
+                } else {
+                    renderedUserMessage
+                }
+            } else {
+                null
+            }
+        val candidateCacheSnapshot =
+            messages.drop(currentTurnContextStartIndex).map { it.message } +
+                listOfNotNull(finalUserMessage?.let { ChatMessage(role = "user", content = it) })
         val cacheContextSnapshot =
             if (
                 cacheSnapshotEnabled &&
@@ -760,17 +779,7 @@ object PromptBuilder {
         if (groupNudge != null) {
             messages.addSegment("system", groupNudge, "群聊推动语")
         } else {
-            val renderedUserMessage = MacroEngine.render(userMessage, mctx)
-            // 群聊模式：当前用户消息与历史行格式对齐，加 "{user}: " 前缀（历史每行已带
-            // 『名字:』前缀标注发言者，当前消息同样标注可显著提高模型按格式发言的命中率）；
-            // classic 模式保持原样零改动
-            val finalUserMessage =
-                if (groupContext != null) {
-                    groupCurrentUserMessage(userName = mctx.user, renderedUserMessage = renderedUserMessage)
-                } else {
-                    renderedUserMessage
-                }
-            messages.addSegment("user", finalUserMessage, "当前消息")
+            messages.addSegment("user", finalUserMessage.orEmpty(), "当前消息")
         }
 
         // 组成诊断（只记条数与估算 token，不记内容）：用于核对上下文窗口是否装得下、
@@ -888,13 +897,13 @@ object PromptBuilder {
         // 从最新往回连续选取，预算耗尽即停止，保证历史片段连续；
         // 最新一条无条件纳入（与历史实现一致：预算极小时也带上最近一轮的上下文）
         for ((i, message) in recentMessages.asReversed().withIndex()) {
-            val messageTokens = estimateTokens(message.content) + 4
-            val snapshotTokens =
-                if (message.role == "user") {
-                    promptCacheSnapshots[message.id].orEmpty().sumOf { estimateTokens(it.content) + 4 }
-                } else {
-                    0
-                }
+            val savedSnapshot =
+                if (message.role == "user") promptCacheSnapshots[message.id].orEmpty() else emptyList()
+            val replayedUserMessage = savedSnapshot.lastOrNull()?.takeIf { it.role == "user" }
+            val replayedSuffix =
+                if (replayedUserMessage != null) savedSnapshot.dropLast(1) else savedSnapshot
+            val messageTokens = estimateTokens(replayedUserMessage?.content ?: message.content) + 4
+            val snapshotTokens = replayedSuffix.sumOf { estimateTokens(it.content) + 4 }
             val turnTokens = messageTokens + snapshotTokens
             if (i > 0 && usedTokens + turnTokens > historyBudget) {
                 break
