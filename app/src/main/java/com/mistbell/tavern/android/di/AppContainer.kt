@@ -13,6 +13,8 @@ import com.mistbell.tavern.android.data.vector.VectorCacheStatistics
 import com.mistbell.tavern.android.data.vector.VectorMemoryService
 import com.mistbell.tavern.android.data.vector.VectorStore
 import com.mistbell.tavern.android.util.SecureStore
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 
 /**
  * 应用级 DI 容器：集中装配 database / vectorStore / embeddingService / vectorMemoryService。
@@ -40,8 +42,13 @@ class AppContainer(private val appContext: Context) {
     }
 
     /**
-     * Returns live hit/miss statistics for the app's cached vector search store.
+     * Live hit/miss statistics for the app's cached vector search store.
      */
+    val vectorCacheStatistics: StateFlow<VectorCacheStatistics> by lazy {
+        (vectorStore as? CachedVectorStore)?.cacheStatistics
+            ?: MutableStateFlow(VectorCacheStatistics(0, 0, 0, 0, 0))
+    }
+
     suspend fun getVectorCacheStatistics(): VectorCacheStatistics? =
         (vectorStore as? CachedVectorStore)?.getCacheStatistics()
 
