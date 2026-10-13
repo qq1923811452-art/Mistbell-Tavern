@@ -383,8 +383,11 @@ object PromptBuilder {
         if (!currentMessageId.isNullOrBlank() && groupNudge == null) {
             val snapshotJson =
                 Json.encodeToString(
-                    ListSerializer(ChatMessage.serializer()),
-                    trace.cacheContextSnapshot,
+                    PromptCacheSnapshotEnvelope.serializer(),
+                    PromptCacheSnapshotEnvelope(
+                        fingerprint = trace.cacheFingerprint,
+                        messages = trace.cacheContextSnapshot,
+                    ),
                 )
             // Cache snapshots are an optimization only: a failed snapshot write must not fail chat.
             runCatching {
