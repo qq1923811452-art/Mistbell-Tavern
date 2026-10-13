@@ -250,7 +250,7 @@ class StructuredMemoryRepository(context: Context) {
             throw e
         } catch (e: Exception) {
             // 向量同步失败不应影响主流程
-            Log.e(TAG, "Failed to sync memory to vector: ${e.message}", e)
+            Log.e(TAG, "Failed to sync memory to vector (${e.javaClass.simpleName})")
         }
     }
 
@@ -268,7 +268,7 @@ class StructuredMemoryRepository(context: Context) {
             throw e
         } catch (e: Exception) {
             // 向量清理失败不应影响主流程
-            Log.e(TAG, "Failed to delete vector copy: ${e.message}", e)
+            Log.e(TAG, "Failed to delete vector copy (${e.javaClass.simpleName})")
         }
     }
 
@@ -287,7 +287,7 @@ class StructuredMemoryRepository(context: Context) {
             throw e
         } catch (e: Exception) {
             // 向量清理失败不应影响主流程
-            Log.e(TAG, "Failed to delete summary vectors: ${e.message}", e)
+            Log.e(TAG, "Failed to delete summary vectors (${e.javaClass.simpleName})")
         }
     }
 }
