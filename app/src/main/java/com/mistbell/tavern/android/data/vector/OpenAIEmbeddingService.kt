@@ -335,7 +335,10 @@ class OpenAIEmbeddingService(
 
         val responseBody =
             response.body?.string()
-                ?: throw Exception("Empty response body")
+                ?: run {
+                    response.close()
+                    throw IllegalStateException("Empty response body")
+                }
 
         val embeddingResponse = json.decodeFromString<EmbeddingResponse>(responseBody)
 
