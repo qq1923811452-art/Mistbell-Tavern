@@ -58,7 +58,11 @@ class LocalEmbeddingService private constructor(
 
     override suspend fun embed(text: String): FloatArray = embed(text, "LOCAL_EMBEDDING_UNSPECIFIED")
 
-    override suspend fun embed(text: String, source: String): FloatArray {
+    @Suppress("TooGenericExceptionCaught")
+    override suspend fun embed(
+        text: String,
+        source: String,
+    ): FloatArray {
         val traceId = ApiCallTrace.newId()
         val startedAt = System.currentTimeMillis()
         ApiCallTrace.log(traceId, source, "START", "engine=ONNX mode=local network=false")
@@ -85,18 +89,30 @@ class LocalEmbeddingService private constructor(
                     normalize(cls)
                 }
             }.also {
-                ApiCallTrace.log(traceId, source, "SUCCESS", "engine=ONNX network=false elapsedMs=${System.currentTimeMillis() - startedAt} dimension=${it.size}")
+                ApiCallTrace.log(
+                    traceId,
+                    source,
+                    "SUCCESS",
+                    "engine=ONNX network=false elapsedMs=${System.currentTimeMillis() - startedAt} dimension=${it.size}",
+                )
             }
         } catch (e: Exception) {
-            ApiCallTrace.log(traceId, source, "FAILURE", "engine=ONNX network=false elapsedMs=${System.currentTimeMillis() - startedAt} error=${e.javaClass.simpleName}")
+            ApiCallTrace.log(
+                traceId,
+                source,
+                "FAILURE",
+                "engine=ONNX network=false elapsedMs=${System.currentTimeMillis() - startedAt} error=${e.javaClass.simpleName}",
+            )
             throw e
         }
     }
 
     override suspend fun embedBatch(texts: List<String>): List<FloatArray> = texts.map { embed(it) }
 
-    override suspend fun embedBatch(texts: List<String>, source: String): List<FloatArray> =
-        texts.map { embed(it, source) }
+    override suspend fun embedBatch(
+        texts: List<String>,
+        source: String,
+    ): List<FloatArray> = texts.map { embed(it, source) }
 
     private fun normalize(vector: FloatArray): FloatArray {
         var norm = 0.0
