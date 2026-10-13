@@ -1,6 +1,8 @@
 package com.mistbell.tavern.android.data.vector
 
 import ai.onnxruntime.OnnxTensor
+import android.util.Log
+import com.mistbell.tavern.android.data.api.ApiCallTrace
 import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
 import android.content.Context
@@ -33,6 +35,7 @@ class LocalEmbeddingService private constructor(
         private const val INPUT_IDS = "input_ids"
         private const val ATTENTION_MASK = "attention_mask"
         private const val TOKEN_TYPE_IDS = "token_type_ids"
+        private const val TAG = "ApiCallTrace"
 
         /**
          * 从 assets 构建服务（模型加载约 1-2s，须在 IO 线程）。
@@ -54,8 +57,14 @@ class LocalEmbeddingService private constructor(
 
     override fun getDimension(): Int = DIM
 
-    override suspend fun embed(text: String): FloatArray =
-        withContext(Dispatchers.Default) {
+    override suspend fun embed(text: String): FloatArray = embed(text, "LOCAL_EMBEDDING_UNSPECIFIED")
+
+    override suspend fun embed(text: String, source: String): FloatArray {
+        val traceId = ApiCallTrace.newId()
+        val startedAt = System.currentTimeMillis()
+        ApiCallTrace.log(traceId, source, "START", "engine=ONNX mode=local network=false")
+        return try {
+            withContext(Dispatchers.Default) {
             val ids = tokenizer.encode(text, MAX_SEQ_LEN)
             val seqLen = ids.size
             val inputIds = LongArray(seqLen) { ids[it].toLong() }
@@ -76,9 +85,19 @@ class LocalEmbeddingService private constructor(
                 val cls = output[0][0]
                 normalize(cls)
             }
+        }.also {
+            ApiCallTrace.log(traceId, source, "SUCCESS", "engine=ONNX network=false elapsedMs=${System.currentTimeMillis() - startedAt} dimension=${it.size}")
         }
+        } catch (e: Exception) {
+            ApiCallTrace.log(traceId, source, "FAILURE", "engine=ONNX network=false elapsedMs=${System.currentTimeMillis() - startedAt} error=${e.javaClass.simpleName}")
+            throw e
+        }
+    }
 
     override suspend fun embedBatch(texts: List<String>): List<FloatArray> = texts.map { embed(it) }
+
+    override suspend fun embedBatch(texts: List<String>, source: String): List<FloatArray> =
+        texts.map { embed(it, source) }
 
     private fun normalize(vector: FloatArray): FloatArray {
         var norm = 0.0
