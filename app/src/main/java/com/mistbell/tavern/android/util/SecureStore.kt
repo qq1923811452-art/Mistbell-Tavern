@@ -31,7 +31,13 @@ object SecureStore {
     @Volatile
     private var cachedKey: SecretKey? = null
 
-    fun isEncrypted(value: String): Boolean = value.startsWith(PREFIX)
+    fun isEncrypted(value: String): Boolean {
+        if (!value.startsWith(PREFIX)) return false
+        return runCatching {
+            val payload = Base64.getDecoder().decode(value.removePrefix(PREFIX))
+            payload.size > IV_SIZE + TAG_BITS / 8
+        }.getOrDefault(false)
+    }
 
     /** Key names that may hold credentials or serialized provider secrets. */
     fun isSensitiveKey(key: String): Boolean {
@@ -59,7 +65,7 @@ object SecureStore {
 
     /** 读取敏感字段前调用；历史明文原样返回；密文解密失败返回空串（值已不可恢复，空串能让 UI 呈现"未配置"而非坏密钥）。 */
     fun unwrap(value: String): String {
-        if (value.isEmpty() || !isEncrypted(value)) return value
+        if (value.isEmpty() || !value.startsWith(PREFIX)) return value
         return try {
             val all = Base64.getDecoder().decode(value.removePrefix(PREFIX))
             require(all.size > IV_SIZE) { "ciphertext too short" }
