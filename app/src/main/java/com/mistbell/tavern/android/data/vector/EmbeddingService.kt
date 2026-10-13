@@ -13,6 +13,9 @@ interface EmbeddingService {
      */
     fun modelId(): String = this::class.java.name
 
+    /** Whether untagged legacy vectors are known to belong to this exact vector space. */
+    fun supportsLegacyVectors(): Boolean = false
+
     /**
      * 将文本转换为向量
      *
