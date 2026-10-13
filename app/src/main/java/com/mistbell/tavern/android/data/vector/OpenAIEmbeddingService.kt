@@ -24,7 +24,7 @@ import java.util.concurrent.TimeUnit
  *
  * 移植自后端 OpenAIEmbeddingService.java
  *
- * 使用 OpenAI 的 text-embedding-3-small 模型生成向量
+ * 使用可配置的 OpenAI 兼容 Embeddings 模型生成向量
  */
 class OpenAIEmbeddingService(
     private val apiKey: String,
@@ -201,7 +201,10 @@ class OpenAIEmbeddingService(
 
         val responseBody =
             response.body?.string()
-                ?: throw Exception("Empty response body")
+                ?: run {
+                    response.close()
+                    throw IllegalStateException("Empty response body")
+                }
 
         val embeddingResponse = json.decodeFromString<EmbeddingResponse>(responseBody)
 
