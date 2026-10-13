@@ -44,7 +44,7 @@ suspend fun storeUserMessageVector(
             throw e
         } catch (e: Exception) {
             // 向量存储失败不应影响主流程
-            Log.e(TAG, "Failed to store user message vector: ${e.message}", e)
+            Log.e(TAG, "Failed to store user message vector (${e.javaClass.simpleName})")
         }
     }
 }
@@ -79,7 +79,7 @@ suspend fun storeAssistantMessageVector(
             throw e
         } catch (e: Exception) {
             // 向量存储失败不应影响主流程
-            Log.e(TAG, "Failed to store assistant message vector: ${e.message}", e)
+            Log.e(TAG, "Failed to store assistant message vector (${e.javaClass.simpleName})")
         }
     }
 }
