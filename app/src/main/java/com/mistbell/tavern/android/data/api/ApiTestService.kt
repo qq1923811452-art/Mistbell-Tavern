@@ -51,7 +51,7 @@ internal fun normalizeApiBaseUrl(apiUrl: String): String {
  * 按接口类型拼模型列表端点。纯函数，便于单测。
  * - openai/custom：GET {base}/models（Bearer）
  * - anthropic：GET {base}/v1/models（x-api-key）
- * - gemini：GET {base}/v1beta/models（key 在 query）
+ * - gemini：GET {base}/v1beta/models（x-goog-api-key header）
  */
 internal fun resolveModelsUrl(
     apiUrl: String,
@@ -138,19 +138,13 @@ class ApiTestService {
                 val url = resolveModelsUrl(apiUrl, type)
                 val builder =
                     Request.Builder()
-                        .url(
-                            if (type == ApiType.GEMINI) {
-                                "$url?key=$apiKey"
-                            } else {
-                                url
-                            },
-                        )
+                        .url(url)
                 when (type) {
                     ApiType.ANTHROPIC -> {
                         builder.addHeader("x-api-key", apiKey)
                         builder.addHeader("anthropic-version", "2023-06-01")
                     }
-                    ApiType.GEMINI -> Unit // key 已在 query
+                    ApiType.GEMINI -> builder.addHeader("x-goog-api-key", apiKey)
                     else -> builder.addHeader("Authorization", "Bearer $apiKey")
                 }
 
@@ -277,7 +271,7 @@ class ApiTestService {
         }
     }
 
-    // ---- Gemini：POST /v1beta/models/{model}:generateContent（key 在 query）----
+    // ---- Gemini：POST /v1beta/models/{model}:generateContent（x-goog-api-key header）----
 
     private fun testGemini(
         apiUrl: String,
@@ -288,9 +282,9 @@ class ApiTestService {
         val effectiveModel = model.ifBlank { "gemini-2.0-flash" }
         val testUrl =
             if (base.endsWith("/v1beta")) {
-                "$base/models/$effectiveModel:generateContent?key=$apiKey"
+                "$base/models/$effectiveModel:generateContent"
             } else {
-                "$base/v1beta/models/$effectiveModel:generateContent?key=$apiKey"
+                "$base/v1beta/models/$effectiveModel:generateContent"
             }
 
         val requestBody =
@@ -316,6 +310,7 @@ class ApiTestService {
             Request.Builder()
                 .url(testUrl)
                 .addHeader("Content-Type", "application/json")
+                .addHeader("x-goog-api-key", apiKey)
                 .post(requestBody.toRequestBody("application/json".toMediaType()))
                 .build()
 
