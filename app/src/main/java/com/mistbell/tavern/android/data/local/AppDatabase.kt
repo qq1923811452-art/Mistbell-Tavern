@@ -25,7 +25,7 @@ import com.mistbell.tavern.android.data.local.entity.*
         ApiConfigEntity::class,
         CustomPromptEntity::class,
     ],
-    version = 26,
+    version = 27,
     // schema 导出到 app/schemas/，Room 编译期校验 + 迁移测试基线（ROADMAP"防静默清库"）
     exportSchema = true,
 )
@@ -563,6 +563,19 @@ abstract class AppDatabase : RoomDatabase() {
                 }
             }
 
+        internal val MIGRATION_26_27_SQL: List<String> =
+            listOf(
+                "ALTER TABLE messages ADD COLUMN prompt_context_snapshot_json TEXT NOT NULL DEFAULT ''",
+            )
+
+        @Suppress("MagicNumber")
+        internal val MIGRATION_26_27 =
+            object : Migration(26, 27) {
+                override fun migrate(db: SupportSQLiteDatabase) {
+                    MIGRATION_26_27_SQL.forEach(db::execSQL)
+                }
+            }
+
         fun getInstance(context: Context): AppDatabase {
             return instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
@@ -594,6 +607,7 @@ abstract class AppDatabase : RoomDatabase() {
                         MIGRATION_23_24,
                         MIGRATION_24_25,
                         MIGRATION_25_26,
+                        MIGRATION_26_27,
                     )
                     // 不移除上面的任何迁移，也不加 fallbackToDestructiveMigration：
                     // 遇到未覆盖的版本 Room 会直接抛 IllegalStateException（明确失败），
