@@ -37,6 +37,7 @@ private data class ThemeManifest(
  * 主题包仓库：导入/导出 zip、增删查、应用链 tokens 解析。
  * 皮肤级：纯数据 tokens，无代码执行。
  */
+@Suppress("TooManyFunctions")
 class ThemePackRepository(private val context: Context) {
     private val db get() = TavernApplication.instance.container.database
 
