@@ -3,6 +3,7 @@ package com.mistbell.tavern.android.util
 import android.content.Context
 import android.net.Uri
 import com.mistbell.tavern.android.data.local.entity.CharacterEntity
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.InputStream
 import java.util.zip.ZipInputStream
@@ -21,6 +22,10 @@ import java.util.zip.ZipInputStream
  * 规范参考：https://github.com/kwaroran/character-card-spec-v3
  */
 object CharxImporter {
+    private const val MAX_CHARX_ENTRIES = 2048
+    private const val MAX_CHARX_ENTRY_BYTES = 32L * 1024L * 1024L
+    private const val MAX_CHARX_TOTAL_BYTES = 128L * 1024L * 1024L
+
     data class CharxImportResult(
         val character: CharacterEntity,
         val assets: CharxAssets,
@@ -62,12 +67,19 @@ object CharxImporter {
         var backgroundData: ByteArray? = null
         val expressions = mutableMapOf<String, ByteArray>()
         val audioFiles = mutableMapOf<String, ByteArray>()
+        var totalBytes = 0L
+        var entryCount = 0
 
         ZipInputStream(inputStream).use { zip ->
             var entry = zip.nextEntry
             while (entry != null) {
+                entryCount++
+                require(entryCount <= MAX_CHARX_ENTRIES) { "CHARX 文件非法：条目数量超出限制" }
                 val name = entry.name
-                val data = zip.readBytes()
+                val remainingBytes = MAX_CHARX_TOTAL_BYTES - totalBytes
+                require(remainingBytes > 0L) { "CHARX 文件非法：解压内容超出大小限制" }
+                val data = readBoundedEntry(zip, minOf(MAX_CHARX_ENTRY_BYTES, remainingBytes))
+                totalBytes += data.size
 
                 when {
                     // 主卡片文件
@@ -156,6 +168,23 @@ object CharxImporter {
             assets = assets,
             warnings = warnings,
         )
+    }
+
+    private fun readBoundedEntry(
+        zip: ZipInputStream,
+        maxBytes: Long,
+    ): ByteArray {
+        val output = ByteArrayOutputStream()
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+        var total = 0L
+        while (true) {
+            val read = zip.read(buffer)
+            if (read < 0) break
+            total += read
+            require(total <= maxBytes) { "CHARX 文件非法：单个条目超出解压大小限制" }
+            output.write(buffer, 0, read)
+        }
+        return output.toByteArray()
     }
 
     /**
