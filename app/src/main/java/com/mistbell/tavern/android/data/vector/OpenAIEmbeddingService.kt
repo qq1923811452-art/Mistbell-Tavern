@@ -210,6 +210,8 @@ class OpenAIEmbeddingService(
         }
     }
 
+    override fun modelId(): String = "openai-compatible:$model:${baseUrl.trimEnd('/').hashCode()}"
+
     override fun getDimension(): Int = DIMENSION
 
     @Serializable
