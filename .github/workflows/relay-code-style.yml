@@ -87,7 +87,7 @@ jobs:
           }
           Path("/tmp/relay-context.json").write_text(json.dumps(context, ensure_ascii=False))
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
-              output.write("needs_ai=" + ("true" if exit_code != 0 else "false") + "\\n")
+              output.write("needs_ai=" + ("true" if exit_code != 0 else "false") + "\n")
           print("Captured complete checker output plus recent and formatter-produced Kotlin diffs.")
           print("AI patch required:", "yes" if exit_code != 0 else "no")
           PY
