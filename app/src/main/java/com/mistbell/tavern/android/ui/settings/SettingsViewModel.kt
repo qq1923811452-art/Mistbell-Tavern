@@ -278,10 +278,30 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     fun setEmbeddingSource(source: String) {
         viewModelScope.launch {
+            val normalized = source.lowercase().takeIf { it in setOf("auto", "api", "local") } ?: "auto"
             db.settingsDao().upsert(
-                com.mistbell.tavern.android.data.local.entity.SettingsEntity("embedding_source", source),
+                com.mistbell.tavern.android.data.local.entity.SettingsEntity("embedding_source", normalized),
             )
-            _message.value = "记忆源已保存，重启应用后生效"
+            val active =
+                runCatching {
+                    TavernApplication.instance.container.refreshEmbeddingSource(normalized)
+                }.onFailure {
+                    android.util.Log.e("Settings", "Failed to switch embedding source", it)
+                }.getOrDefault(false)
+
+            _message.value =
+                when {
+                    normalized == "local" && active ->
+                        "已立即切换到本地 ONNX。已有记忆保留；不同维度的旧向量会被跳过。"
+                    normalized == "local" ->
+                        "本地 ONNX 初始化失败，向量记忆暂不可用；未回退到远程 API。请检查本地模型文件。"
+                    active ->
+                        "记忆源已立即切换。已有记忆保留；不同维度的旧向量会被跳过。"
+                    normalized == "api" ->
+                        "记忆源已保存，但 Embedding API 不可用或未配置密钥；向量记忆暂不可用。"
+                    else ->
+                        "记忆源已保存，但当前没有可用的 Embedding 服务；将使用词法记忆回退。"
+                }
         }
     }
 
