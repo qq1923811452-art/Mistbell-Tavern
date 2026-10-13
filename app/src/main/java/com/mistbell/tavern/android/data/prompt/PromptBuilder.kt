@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import java.security.MessageDigest
 import java.time.Instant
 
 object PromptBuilder {
@@ -242,6 +243,8 @@ object PromptBuilder {
         val totalEstimatedTokens: Int,
         val truncationReasons: List<String> = emptyList(),
         val protocolConversionResults: List<String> = emptyList(),
+        /** Fingerprint of stable prompt configuration; stale snapshots are never replayed. */
+        val cacheFingerprint: String = "",
         /** Exact dynamic prompt suffix for provider-compatible prefix-cache replay in the next turn. */
         val cacheContextSnapshot: List<ChatMessage> = emptyList(),
     ) {
@@ -338,6 +341,12 @@ object PromptBuilder {
     // 当成"估算偏低"），实测证明 1.6 只差 5%，1.15 反而高估 26%
     private const val ASCII_CHARS_PER_TOKEN = 4.0
     private const val CJK_CHARS_PER_TOKEN = 1.5
+    @Serializable
+    private data class PromptCacheSnapshotEnvelope(
+        val fingerprint: String,
+        val messages: List<ChatMessage>,
+    )
+
     private const val PROMPT_CACHE_SNAPSHOT_MAX_TOKENS = 4096
     private const val PROMPT_CACHE_REPLY_RESERVE_TOKENS = 768
     private const val MIN_HISTORY_BUDGET_TOKENS = 256
@@ -412,11 +421,27 @@ object PromptBuilder {
         val messages = mutableListOf<Segment>()
 
         val session = db.sessionDao().get(sessionId, ownerId, characterId)
-        // Snapshots only preserve message-order prefixes for OpenAI-compatible chat protocols.
-        val cacheSnapshotEnabled = supportsPromptPrefixSnapshots(db, session?.providerId)
         // 三态覆盖语义（SETTINGS.md 分层原则）：会话显式值 > 全局当前默认 > 内置兜底，
         // 统一经 ChatSettingsResolver 解析——不再在此硬编码 4096 兜底
         val settingsDao = db.settingsDao()
+        // Resolve the same effective provider family used by session-level configuration.
+        // API keys are intentionally excluded from this identity.
+        val cacheProviderConfig =
+            session?.providerId
+                ?.takeIf { it.isNotBlank() }
+                ?.let { db.apiConfigDao().getById(it) }
+                ?: db.apiConfigDao().getDefault()
+        val cacheSnapshotEnabled =
+            cacheProviderConfig == null || cacheProviderConfig.type == "openai" || cacheProviderConfig.type == "custom"
+        val cacheProviderIdentity =
+            listOf(
+                session?.providerId.orEmpty(),
+                cacheProviderConfig?.id.orEmpty(),
+                cacheProviderConfig?.type ?: "openai",
+                cacheProviderConfig?.apiUrl?.trimEnd('/') ?: settingsDao.getValue("llm_base_url").orEmpty(),
+                cacheProviderConfig?.model ?: settingsDao.getValue("llm_model").orEmpty(),
+                session?.modelId.orEmpty(),
+            ).joinToString("\u001f")
         val contextTokenLimit =
             ChatSettingsResolver.contextTokenLimit(
                 session,
@@ -577,6 +602,64 @@ object PromptBuilder {
             messages.addSegment("system", it, "世界书·示例消息后")
         }
 
+        val cacheFingerprint =
+            promptCacheFingerprint(
+                buildList {
+                    add("prompt-cache-fingerprint-v1")
+                    add(ownerId)
+                    add(characterId)
+                    add(sessionId)
+                    add(cacheProviderIdentity)
+                    add(contextTokenLimit.toString())
+                    add(longTermMemoryEnabled.toString())
+                    add(session?.authorNote.orEmpty())
+                    add(session?.worldBookId.orEmpty())
+                    add(session?.mode.orEmpty())
+                    add(session?.modeConfigJson.orEmpty())
+                    add(userName)
+                    add(userPersona)
+                    add(mctx.char)
+                    add(mctx.description)
+                    add(mctx.personality)
+                    add(mctx.scenario)
+                    participantCharacters.forEach { participant ->
+                        add(participant.id)
+                        add(participant.name)
+                        add(participant.description)
+                        add(participant.personality)
+                        add(participant.scenario)
+                        add(participant.mesExample)
+                        add(participant.worldBookId)
+                        add(participant.dataJson)
+                    }
+                    worldBookEntries
+                        .sortedWith(compareBy<WorldBookEntryEntity>({ it.bookId }, { it.order }, { it.id }))
+                        .forEach { entry ->
+                            add(entry.bookId)
+                            add(entry.id)
+                            add(entry.comment)
+                            add(entry.keysJson)
+                            add(entry.secondaryKeysJson)
+                            add(entry.content)
+                            add(entry.constant.toString())
+                            add(entry.disable.toString())
+                            add(entry.order.toString())
+                            add(entry.insertPosition)
+                            add(entry.depth.toString())
+                            add(entry.probability.toString())
+                            add(entry.depthRole)
+                            add(entry.sticky.toString())
+                            add(entry.cooldown.toString())
+                            add(entry.delay.toString())
+                            add(entry.groupName)
+                        }
+                    messages.forEach { segment ->
+                        add(segment.message.role)
+                        add(segment.message.content)
+                    }
+                },
+            )
+
         // 长期记忆（结构化召回 + 向量/词法召回）：**先构建、暂不注入**。
         //
         // 注入点在历史之后、最终用户消息之前（见 @D 块之后）：召回集合由当前用户消息决定，
@@ -614,12 +697,15 @@ object PromptBuilder {
                         null
                     } else {
                         runCatching {
-                            message.id to
+                            val snapshot =
                                 Json.decodeFromString(
-                                    ListSerializer(ChatMessage.serializer()),
+                                    PromptCacheSnapshotEnvelope.serializer(),
                                     rawSnapshot,
                                 )
-                        }.getOrNull()?.takeIf { it.second.isNotEmpty() }
+                            message.id to snapshot.takeIf { it.fingerprint == cacheFingerprint }?.messages
+                        }.getOrNull()?.let { (messageId, snapshotMessages) ->
+                            snapshotMessages?.takeIf { it.isNotEmpty() }?.let { messageId to it }
+                        }
                     }
                 }.toMap().toMutableMap()
             } else {
@@ -850,6 +936,7 @@ object PromptBuilder {
                     "Gemini: system -> systemInstruction; assistant -> model; others -> user",
                     "Thinking remains on the unified message model and is mapped by provider response parsers",
                 ),
+            cacheFingerprint = cacheFingerprint,
             cacheContextSnapshot = cacheContextSnapshot,
         )
     }
@@ -902,6 +989,21 @@ object PromptBuilder {
             ?: GROUP_SPEAKER_FALLBACK_NAME
 
     // internal 仅为单元测试开放（ROADMAP M2-2：token 预算截断逻辑需要回归测试）
+    internal fun promptCacheFingerprint(fields: List<String>): String {
+        val canonical =
+            buildString {
+                fields.forEach { field ->
+                    append(field.length)
+                    append(':')
+                    append(field)
+                }
+            }
+        val digest = MessageDigest.getInstance("SHA-256").digest(canonical.toByteArray(Charsets.UTF_8))
+        return digest.joinToString("") { byte -> "%02x".format(byte.toInt() and BYTE_MASK) }
+    }
+
+    private const val BYTE_MASK = 0xff
+
     internal fun selectHistoryWithinBudget(
         recentMessages: List<MessageEntity>,
         currentMessages: List<ChatMessage>,
@@ -991,16 +1093,6 @@ object PromptBuilder {
 
         /** 预算用：一律按含召回块计算（偏保守，不会撑爆上下文） */
         fun allMessages(): List<ChatMessage> = listOfNotNull(structuredBlock, recallBlock)
-    }
-
-    private suspend fun supportsPromptPrefixSnapshots(
-        db: AppDatabase,
-        sessionProviderId: String?,
-    ): Boolean {
-        val selectedConfig =
-            sessionProviderId?.takeIf { it.isNotBlank() }?.let { db.apiConfigDao().getById(it) }
-                ?: db.apiConfigDao().getDefault()
-        return selectedConfig == null || selectedConfig.type == "openai" || selectedConfig.type == "custom"
     }
 
     private suspend fun buildMemoryContext(
