@@ -1,4 +1,5 @@
 name: One-time Kotlin formatting repair
+# Trigger formatter after workflow becomes available on the default branch
 
 on:
   push:
