@@ -39,7 +39,7 @@ jobs:
 
       - name: License audit (advisory until upstream plugin issue is fixed)
         continue-on-error: true
-        run: ./gradlew licenseGuard --no-daemon --no-parallel
+        run: ./gradlew licenseGuard --stacktrace --no-daemon --no-parallel
 
       - name: Upload debug APK
         if: success()
