@@ -32,7 +32,7 @@ object SecureStore {
 
     fun isEncrypted(value: String): Boolean = value.startsWith(PREFIX)
 
-    /** 写入敏感字段前调用；失败时退回明文存储（宁可弱存储也不丢数据）。 */
+    /** 写入敏感字段前调用；加密失败时拒绝保存，避免静默落盘明文。 */
     fun wrap(plain: String): String {
         if (plain.isEmpty() || isEncrypted(plain)) return plain
         return try {
@@ -42,8 +42,8 @@ object SecureStore {
             val ciphertext = cipher.doFinal(plain.toByteArray(Charsets.UTF_8))
             PREFIX + Base64.getEncoder().encodeToString(iv + ciphertext)
         } catch (e: Exception) {
-            Log.w(TAG, "encrypt failed, falling back to plaintext", e)
-            plain
+            Log.e(TAG, "encrypt failed; sensitive value was not saved", e)
+            throw IllegalStateException("Unable to encrypt sensitive data; value was not saved", e)
         }
     }
 
