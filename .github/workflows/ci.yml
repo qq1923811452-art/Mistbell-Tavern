@@ -27,6 +27,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: mistbell-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   verify:
     name: Build, unit tests, static checks, and APK
