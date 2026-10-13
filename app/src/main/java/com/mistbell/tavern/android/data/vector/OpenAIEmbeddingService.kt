@@ -1,6 +1,8 @@
 package com.mistbell.tavern.android.data.vector
 
 import android.util.Log
+import com.mistbell.tavern.android.data.api.ApiCallTrace
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -12,6 +14,9 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
 import java.net.SocketTimeoutException
+import java.nio.charset.StandardCharsets
+import java.security.MessageDigest
+import java.util.LinkedHashMap
 import java.util.concurrent.TimeUnit
 
 /**
@@ -41,15 +46,80 @@ class OpenAIEmbeddingService(
 
     companion object {
         private const val TAG = "OpenAIEmbedding"
-        private const val DIMENSION = 1536
         private const val MAX_RETRIES = 3
+        private const val EMBEDDING_CACHE_SIZE = 512
+        private const val CACHE_LOAD_FACTOR = 0.75f
         private const val INITIAL_RETRY_DELAY_MS = 1000L
         private const val ENDPOINT_FINGERPRINT_BYTES = 8
         private const val ENDPOINT_FINGERPRINT_HEX_LENGTH = ENDPOINT_FINGERPRINT_BYTES * 2
         private const val BYTE_MASK = 0xff
     }
 
-    override suspend fun embed(text: String): FloatArray =
+    private val cacheLock = Any()
+    private val embeddingCache =
+        object : LinkedHashMap<String, FloatArray>(EMBEDDING_CACHE_SIZE + 1, CACHE_LOAD_FACTOR, true) {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, FloatArray>?): Boolean =
+                size > EMBEDDING_CACHE_SIZE
+        }
+    @Volatile
+    private var lastKnownDimension = 0
+
+    private fun cacheKey(text: String): String {
+        val input = "${modelId()}\\u0000$text".toByteArray(StandardCharsets.UTF_8)
+        return MessageDigest.getInstance("SHA-256").digest(input)
+            .joinToString("") { byte -> "%02x".format(byte.toInt() and BYTE_MASK) }
+    }
+
+    private fun cachedEmbedding(text: String): FloatArray? =
+        synchronized(cacheLock) { embeddingCache[cacheKey(text)]?.clone() }
+
+    private fun rememberEmbedding(text: String, embedding: FloatArray) {
+        synchronized(cacheLock) { embeddingCache[cacheKey(text)] = embedding.clone() }
+    }
+
+    override suspend fun embed(text: String): FloatArray = embed(text, "EMBEDDING_UNSPECIFIED")
+
+    @Suppress("TooGenericExceptionCaught")
+    override suspend fun embed(text: String, source: String): FloatArray =
+        withContext(Dispatchers.IO) {
+            val traceId = ApiCallTrace.newId()
+            val startedAt = System.currentTimeMillis()
+            cachedEmbedding(text)?.let { cached ->
+                ApiCallTrace.log(traceId, source, "CACHE_HIT", "engine=remote model=$model dimension=${cached.size}")
+                return@withContext cached
+            }
+            ApiCallTrace.log(
+                traceId,
+                source,
+                "START",
+                "engine=remote model=$model endpoint=${ApiCallTrace.safeEndpoint("$baseUrl/embeddings")} operation=single",
+            )
+            try {
+                val embedding = embedUncached(text)
+                rememberEmbedding(text, embedding)
+                lastKnownDimension = embedding.size
+                ApiCallTrace.log(
+                    traceId,
+                    source,
+                    "SUCCESS",
+                    "engine=remote model=$model dimension=${embedding.size} elapsedMs=${System.currentTimeMillis() - startedAt}",
+                )
+                embedding.clone()
+            } catch (e: CancellationException) {
+                ApiCallTrace.log(traceId, source, "CANCELLED", "engine=remote model=$model")
+                throw e
+            } catch (e: Exception) {
+                ApiCallTrace.log(
+                    traceId,
+                    source,
+                    "FAILURE",
+                    "engine=remote model=$model elapsedMs=${System.currentTimeMillis() - startedAt} error=${e.javaClass.simpleName}",
+                )
+                throw e
+            }
+        }
+
+    private suspend fun embedUncached(text: String): FloatArray =
         withContext(Dispatchers.IO) {
             var lastException: Exception? = null
 
@@ -67,7 +137,7 @@ class OpenAIEmbeddingService(
                     lastException = e
                     if (attempt < MAX_RETRIES - 1) {
                         val delayMs = INITIAL_RETRY_DELAY_MS * (1 shl attempt)
-                        Log.w(TAG, "Network error, retry ${attempt + 1}/$MAX_RETRIES after ${delayMs}ms: ${e.message}")
+                        Log.w(TAG, "Network error, retry ${attempt + 1}/$MAX_RETRIES after ${delayMs}ms (${e.javaClass.simpleName})")
                         delay(delayMs)
                     }
                 } catch (e: Exception) {
@@ -135,6 +205,45 @@ class OpenAIEmbeddingService(
     }
 
     override suspend fun embedBatch(texts: List<String>): List<FloatArray> =
+        embedBatch(texts, "EMBEDDING_BATCH_UNSPECIFIED")
+
+    @Suppress("TooGenericExceptionCaught")
+    override suspend fun embedBatch(texts: List<String>, source: String): List<FloatArray> =
+        withContext(Dispatchers.IO) {
+            val traceId = ApiCallTrace.newId()
+            val startedAt = System.currentTimeMillis()
+            ApiCallTrace.log(
+                traceId,
+                source,
+                "START",
+                "engine=remote model=$model operation=batch itemCount=${texts.size}",
+            )
+            try {
+                val embeddings = embedBatchUncached(texts)
+                texts.zip(embeddings).forEach { (text, embedding) -> rememberEmbedding(text, embedding) }
+                embeddings.firstOrNull()?.let { lastKnownDimension = it.size }
+                ApiCallTrace.log(
+                    traceId,
+                    source,
+                    "SUCCESS",
+                    "engine=remote model=$model itemCount=${embeddings.size} dimension=${embeddings.firstOrNull()?.size ?: 0} elapsedMs=${System.currentTimeMillis() - startedAt}",
+                )
+                embeddings.map(FloatArray::clone)
+            } catch (e: CancellationException) {
+                ApiCallTrace.log(traceId, source, "CANCELLED", "engine=remote model=$model operation=batch")
+                throw e
+            } catch (e: Exception) {
+                ApiCallTrace.log(
+                    traceId,
+                    source,
+                    "FAILURE",
+                    "engine=remote model=$model operation=batch elapsedMs=${System.currentTimeMillis() - startedAt} error=${e.javaClass.simpleName}",
+                )
+                throw e
+            }
+        }
+
+    private suspend fun embedBatchUncached(texts: List<String>): List<FloatArray> =
         withContext(Dispatchers.IO) {
             var lastException: Exception? = null
 
@@ -152,7 +261,7 @@ class OpenAIEmbeddingService(
                     lastException = e
                     if (attempt < MAX_RETRIES - 1) {
                         val delayMs = INITIAL_RETRY_DELAY_MS * (1 shl attempt)
-                        Log.w(TAG, "Network error, retry ${attempt + 1}/$MAX_RETRIES after ${delayMs}ms: ${e.message}")
+                        Log.w(TAG, "Network error, retry ${attempt + 1}/$MAX_RETRIES after ${delayMs}ms (${e.javaClass.simpleName})")
                         delay(delayMs)
                     }
                 } catch (e: Exception) {
@@ -230,7 +339,7 @@ class OpenAIEmbeddingService(
         return "openai-compatible:$model:$endpointFingerprint"
     }
 
-    override fun getDimension(): Int = DIMENSION
+    override fun getDimension(): Int = lastKnownDimension
 
     @Serializable
     private data class EmbeddingRequestSingle(
