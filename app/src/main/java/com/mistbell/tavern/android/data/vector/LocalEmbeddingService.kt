@@ -93,7 +93,8 @@ class LocalEmbeddingService private constructor(
                     traceId,
                     source,
                     "SUCCESS",
-                    "engine=ONNX network=false elapsedMs=${System.currentTimeMillis() - startedAt} dimension=${embedding.size}",
+                    "engine=ONNX network=false " +
+                        "elapsedMs=${System.currentTimeMillis() - startedAt} dimension=${embedding.size}",
                 )
                 embedding
             } catch (e: CancellationException) {
@@ -104,7 +105,8 @@ class LocalEmbeddingService private constructor(
                     traceId,
                     source,
                     "FAILURE",
-                    "engine=ONNX network=false elapsedMs=${System.currentTimeMillis() - startedAt} error=${e.javaClass.simpleName}",
+                    "engine=ONNX network=false " +
+                        "elapsedMs=${System.currentTimeMillis() - startedAt} error=${e.javaClass.simpleName}",
                 )
                 throw e
             }
