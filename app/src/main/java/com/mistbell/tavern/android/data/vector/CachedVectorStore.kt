@@ -16,6 +16,7 @@ import kotlinx.coroutines.sync.withLock
  * - LRU 缓存策略，避免内存过度占用
  * - 写操作完成后使搜索缓存失效，并防止并发中的旧搜索结果重新写入缓存
  */
+@Suppress("TooManyFunctions")
 class CachedVectorStore(
     private val delegate: VectorStore,
     cacheSize: Int = 50,
