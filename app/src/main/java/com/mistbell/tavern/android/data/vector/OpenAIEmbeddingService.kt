@@ -97,7 +97,8 @@ class OpenAIEmbeddingService(
                 traceId,
                 source,
                 "START",
-                "engine=remote model=$model endpoint=${ApiCallTrace.safeEndpoint("$baseUrl/embeddings")} operation=single",
+                "engine=remote model=$model " +
+                    "endpoint=${ApiCallTrace.safeEndpoint("$baseUrl/embeddings")} operation=single",
             )
             try {
                 val embedding = embedUncached(text)
@@ -119,7 +120,8 @@ class OpenAIEmbeddingService(
                     traceId,
                     source,
                     "FAILURE",
-                    "engine=remote model=$model elapsedMs=${System.currentTimeMillis() - startedAt} error=${e.javaClass.simpleName}",
+                    "engine=remote model=$model " +
+                        "elapsedMs=${System.currentTimeMillis() - startedAt} error=${e.javaClass.simpleName}",
                 )
                 throw e
             }
@@ -143,7 +145,11 @@ class OpenAIEmbeddingService(
                     lastException = e
                     if (attempt < MAX_RETRIES - 1) {
                         val delayMs = INITIAL_RETRY_DELAY_MS * (1 shl attempt)
-                        Log.w(TAG, "Network error, retry ${attempt + 1}/$MAX_RETRIES after ${delayMs}ms (${e.javaClass.simpleName})")
+                        Log.w(
+                            TAG,
+                            "Network error, retry ${attempt + 1}/$MAX_RETRIES " +
+                                "after ${delayMs}ms (${e.javaClass.simpleName})",
+                        )
                         delay(delayMs)
                     }
                 } catch (e: Exception) {
