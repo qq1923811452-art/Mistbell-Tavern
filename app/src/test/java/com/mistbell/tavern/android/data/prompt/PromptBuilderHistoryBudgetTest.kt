@@ -112,10 +112,11 @@ class PromptBuilderHistoryBudgetTest {
                 contextTokenLimit = 512,
                 promptCacheSnapshots =
                     mapOf(
-                        "m2" to listOf(
-                            ChatMessage("system", small),
-                            ChatMessage("user", huge),
-                        ),
+                        "m2" to
+                            listOf(
+                                ChatMessage("system", small),
+                                ChatMessage("user", huge),
+                            ),
                     ),
             )
 
