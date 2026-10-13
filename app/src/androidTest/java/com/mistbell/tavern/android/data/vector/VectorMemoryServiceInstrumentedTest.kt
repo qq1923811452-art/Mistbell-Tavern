@@ -17,102 +17,112 @@ class VectorMemoryServiceInstrumentedTest {
     private lateinit var store: InMemoryVectorStore
 
     @Before
-    fun setUp() = runBlocking {
-        context = ApplicationProvider.getApplicationContext()
-        store = InMemoryVectorStore(context)
-        store.clear()
+    fun setUp() {
+        runBlocking {
+            context = ApplicationProvider.getApplicationContext()
+            store = InMemoryVectorStore(context)
+            store.clear()
+        }
     }
 
     @After
-    fun tearDown() = runBlocking {
-        store.clear()
+    fun tearDown() {
+        runBlocking {
+            store.clear()
+        }
     }
 
     @Test
-    fun identicalStoreAndSearchTextUsesOneEmbeddingRequest() = runBlocking {
-        val embedding = CountingEmbeddingService("test-model-v1", floatArrayOf(1f, 0f, 0f))
-        val service = VectorMemoryService(store, embedding)
+    fun identicalStoreAndSearchTextUsesOneEmbeddingRequest() {
+        runBlocking {
+            val embedding = CountingEmbeddingService("test-model-v1", floatArrayOf(1f, 0f, 0f))
+            val service = VectorMemoryService(store, embedding)
 
-        service.storeMessage(
-            content = "The user prefers concise replies",
-            ownerId = "owner",
-            characterId = "character",
-            sessionId = "session",
-            messageId = "message-1",
-            contentType = "user_message",
-        )
-        val results = service.searchRelevantMemories(
-            query = "The user prefers concise replies",
-            ownerId = "owner",
-            characterId = "character",
-            sessionId = "session",
-            topK = 5,
-        )
+            service.storeMessage(
+                content = "The user prefers concise replies",
+                ownerId = "owner",
+                characterId = "character",
+                sessionId = "session",
+                messageId = "message-1",
+                contentType = "user_message",
+            )
+            val results = service.searchRelevantMemories(
+                query = "The user prefers concise replies",
+                ownerId = "owner",
+                characterId = "character",
+                sessionId = "session",
+                topK = 5,
+            )
 
-        assertEquals(1, embedding.calls)
-        assertEquals(1, results.size)
-        assertEquals("test-model-v1", results.single().metadata["embedding_model"])
+            assertEquals(1, embedding.calls)
+            assertEquals(1, results.size)
+            assertEquals("test-model-v1", results.single().metadata["embedding_model"])
+        }
     }
 
     @Test
-    fun vectorsFromDifferentModelIdentitiesAreNeverMixed() = runBlocking {
-        val original = VectorMemoryService(
-            store,
-            CountingEmbeddingService("model-a", floatArrayOf(1f, 0f, 0f)),
-        )
-        original.storeMessage(
-            content = "A remembered fact",
-            ownerId = "owner",
-            characterId = "character",
-            sessionId = "session",
-            messageId = "message-2",
-            contentType = "user_message",
-        )
+    fun vectorsFromDifferentModelIdentitiesAreNeverMixed() {
+        runBlocking {
+            val original = VectorMemoryService(
+                store,
+                CountingEmbeddingService("model-a", floatArrayOf(1f, 0f, 0f)),
+            )
+            original.storeMessage(
+                content = "A remembered fact",
+                ownerId = "owner",
+                characterId = "character",
+                sessionId = "session",
+                messageId = "message-2",
+                contentType = "user_message",
+            )
 
-        val switched = VectorMemoryService(
-            store,
-            CountingEmbeddingService("model-b", floatArrayOf(1f, 0f, 0f)),
-        )
-        val results = switched.searchRelevantMemories(
-            query = "A remembered fact",
-            ownerId = "owner",
-            characterId = "character",
-            sessionId = "session",
-            topK = 5,
-        )
+            val switched = VectorMemoryService(
+                store,
+                CountingEmbeddingService("model-b", floatArrayOf(1f, 0f, 0f)),
+            )
+            val results = switched.searchRelevantMemories(
+                query = "A remembered fact",
+                ownerId = "owner",
+                characterId = "character",
+                sessionId = "session",
+                topK = 5,
+            )
 
-        assertTrue("Different embedding spaces must not return each other's vectors", results.isEmpty())
-        val originalResults = original.searchRelevantMemories(
-            query = "A remembered fact",
-            ownerId = "owner",
-            characterId = "character",
-            sessionId = "session",
-            topK = 5,
-        )
-        assertEquals(1, originalResults.size)
+            assertTrue("Different embedding spaces must not return each other's vectors", results.isEmpty())
+            val originalResults = original.searchRelevantMemories(
+                query = "A remembered fact",
+                ownerId = "owner",
+                characterId = "character",
+                sessionId = "session",
+                topK = 5,
+            )
+            assertEquals(1, originalResults.size)
+        }
     }
 
     @Test
-    fun vectorStorePersistsEntriesAcrossInstances() = runBlocking {
-        store.add(
-            id = "persisted-vector",
-            vector = floatArrayOf(1f, 0f),
-            metadata = mapOf(
-                "owner_id" to "owner",
-                "embedding_model" to "persist-model",
-                "content" to "persistent fact",
-            ),
-        )
+    fun vectorStorePersistsEntriesAcrossInstances() {
+        runBlocking {
+            store.add(
+                id = "persisted-vector",
+                vector = floatArrayOf(1f, 0f),
+                metadata = mapOf(
+                    "owner_id" to "owner",
+                    "embedding_model" to "persist-model",
+                    "content" to "persistent fact",
+                ),
+            )
 
-        val reopened = InMemoryVectorStore(context)
-        val results = reopened.search(
-            queryVector = floatArrayOf(1f, 0f),
-            topK = 1,
-            filters = mapOf("owner_id" to "owner", "embedding_model" to "persist-model"),
-        )
+            val reopened = InMemoryVectorStore(context)
+            val results = reopened.search(
+                queryVector = floatArrayOf(1f, 0f),
+                topK = 1,
+                filters = mapOf("owner_id" to "owner", "embedding_model" to "persist-model"),
+            )
 
-        assertEquals(1, results.size)
-        assertEquals("persistent fact", results.single().content)
+            assertEquals(1, results.size)
+            assertEquals("persistent fact", results.single().content)
+        }
     }
 
     private class CountingEmbeddingService(
