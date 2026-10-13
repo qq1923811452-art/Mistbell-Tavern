@@ -44,19 +44,23 @@ class OpenAIEmbeddingService(
     // 只缓存进程内数据；键使用 SHA-256，避免把完整聊天原文作为缓存键长期保留。
     private val cacheLock = Any()
     private val embeddingCache =
-        object : LinkedHashMap<String, FloatArray>(EMBEDDING_CACHE_SIZE + 1, 0.75f, true) {
+        object : LinkedHashMap<String, FloatArray>(EMBEDDING_CACHE_SIZE + 1, CACHE_LOAD_FACTOR, true) {
             override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, FloatArray>?): Boolean =
                 size > EMBEDDING_CACHE_SIZE
         }
 
     private fun cacheKey(text: String): String {
-        val digest = MessageDigest.getInstance("SHA-256")
-            .digest(text.toByteArray(StandardCharsets.UTF_8))
+        val digest =
+            MessageDigest.getInstance("SHA-256")
+                .digest(text.toByteArray(StandardCharsets.UTF_8))
         return digest.joinToString(separator = "") { byte -> "%02x".format(byte) }
     }
 
-    private fun cachedEmbedding(text: String): FloatArray? =
-        synchronized(cacheLock) { embeddingCache[cacheKey(text)]?.clone() }
+    private fun cachedEmbedding(text: String): FloatArray? {
+        return synchronized(cacheLock) {
+            embeddingCache[cacheKey(text)]?.clone()
+        }
+    }
 
     private fun rememberEmbedding(text: String, embedding: FloatArray) {
         synchronized(cacheLock) {
@@ -70,6 +74,7 @@ class OpenAIEmbeddingService(
         private const val MAX_RETRIES = 3
         private const val INITIAL_RETRY_DELAY_MS = 1000L
         private const val EMBEDDING_CACHE_SIZE = 512
+        private const val CACHE_LOAD_FACTOR = 0.75f
     }
 
     override suspend fun embed(text: String): FloatArray =
@@ -183,6 +188,7 @@ class OpenAIEmbeddingService(
             }
         }
 
+    @Suppress("NestedBlockDepth")
     private suspend fun requestEmbedBatchWithRetry(texts: List<String>): List<FloatArray> {
         var lastException: Exception? = null
         for (attempt in 0 until MAX_RETRIES) {
