@@ -29,9 +29,10 @@ import kotlinx.coroutines.launch
 @Composable
 fun EmbeddingApiSettingsSection() {
     val context = LocalContext.current
-    val prefs = remember(context) {
-        context.getSharedPreferences("tavern_settings", Context.MODE_PRIVATE)
-    }
+    val prefs =
+        remember(context) {
+            context.getSharedPreferences("tavern_settings", Context.MODE_PRIVATE)
+        }
     val scope = rememberCoroutineScope()
     var apiKey by remember {
         mutableStateOf(SecureStore.unwrap(prefs.getString("embedding_api_key", "") ?: ""))
@@ -82,18 +83,21 @@ fun EmbeddingApiSettingsSection() {
                     baseUrl = normalizedUrl
                     status = "配置已保存，正在刷新记忆服务…"
                     scope.launch {
-                        val source = runCatching {
-                            TavernApplication.instance.container.database.settingsDao()
-                                .getValue("embedding_source") ?: "auto"
-                        }.getOrDefault("auto")
-                        val active = runCatching {
-                            TavernApplication.instance.container.refreshEmbeddingSource(source)
-                        }.getOrDefault(false)
-                        status = when {
-                            active -> "已保存并立即生效，Embedding 服务已启用。"
-                            apiKey.isBlank() -> "已保存。密钥为空，向量记忆 API 暂不可用。"
-                            else -> "已保存，但服务未能启用；请检查 API 地址、密钥和模型兼容性。"
-                        }
+                        val source =
+                            runCatching {
+                                TavernApplication.instance.container.database.settingsDao()
+                                    .getValue("embedding_source") ?: "auto"
+                            }.getOrDefault("auto")
+                        val active =
+                            runCatching {
+                                TavernApplication.instance.container.refreshEmbeddingSource(source)
+                            }.getOrDefault(false)
+                        status =
+                            when {
+                                active -> "已保存并立即生效，Embedding 服务已启用。"
+                                apiKey.isBlank() -> "已保存。密钥为空，向量记忆 API 暂不可用。"
+                                else -> "已保存，但服务未能启用；请检查 API 地址、密钥和模型兼容性。"
+                            }
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
