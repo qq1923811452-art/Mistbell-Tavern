@@ -23,8 +23,10 @@ data class ApiConfigEntity(
     // 接口类型：openai / anthropic / gemini / custom（custom = 任意 OpenAI 兼容网关）
     val type: String = "openai",
     // 1M 上下文开关（解锁 1M 档位）
+    @ColumnInfo(defaultValue = "0")
     val context1m: Boolean = false,
     // SSE 流式传输开关：按 API 配置独立控制，关闭后使用整包响应
+    @ColumnInfo(defaultValue = "1")
     val streamingEnabled: Boolean = true,
     // 思考模式开关：true = 禁用思考（请求体发 thinking:{"type":"disabled"}）。
     // 迁移默认 0（保持老配置原行为不变）；新建配置时 UI 默认置 ON。
