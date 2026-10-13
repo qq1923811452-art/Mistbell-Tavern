@@ -88,8 +88,10 @@ class AppContainer(private val appContext: Context) {
 
     @Suppress("TooGenericExceptionCaught")
     private suspend fun assembleEmbeddingService(sourceOverride: String? = null): EmbeddingService {
-        val source = sourceOverride
-            ?: runCatching { database.settingsDao().getValue("embedding_source") }.getOrNull()
+        val source =
+            sourceOverride ?: runCatching {
+                database.settingsDao().getValue("embedding_source")
+            }.getOrNull()
         return try {
             when (source) {
                 "local" -> {
