@@ -368,7 +368,7 @@ object PromptBuilder {
                 groupContext,
                 groupNudge,
             )
-        if (!currentMessageId.isNullOrBlank() && groupNudge == null && trace.cacheContextSnapshot.isNotEmpty()) {
+        if (!currentMessageId.isNullOrBlank() && groupNudge == null) {
             val snapshotJson =
                 Json.encodeToString(
                     ListSerializer(ChatMessage.serializer()),
