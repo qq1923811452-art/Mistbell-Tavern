@@ -171,13 +171,7 @@ class BackupManager(private val context: Context) {
         }
 
         /** Treat credential-bearing keys as sensitive even when importing an untrusted backup. */
-        internal fun isSensitiveSettingKey(key: String): Boolean {
-            val normalized = key.lowercase(Locale.ROOT)
-            return normalized == "providers_json" ||
-                normalized == "llm_api_key" ||
-                normalized.contains("api_key") ||
-                normalized.contains("apikey")
-        }
+        internal fun isSensitiveSettingKey(key: String): Boolean = SecureStore.isSensitiveKey(key)
 
         /** settings 恢复条目：敏感值必须重新加密，不能信任备份中的 sensitive 标志。 */
         fun toSettingsEntity(entry: SettingsBackupEntry): SettingsEntity =
