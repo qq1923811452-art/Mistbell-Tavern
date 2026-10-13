@@ -28,11 +28,6 @@ jobs:
       - name: Ensure gradlew executable（防御 Windows 提交丢失可执行位）
         run: chmod +x gradlew
 
-      - name: Apply Kotlin formatting
-        # Keep CI formatting behavior aligned with the verified APK workflow.
-        # The ktlintCheck task below remains a required gate after formatting.
-        run: ./gradlew :app:ktlintFormat --rerun-tasks --no-daemon --no-parallel || echo "Formatting reported baseline/style issues; continuing to the required ktlintCheck gate."
-
       - name: Build & Verify
         # Build + unit tests + detekt + ktlint. License audit is a required gate below.
         run: ./gradlew :app:assembleDebug :app:testDebugUnitTest :app:detekt :app:ktlintCheck --continue --no-daemon --no-parallel
