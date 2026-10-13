@@ -9,6 +9,7 @@ import com.mistbell.tavern.android.data.api.LlmConfig
 import com.mistbell.tavern.android.data.repository.BackupManager
 import com.mistbell.tavern.android.data.repository.ChatSettingsResolver
 import com.mistbell.tavern.android.data.repository.SettingsRepository
+import com.mistbell.tavern.android.data.vector.VectorCacheStatistics
 import com.mistbell.tavern.android.ui.components.CONTEXT_TOKEN_MAX
 import com.mistbell.tavern.android.ui.components.CONTEXT_TOKEN_MIN
 import kotlinx.coroutines.flow.*
@@ -69,6 +70,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 SharingStarted.WhileSubscribed(SUBSCRIBE_TIMEOUT_MS),
                 ChatSettingsResolver.DEFAULT_SIMILARITY_THRESHOLD,
             )
+
+    // Live statistics from the actual cached vector-search decorator.
+    val vectorCacheStatistics: StateFlow<VectorCacheStatistics> =
+        TavernApplication.instance.container.vectorCacheStatistics
 
     // --- 提示词模板（全局 KV，明文存储；空值语义见各 resolver） ---
     //

@@ -2,6 +2,9 @@ package com.mistbell.tavern.android.data.vector
 
 import android.util.Log
 import android.util.LruCache
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -20,6 +23,12 @@ class CachedVectorStore(
     private val searchCache = LruCache<SearchCacheKey, List<VectorStore.SearchResult>>(cacheSize.coerceAtLeast(1))
     private val cacheMutex = Mutex()
     private var cacheGeneration: Long = 0
+    private var cacheHitCount: Long = 0
+    private var cacheMissCount: Long = 0
+    private var cacheWriteCount: Long = 0
+    private var cacheInvalidationCount: Long = 0
+    private val _cacheStatistics = MutableStateFlow(VectorCacheStatistics(0, 0, 0, 0, 0))
+    val cacheStatistics: StateFlow<VectorCacheStatistics> = _cacheStatistics.asStateFlow()
 
     companion object {
         private const val TAG = "CachedVectorStore"
@@ -55,7 +64,14 @@ class CachedVectorStore(
                 )
             val lookup =
                 cacheMutex.withLock {
-                    searchCache.get(cacheKey) to cacheGeneration
+                    val cached = searchCache.get(cacheKey)
+                    if (cached == null) {
+                        cacheMissCount++
+                    } else {
+                        cacheHitCount++
+                    }
+                    publishCacheStatistics()
+                    cached to cacheGeneration
                 }
             val cached = lookup.first
             if (cached != null) {
@@ -69,6 +85,8 @@ class CachedVectorStore(
                     // reinsert results computed against the pre-write store state.
                     if (lookup.second == cacheGeneration) {
                         searchCache.put(cacheKey, results.toList())
+                        cacheWriteCount++
+                        publishCacheStatistics()
                     }
                 }
                 results
@@ -101,10 +119,23 @@ class CachedVectorStore(
         invalidateCache()
     }
 
+    private fun publishCacheStatistics() {
+        _cacheStatistics.value =
+            VectorCacheStatistics(
+                hitCount = cacheHitCount,
+                missCount = cacheMissCount,
+                writeCount = cacheWriteCount,
+                invalidationCount = cacheInvalidationCount,
+                entryCount = searchCache.size(),
+            )
+    }
+
     private suspend fun invalidateCache() {
         cacheMutex.withLock {
             cacheGeneration++
+            cacheInvalidationCount++
             searchCache.evictAll()
+            publishCacheStatistics()
         }
         Log.d(TAG, "Cache invalidated")
     }
