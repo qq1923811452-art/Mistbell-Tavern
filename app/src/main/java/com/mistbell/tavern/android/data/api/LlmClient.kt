@@ -87,12 +87,15 @@ data class Usage(
 ) {
     /** Map OpenAI-style cached_tokens to the same counters used by DeepSeek's usage fields. */
     fun withNormalizedCacheMetrics(): Usage {
-        if (cacheHitTokens > 0 || cacheMissTokens > 0) return this
-        val cachedTokens = promptTokensDetails?.cachedTokens ?: return this
-        return copy(
-            cacheHitTokens = cachedTokens,
-            cacheMissTokens = (promptTokens - cachedTokens).coerceAtLeast(0),
-        )
+        val cachedTokens = promptTokensDetails?.cachedTokens
+        return if (cacheHitTokens > 0 || cacheMissTokens > 0 || cachedTokens == null) {
+            this
+        } else {
+            copy(
+                cacheHitTokens = cachedTokens,
+                cacheMissTokens = (promptTokens - cachedTokens).coerceAtLeast(0),
+            )
+        }
     }
 }
 
