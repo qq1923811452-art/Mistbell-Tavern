@@ -12,6 +12,9 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
 import java.net.SocketTimeoutException
+import java.nio.charset.StandardCharsets
+import java.security.MessageDigest
+import java.util.LinkedHashMap
 import java.util.concurrent.TimeUnit
 
 /**
@@ -37,20 +40,49 @@ class OpenAIEmbeddingService(
             ignoreUnknownKeys = true
         }
 
+    // 有界内存 LRU：复用重复文本的 embedding，避免重复网络请求。
+    // 只缓存进程内数据；键使用 SHA-256，避免把完整聊天原文作为缓存键长期保留。
+    private val cacheLock = Any()
+    private val embeddingCache =
+        object : LinkedHashMap<String, FloatArray>(EMBEDDING_CACHE_SIZE + 1, 0.75f, true) {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, FloatArray>?): Boolean =
+                size > EMBEDDING_CACHE_SIZE
+        }
+
+    private fun cacheKey(text: String): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+            .digest(text.toByteArray(StandardCharsets.UTF_8))
+        return digest.joinToString(separator = "") { byte -> "%02x".format(byte) }
+    }
+
+    private fun cachedEmbedding(text: String): FloatArray? =
+        synchronized(cacheLock) { embeddingCache[cacheKey(text)]?.clone() }
+
+    private fun rememberEmbedding(text: String, embedding: FloatArray) {
+        synchronized(cacheLock) {
+            embeddingCache[cacheKey(text)] = embedding.clone()
+        }
+    }
+
     companion object {
         private const val TAG = "OpenAIEmbedding"
         private const val DIMENSION = 1536
         private const val MAX_RETRIES = 3
         private const val INITIAL_RETRY_DELAY_MS = 1000L
+        private const val EMBEDDING_CACHE_SIZE = 512
     }
 
     override suspend fun embed(text: String): FloatArray =
         withContext(Dispatchers.IO) {
+            cachedEmbedding(text)?.let { return@withContext it }
+
             var lastException: Exception? = null
 
             repeat(MAX_RETRIES) { attempt ->
                 try {
-                    return@withContext executeEmbedRequest(text)
+                    val embedding = executeEmbedRequest(text)
+                    rememberEmbedding(text, embedding)
+                    return@withContext embedding.clone()
                 } catch (e: SocketTimeoutException) {
                     lastException = e
                     if (attempt < MAX_RETRIES - 1) {
@@ -129,11 +161,63 @@ class OpenAIEmbeddingService(
 
     override suspend fun embedBatch(texts: List<String>): List<FloatArray> =
         withContext(Dispatchers.IO) {
-            var lastException: Exception? = null
+            if (texts.isEmpty()) return@withContext emptyList()
 
-            repeat(MAX_RETRIES) { attempt ->
-                try {
-                    return@withContext executeEmbedBatchRequest(texts)
+            val uniqueTexts = texts.distinct()
+            val missingTexts = uniqueTexts.filter { cachedEmbedding(it) == null }
+            if (missingTexts.isNotEmpty()) {
+                var lastException: Exception? = null
+
+                repeat(MAX_RETRIES) { attempt ->
+                    try {
+                        val embeddings = executeEmbedBatchRequest(missingTexts)
+                        if (embeddings.size != missingTexts.size) {
+                            throw IOException(
+                                "Embedding batch size mismatch: expected ${missingTexts.size}, got ${embeddings.size}",
+                            )
+                        }
+                        missingTexts.forEachIndexed { index, text ->
+                            rememberEmbedding(text, embeddings[index])
+                        }
+                        lastException = null
+                        return@repeat
+                    } catch (e: SocketTimeoutException) {
+                        lastException = e
+                        if (attempt < MAX_RETRIES - 1) {
+                            val delayMs = INITIAL_RETRY_DELAY_MS * (1 shl attempt)
+                            Log.w(TAG, "Batch embedding timeout, retry ${attempt + 1}/$MAX_RETRIES after ${delayMs}ms")
+                            delay(delayMs)
+                        }
+                    } catch (e: IOException) {
+                        lastException = e
+                        if (attempt < MAX_RETRIES - 1) {
+                            val delayMs = INITIAL_RETRY_DELAY_MS * (1 shl attempt)
+                            Log.w(TAG, "Network error, retry ${attempt + 1}/$MAX_RETRIES after ${delayMs}ms: ${e.message}")
+                            delay(delayMs)
+                        }
+                    } catch (e: Exception) {
+                        if (e.message?.contains("429") == true) {
+                            lastException = e
+                            if (attempt < MAX_RETRIES - 1) {
+                                val delayMs = INITIAL_RETRY_DELAY_MS * (1 shl attempt) * 2
+                                Log.w(TAG, "Rate limit hit, retry ${attempt + 1}/$MAX_RETRIES after ${delayMs}ms")
+                                delay(delayMs)
+                            }
+                        } else {
+                            throw e
+                        }
+                    }
+                }
+
+                if (lastException != null) {
+                    throw lastException ?: Exception("Batch embedding request failed after $MAX_RETRIES retries")
+                }
+            }
+
+            return@withContext texts.map { text ->
+                cachedEmbedding(text)
+                    ?: throw IOException("Embedding cache missing result after batch request")
+            }
                 } catch (e: SocketTimeoutException) {
                     lastException = e
                     if (attempt < MAX_RETRIES - 1) {
