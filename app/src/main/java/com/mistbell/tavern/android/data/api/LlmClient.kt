@@ -178,7 +178,7 @@ object LlmClient {
             // API credentials must never be forwarded through an untrusted redirect.
             .followRedirects(false)
             .followSslRedirects(false)
-            .connectTimeout(30, TimeUnit.SECONDS
+            .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(120, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
             .build()
