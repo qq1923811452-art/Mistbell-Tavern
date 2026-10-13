@@ -155,13 +155,15 @@ class ApiTestService {
                 }
 
                 val response = client.newCall(builder.get().build()).execute()
-                val body = response.body?.string()
-                if (!response.isSuccessful || body == null) {
-                    return@withContext FetchModelsResult.Error("获取模型失败 (${response.code})")
-                }
+                response.use { response ->
+                    val body = response.body?.string()
+                    if (!response.isSuccessful || body == null) {
+                        return@withContext FetchModelsResult.Error("获取模型失败 (${response.code})")
+                    }
 
-                val models = parseModelsJson(body, type)
-                FetchModelsResult.Success(models)
+                    val models = parseModelsJson(body, type)
+                    FetchModelsResult.Success(models)
+                }
             } catch (e: java.net.UnknownHostException) {
                 FetchModelsResult.Error("无法连接到服务器，请检查网络或 API 地址")
             } catch (e: java.net.SocketTimeoutException) {
@@ -211,20 +213,21 @@ class ApiTestService {
                 .post(requestBody.toRequestBody("application/json".toMediaType()))
                 .build()
 
-        val response = client.newCall(request).execute()
-        return when {
-            response.isSuccessful -> {
-                val body = response.body?.string()
-                if (body != null && runCatching { JSONObject(body).has("choices") }.getOrDefault(false)) {
-                    ApiTestResult.Success("连接成功")
-                } else {
-                    ApiTestResult.Error("响应格式异常")
+        return client.newCall(request).execute().use { response ->
+            when {
+                response.isSuccessful -> {
+                    val body = response.body?.string()
+                    if (body != null && runCatching { JSONObject(body).has("choices") }.getOrDefault(false)) {
+                        ApiTestResult.Success("连接成功")
+                    } else {
+                        ApiTestResult.Error("响应格式异常")
+                    }
                 }
+                response.code == 401 -> ApiTestResult.Error("API 密钥无效 (401)")
+                response.code == 429 -> ApiTestResult.Error("请求过于频繁 (429)")
+                response.code == 404 -> ApiTestResult.Error("API 端点未找到 (404)")
+                else -> ApiTestResult.Error("请求失败 (${response.code})")
             }
-            response.code == 401 -> ApiTestResult.Error("API 密钥无效 (401)")
-            response.code == 429 -> ApiTestResult.Error("请求过于频繁 (429)")
-            response.code == 404 -> ApiTestResult.Error("API 端点未找到 (404)")
-            else -> ApiTestResult.Error("请求失败 (${response.code})")
         }
     }
 
@@ -265,11 +268,12 @@ class ApiTestService {
                 .post(requestBody.toRequestBody("application/json".toMediaType()))
                 .build()
 
-        val response = client.newCall(request).execute()
-        return when {
-            response.isSuccessful -> ApiTestResult.Success("连接成功")
-            response.code == 401 -> ApiTestResult.Error("API 密钥无效 (401)")
-            else -> ApiTestResult.Error("请求失败 (${response.code})")
+        return client.newCall(request).execute().use { response ->
+            when {
+                response.isSuccessful -> ApiTestResult.Success("连接成功")
+                response.code == 401 -> ApiTestResult.Error("API 密钥无效 (401)")
+                else -> ApiTestResult.Error("请求失败 (${response.code})")
+            }
         }
     }
 
@@ -315,12 +319,13 @@ class ApiTestService {
                 .post(requestBody.toRequestBody("application/json".toMediaType()))
                 .build()
 
-        val response = client.newCall(request).execute()
-        return when {
-            response.isSuccessful -> ApiTestResult.Success("连接成功")
-            response.code == HTTP_BAD_REQUEST || response.code == HTTP_FORBIDDEN ->
-                ApiTestResult.Error("API 密钥无效 (${response.code})")
-            else -> ApiTestResult.Error("请求失败 (${response.code})")
+        return client.newCall(request).execute().use { response ->
+            when {
+                response.isSuccessful -> ApiTestResult.Success("连接成功")
+                response.code == HTTP_BAD_REQUEST || response.code == HTTP_FORBIDDEN ->
+                    ApiTestResult.Error("API 密钥无效 (${response.code})")
+                else -> ApiTestResult.Error("请求失败 (${response.code})")
+            }
         }
     }
 
