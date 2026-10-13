@@ -7,7 +7,7 @@ package com.mistbell.tavern.android.core.memory
  * Room, DataStore or vector retrieval without changing chat logic.
  */
 class MemoryManager(
-    private val store: MemoryStore
+    private val store: MemoryStore,
 ) {
     suspend fun save(record: MemoryRecord) {
         store.save(record)

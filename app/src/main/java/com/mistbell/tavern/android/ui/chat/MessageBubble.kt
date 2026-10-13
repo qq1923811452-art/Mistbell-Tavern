@@ -60,9 +60,10 @@ fun MessageBubble(
     var thinkingExpanded by remember { mutableStateOf(true) }
     // 兼容早期版本：部分消息把 <think>...</think> 保存在 content，而没有单独写入 thinking 列。
     // 先从正文拆出再渲染，避免 Markdown 处理 HTML 标签后把思维链完全吞掉。
-    val (inlineContent, inlineThinking) = remember(message.content, message.thinking) {
-        splitThinkingForDisplay(message.content)
-    }
+    val (inlineContent, inlineThinking) =
+        remember(message.content, message.thinking) {
+            splitThinkingForDisplay(message.content)
+        }
     val displayedContent = if (inlineThinking != null) inlineContent else message.content
     val displayedThinking = message.thinking?.takeIf { it.isNotBlank() } ?: inlineThinking
     val bubbleShape = MaterialTheme.shapes.medium

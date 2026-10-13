@@ -10,7 +10,7 @@ data class CacheEntry<T>(
     val key: String,
     val value: T,
     val createdAt: Long = System.currentTimeMillis(),
-    val expiresAt: Long? = null
+    val expiresAt: Long? = null,
 ) {
     fun isExpired(now: Long = System.currentTimeMillis()): Boolean {
         return expiresAt != null && now >= expiresAt

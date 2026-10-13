@@ -6,9 +6,9 @@ import com.mistbell.tavern.android.data.api.model.GroupChatContext
 import com.mistbell.tavern.android.data.api.model.StructuredMemory
 import com.mistbell.tavern.android.data.local.AppDatabase
 import com.mistbell.tavern.android.data.local.entity.MessageEntity
+import com.mistbell.tavern.android.data.local.entity.WorldBookEntryEntity
 import com.mistbell.tavern.android.data.memory.MemoryConflictResolver
 import com.mistbell.tavern.android.data.memory.MemoryRanking
-import com.mistbell.tavern.android.data.local.entity.WorldBookEntryEntity
 import com.mistbell.tavern.android.data.repository.ChatSettingsResolver
 import com.mistbell.tavern.android.data.repository.LexicalMemoryService
 import com.mistbell.tavern.android.data.vector.VectorStore
@@ -22,8 +22,11 @@ object PromptBuilder {
     /** World Info 的会话内运行状态：sticky/cooldown/delay 只影响激活决策，不改变 Room 主数据。 */
     private object WorldInfoRuntime {
         private const val MAX_RECURSION_DEPTH = 3
+
         private data class EntryState(var lastTurn: Int = -1, var sticky: Boolean = false)
+
         private data class SessionState(var turn: Int = 0, val entries: MutableMap<String, EntryState> = mutableMapOf())
+
         private data class Candidate(
             val entry: WorldBookEntryEntity,
             val key: String,
@@ -32,6 +35,7 @@ object PromptBuilder {
             val secondaryHits: Int,
             val sticky: Boolean,
         )
+
         private val sessions = mutableMapOf<String, SessionState>()
 
         /**
@@ -42,7 +46,11 @@ object PromptBuilder {
          */
         @Suppress("LongMethod", "CyclomaticComplexMethod", "ComplexCondition")
         @Synchronized
-        fun activate(sessionId: String, entries: List<WorldBookEntryEntity>, scanText: String): Set<String> {
+        fun activate(
+            sessionId: String,
+            entries: List<WorldBookEntryEntity>,
+            scanText: String,
+        ): Set<String> {
             val state = sessions.getOrPut(sessionId) { SessionState() }
             state.turn += 1
             val activated = linkedSetOf<String>()
@@ -90,8 +98,9 @@ object PromptBuilder {
                         .groupBy { it.entry.groupName }
                         .values
                         .flatMap { group ->
-                            if (group.first().entry.groupName.isBlank()) group
-                            else {
+                            if (group.first().entry.groupName.isBlank()) {
+                                group
+                            } else {
                                 listOf(
                                     group.maxWithOrNull(
                                         compareBy<Candidate> { it.score }
@@ -119,7 +128,8 @@ object PromptBuilder {
                 }
                 if (newlyActivated.isEmpty()) return@repeat
                 corpus +=
-                    "\\n" + entries
+                    "\\n" +
+                    entries
                         .filter { "${it.bookId}:${it.id}" in newlyActivated }
                         .joinToString("\\n") { it.content }
             }
@@ -131,14 +141,20 @@ object PromptBuilder {
                 if (keysJson.isBlank()) emptyList() else Json.decodeFromString<List<String>>(keysJson)
             }.getOrDefault(emptyList())
 
-        private fun matchingKeywords(keysJson: String, text: String): Int =
-            matchingKeywords(parseKeywords(keysJson), text)
+        private fun matchingKeywords(
+            keysJson: String,
+            text: String,
+        ): Int = matchingKeywords(parseKeywords(keysJson), text)
 
-        private fun matchingKeywords(keys: List<String>, text: String): Int =
+        private fun matchingKeywords(
+            keys: List<String>,
+            text: String,
+        ): Int =
             keys.count { key ->
                 val normalized = key.trim()
-                if (normalized.isBlank()) false
-                else if (normalized.startsWith("/") && normalized.endsWith("/")) {
+                if (normalized.isBlank()) {
+                    false
+                } else if (normalized.startsWith("/") && normalized.endsWith("/")) {
                     runCatching {
                         Regex(normalized.substring(1, normalized.length - 1), RegexOption.IGNORE_CASE)
                             .containsMatchIn(text)
@@ -178,11 +194,13 @@ object PromptBuilder {
     private const val MAX_LEXICAL_CONTENT_CHARS = 240
     private const val HISTORY_TIMESTAMP_PREFIX_LENGTH = 16
     private const val VECTOR_RECALL_MULTIPLIER = 2
+
     private data class HybridCandidate(
         val content: String,
         var score: Double,
         val sources: MutableSet<String>,
     )
+
     private data class HybridRecallRequest(
         val ownerId: String,
         val characterId: String,
@@ -190,6 +208,7 @@ object PromptBuilder {
         val userMessage: String,
         val alreadyInjected: List<String>,
     )
+
     private val THINKING_BLOCK_REGEX = Regex("(?s)<think>[\\s\\S]*?</think>")
 
     // ---- 提示词溯源（聊天页「查看提示词」用） ----
@@ -709,7 +728,7 @@ object PromptBuilder {
                     protocolConversionResult =
                         segment.protocolConversionResult
                             ?: "ChatMessage(role=${segment.message.role}, content) kept; " +
-                                "provider adapter maps this role/content",
+                            "provider adapter maps this role/content",
                 )
             }
 
@@ -913,50 +932,50 @@ object PromptBuilder {
         val alreadyInjected = request.alreadyInjected
         // Hybrid retrieval: semantic vectors and exact lexical history run together.
         // Reciprocal-rank fusion avoids assuming the two retrievers' scores share a scale.
-                val topK = ChatSettingsResolver.memoryRecallTopK(db.settingsDao().getValue("memory_recall_top_k"))
-                val threshold =
-                    ChatSettingsResolver.memorySimilarityThreshold(
-                        db.settingsDao().getValue("memory_similarity_threshold"),
-                    )
-                val vectorMemoryService = TavernApplication.instance.container.vectorMemoryService
-                val vectorResults =
-                    try {
-                        if (vectorMemoryService.available) {
-                            vectorMemoryService.searchRelevantMemories(
-                                query = userMessage,
-                                ownerId = ownerId,
-                                characterId = characterId,
-                                sessionId = sessionId,
-                                topK = topK * VECTOR_RECALL_MULTIPLIER,
-                            ).filter { it.score >= threshold }
-                        } else {
-                            emptyList()
-                        }
-                    } catch (e: Exception) {
-                        android.util.Log.e("PromptBuilder", "Semantic memory search failed: ${e.message}", e)
-                        emptyList()
-                    }
-        
-                // Lexical search is not merely a fallback: it recovers exact names, quoted phrases,
-                // and literal details that embeddings can rank poorly.
-                val lexicalItems =
-                    try {
-                        LexicalMemoryService(TavernApplication.instance)
-                            .searchRelevantHistory(ownerId, characterId, sessionId, userMessage, topK = topK)
-                    } catch (e: Exception) {
-                        android.util.Log.e("PromptBuilder", "Lexical memory search failed: ${e.message}", e)
-                        emptyList()
-                    }
-                val hybridContext =
-                    buildHybridMemoryContextForPrompt(
-                        vectorResults = vectorResults,
-                        lexicalItems = lexicalItems,
-                        alreadyInjected = alreadyInjected,
-                        limit = topK,
-                    )
-                return hybridContext.takeIf { it.isNotBlank() }?.let { context ->
-                    ChatMessage(role = "system", content = context)
+        val topK = ChatSettingsResolver.memoryRecallTopK(db.settingsDao().getValue("memory_recall_top_k"))
+        val threshold =
+            ChatSettingsResolver.memorySimilarityThreshold(
+                db.settingsDao().getValue("memory_similarity_threshold"),
+            )
+        val vectorMemoryService = TavernApplication.instance.container.vectorMemoryService
+        val vectorResults =
+            try {
+                if (vectorMemoryService.available) {
+                    vectorMemoryService.searchRelevantMemories(
+                        query = userMessage,
+                        ownerId = ownerId,
+                        characterId = characterId,
+                        sessionId = sessionId,
+                        topK = topK * VECTOR_RECALL_MULTIPLIER,
+                    ).filter { it.score >= threshold }
+                } else {
+                    emptyList()
                 }
+            } catch (e: Exception) {
+                android.util.Log.e("PromptBuilder", "Semantic memory search failed: ${e.message}", e)
+                emptyList()
+            }
+
+        // Lexical search is not merely a fallback: it recovers exact names, quoted phrases,
+        // and literal details that embeddings can rank poorly.
+        val lexicalItems =
+            try {
+                LexicalMemoryService(TavernApplication.instance)
+                    .searchRelevantHistory(ownerId, characterId, sessionId, userMessage, topK = topK)
+            } catch (e: Exception) {
+                android.util.Log.e("PromptBuilder", "Lexical memory search failed: ${e.message}", e)
+                emptyList()
+            }
+        val hybridContext =
+            buildHybridMemoryContextForPrompt(
+                vectorResults = vectorResults,
+                lexicalItems = lexicalItems,
+                alreadyInjected = alreadyInjected,
+                limit = topK,
+            )
+        return hybridContext.takeIf { it.isNotBlank() }?.let { context ->
+            ChatMessage(role = "system", content = context)
+        }
     }
 
     private fun selectRelevantMemories(
@@ -1128,7 +1147,12 @@ object PromptBuilder {
             ""
         } else {
             val candidates = linkedMapOf<String, HybridCandidate>()
-            fun add(content: String, rank: Int, source: String) {
+
+            fun add(
+                content: String,
+                rank: Int,
+                source: String,
+            ) {
                 val trimmed = content.trim()
                 if (trimmed.isBlank() || isDuplicateOfInjected(trimmed, alreadyInjected)) return
                 val keyContent =

@@ -8,5 +8,5 @@ data class MemoryRecord(
     val id: String,
     val content: String,
     val createdAt: Long = System.currentTimeMillis(),
-    val importance: Int = 0
+    val importance: Int = 0,
 )

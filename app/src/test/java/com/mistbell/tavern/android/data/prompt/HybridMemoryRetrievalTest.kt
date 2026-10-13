@@ -9,19 +9,21 @@ import org.junit.Test
 class HybridMemoryRetrievalTest {
     @Test
     fun `semantic and lexical sources are fused and duplicate facts are shown once`() {
-        val vector = VectorStore.SearchResult(
-            id = "vector-1",
-            score = 0.9f,
-            content = "Assistant: The user prefers concise replies",
-            metadata = emptyMap(),
-        )
+        val vector =
+            VectorStore.SearchResult(
+                id = "vector-1",
+                score = 0.9f,
+                content = "Assistant: The user prefers concise replies",
+                metadata = emptyMap(),
+            )
         val lexical = message("The user prefers concise replies")
 
-        val result = PromptBuilder.buildHybridMemoryContextForPrompt(
-            vectorResults = listOf(vector),
-            lexicalItems = listOf(lexical),
-            alreadyInjected = emptyList(),
-        )
+        val result =
+            PromptBuilder.buildHybridMemoryContextForPrompt(
+                vectorResults = listOf(vector),
+                lexicalItems = listOf(lexical),
+                alreadyInjected = emptyList(),
+            )
 
         assertTrue(result.contains("语义+关键词"))
         assertEquals(1, Regex("The user prefers concise replies").findAll(result).count())
@@ -29,29 +31,32 @@ class HybridMemoryRetrievalTest {
 
     @Test
     fun `structured facts already injected are excluded from hybrid history`() {
-        val vector = VectorStore.SearchResult(
-            id = "vector-1",
-            score = 0.9f,
-            content = "The user prefers concise replies",
-            metadata = emptyMap(),
-        )
-        val result = PromptBuilder.buildHybridMemoryContextForPrompt(
-            vectorResults = listOf(vector),
-            lexicalItems = emptyList(),
-            alreadyInjected = listOf("The user prefers concise replies"),
-        )
+        val vector =
+            VectorStore.SearchResult(
+                id = "vector-1",
+                score = 0.9f,
+                content = "The user prefers concise replies",
+                metadata = emptyMap(),
+            )
+        val result =
+            PromptBuilder.buildHybridMemoryContextForPrompt(
+                vectorResults = listOf(vector),
+                lexicalItems = emptyList(),
+                alreadyInjected = listOf("The user prefers concise replies"),
+            )
 
         assertEquals("", result)
     }
 
     @Test
     fun `non-positive limit returns no prompt block`() {
-        val result = PromptBuilder.buildHybridMemoryContextForPrompt(
-            vectorResults = emptyList(),
-            lexicalItems = listOf(message("A relevant past event")),
-            alreadyInjected = emptyList(),
-            limit = 0,
-        )
+        val result =
+            PromptBuilder.buildHybridMemoryContextForPrompt(
+                vectorResults = emptyList(),
+                lexicalItems = listOf(message("A relevant past event")),
+                alreadyInjected = emptyList(),
+                limit = 0,
+            )
 
         assertEquals("", result)
     }

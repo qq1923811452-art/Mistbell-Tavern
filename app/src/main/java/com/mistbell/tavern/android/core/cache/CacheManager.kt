@@ -20,7 +20,10 @@ class CacheManager<K, V> {
         }
     }
 
-    fun put(key: K, value: V) {
+    fun put(
+        key: K,
+        value: V,
+    ) {
         cache[key] = CacheEntry(key = key.toString(), value = value)
         stats.recordWrite()
     }

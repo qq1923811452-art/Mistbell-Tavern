@@ -511,10 +511,12 @@ class ChatRepository(private val context: Context) {
     ) {
         withContext(Dispatchers.IO) {
             val messages = db.messageDao().getBySession(sessionId, ownerId).first()
-            val target = messages.lastOrNull { it.role == "assistant" }
-                ?: throw IllegalStateException("没有可继续的助手消息")
-            val lastUser = messages.lastOrNull { it.role == "user" && it.createdAt < target.createdAt }
-                ?: throw IllegalStateException("没有可继续的用户消息")
+            val target =
+                messages.lastOrNull { it.role == "assistant" }
+                    ?: throw IllegalStateException("没有可继续的助手消息")
+            val lastUser =
+                messages.lastOrNull { it.role == "user" && it.createdAt < target.createdAt }
+                    ?: throw IllegalStateException("没有可继续的用户消息")
             val config = loadLlmConfig(sessionId)
             if (config.baseUrl.isBlank() || config.apiKey.isBlank()) {
                 throw IllegalStateException("LLM 未配置：请在设置中配置 API 密钥")
@@ -559,8 +561,9 @@ class ChatRepository(private val context: Context) {
         onPartial: ((String) -> Unit)? = null,
     ) {
         withContext(Dispatchers.IO) {
-            val entity = db.messageDao().getById(messageId, sessionId, ownerId)
-                ?: throw IllegalArgumentException("消息不存在")
+            val entity =
+                db.messageDao().getById(messageId, sessionId, ownerId)
+                    ?: throw IllegalArgumentException("消息不存在")
             if (entity.role != "assistant") throw IllegalArgumentException("只有助手消息支持 swipe")
             val existing = decodeStringList(entity.swipesJson).ifEmpty { listOf(entity.content) }.toMutableList()
             val thinkingSwipes = decodeStringList(entity.thinkingSwipesJson).toMutableList()
@@ -598,7 +601,7 @@ class ChatRepository(private val context: Context) {
             val lastUser =
                 db.messageDao().getBySession(sessionId, ownerId).first()
                     .lastOrNull { it.role == "user" && it.createdAt < entity.createdAt }
-                ?: throw IllegalStateException("没有可用于生成替代回复的用户消息")
+                    ?: throw IllegalStateException("没有可用于生成替代回复的用户消息")
             val config = loadLlmConfig(sessionId)
             if (config.baseUrl.isBlank() || config.apiKey.isBlank()) {
                 throw IllegalStateException("LLM 未配置：请在设置中配置 API 密钥")
@@ -791,7 +794,10 @@ class ChatRepository(private val context: Context) {
      * A continued answer represents multiple API calls in one saved message, so their actual
      * token usage is additive. If the latest call did not report usage, retain the earlier value.
      */
-    private fun sumUsage(previous: Usage?, next: Usage?): Usage? =
+    private fun sumUsage(
+        previous: Usage?,
+        next: Usage?,
+    ): Usage? =
         when {
             previous == null -> next
             next == null -> previous

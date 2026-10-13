@@ -79,10 +79,11 @@ suspend fun storeAssistantMessageVector(
     }
 }
 
-suspend fun deleteMessageVectors(messageId: String) = withContext(Dispatchers.IO) {
-    if (!TavernApplication.instance.container.vectorMemoryService.available) return@withContext
-    TavernApplication.instance.container.vectorMemoryService.deleteByMessageId(messageId)
-}
+suspend fun deleteMessageVectors(messageId: String) =
+    withContext(Dispatchers.IO) {
+        if (!TavernApplication.instance.container.vectorMemoryService.available) return@withContext
+        TavernApplication.instance.container.vectorMemoryService.deleteByMessageId(messageId)
+    }
 
 suspend fun deleteSessionVectors(
     ownerId: String,

@@ -32,7 +32,10 @@ object SessionImporter {
         }
     }
 
-    fun importFromJsonl(context: Context, uri: Uri): SessionExportData? {
+    fun importFromJsonl(
+        context: Context,
+        uri: Uri,
+    ): SessionExportData? {
         return try {
             val text =
                 context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
@@ -45,7 +48,10 @@ object SessionImporter {
     }
 
     /** 自动识别 JSON 包或 JSONL，方便文件选择器不依赖扩展名。 */
-    fun importFromAny(context: Context, uri: Uri): SessionExportData? {
+    fun importFromAny(
+        context: Context,
+        uri: Uri,
+    ): SessionExportData? {
         val text = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: return null
         return try {
             json.decodeFromString<SessionExportData>(text)
@@ -78,9 +84,10 @@ object SessionImporter {
                             element["is_user"]?.jsonPrimitive?.booleanOrNull == true -> "user"
                             else -> "assistant"
                         }
-                val content = element["content"]?.jsonPrimitive?.contentOrNull
-                    ?: element["mes"]?.jsonPrimitive?.contentOrNull
-                    ?: ""
+                val content =
+                    element["content"]?.jsonPrimitive?.contentOrNull
+                        ?: element["mes"]?.jsonPrimitive?.contentOrNull
+                        ?: ""
                 messages +=
                     Message(
                         id = element["id"]?.jsonPrimitive?.contentOrNull ?: "",
@@ -91,20 +98,22 @@ object SessionImporter {
                             element["characterId"]?.jsonPrimitive?.contentOrNull
                                 ?: element["name"]?.jsonPrimitive?.contentOrNull
                                     .takeIf { role == "assistant" }.orEmpty(),
-                        createdAt = element["createdAt"]?.jsonPrimitive?.contentOrNull
-                            ?: element["send_date"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+                        createdAt =
+                            element["createdAt"]?.jsonPrimitive?.contentOrNull
+                                ?: element["send_date"]?.jsonPrimitive?.contentOrNull.orEmpty(),
                         swipeIndex = element["swipeIndex"]?.jsonPrimitive?.intOrNull ?: 0,
                         swipes = element["swipes"]?.jsonArray?.map { it.jsonPrimitive.content },
                         thinkingSwipes = element["thinkingSwipes"]?.jsonArray?.map { it.jsonPrimitive.content },
                     )
             }
         }
-        val resolvedSession = session ?: SessionSummary(
-            id = "",
-            title = "导入会话",
-            messageCount = messages.size,
-            mode = SESSION_MODE_CLASSIC,
-        )
+        val resolvedSession =
+            session ?: SessionSummary(
+                id = "",
+                title = "导入会话",
+                messageCount = messages.size,
+                mode = SESSION_MODE_CLASSIC,
+            )
         return SessionExportData(resolvedSession.copy(messageCount = messages.size), messages)
     }
 

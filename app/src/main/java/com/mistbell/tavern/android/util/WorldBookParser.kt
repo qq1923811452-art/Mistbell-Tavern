@@ -147,10 +147,11 @@ object WorldBookParser {
                 depth = placement.depth,
                 probability = placement.probability,
                 depthRole = placement.depthRole,
-                secondaryKeysJson = Json.encodeToString(
-                    kotlinx.serialization.builtins.ListSerializer(kotlinx.serialization.serializer<String>()),
-                    secondaryKeys,
-                ),
+                secondaryKeysJson =
+                    Json.encodeToString(
+                        kotlinx.serialization.builtins.ListSerializer(kotlinx.serialization.serializer<String>()),
+                        secondaryKeys,
+                    ),
                 sticky = entry["sticky"]?.let { (it as? JsonPrimitive)?.booleanOrNull } ?: false,
                 cooldown = entry["cooldown"]?.let { (it as? JsonPrimitive)?.intOrNull } ?: 0,
                 delay = entry["delay"]?.let { (it as? JsonPrimitive)?.intOrNull } ?: 0,

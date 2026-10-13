@@ -33,10 +33,11 @@ class MemoryConflictResolverTest {
 
     @Test
     fun `already superseded facts are not superseded repeatedly`() {
-        val old = MemoryConflictResolver.markSuperseded(
-            memory("""{"subject":"user","relation":"name","object":"Alex"}"""),
-            "user 的名字是 Jordan",
-        )
+        val old =
+            MemoryConflictResolver.markSuperseded(
+                memory("""{"subject":"user","relation":"name","object":"Alex"}"""),
+                "user 的名字是 Jordan",
+            )
         assertTrue(MemoryConflictResolver.findSuperseded("user", "name", "Taylor", listOf(old)).isEmpty())
     }
 
