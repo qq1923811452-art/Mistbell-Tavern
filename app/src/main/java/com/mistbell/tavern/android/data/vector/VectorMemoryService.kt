@@ -3,6 +3,8 @@ package com.mistbell.tavern.android.data.vector
 import android.util.Log
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import java.nio.charset.StandardCharsets
+import java.security.MessageDigest
 import java.util.UUID
 
 /**
@@ -22,7 +24,7 @@ class VectorMemoryService(
         private const val TAG = "VectorMemoryService"
         private const val EMBEDDING_CACHE_INITIAL_CAPACITY = 32
         private const val EMBEDDING_CACHE_LOAD_FACTOR = 0.75f
-        private const val EMBEDDING_CACHE_MAX_ENTRIES = 32
+        private const val EMBEDDING_CACHE_MAX_ENTRIES = 512
     }
 
     /**
@@ -52,14 +54,22 @@ class VectorMemoryService(
      * The mutex covers cache lookup and generation so concurrent requests for the same text
      * cannot race through the miss path and issue duplicate embedding API requests.
      */
-    private suspend fun embedCached(text: String): FloatArray =
+    private fun embeddingCacheKey(text: String): String {
+        val digest =
+            MessageDigest.getInstance("SHA-256")
+                .digest("$embeddingModelId\u0000$text".toByteArray(StandardCharsets.UTF_8))
+        return digest.joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
+    }
+
+    private suspend fun embedCached(text: String, source: String): FloatArray =
         embeddingCacheMutex.withLock {
+            val key = embeddingCacheKey(text)
             synchronized(embeddingCache) {
-                embeddingCache[text]?.let { return@withLock it.copyOf() }
+                embeddingCache[key]?.let { return@withLock it.copyOf() }
             }
-            val generated = embeddingService.embed(text)
+            val generated = embeddingService.embed(text, source)
             synchronized(embeddingCache) {
-                embeddingCache[text] = generated.copyOf()
+                embeddingCache[key] = generated.copyOf()
                 while (embeddingCache.size > EMBEDDING_CACHE_MAX_ENTRIES) {
                     embeddingCache.remove(embeddingCache.keys.first())
                 }
@@ -88,7 +98,7 @@ class VectorMemoryService(
     ): String {
         try {
             // 1. 生成向量
-            val embedding = embedCached(content)
+            val embedding = embedCached(content, "EMBEDDING_STORE_${contentType.uppercase()}")
 
             // 2. 构建元数据
             val metadata =
@@ -113,7 +123,7 @@ class VectorMemoryService(
 
             return vectorId
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to store message vector: ${e.message}", e)
+            Log.e(TAG, "Failed to store message vector (${e.javaClass.simpleName})")
             throw e
         }
     }
@@ -137,7 +147,7 @@ class VectorMemoryService(
     ): List<VectorStore.SearchResult> {
         try {
             // 1. 查询向量化
-            val queryEmbedding = embedCached(query)
+            val queryEmbedding = embedCached(query, "EMBEDDING_MEMORY_QUERY")
 
             // 2. 构建过滤器
             val filters =
@@ -159,7 +169,7 @@ class VectorMemoryService(
 
             return results
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to search relevant memories: ${e.message}", e)
+            Log.e(TAG, "Failed to search relevant memories (${e.javaClass.simpleName})")
             return emptyList()
         }
     }
