@@ -194,7 +194,7 @@ jobs:
             --base feature \
             --head "${BRANCH}" \
             --title "style: apply verified relay Kotlin fixes" \
-            --body "Automated Kotlin style patch proposed by the configured AI relay. The workflow ran `./gradlew checkAll` before creating this PR. Review the diff before merging."
+            --body "Automated Kotlin style patch proposed by the configured AI relay. The workflow ran ./gradlew checkAll before creating this PR. Review the diff before merging."
 
       - name: Upload patch and diagnostics
         if: always()
