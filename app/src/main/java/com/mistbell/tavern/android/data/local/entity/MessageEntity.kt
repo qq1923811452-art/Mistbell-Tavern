@@ -7,6 +7,7 @@ import androidx.room.PrimaryKey
 import com.mistbell.tavern.android.data.api.Usage
 import com.mistbell.tavern.android.data.api.model.Message
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 
 @Entity(
     tableName = "messages",
@@ -41,6 +42,10 @@ data class MessageEntity(
     // 真实 API usage（Usage 的 JSON 序列化）。NULL = 未知/未上报——
     // 铁律「缺失数据不得填 0」：无 usage 时保持 NULL，不写 0 占位
     @ColumnInfo(name = "usage_json") val usageJson: String? = null,
+    // Internal provider-prefix-cache snapshot; intentionally excluded from user-facing JSON backups.
+    @Transient
+    @ColumnInfo(name = "prompt_context_snapshot_json", defaultValue = "''")
+    val promptContextSnapshotJson: String = "",
 ) {
     fun toDomain(): Message {
         val memoryIds =
