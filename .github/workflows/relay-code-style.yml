@@ -17,7 +17,7 @@ on:
         default: recent-kotlin-changes
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: relay-code-style-feature
