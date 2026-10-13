@@ -27,6 +27,22 @@ class SecureStoreInstrumentedTest {
     }
 
     @Test
+    fun literalEncryptionPrefixInAnApiKeyDoesNotBypassEncryption() {
+        val apiKey = "enc:v1:not-an-encrypted-payload"
+        val encrypted = SecureStore.wrap(apiKey)
+
+        assertTrue(SecureStore.isEncrypted(encrypted))
+        assertNotEquals(apiKey, encrypted)
+        assertEquals(apiKey, SecureStore.unwrap(encrypted))
+    }
+
+    @Test
+    fun malformedEncryptedPayloadIsNotAcceptedAsValidCiphertext() {
+        assertTrue(!SecureStore.isEncrypted("enc:v1:not-base64"))
+        assertEquals("", SecureStore.unwrap("enc:v1:not-base64"))
+    }
+
+    @Test
     fun backupCannotRestoreCredentialKeyAsPlaintextWhenSensitiveFlagIsFalse() {
         val entry =
             com.mistbell.tavern.android.data.repository.BackupManager.SettingsBackupEntry(
