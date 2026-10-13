@@ -23,6 +23,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -99,6 +100,10 @@ class BackupManager(private val context: Context) {
         private const val THEME_PACKS = "theme_packs.json"
         internal const val VECTOR_STORE_FILE = "vector_store.json"
         internal const val THEMES_DIR_PREFIX = "themes/"
+        private const val MAX_BACKUP_ENTRIES = 4096
+        private const val MAX_BACKUP_ENTRY_BYTES = 32L * 1024L * 1024L
+        private const val MAX_BACKUP_TOTAL_BYTES = 128L * 1024L * 1024L
+        private val SAFE_THEME_PACK_ID = Regex("[A-Za-z0-9_-]{1,128}")
 
         internal val json =
             Json {
@@ -155,19 +160,41 @@ class BackupManager(private val context: Context) {
             }
 
         /** settings 导出条目：密文解为明文并标记 sensitive（明文原样直通） */
-        fun toBackupEntry(entity: SettingsEntity): SettingsBackupEntry =
-            if (SecureStore.isEncrypted(entity.value)) {
-                SettingsBackupEntry(entity.key, SecureStore.unwrap(entity.value), sensitive = true)
-            } else {
-                SettingsBackupEntry(entity.key, entity.value)
-            }
+        fun toBackupEntry(entity: SettingsEntity): SettingsBackupEntry {
+            val encrypted = SecureStore.isEncrypted(entity.value)
+            val sensitive = encrypted || isSensitiveSettingKey(entity.key)
+            return SettingsBackupEntry(
+                key = entity.key,
+                value = if (encrypted) SecureStore.unwrap(entity.value) else entity.value,
+                sensitive = sensitive,
+            )
+        }
 
-        /** settings 恢复条目：sensitive 值重新加密落库 */
+        /** Treat credential-bearing keys as sensitive even when importing an untrusted backup. */
+        internal fun isSensitiveSettingKey(key: String): Boolean {
+            val normalized = key.lowercase(Locale.ROOT)
+            return normalized == "providers_json" ||
+                normalized == "llm_api_key" ||
+                normalized.contains("api_key") ||
+                normalized.contains("apikey")
+        }
+
+        /** settings 恢复条目：敏感值必须重新加密，不能信任备份中的 sensitive 标志。 */
         fun toSettingsEntity(entry: SettingsBackupEntry): SettingsEntity =
             SettingsEntity(
                 entry.key,
-                if (entry.sensitive) SecureStore.wrap(entry.value) else entry.value,
+                if (entry.sensitive || isSensitiveSettingKey(entry.key)) {
+                    SecureStore.wrap(entry.value)
+                } else {
+                    entry.value
+                },
             )
+
+        internal fun validateThemePackId(id: String) {
+            require(SAFE_THEME_PACK_ID.matches(id)) {
+                "备份文件非法：主题包 ID 包含不安全的路径字符"
+            }
+        }
     }
 
     // ---- 导出 ----
@@ -250,6 +277,7 @@ class BackupManager(private val context: Context) {
             parseManifest(manifestText)
 
             val tables = decodeTables(files)
+            tables.themePacks.forEach { validateThemePackId(it.id) }
             val summary = mergeTables(tables)
 
             // 文件写入在事务提交之后（文件系统不可回滚，不参与原子性）：
@@ -366,11 +394,22 @@ class BackupManager(private val context: Context) {
      */
     private fun readBackupZip(uri: Uri): Map<String, String> {
         val files = mutableMapOf<String, String>()
+        var totalBytes = 0L
+        var entryCount = 0
         context.contentResolver.openInputStream(uri)?.use { input ->
             ZipInputStream(input.buffered()).use { zip ->
                 var entry: ZipEntry? = zip.nextEntry
                 while (entry != null) {
-                    storeEntry(files, zip, entry!!)
+                    entryCount++
+                    require(entryCount <= MAX_BACKUP_ENTRIES) {
+                        "备份文件非法：条目数量超出限制"
+                    }
+                    val currentEntry = entry
+                    val remainingBytes = MAX_BACKUP_TOTAL_BYTES - totalBytes
+                    require(remainingBytes > 0) { "备份文件过大，已超出解压大小限制" }
+                    val bytes = readBoundedEntry(zip, minOf(MAX_BACKUP_ENTRY_BYTES, remainingBytes))
+                    totalBytes += bytes.size
+                    storeEntry(files, currentEntry, bytes)
                     zip.closeEntry()
                     entry = zip.nextEntry
                 }
@@ -427,15 +466,37 @@ private fun writeThemeAssetsIfAbsent(
     }
 }
 
+private fun readBoundedEntry(
+    zip: ZipInputStream,
+    maxBytes: Long,
+): ByteArray {
+    val output = ByteArrayOutputStream()
+    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+    var total = 0L
+    while (true) {
+        val read = zip.read(buffer)
+        if (read < 0) break
+        total += read
+        require(total <= maxBytes) { "备份文件过大：单个条目超出解压大小限制" }
+        output.write(buffer, 0, read)
+    }
+    return output.toByteArray()
+}
+
 private fun storeEntry(
     files: MutableMap<String, String>,
-    zip: ZipInputStream,
     entry: ZipEntry,
+    bytes: ByteArray,
 ) {
     val name = entry.name
-    require(name.split('/').none { it == ".." }) { "备份文件非法：条目路径包含 \"..\"（疑似路径穿越）" }
+    require(name.isNotBlank() && !name.startsWith("/") && '\\' !in name) {
+        "备份文件非法：条目路径格式不安全"
+    }
+    require(name.split('/').none { it.isBlank() || it == "." || it == ".." }) {
+        "备份文件非法：条目路径包含不安全的路径段"
+    }
     if (entry.isDirectory) return
-    val bytes = zip.readBytes()
+    require(!files.containsKey(name)) { "备份文件非法：存在重复条目 $name" }
     files[name] =
         if (name.startsWith(BackupManager.THEMES_DIR_PREFIX) || name == BackupManager.VECTOR_STORE_FILE) {
             String(bytes, Charsets.ISO_8859_1)
