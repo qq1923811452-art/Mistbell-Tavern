@@ -115,7 +115,7 @@ fun EmbeddingApiSettingsSection() {
                 )
             }
             Text(
-                text = "提示：当前向量记忆索引按 1536 维构建；自定义模型必须返回 1536 维向量。",
+                text = "提示：向量维度由服务端模型决定；切换模型后，系统会按模型标识隔离旧向量，避免跨模型比较。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
