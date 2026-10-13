@@ -2,9 +2,47 @@ name: Build Verified Debug APK
 
 on:
   workflow_dispatch:
+    inputs:
+      build_variant:
+        description: "Android build variant"
+        required: true
+        type: choice
+        options:
+          - debug
+        default: debug
+  pull_request:
+    branches:
+      - mistbell-2.0
+    paths:
+      - "app/**"
+      - "config/**"
+      - "gradle/**"
+      - "gradlew"
+      - "gradle.properties"
+      - "build.gradle*"
+      - "settings.gradle*"
+      - ".github/workflows/**"
+  push:
+    branches:
+      - feature
+      - mistbell-2.0
+      - 'upgrade/**'
+    paths:
+      - "app/**"
+      - "config/**"
+      - "gradle/**"
+      - "gradlew"
+      - "gradle.properties"
+      - "build.gradle*"
+      - "settings.gradle*"
+      - ".github/workflows/**"
 
 permissions:
   contents: read
+
+concurrency:
+  group: build-verified-apk-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   verify-and-build:
