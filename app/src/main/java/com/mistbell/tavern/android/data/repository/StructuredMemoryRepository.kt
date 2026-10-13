@@ -6,11 +6,12 @@ import com.mistbell.tavern.android.TavernApplication
 import com.mistbell.tavern.android.data.api.model.StructuredMemory
 import com.mistbell.tavern.android.data.local.entity.StructuredMemoryEntity
 import com.mistbell.tavern.android.data.memory.MemoryConflictResolver
+import java.time.Instant
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
-import java.time.Instant
 
 class StructuredMemoryRepository(context: Context) {
     private val db = TavernApplication.instance.container.database
@@ -245,6 +246,8 @@ class StructuredMemoryRepository(context: Context) {
             )
 
             Log.d(TAG, "Synced memory ${memory.id} to vector store (importance: ${memory.importance})")
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             // 向量同步失败不应影响主流程
             Log.e(TAG, "Failed to sync memory to vector: ${e.message}", e)
@@ -261,6 +264,8 @@ class StructuredMemoryRepository(context: Context) {
             if (vectorMemoryService.available) {
                 vectorMemoryService.deleteByMessageId(vectorMessageId(memoryId))
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             // 向量清理失败不应影响主流程
             Log.e(TAG, "Failed to delete vector copy: ${e.message}", e)
@@ -278,6 +283,8 @@ class StructuredMemoryRepository(context: Context) {
             if (vectorMemoryService.available) {
                 vectorMemoryService.deleteSummaryVectors(ownerId, characterId, sessionId)
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             // 向量清理失败不应影响主流程
             Log.e(TAG, "Failed to delete summary vectors: ${e.message}", e)
