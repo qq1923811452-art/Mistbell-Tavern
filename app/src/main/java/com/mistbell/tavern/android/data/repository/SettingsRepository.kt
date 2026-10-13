@@ -120,7 +120,7 @@ class SettingsRepository(private val context: Context) {
                             else -> value.toString()
                         }
                     // 敏感 key 同样走加密写入，避免服务器同步把已加密值降级为明文落盘
-                    val stored = if (key == "llm_api_key") SecureStore.wrap(strValue) else strValue
+                    val stored = if (SecureStore.isSensitiveKey(key)) SecureStore.wrap(strValue) else strValue
                     dao.upsert(SettingsEntity(key, stored))
                 }
             }
