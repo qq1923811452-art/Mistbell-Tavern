@@ -56,6 +56,8 @@ class LocalEmbeddingService private constructor(
 
     override fun modelId(): String = "local:bge-small-zh-v1.5-int8:$DIM"
 
+    override fun supportsLegacyVectors(): Boolean = true
+
     override fun getDimension(): Int = DIM
 
     override suspend fun embed(text: String): FloatArray = embed(text, "LOCAL_EMBEDDING_UNSPECIFIED")
