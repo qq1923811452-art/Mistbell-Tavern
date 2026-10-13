@@ -1,8 +1,8 @@
 package com.mistbell.tavern.android.data.repository
 
+import android.util.Log
 import com.mistbell.tavern.android.data.local.AppDatabase
 import com.mistbell.tavern.android.data.local.entity.ApiConfigEntity
-import android.util.Log
 import com.mistbell.tavern.android.data.local.entity.SettingsEntity
 import com.mistbell.tavern.android.util.SecureStore
 import kotlinx.serialization.SerialName
