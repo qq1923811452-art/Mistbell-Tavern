@@ -11,6 +11,7 @@ import com.mistbell.tavern.android.data.vector.MockEmbeddingService
 import com.mistbell.tavern.android.data.vector.OpenAIEmbeddingService
 import com.mistbell.tavern.android.data.vector.VectorMemoryService
 import com.mistbell.tavern.android.data.vector.VectorStore
+import com.mistbell.tavern.android.data.vector.VectorCacheStatistics
 import com.mistbell.tavern.android.util.SecureStore
 
 /**
@@ -37,6 +38,12 @@ class AppContainer(private val appContext: Context) {
             CachedVectorStore(baseStore, cacheSize = 50)
         }
     }
+
+    /**
+     * Returns live hit/miss statistics for the app's cached vector search store.
+     */
+    suspend fun getVectorCacheStatistics(): VectorCacheStatistics? =
+        (vectorStore as? CachedVectorStore)?.getCacheStatistics()
 
     /**
      * Embedding 服务（延迟初始化，源路由：settings `embedding_source`）
