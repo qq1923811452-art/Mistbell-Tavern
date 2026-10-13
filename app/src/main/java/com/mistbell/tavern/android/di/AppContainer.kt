@@ -126,7 +126,7 @@ class AppContainer(private val appContext: Context) {
             OpenAIEmbeddingService(
                 apiKey = apiKey,
                 baseUrl = baseUrl,
-                model = "text-embedding-3-small",
+                model = getEmbeddingModel(),
             )
         } else {
             // 无 key：不用伪向量，注入 Mock 占位（available=false，调用方走词法回退）
@@ -163,10 +163,19 @@ class AppContainer(private val appContext: Context) {
             ?: "https://api.openai.com/v1"
     }
 
+    private fun getEmbeddingModel(): String {
+        val prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return prefs.getString(KEY_EMBEDDING_MODEL, "text-embedding-3-small")
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?: "text-embedding-3-small"
+    }
+
     companion object {
         private const val TAG = "AppContainer"
         private const val PREFS_NAME = "tavern_settings"
         private const val KEY_EMBEDDING_API_KEY = "embedding_api_key"
         private const val KEY_EMBEDDING_BASE_URL = "embedding_base_url"
+        private const val KEY_EMBEDDING_MODEL = "embedding_model"
     }
 }
