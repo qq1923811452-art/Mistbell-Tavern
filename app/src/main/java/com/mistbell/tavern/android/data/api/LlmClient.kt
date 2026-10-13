@@ -282,7 +282,14 @@ object LlmClient {
         } catch (e: Exception) {
             if (config.disableThinking && isThinkingParamRejected(e)) {
                 android.util.Log.w("LlmClient", "thinking 参数被网关拒绝，回退为不发送后重试: ${e.message}")
-                chatWithRetries(config.copy(disableThinking = false), messages)
+                try {
+                    chatWithRetries(config.copy(disableThinking = false), messages).also {
+                        ApiCallTrace.log(traceId, "LLM_CHAT", "SUCCESS", "caller=$caller fallback=without-thinking elapsedMs=${System.currentTimeMillis() - startedAt}")
+                    }
+                } catch (fallbackError: Exception) {
+                    ApiCallTrace.log(traceId, "LLM_CHAT", "FAILURE", "caller=$caller fallback=without-thinking error=${fallbackError.javaClass.simpleName}")
+                    throw fallbackError
+                }
             } else {
                 ApiCallTrace.log(traceId, "LLM_CHAT", "FAILURE", "caller=${ApiCallTrace.caller()} error=${e.javaClass.simpleName}")
                 throw e
@@ -417,7 +424,14 @@ object LlmClient {
         } catch (e: Exception) {
             if (config.disableThinking && isThinkingParamRejected(e)) {
                 android.util.Log.w("LlmClient", "thinking 参数被网关拒绝，回退为不发送后重试: ${e.message}")
-                chatContentWithRetries(config.copy(disableThinking = false), messages)
+                try {
+                    chatContentWithRetries(config.copy(disableThinking = false), messages).also {
+                        ApiCallTrace.log(traceId, "LLM_CHAT_WITH_THINKING", "SUCCESS", "caller=$caller fallback=without-thinking elapsedMs=${System.currentTimeMillis() - startedAt}")
+                    }
+                } catch (fallbackError: Exception) {
+                    ApiCallTrace.log(traceId, "LLM_CHAT_WITH_THINKING", "FAILURE", "caller=$caller fallback=without-thinking error=${fallbackError.javaClass.simpleName}")
+                    throw fallbackError
+                }
             } else {
                 ApiCallTrace.log(traceId, "LLM_CHAT_WITH_THINKING", "FAILURE", "caller=${ApiCallTrace.caller()} error=${e.javaClass.simpleName}")
                 throw e
