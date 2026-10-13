@@ -41,6 +41,7 @@ class VectorMemoryService(
         embeddingService is OpenAIEmbeddingService || embeddingService is LocalEmbeddingService
 
     private val embeddingModelId = embeddingService.modelId()
+    private val legacyVectorsCompatible = embeddingService.supportsLegacyVectors()
     private val embeddingCache =
         LinkedHashMap<String, FloatArray>(
             EMBEDDING_CACHE_INITIAL_CAPACITY,
@@ -145,16 +146,16 @@ class VectorMemoryService(
         sessionId: String?,
         topK: Int = 5,
     ): List<VectorStore.SearchResult> {
+        if (topK <= 0) return emptyList()
         try {
             // 1. 查询向量化
             val queryEmbedding = embedCached(query, "EMBEDDING_MEMORY_QUERY")
 
-            // 2. 构建过滤器
+            // 2. 构建基础过滤器；模型兼容性在结果层处理，以保留可安全复用的旧向量。
             val filters =
                 mutableMapOf<String, Any>(
                     "owner_id" to ownerId,
                     "character_id" to characterId,
-                    "embedding_model" to embeddingModelId,
                 )
 
             // 如果指定了会话ID，则只检索当前会话
@@ -162,8 +163,19 @@ class VectorMemoryService(
                 filters["session_id"] = sessionId
             }
 
-            // 3. 向量检索
-            val results = vectorStore.search(queryEmbedding, topK, filters)
+            // Retrieve all candidates so incompatible model vectors cannot crowd legacy matches
+            // out of the top-K window. InMemoryVectorStore filters incompatible dimensions first.
+            val candidateLimit = maxOf(topK, vectorStore.count())
+            val candidates = vectorStore.search(queryEmbedding, candidateLimit, filters)
+            val results =
+                candidates
+                    .filter { result ->
+                        if (result.metadata.containsKey("embedding_model")) {
+                            result.metadata["embedding_model"]?.toString() == embeddingModelId
+                        } else {
+                            legacyVectorsCompatible
+                        }
+                    }.take(topK)
 
             Log.d(TAG, "Search found ${results.size} relevant memories for queryLength=${query.length}")
 
