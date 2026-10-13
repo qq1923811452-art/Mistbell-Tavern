@@ -33,6 +33,27 @@ class VectorMemoryService(
     val available: Boolean =
         embeddingService is OpenAIEmbeddingService || embeddingService is LocalEmbeddingService
 
+    private val embeddingModelId = embeddingService.modelId()
+    private val embeddingCache = LinkedHashMap<String, FloatArray>(32, 0.75f, true)
+
+    /**
+     * Reuse the exact text embedding across the write-then-retrieve path.
+     * Cache entries are bounded and scoped to this service/model instance.
+     */
+    private suspend fun embedCached(text: String): FloatArray {
+        synchronized(embeddingCache) {
+            embeddingCache[text]?.let { return it.copyOf() }
+        }
+        val generated = embeddingService.embed(text)
+        synchronized(embeddingCache) {
+            embeddingCache[text] = generated.copyOf()
+            while (embeddingCache.size > 32) {
+                embeddingCache.remove(embeddingCache.keys.first())
+            }
+        }
+        return generated.copyOf()
+    }
+
     /**
      * 存储消息到向量数据库
      *
@@ -54,7 +75,7 @@ class VectorMemoryService(
     ): String {
         try {
             // 1. 生成向量
-            val embedding = embeddingService.embed(content)
+            val embedding = embedCached(content)
 
             // 2. 构建元数据
             val metadata =
@@ -65,6 +86,7 @@ class VectorMemoryService(
                     "message_id" to messageId,
                     "content_type" to contentType,
                     "content" to content,
+                    "embedding_model" to embeddingModelId,
                     "created_at" to System.currentTimeMillis().toString(),
                 )
 
@@ -102,13 +124,14 @@ class VectorMemoryService(
     ): List<VectorStore.SearchResult> {
         try {
             // 1. 查询向量化
-            val queryEmbedding = embeddingService.embed(query)
+            val queryEmbedding = embedCached(query)
 
             // 2. 构建过滤器
             val filters =
                 mutableMapOf<String, Any>(
                     "owner_id" to ownerId,
                     "character_id" to characterId,
+                    "embedding_model" to embeddingModelId,
                 )
 
             // 如果指定了会话ID，则只检索当前会话
