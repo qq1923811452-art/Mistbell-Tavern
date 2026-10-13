@@ -5,6 +5,7 @@ import androidx.room.Entity
 import androidx.room.PrimaryKey
 import com.mistbell.tavern.android.data.api.model.Memory
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
 
 @Entity(tableName = "memories")
 @Serializable
@@ -17,7 +18,9 @@ data class MemoryEntity(
     val type: String,
     val subject: String,
     val relation: String,
-    val `object`: String,
+    @ColumnInfo(name = "object")
+    @SerialName("object")
+    val objectValue: String,
     val content: String,
     val importance: Double,
     val stability: Double,
@@ -56,7 +59,7 @@ data class MemoryEntity(
             layer = layer,
             subject = subject,
             relation = relation,
-            `object` = `object`,
+            `object` = objectValue,
             importance = importance,
             stability = stability,
             status = status,
@@ -86,7 +89,7 @@ data class MemoryEntity(
                 type = m.type,
                 subject = m.subject,
                 relation = m.relation,
-                `object` = m.`object`,
+                objectValue = m.`object`,
                 content = m.content,
                 importance = m.importance,
                 stability = m.stability,

@@ -6,6 +6,7 @@ import com.mistbell.tavern.android.data.api.model.GroupChatContext
 import com.mistbell.tavern.android.data.api.model.StructuredMemory
 import com.mistbell.tavern.android.data.local.AppDatabase
 import com.mistbell.tavern.android.data.local.entity.MessageEntity
+import com.mistbell.tavern.android.data.memory.MemoryConflictResolver
 import com.mistbell.tavern.android.data.memory.MemoryRanking
 import com.mistbell.tavern.android.data.local.entity.WorldBookEntryEntity
 import com.mistbell.tavern.android.data.repository.ChatSettingsResolver
@@ -175,10 +176,19 @@ object PromptBuilder {
     private const val RRF_RANK_CONSTANT = 60.0
     private const val MIN_HYBRID_VECTOR_SCORE = 0.5f
     private const val MAX_LEXICAL_CONTENT_CHARS = 240
+    private const val HISTORY_TIMESTAMP_PREFIX_LENGTH = 16
+    private const val VECTOR_RECALL_MULTIPLIER = 2
     private data class HybridCandidate(
         val content: String,
         var score: Double,
         val sources: MutableSet<String>,
+    )
+    private data class HybridRecallRequest(
+        val ownerId: String,
+        val characterId: String,
+        val sessionId: String,
+        val userMessage: String,
+        val alreadyInjected: List<String>,
     )
     private val THINKING_BLOCK_REGEX = Regex("(?s)<think>[\\s\\S]*?</think>")
 
@@ -867,6 +877,7 @@ object PromptBuilder {
             db.structuredMemoryDao()
                 .getPromptCandidates(ownerId, characterId, MEMORY_CANDIDATE_LIMIT)
                 .map { it.toDomain() }
+                .filterNot(MemoryConflictResolver::isSuperseded)
 
         val recalledMemories = selectRelevantMemories(memories, userMessage)
         val recalledContents = recalledMemories.map { it.content }.filter { it.isNotBlank() }
@@ -882,54 +893,70 @@ object PromptBuilder {
                 )
         }
 
-        // Hybrid retrieval: semantic vectors and exact lexical history run together.
-        // Reciprocal-rank fusion avoids assuming the two retrievers' scores share a scale.
-        val topK = ChatSettingsResolver.memoryRecallTopK(db.settingsDao().getValue("memory_recall_top_k"))
-        val threshold =
-            ChatSettingsResolver.memorySimilarityThreshold(
-                db.settingsDao().getValue("memory_similarity_threshold"),
+        recallBlock =
+            buildHybridRecallBlock(
+                db,
+                HybridRecallRequest(ownerId, characterId, sessionId, userMessage, recalledContents),
             )
-        val vectorMemoryService = TavernApplication.instance.container.vectorMemoryService
-        val vectorResults =
-            try {
-                if (vectorMemoryService.available) {
-                    vectorMemoryService.searchRelevantMemories(
-                        query = userMessage,
-                        ownerId = ownerId,
-                        characterId = characterId,
-                        sessionId = sessionId,
-                        topK = topK * 2,
-                    ).filter { it.score >= threshold }
-                } else {
-                    emptyList()
-                }
-            } catch (e: Exception) {
-                android.util.Log.e("PromptBuilder", "Semantic memory search failed: ${e.message}", e)
-                emptyList()
-            }
-
-        // Lexical search is not merely a fallback: it recovers exact names, quoted phrases,
-        // and literal details that embeddings can rank poorly.
-        val lexicalItems =
-            try {
-                LexicalMemoryService(TavernApplication.instance)
-                    .searchRelevantHistory(ownerId, characterId, sessionId, userMessage, topK = topK)
-            } catch (e: Exception) {
-                android.util.Log.e("PromptBuilder", "Lexical memory search failed: ${e.message}", e)
-                emptyList()
-            }
-        val hybridContext =
-            buildHybridMemoryContextForPrompt(
-                vectorResults = vectorResults,
-                lexicalItems = lexicalItems,
-                alreadyInjected = recalledContents,
-                limit = topK,
-            )
-        if (hybridContext.isNotBlank()) {
-            recallBlock = ChatMessage(role = "system", content = hybridContext)
-        }
 
         return MemoryContext(structuredBlock = structuredBlock, recallBlock = recallBlock)
+    }
+
+    private suspend fun buildHybridRecallBlock(
+        db: AppDatabase,
+        request: HybridRecallRequest,
+    ): ChatMessage? {
+        val ownerId = request.ownerId
+        val characterId = request.characterId
+        val sessionId = request.sessionId
+        val userMessage = request.userMessage
+        val alreadyInjected = request.alreadyInjected
+        // Hybrid retrieval: semantic vectors and exact lexical history run together.
+        // Reciprocal-rank fusion avoids assuming the two retrievers' scores share a scale.
+                val topK = ChatSettingsResolver.memoryRecallTopK(db.settingsDao().getValue("memory_recall_top_k"))
+                val threshold =
+                    ChatSettingsResolver.memorySimilarityThreshold(
+                        db.settingsDao().getValue("memory_similarity_threshold"),
+                    )
+                val vectorMemoryService = TavernApplication.instance.container.vectorMemoryService
+                val vectorResults =
+                    try {
+                        if (vectorMemoryService.available) {
+                            vectorMemoryService.searchRelevantMemories(
+                                query = userMessage,
+                                ownerId = ownerId,
+                                characterId = characterId,
+                                sessionId = sessionId,
+                                topK = topK * VECTOR_RECALL_MULTIPLIER,
+                            ).filter { it.score >= threshold }
+                        } else {
+                            emptyList()
+                        }
+                    } catch (e: Exception) {
+                        android.util.Log.e("PromptBuilder", "Semantic memory search failed: ${e.message}", e)
+                        emptyList()
+                    }
+        
+                // Lexical search is not merely a fallback: it recovers exact names, quoted phrases,
+                // and literal details that embeddings can rank poorly.
+                val lexicalItems =
+                    try {
+                        LexicalMemoryService(TavernApplication.instance)
+                            .searchRelevantHistory(ownerId, characterId, sessionId, userMessage, topK = topK)
+                    } catch (e: Exception) {
+                        android.util.Log.e("PromptBuilder", "Lexical memory search failed: ${e.message}", e)
+                        emptyList()
+                    }
+                val hybridContext =
+                    buildHybridMemoryContextForPrompt(
+                        vectorResults = vectorResults,
+                        lexicalItems = lexicalItems,
+                        alreadyInjected = alreadyInjected,
+                        limit = topK,
+                    )
+                return hybridContext.takeIf { it.isNotBlank() }?.let { context ->
+                    ChatMessage(role = "system", content = context)
+                }
     }
 
     private fun selectRelevantMemories(
@@ -1096,45 +1123,52 @@ object PromptBuilder {
         lexicalItems: List<MessageEntity>,
         alreadyInjected: List<String>,
         limit: Int = 8,
-    ): String {
-        if (limit <= 0) return ""
-        val candidates = linkedMapOf<String, HybridCandidate>()
-        fun add(content: String, rank: Int, source: String) {
-            val trimmed = content.trim()
-            if (trimmed.isBlank() || isDuplicateOfInjected(trimmed, alreadyInjected)) return
-            val keyContent =
-                trimmed
-                    .replace(Regex("""^\[[^]]+\]\s*"""), "")
-                    .replace(Regex("""^(user|assistant|system|角色|用户):\s*""", RegexOption.IGNORE_CASE), "")
-            val key = keyContent.lowercase().replace(Regex("""[\s\p{Punct}，。！？、；：“”‘’（）【】《》]+"""), "")
-            if (key.isBlank()) return
-            val contribution = 1.0 / (RRF_RANK_CONSTANT + rank)
-            val candidate = candidates[key]
-            if (candidate == null) {
-                candidates[key] = HybridCandidate(trimmed, contribution, linkedSetOf(source))
+    ): String =
+        if (limit <= 0) {
+            ""
+        } else {
+            val candidates = linkedMapOf<String, HybridCandidate>()
+            fun add(content: String, rank: Int, source: String) {
+                val trimmed = content.trim()
+                if (trimmed.isBlank() || isDuplicateOfInjected(trimmed, alreadyInjected)) return
+                val keyContent =
+                    trimmed
+                        .replace(Regex("""^\[[^]]+\]\s*"""), "")
+                        .replace(Regex("""^(user|assistant|system|角色|用户):\s*""", RegexOption.IGNORE_CASE), "")
+                val key =
+                    keyContent.lowercase()
+                        .replace(Regex("""[\s\p{Punct}，。！？、；：“”‘’（）【】《》]+"""), "")
+                if (key.isBlank()) return
+                val contribution = 1.0 / (RRF_RANK_CONSTANT + rank)
+                val candidate = candidates[key]
+                if (candidate == null) {
+                    candidates[key] = HybridCandidate(trimmed, contribution, linkedSetOf(source))
+                } else {
+                    candidate.score += contribution
+                    candidate.sources.add(source)
+                }
+            }
+
+            vectorResults
+                .filter { it.score > MIN_HYBRID_VECTOR_SCORE }
+                .forEachIndexed { index, result -> add(result.content, index + 1, "语义") }
+            lexicalItems.forEachIndexed { index, message ->
+                val stamp = message.createdAt.take(HISTORY_TIMESTAMP_PREFIX_LENGTH).replace('T', ' ')
+                add("[$stamp] ${message.role}: ${message.content.take(MAX_LEXICAL_CONTENT_CHARS)}", index + 1, "关键词")
+            }
+
+            val ranked = candidates.values.sortedByDescending { it.score }.take(limit)
+            if (ranked.isEmpty()) {
+                ""
             } else {
-                candidate.score += contribution
-                candidate.sources.add(source)
+                buildString {
+                    appendLine("## Relevant Past Conversations")
+                    ranked.forEachIndexed { index, candidate ->
+                        appendLine("${index + 1}. [${candidate.sources.joinToString("+")}] ${candidate.content}")
+                    }
+                }.trim()
             }
         }
-
-        vectorResults
-            .filter { it.score > MIN_HYBRID_VECTOR_SCORE }
-            .forEachIndexed { index, result -> add(result.content, index + 1, "语义") }
-        lexicalItems.forEachIndexed { index, message ->
-            val stamp = message.createdAt.take(16).replace('T', ' ')
-            add("[$stamp] ${message.role}: ${message.content.take(MAX_LEXICAL_CONTENT_CHARS)}", index + 1, "关键词")
-        }
-
-        val ranked = candidates.values.sortedByDescending { it.score }.take(limit)
-        if (ranked.isEmpty()) return ""
-        return buildString {
-            appendLine("## Relevant Past Conversations")
-            ranked.forEachIndexed { index, candidate ->
-                appendLine("${index + 1}. [${candidate.sources.joinToString("+")}] ${candidate.content}")
-            }
-        }.trim()
-    }
 
     /**
      * 构建向量记忆上下文（用于 Prompt 注入）。

@@ -86,32 +86,13 @@ class MemoryExtractionService(
                 var savedCount = 0
                 validated.forEach { candidate ->
                     try {
-                        val memory =
-                            convertToMemoryDomain(
-                                candidate = candidate,
-                                ownerId = ownerId,
-                                characterId = characterId,
-                                sessionId = sessionId,
-                                messageIds = messageIds,
-                            )
-                        // Keep temporal history when a newer extracted fact changes an existing value.
-                        val existing =
-                            structuredMemoryRepository.getMemoriesByCharacter(ownerId, characterId).first()
-                        val fact =
-                            candidate.let {
-                                MemoryConflictResolver.findSuperseded(
-                                    subject = it.subject,
-                                    relation = it.relation,
-                                    value = it.objValue,
-                                    existing = existing,
-                                )
-                            }
-                        fact.forEach { previous ->
-                            structuredMemoryRepository.updateMemory(
-                                MemoryConflictResolver.markSuperseded(previous, memory.content),
-                            )
-                        }
-                        structuredMemoryRepository.createMemory(memory)
+                        saveMemoryCandidate(
+                            candidate = candidate,
+                            ownerId = ownerId,
+                            characterId = characterId,
+                            sessionId = sessionId,
+                            messageIds = messageIds,
+                        )
                         savedCount++
                         Log.d(TAG, "Saved memory candidate #$savedCount")
                     } catch (e: Exception) {
@@ -126,6 +107,36 @@ class MemoryExtractionService(
                 0
             }
         }
+
+    private suspend fun saveMemoryCandidate(
+        candidate: MemoryCandidate,
+        ownerId: String,
+        characterId: String,
+        sessionId: String,
+        messageIds: List<String>,
+    ) {
+        val memory =
+            convertToMemoryDomain(
+                candidate = candidate,
+                ownerId = ownerId,
+                characterId = characterId,
+                sessionId = sessionId,
+                messageIds = messageIds,
+            )
+        // Keep temporal history when a newer extracted fact changes an existing value.
+        val existing = structuredMemoryRepository.getMemoriesByCharacter(ownerId, characterId).first()
+        MemoryConflictResolver.findSuperseded(
+            subject = candidate.subject,
+            relation = candidate.relation,
+            value = candidate.objValue,
+            existing = existing,
+        ).forEach { previous ->
+            structuredMemoryRepository.updateMemory(
+                MemoryConflictResolver.markSuperseded(previous, memory.content),
+            )
+        }
+        structuredMemoryRepository.createMemory(memory)
+    }
 
     // 多轮拼接：轮间空行分隔；无用户消息的轮次（群聊"让TA继续"）省略 User 行
     private fun buildDialogueText(turns: List<DialogueTurn>): String {
@@ -498,7 +509,14 @@ class MemoryExtractionService(
 
         return existing.any { memory ->
             // A different value for the same structured fact is an update, not a duplicate.
-            if (MemoryConflictResolver.conflictsWith(candidate.subject, candidate.relation, candidate.objValue, memory)) {
+            if (
+                MemoryConflictResolver.conflictsWith(
+                    candidate.subject,
+                    candidate.relation,
+                    candidate.objValue,
+                    memory,
+                )
+            ) {
                 return@any false
             }
             if (MemoryConflictResolver.isSuperseded(memory)) return@any false
