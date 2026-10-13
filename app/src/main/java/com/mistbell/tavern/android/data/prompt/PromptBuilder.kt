@@ -615,7 +615,8 @@ object PromptBuilder {
                     add(session?.worldBookId.orEmpty())
                     add(session?.mode.orEmpty())
                     add(session?.modeConfigJson.orEmpty())
-                    // Group target/name changes alter historical speaker prefixes in saved snapshots.
+                    // Group mode and target/name changes alter historical speaker prefixes.
+                    add((groupContext != null).toString())
                     add(groupContext?.targetSpeakerId.orEmpty())
                     groupContext?.speakerNames?.toSortedMap()?.forEach { (speakerId, speakerName) ->
                         add(speakerId)
