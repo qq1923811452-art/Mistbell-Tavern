@@ -1,9 +1,8 @@
 package com.mistbell.tavern.android.data.vector
 
 import ai.onnxruntime.OnnxTensor
-import android.util.Log
-import com.mistbell.tavern.android.data.api.ApiCallTrace
 import ai.onnxruntime.OrtEnvironment
+import com.mistbell.tavern.android.data.api.ApiCallTrace
 import ai.onnxruntime.OrtSession
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
@@ -65,29 +64,29 @@ class LocalEmbeddingService private constructor(
         ApiCallTrace.log(traceId, source, "START", "engine=ONNX mode=local network=false")
         return try {
             withContext(Dispatchers.Default) {
-            val ids = tokenizer.encode(text, MAX_SEQ_LEN)
-            val seqLen = ids.size
-            val inputIds = LongArray(seqLen) { ids[it].toLong() }
-            val attentionMask = LongArray(seqLen) { 1L }
-            val tokenTypeIds = LongArray(seqLen) { 0L }
+                val ids = tokenizer.encode(text, MAX_SEQ_LEN)
+                val seqLen = ids.size
+                val inputIds = LongArray(seqLen) { ids[it].toLong() }
+                val attentionMask = LongArray(seqLen) { 1L }
+                val tokenTypeIds = LongArray(seqLen) { 0L }
 
-            val shape = longArrayOf(1, seqLen.toLong())
-            val inputs =
-                mapOf(
-                    INPUT_IDS to OnnxTensor.createTensor(env, LongBuffer.wrap(inputIds), shape),
-                    ATTENTION_MASK to OnnxTensor.createTensor(env, LongBuffer.wrap(attentionMask), shape),
-                    TOKEN_TYPE_IDS to OnnxTensor.createTensor(env, LongBuffer.wrap(tokenTypeIds), shape),
-                )
-            session.run(inputs).use { result ->
-                // 输出 [1, seqLen, 512]：bge 取 [CLS]（首位）做池化，再 L2 归一化
-                @Suppress("UNCHECKED_CAST")
-                val output = result.get(0).value as Array<Array<FloatArray>>
-                val cls = output[0][0]
-                normalize(cls)
+                val shape = longArrayOf(1, seqLen.toLong())
+                val inputs =
+                    mapOf(
+                        INPUT_IDS to OnnxTensor.createTensor(env, LongBuffer.wrap(inputIds), shape),
+                        ATTENTION_MASK to OnnxTensor.createTensor(env, LongBuffer.wrap(attentionMask), shape),
+                        TOKEN_TYPE_IDS to OnnxTensor.createTensor(env, LongBuffer.wrap(tokenTypeIds), shape),
+                    )
+                session.run(inputs).use { result ->
+                    // 输出 [1, seqLen, 512]：bge 取 [CLS]（首位）做池化，再 L2 归一化
+                    @Suppress("UNCHECKED_CAST")
+                    val output = result.get(0).value as Array<Array<FloatArray>>
+                    val cls = output[0][0]
+                    normalize(cls)
+                }
+            }.also {
+                ApiCallTrace.log(traceId, source, "SUCCESS", "engine=ONNX network=false elapsedMs=${System.currentTimeMillis() - startedAt} dimension=${it.size}")
             }
-        }.also {
-            ApiCallTrace.log(traceId, source, "SUCCESS", "engine=ONNX network=false elapsedMs=${System.currentTimeMillis() - startedAt} dimension=${it.size}")
-        }
         } catch (e: Exception) {
             ApiCallTrace.log(traceId, source, "FAILURE", "engine=ONNX network=false elapsedMs=${System.currentTimeMillis() - startedAt} error=${e.javaClass.simpleName}")
             throw e
