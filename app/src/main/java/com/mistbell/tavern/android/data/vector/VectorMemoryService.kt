@@ -54,7 +54,7 @@ class VectorMemoryService(
     ): String {
         try {
             // 1. 生成向量
-            val embedding = embeddingService.embed(content)
+            val embedding = embeddingService.embed(content, "EMBEDDING_STORE_${contentType.uppercase()}")
 
             // 2. 构建元数据
             val metadata =
@@ -102,7 +102,7 @@ class VectorMemoryService(
     ): List<VectorStore.SearchResult> {
         try {
             // 1. 查询向量化
-            val queryEmbedding = embeddingService.embed(query)
+            val queryEmbedding = embeddingService.embed(query, "EMBEDDING_MEMORY_QUERY")
 
             // 2. 构建过滤器
             val filters =
