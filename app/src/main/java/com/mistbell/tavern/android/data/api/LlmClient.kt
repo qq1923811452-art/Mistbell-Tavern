@@ -1,5 +1,9 @@
 package com.mistbell.tavern.android.data.api
 
+import java.io.IOException
+import java.net.SocketTimeoutException
+import java.util.Locale
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
@@ -8,6 +12,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
@@ -20,10 +25,6 @@ import okhttp3.Request
 import okhttp3.sse.EventSource
 import okhttp3.sse.EventSourceListener
 import okhttp3.sse.EventSources
-import java.io.IOException
-import java.net.SocketTimeoutException
-import java.util.Locale
-import java.util.concurrent.TimeUnit
 
 @Serializable
 data class ChatMessage(
@@ -664,6 +665,18 @@ object LlmClient {
                     )
                     throw e // 取消不重试
                 } catch (e: Exception) {
+                    // If the gateway rejects the optional thinking field before the first token,
+                    // retry once without that field. The response body is used only for classification.
+                    if (!emittedAny && config.disableThinking && isThinkingParamRejected(e)) {
+                        ApiCallTrace.log(
+                            traceId,
+                            "LLM_CHAT_STREAM",
+                            "FALLBACK",
+                            "caller=$caller fallback=without-thinking",
+                        )
+                        emitAll(chatStreamWithThinking(config.copy(disableThinking = false), messages))
+                        return@flow
+                    }
                     // 已发出增量后不再重试
                     if (emittedAny) {
                         ApiCallTrace.log(
@@ -760,8 +773,20 @@ object LlmClient {
                         }
                         if (response != null) {
                             val statusCode = response.code
+                            val responseBody =
+                                try {
+                                    response.body?.string().orEmpty()
+                                } catch (_: Exception) {
+                                    ""
+                                }
                             response.close()
-                            close(ApiError(statusCode, response.message, false))
+                            close(
+                                ApiError(
+                                    statusCode,
+                                    response.message,
+                                    isThinkingParameterRejected(statusCode, responseBody),
+                                ),
+                            )
                         } else {
                             close(IOException("LLM stream failed (${t?.javaClass?.simpleName ?: "unknown error"})"))
                         }
