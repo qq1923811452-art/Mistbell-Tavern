@@ -211,6 +211,14 @@ class MigrationSchemaAlignmentTest {
     }
 
     @Test
+    fun `v26_27 迁移增加空默认的提示词缓存快照列`() {
+        assertEquals(
+            listOf("ALTER TABLE messages ADD COLUMN prompt_context_snapshot_json TEXT NOT NULL DEFAULT ''"),
+            AppDatabase.MIGRATION_26_27_SQL,
+        )
+    }
+
+    @Test
     fun `v17 迁移仅新增列不触碰索引`() {
         // 防呆：v17 是纯加列迁移，不应创建/删除任何索引（避免复现 v14 索引名事故）
         assertTrue(
