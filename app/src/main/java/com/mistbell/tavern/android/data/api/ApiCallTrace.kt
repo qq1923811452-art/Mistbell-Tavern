@@ -14,7 +14,8 @@ object ApiCallTrace {
 
     /** Finds the first app frame outside this tracer and the transport client. */
     fun caller(skipClassNames: Set<String> = emptySet()): String {
-        val frame = Throwable("API call source trace").stackTrace.firstOrNull {
+        val frame =
+            Throwable("API call source trace").stackTrace.firstOrNull {
             val name = it.className
             !name.startsWith("java.") &&
                 !name.startsWith("kotlin.") &&
