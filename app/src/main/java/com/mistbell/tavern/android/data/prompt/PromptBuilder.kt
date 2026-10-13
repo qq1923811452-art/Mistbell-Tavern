@@ -14,12 +14,13 @@ import com.mistbell.tavern.android.data.repository.LexicalMemoryService
 import com.mistbell.tavern.android.data.vector.VectorStore
 import com.mistbell.tavern.android.util.MacroContext
 import com.mistbell.tavern.android.util.MacroEngine
+import java.security.MessageDigest
+import java.time.Instant
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import java.security.MessageDigest
-import java.time.Instant
 
 object PromptBuilder {
     /** World Info 的会话内运行状态：sticky/cooldown/delay 只影响激活决策，不改变 Room 主数据。 */
@@ -390,16 +391,18 @@ object PromptBuilder {
                         messages = trace.cacheContextSnapshot,
                     ),
                 )
-            // Cache snapshots are an optimization only: a failed snapshot write must not fail chat.
-            runCatching {
+            // Cache snapshots are an optimization only: a failed write must not fail chat.
+            try {
                 db.messageDao().updatePromptContextSnapshot(
                     messageId = currentMessageId,
                     sessionId = sessionId,
                     ownerId = ownerId,
                     snapshotJson = snapshotJson,
                 )
-            }.onFailure {
-                android.util.Log.w("PromptCache", "Could not persist prompt cache snapshot", it)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                android.util.Log.w("PromptCache", "Could not persist prompt cache snapshot", e)
             }
         }
         return trace.segments.map { it.message }
@@ -1159,8 +1162,10 @@ object PromptBuilder {
                 } else {
                     emptyList()
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                android.util.Log.e("PromptBuilder", "Semantic memory search failed: ${e.message}", e)
+                android.util.Log.e("PromptBuilder", "Semantic memory search failed (${e.javaClass.simpleName})")
                 emptyList()
             }
 
@@ -1170,8 +1175,10 @@ object PromptBuilder {
             try {
                 LexicalMemoryService(TavernApplication.instance)
                     .searchRelevantHistory(ownerId, characterId, sessionId, userMessage, topK = topK)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                android.util.Log.e("PromptBuilder", "Lexical memory search failed: ${e.message}", e)
+                android.util.Log.e("PromptBuilder", "Lexical memory search failed (${e.javaClass.simpleName})")
                 emptyList()
             }
         val hybridContext =
