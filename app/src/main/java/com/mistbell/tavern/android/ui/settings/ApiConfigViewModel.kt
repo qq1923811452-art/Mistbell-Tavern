@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.mistbell.tavern.android.TavernApplication
 import com.mistbell.tavern.android.data.local.entity.ApiConfigEntity
 import com.mistbell.tavern.android.data.repository.ApiConfigMigration
+import com.mistbell.tavern.android.util.SecureStore
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.util.*
@@ -132,7 +133,7 @@ class ApiConfigViewModel(application: Application) : AndroidViewModel(applicatio
                         id = UUID.randomUUID().toString(),
                         name = name,
                         apiUrl = apiUrl,
-                        apiKey = apiKey,
+                        apiKey = SecureStore.wrap(apiKey),
                         model = model,
                         isDefault = false,
                         sortOrder = apiConfigDao.getCount(),
@@ -368,7 +369,7 @@ private fun ApiConfigEntity.toApiConfig(): ApiConfig {
         id = id,
         name = name,
         apiUrl = apiUrl,
-        apiKey = apiKey,
+        apiKey = SecureStore.unwrap(apiKey),
         model = model,
         isDefault = isDefault,
         lastTestStatus =
@@ -394,7 +395,7 @@ private fun ApiConfig.toEntity(): ApiConfigEntity {
         id = id,
         name = name,
         apiUrl = apiUrl,
-        apiKey = apiKey,
+        apiKey = SecureStore.wrap(apiKey),
         model = model,
         isDefault = isDefault,
         lastTestStatus =
