@@ -54,7 +54,7 @@ internal object OpenAiChatProtocol : ChatProtocol {
         val message = choice?.message
         return ProtocolContent(
             text = message?.content ?: "",
-            usage = completion.usage,
+            usage = completion.usage?.withNormalizedCacheMetrics(),
             finishReason = choice?.finishReason,
             thinking =
                 listOfNotNull(message?.reasoningContent, message?.reasoning, message?.thinking)
@@ -64,14 +64,15 @@ internal object OpenAiChatProtocol : ChatProtocol {
 
     override fun parseStreamData(data: String): StreamParseResult {
         val chunk = SseParser.parseChunk(data) ?: return StreamParseResult.Ignore
+        val normalizedUsage = chunk.usage?.withNormalizedCacheMetrics()
         val usageUpdate =
-            chunk.usage?.let { StreamParseResult.UsageUpdate(it) }
+            normalizedUsage?.let { StreamParseResult.UsageUpdate(it) }
         val deltaText = SseParser.contentOf(chunk)
         val deltaThinking = SseParser.thinkingOf(chunk)
         val delta =
             if (!deltaText.isNullOrBlank() || !deltaThinking.isNullOrBlank()) {
                 // 同帧可能既带正文又带 usage：一并交给上层合并，避免整帧用量被丢（P2-4）
-                StreamParseResult.Delta(deltaText.orEmpty(), deltaThinking, chunk.usage)
+                StreamParseResult.Delta(deltaText.orEmpty(), deltaThinking, normalizedUsage)
             } else {
                 null
             }
