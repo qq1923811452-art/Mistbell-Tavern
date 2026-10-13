@@ -85,7 +85,7 @@ class ApiTestService {
             // Custom x-api-key and x-goog-api-key headers must not follow cross-origin redirects.
             .followRedirects(false)
             .followSslRedirects(false)
-            .connectTimeout(15, TimeUnit.SECONDS
+            .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(15, TimeUnit.SECONDS)
             .writeTimeout(15, TimeUnit.SECONDS)
             .build()
