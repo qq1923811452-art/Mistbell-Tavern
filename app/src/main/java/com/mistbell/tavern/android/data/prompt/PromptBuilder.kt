@@ -427,8 +427,9 @@ object PromptBuilder {
         // 三态覆盖语义（SETTINGS.md 分层原则）：会话显式值 > 全局当前默认 > 内置兜底，
         // 统一经 ChatSettingsResolver 解析——不再在此硬编码 4096 兜底
         val settingsDao = db.settingsDao()
-        // Resolve the same effective provider family used by session-level configuration.
-        // API keys are intentionally excluded from this identity.
+        // Prefix-snapshot replay is valid for OpenAI-compatible message protocols.
+        // Model IDs, API URLs, and API keys are deliberately excluded from the content fingerprint:
+        // switching between compatible models should not discard identical historical prompt text.
         val cacheProviderConfig =
             session?.providerId
                 ?.takeIf { it.isNotBlank() }
@@ -436,15 +437,6 @@ object PromptBuilder {
                 ?: db.apiConfigDao().getDefault()
         val cacheSnapshotEnabled =
             cacheProviderConfig == null || cacheProviderConfig.type == "openai" || cacheProviderConfig.type == "custom"
-        val cacheProviderIdentity =
-            listOf(
-                session?.providerId.orEmpty(),
-                cacheProviderConfig?.id.orEmpty(),
-                cacheProviderConfig?.type ?: "openai",
-                cacheProviderConfig?.apiUrl?.trimEnd('/') ?: settingsDao.getValue("llm_base_url").orEmpty(),
-                cacheProviderConfig?.model ?: settingsDao.getValue("llm_model").orEmpty(),
-                session?.modelId.orEmpty(),
-            ).joinToString("\u001f")
         val contextTokenLimit =
             ChatSettingsResolver.contextTokenLimit(
                 session,
@@ -612,7 +604,6 @@ object PromptBuilder {
                     add(ownerId)
                     add(characterId)
                     add(sessionId)
-                    add(cacheProviderIdentity)
                     add(contextTokenLimit.toString())
                     add(longTermMemoryEnabled.toString())
                     add(session?.authorNote.orEmpty())
