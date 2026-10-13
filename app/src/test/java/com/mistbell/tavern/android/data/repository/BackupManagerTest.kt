@@ -89,6 +89,27 @@ class BackupManagerTest {
     }
 
     @Test
+    fun `legacy credential keys are marked sensitive even when stored as plaintext`() {
+        val entry = BackupManager.toBackupEntry(SettingsEntity("llm_api_key", "legacy-secret"))
+
+        assertEquals("legacy-secret", entry.value)
+        assertTrue(entry.sensitive)
+    }
+
+    @Test
+    fun `unsafe theme pack IDs are rejected`() {
+        listOf("../outside", "folder/name", "folder\\\\name", "..").forEach { id ->
+            try {
+                BackupManager.validateThemePackId(id)
+                fail("Unsafe theme pack ID should be rejected: $id")
+            } catch (e: IllegalArgumentException) {
+                assertTrue(e.message!!.contains("路径"))
+            }
+        }
+        BackupManager.validateThemePackId("safe-theme_123")
+    }
+
+    @Test
     fun `空 settings 表序列化往返`() {
         val encoded =
             Json.encodeToString(
