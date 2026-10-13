@@ -281,6 +281,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             db.settingsDao().upsert(
                 com.mistbell.tavern.android.data.local.entity.SettingsEntity("embedding_source", source),
             )
+            _message.value = "记忆源已保存，重启应用后生效"
         }
     }
 
