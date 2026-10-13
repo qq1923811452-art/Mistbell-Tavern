@@ -10,6 +10,17 @@ on:
         options:
           - debug
         default: debug
+  pull_request:
+    branches:
+      - mistbell-2.0
+    paths:
+      - "app/**"
+      - "gradle/**"
+      - "gradlew"
+      - "build.gradle*"
+      - "settings.gradle*"
+      - ".github/workflows/build-apk.yml"
+      - ".github/workflows/ci.yml"
   push:
     branches:
       - feature
