@@ -177,7 +177,8 @@ class ChatRepository(private val context: Context) {
                 MessageEntity.fromDomain(userMsg, sessionId, ownerId, characterId),
             )
 
-            // 1.5. 向量化用户消息（异步，不阻塞主流程）
+            // 1.5. 写入用户消息向量；VectorMemoryService 缓存该文本的 embedding，
+            // 供随后提示词召回复用，避免对同一条用户消息重复请求 embedding。
             storeUserMessageVector(
                 content = message,
                 ownerId = ownerId,
