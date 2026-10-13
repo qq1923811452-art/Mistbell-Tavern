@@ -47,11 +47,19 @@ class OpenAIEmbeddingService(
 
     override suspend fun embed(text: String): FloatArray = embed(text, "EMBEDDING_UNSPECIFIED")
 
-    override suspend fun embed(text: String, source: String): FloatArray =
+    override suspend fun embed(
+        text: String,
+        source: String,
+    ): FloatArray =
         withContext(Dispatchers.IO) {
             val traceId = ApiCallTrace.newId()
             val startedAt = System.currentTimeMillis()
-            ApiCallTrace.log(traceId, source, "START", "engine=remote model=$model endpoint=${ApiCallTrace.safeEndpoint("$baseUrl/embeddings")} operation=single")
+            ApiCallTrace.log(
+                traceId,
+                source,
+                "START",
+                "engine=remote model=$model endpoint=${ApiCallTrace.safeEndpoint("$baseUrl/embeddings")} operation=single",
+            )
             var lastException: Exception? = null
 
             repeat(MAX_RETRIES) { attempt ->
@@ -101,7 +109,13 @@ class OpenAIEmbeddingService(
             throw failure
         }
 
-    private fun executeEmbedRequest(text: String, traceId: String, source: String, startedAt: Long, attempt: Int): FloatArray {
+    private fun executeEmbedRequest(
+        text: String,
+        traceId: String,
+        source: String,
+        startedAt: Long,
+        attempt: Int,
+    ): FloatArray {
         val requestBody =
             EmbeddingRequestSingle(
                 input = text,
@@ -123,11 +137,16 @@ class OpenAIEmbeddingService(
                 .build()
 
         val response = client.newCall(request).execute()
-        ApiCallTrace.log(traceId, source, "HTTP", "attempt=$attempt status=${response.code} endpoint=${ApiCallTrace.safeEndpoint(request.url.toString())} elapsedMs=${System.currentTimeMillis() - startedAt}")
+        ApiCallTrace.log(
+            traceId,
+            source,
+            "HTTP",
+            "attempt=$attempt status=${response.code} endpoint=${ApiCallTrace.safeEndpoint(request.url.toString())} elapsedMs=${System.currentTimeMillis() - startedAt}",
+        )
 
         if (!response.isSuccessful) {
-            val errorBody = response.body?.string() ?: "Unknown error"
-            throw Exception("OpenAI API error: ${response.code} - $errorBody")
+            response.body?.close()
+            throw Exception("OpenAI API error: ${response.code}")
         }
 
         val responseBody =
@@ -142,7 +161,12 @@ class OpenAIEmbeddingService(
 
         val embedding = embeddingResponse.data.first().embedding
 
-        ApiCallTrace.log(traceId, source, "SUCCESS", "attempt=$attempt model=$model dimension=${embedding.size} elapsedMs=${System.currentTimeMillis() - startedAt}")
+        ApiCallTrace.log(
+            traceId,
+            source,
+            "SUCCESS",
+            "attempt=$attempt model=$model dimension=${embedding.size} elapsedMs=${System.currentTimeMillis() - startedAt}",
+        )
         Log.d(TAG, "Generated embedding: dimension=${embedding.size}")
 
         return FloatArray(embedding.size) { i -> embedding[i].toFloat() }
@@ -150,11 +174,19 @@ class OpenAIEmbeddingService(
 
     override suspend fun embedBatch(texts: List<String>): List<FloatArray> = embedBatch(texts, "EMBEDDING_BATCH_UNSPECIFIED")
 
-    override suspend fun embedBatch(texts: List<String>, source: String): List<FloatArray> =
+    override suspend fun embedBatch(
+        texts: List<String>,
+        source: String,
+    ): List<FloatArray> =
         withContext(Dispatchers.IO) {
             val traceId = ApiCallTrace.newId()
             val startedAt = System.currentTimeMillis()
-            ApiCallTrace.log(traceId, source, "START", "engine=remote model=$model endpoint=${ApiCallTrace.safeEndpoint("$baseUrl/embeddings")} operation=batch itemCount=${texts.size}")
+            ApiCallTrace.log(
+                traceId,
+                source,
+                "START",
+                "engine=remote model=$model endpoint=${ApiCallTrace.safeEndpoint("$baseUrl/embeddings")} operation=batch itemCount=${texts.size}",
+            )
             var lastException: Exception? = null
 
             repeat(MAX_RETRIES) { attempt ->
@@ -204,7 +236,13 @@ class OpenAIEmbeddingService(
             throw failure
         }
 
-    private fun executeEmbedBatchRequest(texts: List<String>, traceId: String, source: String, startedAt: Long, attempt: Int): List<FloatArray> {
+    private fun executeEmbedBatchRequest(
+        texts: List<String>,
+        traceId: String,
+        source: String,
+        startedAt: Long,
+        attempt: Int,
+    ): List<FloatArray> {
         val requestBody =
             EmbeddingRequestBatch(
                 input = texts,
@@ -243,7 +281,12 @@ class OpenAIEmbeddingService(
             throw Exception("No embedding data returned")
         }
 
-        ApiCallTrace.log(traceId, source, "SUCCESS", "attempt=$attempt model=$model dimension=${embeddingResponse.data.first().embedding.size} itemCount=${embeddingResponse.data.size} elapsedMs=${System.currentTimeMillis() - startedAt}")
+        ApiCallTrace.log(
+            traceId,
+            source,
+            "SUCCESS",
+            "attempt=$attempt model=$model dimension=${embeddingResponse.data.first().embedding.size} itemCount=${embeddingResponse.data.size} elapsedMs=${System.currentTimeMillis() - startedAt}",
+        )
         Log.d(TAG, "Generated ${embeddingResponse.data.size} embeddings in batch")
 
         return embeddingResponse.data.map { data ->
