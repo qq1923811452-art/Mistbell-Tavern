@@ -108,6 +108,9 @@ class InMemoryVectorStore(
                 ensureLoaded()
                 vectors.values
                     .filter { entry -> matchesFilters(entry, filters) }
+                    // Different embedding providers can produce different vector dimensions
+                    // (BGE local=512, OpenAI=1536). Never compare incompatible spaces.
+                    .filter { entry -> entry.vector.size == queryVector.size }
                     .map { entry ->
                         val score = VectorUtils.cosineSimilarity(queryVector, entry.vector)
                         VectorStore.SearchResult(
