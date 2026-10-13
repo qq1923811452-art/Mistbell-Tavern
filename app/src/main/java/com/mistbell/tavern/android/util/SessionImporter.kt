@@ -13,12 +13,13 @@ object SessionImporter {
     private const val MAX_IMPORT_BYTES = 32 * 1024 * 1024
     private const val MAX_IMPORT_MESSAGES = 100_000
     private const val MAX_IMPORT_LINE_CHARS = 1_000_000
+    private const val IO_BUFFER_SIZE_BYTES = 8 * 1024
 
     private val json = Json { ignoreUnknownKeys = true }
 
     private fun readBoundedText(input: InputStream): String {
         val output = ByteArrayOutputStream()
-        val buffer = ByteArray(8 * 1024)
+        val buffer = ByteArray(IO_BUFFER_SIZE_BYTES)
         var total = 0
         while (true) {
             val read = input.read(buffer)
@@ -151,52 +152,48 @@ object SessionImporter {
     /**
      * 解析会话和消息（兼容旧格式）
      */
-    fun parseSessionData(jsonString: String): Pair<SessionSummary, List<Message>>? {
-        if (jsonString.length > MAX_IMPORT_BYTES) return null
-        return try {
-            val jsonElement = json.parseToJsonElement(jsonString)
-            val jsonObject = jsonElement.jsonObject
-
-            // 解析会话信息
-            val sessionObj = jsonObject["session"]?.jsonObject ?: return null
-            val session =
-                SessionSummary(
-                    id = sessionObj["id"]?.jsonPrimitive?.content ?: "",
-                    title = sessionObj["title"]?.jsonPrimitive?.content ?: "未命名对话",
-                    createdAt = sessionObj["createdAt"]?.jsonPrimitive?.content ?: "",
-                    updatedAt = sessionObj["updatedAt"]?.jsonPrimitive?.content ?: "",
-                    messageCount = sessionObj["messageCount"]?.jsonPrimitive?.intOrNull ?: 0,
-                    characterId = sessionObj["characterId"]?.jsonPrimitive?.content,
-                    characterName = sessionObj["characterName"]?.jsonPrimitive?.content,
-                    // 契约 6 导入保真：读会话模式，缺失时默认 classic（兼容旧格式导出文件）
-                    mode = sessionObj["mode"]?.jsonPrimitive?.content ?: SESSION_MODE_CLASSIC,
-                )
-
-            // 解析消息列表
-            val messagesArray = jsonObject["messages"]?.jsonArray ?: JsonArray(emptyList())
-            val messages =
-                messagesArray.mapNotNull { msgElement ->
-                    val msgObj = msgElement.jsonObject
-                    Message(
-                        id = msgObj["id"]?.jsonPrimitive?.content ?: "",
-                        role = msgObj["role"]?.jsonPrimitive?.content ?: "user",
-                        content = msgObj["content"]?.jsonPrimitive?.content ?: "",
-                        thinking = msgObj["thinking"]?.jsonPrimitive?.content,
-                        // 契约 6 导入保真：读消息归属（群聊=说话 NPC id），缺失时默认空串
-                        // （空串 = 导入侧按会话主角色处理，与 Message 默认值语义一致）
-                        characterId = msgObj["characterId"]?.jsonPrimitive?.content ?: "",
-                        createdAt = msgObj["createdAt"]?.jsonPrimitive?.content ?: "",
-                        memoryIds = msgObj["memoryIds"]?.jsonArray?.map { it.jsonPrimitive.content },
-                        swipes = msgObj["swipes"]?.jsonArray?.map { it.jsonPrimitive.content },
-                        swipeIndex = msgObj["swipeIndex"]?.jsonPrimitive?.intOrNull ?: 0,
-                        thinkingSwipes = msgObj["thinkingSwipes"]?.jsonArray?.map { it.jsonPrimitive.content },
-                    )
-                }
-
-            Pair(session, messages)
-        } catch (e: Exception) {
-            e.printStackTrace()
+    fun parseSessionData(jsonString: String): Pair<SessionSummary, List<Message>>? =
+        if (jsonString.length > MAX_IMPORT_BYTES) {
             null
+        } else {
+            try {
+                val jsonElement = json.parseToJsonElement(jsonString)
+                val jsonObject = jsonElement.jsonObject
+                // 解析会话信息；格式不包含 session 时按解析失败处理。
+                val sessionObj =
+                    jsonObject["session"]?.jsonObject
+                        ?: throw IllegalArgumentException("缺少 session 字段")
+                val session =
+                    SessionSummary(
+                        id = sessionObj["id"]?.jsonPrimitive?.content ?: "",
+                        title = sessionObj["title"]?.jsonPrimitive?.content ?: "未命名对话",
+                        createdAt = sessionObj["createdAt"]?.jsonPrimitive?.content ?: "",
+                        updatedAt = sessionObj["updatedAt"]?.jsonPrimitive?.content ?: "",
+                        messageCount = sessionObj["messageCount"]?.jsonPrimitive?.intOrNull ?: 0,
+                        characterId = sessionObj["characterId"]?.jsonPrimitive?.content,
+                        characterName = sessionObj["characterName"]?.jsonPrimitive?.content,
+                        mode = sessionObj["mode"]?.jsonPrimitive?.content ?: SESSION_MODE_CLASSIC,
+                    )
+                val messagesArray = jsonObject["messages"]?.jsonArray ?: JsonArray(emptyList())
+                val messages =
+                    messagesArray.mapNotNull { msgElement ->
+                        val msgObj = msgElement.jsonObject
+                        Message(
+                            id = msgObj["id"]?.jsonPrimitive?.content ?: "",
+                            role = msgObj["role"]?.jsonPrimitive?.content ?: "user",
+                            content = msgObj["content"]?.jsonPrimitive?.content ?: "",
+                            thinking = msgObj["thinking"]?.jsonPrimitive?.content,
+                            characterId = msgObj["characterId"]?.jsonPrimitive?.content ?: "",
+                            createdAt = msgObj["createdAt"]?.jsonPrimitive?.content ?: "",
+                            memoryIds = msgObj["memoryIds"]?.jsonArray?.map { it.jsonPrimitive.content },
+                            swipes = msgObj["swipes"]?.jsonArray?.map { it.jsonPrimitive.content },
+                            swipeIndex = msgObj["swipeIndex"]?.jsonPrimitive?.intOrNull ?: 0,
+                            thinkingSwipes = msgObj["thinkingSwipes"]?.jsonArray?.map { it.jsonPrimitive.content },
+                        )
+                    }
+                Pair(session, messages)
+            } catch (_: Exception) {
+                null
+            }
         }
-    }
 }
