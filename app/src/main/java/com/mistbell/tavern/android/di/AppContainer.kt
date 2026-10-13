@@ -9,9 +9,9 @@ import com.mistbell.tavern.android.data.vector.InMemoryVectorStore
 import com.mistbell.tavern.android.data.vector.LocalEmbeddingService
 import com.mistbell.tavern.android.data.vector.MockEmbeddingService
 import com.mistbell.tavern.android.data.vector.OpenAIEmbeddingService
+import com.mistbell.tavern.android.data.vector.VectorCacheStatistics
 import com.mistbell.tavern.android.data.vector.VectorMemoryService
 import com.mistbell.tavern.android.data.vector.VectorStore
-import com.mistbell.tavern.android.data.vector.VectorCacheStatistics
 import com.mistbell.tavern.android.util.SecureStore
 
 /**
