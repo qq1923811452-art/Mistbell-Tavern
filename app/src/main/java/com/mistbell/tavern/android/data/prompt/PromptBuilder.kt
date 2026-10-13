@@ -683,7 +683,7 @@ object PromptBuilder {
             historySource
                 // 过滤掉刚落库的当前用户消息，避免同一条消息在 prompt 中重复出现
                 .filter { currentMessageId == null || it.id != currentMessageId }
-        val promptCacheSnapshots: Map<String, List<ChatMessage>> =
+        val promptCacheSnapshots: MutableMap<String, List<ChatMessage>> =
             if (cacheSnapshotEnabled) {
                 recentMessages.mapNotNull { message ->
                     val rawSnapshot = message.promptContextSnapshotJson
