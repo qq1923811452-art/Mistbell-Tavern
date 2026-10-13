@@ -83,6 +83,22 @@ data class Usage(
     @SerialName("total_tokens") val totalTokens: Int = 0,
     @SerialName("prompt_cache_hit_tokens") val cacheHitTokens: Int = 0,
     @SerialName("prompt_cache_miss_tokens") val cacheMissTokens: Int = 0,
+    @SerialName("prompt_tokens_details") val promptTokensDetails: PromptTokensDetails? = null,
+) {
+    /** Map OpenAI-style cached_tokens to the same counters used by DeepSeek's usage fields. */
+    fun withNormalizedCacheMetrics(): Usage {
+        if (cacheHitTokens > 0 || cacheMissTokens > 0) return this
+        val cachedTokens = promptTokensDetails?.cachedTokens ?: return this
+        return copy(
+            cacheHitTokens = cachedTokens,
+            cacheMissTokens = (promptTokens - cachedTokens).coerceAtLeast(0),
+        )
+    }
+}
+
+@Serializable
+data class PromptTokensDetails(
+    @SerialName("cached_tokens") val cachedTokens: Int? = null,
 )
 
 @Serializable
@@ -226,6 +242,7 @@ object LlmClient {
                     totalTokens = totalTokens,
                     cacheHitTokens = maxOf(current.cacheHitTokens, incoming.cacheHitTokens),
                     cacheMissTokens = maxOf(current.cacheMissTokens, incoming.cacheMissTokens),
+                    promptTokensDetails = incoming.promptTokensDetails ?: current.promptTokensDetails,
                 )
             }
         }
