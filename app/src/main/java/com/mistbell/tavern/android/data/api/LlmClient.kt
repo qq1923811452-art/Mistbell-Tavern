@@ -173,6 +173,12 @@ object SseParser {
 }
 
 object LlmClient {
+    private class ApiError(
+        val statusCode: Int,
+        val statusMessage: String,
+        val responseError: String,
+    ) : Exception("LLM API error: $statusCode $statusMessage")
+
     private val client =
         OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)
@@ -316,7 +322,10 @@ object LlmClient {
 
     /** 疑似"思考参数被拒"：错误正文提到 thinking，或 HTTP 400（请求格式错误） */
     private fun isThinkingParamRejected(e: Exception): Boolean {
-        val message = e.message.orEmpty()
+        val message =
+            (e as? ApiError)?.let { error ->
+                "HTTP ${error.statusCode} ${error.statusMessage} ${error.responseError}"
+            } ?: e.message.orEmpty()
         val mentionsThinking = message.contains("thinking", ignoreCase = true)
         if (!mentionsThinking) return false
 
@@ -364,7 +373,7 @@ object LlmClient {
                     // 网络错误可重试
                     if (attempt < maxAttempts - 1) {
                         val delayMs = INITIAL_RETRY_DELAY_MS * (1 shl attempt)
-                        android.util.Log.w("LlmClient", "Network error, retry ${attempt + 1}/$maxAttempts after ${delayMs}ms: ${e.message}")
+                        android.util.Log.w("LlmClient", "Network error, retry ${attempt + 1}/$maxAttempts after ${delayMs}ms (${e.javaClass.simpleName})")
                         delay(delayMs)
                     }
                 } catch (e: Exception) {
@@ -407,8 +416,8 @@ object LlmClient {
         val request = buildChatRequest(config, messages, stream = false)
         val response = clientFor(config).newCall(request).execute()
         if (!response.isSuccessful) {
-            val errorBody = response.body?.string() ?: "No error details"
-            throw Exception("LLM API error: ${response.code} ${response.message} - $errorBody")
+            val errorBody = response.body?.string().orEmpty()
+            throw ApiError(response.code, response.message, errorBody)
         }
         val responseBody = response.body?.string() ?: throw Exception("Empty response")
         val content = chatProtocolFor(config.type).parseContent(responseBody)
@@ -570,7 +579,8 @@ object LlmClient {
                             traceId,
                             "LLM_CHAT_STREAM",
                             "FAILURE",
-                            "caller=$caller emittedAny=true error=${e.javaClass.simpleName} elapsedMs=${System.currentTimeMillis() - startedAt}",
+                            "caller=$caller emittedAny=true error=${e.javaClass.simpleName} " +
+                                "elapsedMs=${System.currentTimeMillis() - startedAt}",
                         )
                         throw e
                     }
@@ -594,7 +604,8 @@ object LlmClient {
                             traceId,
                             "LLM_CHAT_STREAM",
                             "FAILURE",
-                            "caller=$caller emittedAny=false error=${e.javaClass.simpleName} elapsedMs=${System.currentTimeMillis() - startedAt}",
+                            "caller=$caller emittedAny=false error=${e.javaClass.simpleName} " +
+                                "elapsedMs=${System.currentTimeMillis() - startedAt}",
                         )
                         throw e
                     }
@@ -656,11 +667,11 @@ object LlmClient {
                         if (response != null) {
                             val summary =
                                 try {
-                                    response.body?.string()?.take(300) ?: "No error details"
+                                    response.body?.string()?.take(300).orEmpty()
                                 } catch (_: Exception) {
                                     "No error details"
                                 }
-                            close(IllegalStateException("LLM API error: ${response.code} ${response.message} - $summary"))
+                            close(ApiError(response.code, response.message, summary))
                         } else {
                             close(IOException("LLM stream failed: ${t?.message}", t))
                         }
