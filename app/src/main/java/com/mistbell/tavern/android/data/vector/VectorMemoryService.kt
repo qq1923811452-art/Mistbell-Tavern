@@ -1,11 +1,12 @@
 package com.mistbell.tavern.android.data.vector
 
 import android.util.Log
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import java.util.UUID
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * 向量记忆服务
@@ -123,6 +124,8 @@ class VectorMemoryService(
             Log.d(TAG, "Stored message vector: $messageId -> $vectorId")
 
             return vectorId
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Failed to store message vector (${e.javaClass.simpleName})")
             throw e
@@ -180,6 +183,8 @@ class VectorMemoryService(
             Log.d(TAG, "Search found ${results.size} relevant memories for queryLength=${query.length}")
 
             return results
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Failed to search relevant memories (${e.javaClass.simpleName})")
             return emptyList()
@@ -206,6 +211,8 @@ class VectorMemoryService(
             Log.d(TAG, "Deleted $deleted vectors for session: $sessionId")
 
             return deleted
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Failed to delete session vectors: ${e.message}", e)
             return 0
@@ -230,6 +237,8 @@ class VectorMemoryService(
             Log.d(TAG, "Deleted $deleted vectors for character: $characterId")
 
             return deleted
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Failed to delete character vectors: ${e.message}", e)
             return 0
@@ -246,6 +255,8 @@ class VectorMemoryService(
             val deleted = vectorStore.deleteByFilters(mapOf("message_id" to messageId))
             Log.d(TAG, "Deleted $deleted vectors by messageId: $messageId")
             deleted
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Failed to delete vectors by messageId: ${e.message}", e)
             0
@@ -273,6 +284,8 @@ class VectorMemoryService(
             val deleted = vectorStore.deleteByFilters(filters)
             Log.d(TAG, "Deleted $deleted summary vectors (owner=$ownerId, character=$characterId, session=$sessionId)")
             deleted
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Failed to delete summary vectors: ${e.message}", e)
             0
@@ -289,6 +302,8 @@ class VectorMemoryService(
                 totalVectors = count,
                 dimension = embeddingService.getDimension(),
             )
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Failed to get statistics: ${e.message}", e)
             VectorStatistics(0, 0)
