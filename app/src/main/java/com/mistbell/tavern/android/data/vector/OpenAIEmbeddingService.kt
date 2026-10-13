@@ -45,9 +45,7 @@ class OpenAIEmbeddingService(
     private val cacheLock = Any()
     private val embeddingCache =
         object : LinkedHashMap<String, FloatArray>(EMBEDDING_CACHE_SIZE + 1, CACHE_LOAD_FACTOR, true) {
-            override fun removeEldestEntry(
-                eldest: MutableMap.MutableEntry<String, FloatArray>?,
-            ): Boolean {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, FloatArray>?): Boolean {
                 return size > EMBEDDING_CACHE_SIZE
             }
         }
