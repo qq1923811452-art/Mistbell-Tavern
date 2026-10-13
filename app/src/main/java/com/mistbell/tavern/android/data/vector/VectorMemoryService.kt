@@ -18,6 +18,9 @@ class VectorMemoryService(
 ) {
     companion object {
         private const val TAG = "VectorMemoryService"
+        private const val EMBEDDING_CACHE_INITIAL_CAPACITY = 32
+        private const val EMBEDDING_CACHE_LOAD_FACTOR = 0.75f
+        private const val EMBEDDING_CACHE_MAX_ENTRIES = 32
     }
 
     /**
@@ -34,7 +37,12 @@ class VectorMemoryService(
         embeddingService is OpenAIEmbeddingService || embeddingService is LocalEmbeddingService
 
     private val embeddingModelId = embeddingService.modelId()
-    private val embeddingCache = LinkedHashMap<String, FloatArray>(32, 0.75f, true)
+    private val embeddingCache =
+        LinkedHashMap<String, FloatArray>(
+            EMBEDDING_CACHE_INITIAL_CAPACITY,
+            EMBEDDING_CACHE_LOAD_FACTOR,
+            true,
+        )
 
     /**
      * Reuse the exact text embedding across the write-then-retrieve path.
@@ -47,7 +55,7 @@ class VectorMemoryService(
         val generated = embeddingService.embed(text)
         synchronized(embeddingCache) {
             embeddingCache[text] = generated.copyOf()
-            while (embeddingCache.size > 32) {
+            while (embeddingCache.size > EMBEDDING_CACHE_MAX_ENTRIES) {
                 embeddingCache.remove(embeddingCache.keys.first())
             }
         }
