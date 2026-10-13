@@ -1,5 +1,6 @@
 package com.mistbell.tavern.android.data.repository
 
+import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -20,7 +21,7 @@ class ApiConfigKeyStorageInstrumentedTest {
 
     @Before
     fun setUp() {
-        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val context = ApplicationProvider.getApplicationContext<Context>()
         database = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
             .allowMainThreadQueries()
             .build()
@@ -32,21 +33,23 @@ class ApiConfigKeyStorageInstrumentedTest {
     }
 
     @Test
-    fun migrationEncryptsPreviouslyPlaintextApiKeys() = runBlocking {
-        database.apiConfigDao().insert(
-            ApiConfigEntity(
-                id = "legacy-config",
-                name = "Legacy",
-                apiUrl = "https://example.invalid/v1",
-                apiKey = "legacy-api-key",
-                model = "test-model",
-            ),
-        )
+    fun migrationEncryptsPreviouslyPlaintextApiKeys() {
+        runBlocking {
+            database.apiConfigDao().insert(
+                ApiConfigEntity(
+                    id = "legacy-config",
+                    name = "Legacy",
+                    apiUrl = "https://example.invalid/v1",
+                    apiKey = "legacy-api-key",
+                    model = "test-model",
+                ),
+            )
 
-        ApiConfigMigration.migrateIfNeeded(database)
+            ApiConfigMigration.migrateIfNeeded(database)
 
-        val storedKey = database.apiConfigDao().getById("legacy-config")!!.apiKey
-        assertTrue(SecureStore.isEncrypted(storedKey))
-        assertEquals("legacy-api-key", SecureStore.unwrap(storedKey))
+            val storedKey = database.apiConfigDao().getById("legacy-config")!!.apiKey
+            assertTrue(SecureStore.isEncrypted(storedKey))
+            assertEquals("legacy-api-key", SecureStore.unwrap(storedKey))
+        }
     }
 }
