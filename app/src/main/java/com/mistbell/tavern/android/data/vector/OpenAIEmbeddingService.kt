@@ -166,88 +166,57 @@ class OpenAIEmbeddingService(
             val uniqueTexts = texts.distinct()
             val missingTexts = uniqueTexts.filter { cachedEmbedding(it) == null }
             if (missingTexts.isNotEmpty()) {
-                var lastException: Exception? = null
-
-                repeat(MAX_RETRIES) { attempt ->
-                    try {
-                        val embeddings = executeEmbedBatchRequest(missingTexts)
-                        if (embeddings.size != missingTexts.size) {
-                            throw IOException(
-                                "Embedding batch size mismatch: expected ${missingTexts.size}, got ${embeddings.size}",
-                            )
-                        }
-                        missingTexts.forEachIndexed { index, text ->
-                            rememberEmbedding(text, embeddings[index])
-                        }
-                        lastException = null
-                        return@repeat
-                    } catch (e: SocketTimeoutException) {
-                        lastException = e
-                        if (attempt < MAX_RETRIES - 1) {
-                            val delayMs = INITIAL_RETRY_DELAY_MS * (1 shl attempt)
-                            Log.w(TAG, "Batch embedding timeout, retry ${attempt + 1}/$MAX_RETRIES after ${delayMs}ms")
-                            delay(delayMs)
-                        }
-                    } catch (e: IOException) {
-                        lastException = e
-                        if (attempt < MAX_RETRIES - 1) {
-                            val delayMs = INITIAL_RETRY_DELAY_MS * (1 shl attempt)
-                            Log.w(TAG, "Network error, retry ${attempt + 1}/$MAX_RETRIES after ${delayMs}ms: ${e.message}")
-                            delay(delayMs)
-                        }
-                    } catch (e: Exception) {
-                        if (e.message?.contains("429") == true) {
-                            lastException = e
-                            if (attempt < MAX_RETRIES - 1) {
-                                val delayMs = INITIAL_RETRY_DELAY_MS * (1 shl attempt) * 2
-                                Log.w(TAG, "Rate limit hit, retry ${attempt + 1}/$MAX_RETRIES after ${delayMs}ms")
-                                delay(delayMs)
-                            }
-                        } else {
-                            throw e
-                        }
-                    }
+                val embeddings = requestEmbedBatchWithRetry(missingTexts)
+                if (embeddings.size != missingTexts.size) {
+                    throw IOException(
+                        "Embedding batch size mismatch: expected ${missingTexts.size}, got ${embeddings.size}",
+                    )
                 }
-
-                if (lastException != null) {
-                    throw lastException ?: Exception("Batch embedding request failed after $MAX_RETRIES retries")
+                missingTexts.forEachIndexed { index, text ->
+                    rememberEmbedding(text, embeddings[index])
                 }
             }
 
-            return@withContext texts.map { text ->
+            texts.map { text ->
                 cachedEmbedding(text)
                     ?: throw IOException("Embedding cache missing result after batch request")
             }
-                } catch (e: SocketTimeoutException) {
+        }
+
+    private suspend fun requestEmbedBatchWithRetry(texts: List<String>): List<FloatArray> {
+        var lastException: Exception? = null
+        for (attempt in 0 until MAX_RETRIES) {
+            try {
+                return executeEmbedBatchRequest(texts)
+            } catch (e: SocketTimeoutException) {
+                lastException = e
+                if (attempt < MAX_RETRIES - 1) {
+                    val delayMs = INITIAL_RETRY_DELAY_MS * (1 shl attempt)
+                    Log.w(TAG, "Batch embedding timeout, retry ${attempt + 1}/$MAX_RETRIES after ${delayMs}ms")
+                    delay(delayMs)
+                }
+            } catch (e: IOException) {
+                lastException = e
+                if (attempt < MAX_RETRIES - 1) {
+                    val delayMs = INITIAL_RETRY_DELAY_MS * (1 shl attempt)
+                    Log.w(TAG, "Network error, retry ${attempt + 1}/$MAX_RETRIES after ${delayMs}ms: ${e.message}")
+                    delay(delayMs)
+                }
+            } catch (e: Exception) {
+                if (e.message?.contains("429") == true) {
                     lastException = e
                     if (attempt < MAX_RETRIES - 1) {
-                        val delayMs = INITIAL_RETRY_DELAY_MS * (1 shl attempt)
-                        Log.w(TAG, "Batch embedding timeout, retry ${attempt + 1}/$MAX_RETRIES after ${delayMs}ms")
+                        val delayMs = INITIAL_RETRY_DELAY_MS * (1 shl attempt) * 2
+                        Log.w(TAG, "Rate limit hit, retry ${attempt + 1}/$MAX_RETRIES after ${delayMs}ms")
                         delay(delayMs)
                     }
-                } catch (e: IOException) {
-                    lastException = e
-                    if (attempt < MAX_RETRIES - 1) {
-                        val delayMs = INITIAL_RETRY_DELAY_MS * (1 shl attempt)
-                        Log.w(TAG, "Network error, retry ${attempt + 1}/$MAX_RETRIES after ${delayMs}ms: ${e.message}")
-                        delay(delayMs)
-                    }
-                } catch (e: Exception) {
-                    if (e.message?.contains("429") == true) {
-                        lastException = e
-                        if (attempt < MAX_RETRIES - 1) {
-                            val delayMs = INITIAL_RETRY_DELAY_MS * (1 shl attempt) * 2
-                            Log.w(TAG, "Rate limit hit, retry ${attempt + 1}/$MAX_RETRIES after ${delayMs}ms")
-                            delay(delayMs)
-                        }
-                    } else {
-                        throw e
-                    }
+                } else {
+                    throw e
                 }
             }
-
-            throw lastException ?: Exception("Batch embedding request failed after $MAX_RETRIES retries")
         }
+        throw lastException ?: Exception("Batch embedding request failed after $MAX_RETRIES retries")
+    }
 
     private fun executeEmbedBatchRequest(texts: List<String>): List<FloatArray> {
         val requestBody =
