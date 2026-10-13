@@ -31,6 +31,8 @@ class OpenAIEmbeddingService(
     private val baseUrl: String = "https://api.openai.com/v1",
     private val model: String = "text-embedding-3-small",
 ) : EmbeddingService {
+    private val normalizedBaseUrl = baseUrl.trim().trimEnd('/')
+
     private val client =
         OkHttpClient.Builder()
             .followRedirects(false)
@@ -98,7 +100,7 @@ class OpenAIEmbeddingService(
                 source,
                 "START",
                 "engine=remote model=$model " +
-                    "endpoint=${ApiCallTrace.safeEndpoint("$baseUrl/embeddings")} operation=single",
+                    "endpoint=${ApiCallTrace.safeEndpoint("$normalizedBaseUrl/embeddings")} operation=single",
             )
             try {
                 val embedding = embedUncached(text)
@@ -184,7 +186,7 @@ class OpenAIEmbeddingService(
 
         val request =
             Request.Builder()
-                .url("$baseUrl/embeddings")
+                .url("$normalizedBaseUrl/embeddings")
                 .addHeader("Authorization", "Bearer $apiKey")
                 .addHeader("Content-Type", "application/json")
                 .post(jsonBody.toRequestBody("application/json".toMediaType()))
@@ -225,27 +227,63 @@ class OpenAIEmbeddingService(
     @Suppress("TooGenericExceptionCaught")
     override suspend fun embedBatch(texts: List<String>, source: String): List<FloatArray> =
         withContext(Dispatchers.IO) {
+            if (texts.isEmpty()) return@withContext emptyList()
+
             val traceId = ApiCallTrace.newId()
             val startedAt = System.currentTimeMillis()
+            val results = arrayOfNulls<FloatArray>(texts.size)
+            val missingIndicesByText = linkedMapOf<String, MutableList<Int>>()
+            texts.forEachIndexed { index, text ->
+                val cached = cachedEmbedding(text)
+                if (cached == null) {
+                    missingIndicesByText.getOrPut(text) { mutableListOf() }.add(index)
+                } else {
+                    results[index] = cached
+                }
+            }
+
+            val cacheHits = results.count { it != null }
+            if (missingIndicesByText.isEmpty()) {
+                ApiCallTrace.log(
+                    traceId,
+                    source,
+                    "CACHE_HIT",
+                    "engine=remote model=$model operation=batch itemCount=${texts.size}",
+                )
+                return@withContext results.map { it!!.clone() }
+            }
+
             ApiCallTrace.log(
                 traceId,
                 source,
                 "START",
-                "engine=remote model=$model operation=batch itemCount=${texts.size}",
+                "engine=remote model=$model operation=batch itemCount=${texts.size} " +
+                    "cacheHits=$cacheHits cacheMisses=${missingIndicesByText.size}",
             )
             try {
-                val embeddings = embedBatchUncached(texts)
-                texts.zip(embeddings).forEach { (text, embedding) -> rememberEmbedding(text, embedding) }
-                embeddings.firstOrNull()?.let { lastKnownDimension = it.size }
+                val missingTexts = missingIndicesByText.keys.toList()
+                val generated = embedBatchUncached(missingTexts)
+                check(generated.size == missingTexts.size) {
+                    "Embedding batch response count mismatch"
+                }
+                missingTexts.forEachIndexed { index, text ->
+                    val embedding = generated[index]
+                    rememberEmbedding(text, embedding)
+                    missingIndicesByText.getValue(text).forEach { resultIndex ->
+                        results[resultIndex] = embedding.clone()
+                    }
+                }
+                results.firstOrNull { it != null }?.let { lastKnownDimension = it.size }
+                val dimension = results.firstOrNull { it != null }?.size ?: 0
                 ApiCallTrace.log(
                     traceId,
                     source,
                     "SUCCESS",
-                    "engine=remote model=$model itemCount=${embeddings.size} " +
-                        "dimension=${embeddings.firstOrNull()?.size ?: 0} " +
+                    "engine=remote model=$model itemCount=${texts.size} " +
+                        "cacheHits=$cacheHits dimension=$dimension " +
                         "elapsedMs=${System.currentTimeMillis() - startedAt}",
                 )
-                embeddings.map { it.clone() }
+                results.map { it?.clone() ?: error("Missing embedding result") }
             } catch (e: CancellationException) {
                 ApiCallTrace.log(traceId, source, "CANCELLED", "engine=remote model=$model operation=batch")
                 throw e
@@ -318,7 +356,7 @@ class OpenAIEmbeddingService(
 
         val request =
             Request.Builder()
-                .url("$baseUrl/embeddings")
+                .url("$normalizedBaseUrl/embeddings")
                 .addHeader("Authorization", "Bearer $apiKey")
                 .addHeader("Content-Type", "application/json")
                 .post(jsonBody.toRequestBody("application/json".toMediaType()))
@@ -348,7 +386,7 @@ class OpenAIEmbeddingService(
 
         Log.d(TAG, "Generated ${embeddingResponse.data.size} embeddings in batch")
 
-        return embeddingResponse.data.map { data ->
+        return embeddingResponse.data.sortedBy { it.index }.map { data ->
             FloatArray(data.embedding.size) { i -> data.embedding[i].toFloat() }
         }
     }
@@ -356,7 +394,7 @@ class OpenAIEmbeddingService(
     override fun modelId(): String {
         val endpointFingerprint =
             java.security.MessageDigest.getInstance("SHA-256")
-                .digest(baseUrl.trimEnd('/').toByteArray())
+                .digest(normalizedBaseUrl.toByteArray())
                 .take(ENDPOINT_FINGERPRINT_BYTES)
                 .joinToString("") {
                     ("%0" + ENDPOINT_FINGERPRINT_HEX_LENGTH + "x").format(it.toInt() and BYTE_MASK)
@@ -365,7 +403,7 @@ class OpenAIEmbeddingService(
     }
 
     override fun supportsLegacyVectors(): Boolean =
-        model == "text-embedding-3-small" && baseUrl.trimEnd('/') == "https://api.openai.com/v1"
+        model == "text-embedding-3-small" && normalizedBaseUrl == "https://api.openai.com/v1"
 
     override fun getDimension(): Int = lastKnownDimension
 
@@ -389,6 +427,6 @@ class OpenAIEmbeddingService(
     @Serializable
     private data class EmbeddingData(
         val embedding: List<Double>,
-        val index: Int,
+        val index: Int = 0,
     )
 }

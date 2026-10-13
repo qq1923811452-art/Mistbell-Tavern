@@ -162,15 +162,17 @@ class MemoryExtractionService(
         val trimmed = message.trim()
         if (trimmed.length < MIN_DIALOGUE_LENGTH) return false
 
-        val userLine =
+        val userLines =
             trimmed
                 .lineSequence()
-                .firstOrNull { it.startsWith("User:") }
-                ?.removePrefix("User:")
-                ?.trim()
-                .orEmpty()
+                .filter { it.startsWith("User:") }
+                .map { it.removePrefix("User:").trim() }
+                .filter { it.isNotBlank() }
+                .toList()
 
-        if (userLine.isNotBlank() && lowQualityPatterns.any { it.matches(userLine) }) {
+        // In a batched multi-turn extraction, a short acknowledgment in the first turn
+        // must not discard a later turn that contains a meaningful user statement.
+        if (userLines.isNotEmpty() && userLines.all { line -> lowQualityPatterns.any { it.matches(line) } }) {
             return false
         }
 

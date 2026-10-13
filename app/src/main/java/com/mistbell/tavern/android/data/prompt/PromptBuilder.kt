@@ -16,6 +16,7 @@ import com.mistbell.tavern.android.util.MacroContext
 import com.mistbell.tavern.android.util.MacroEngine
 import java.security.MessageDigest
 import java.time.Instant
+import java.util.Locale
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.Serializable
@@ -1375,7 +1376,7 @@ object PromptBuilder {
                         .replace(Regex("""^\[[^]]+\]\s*"""), "")
                         .replace(Regex("""^(user|assistant|system|角色|用户):\s*""", RegexOption.IGNORE_CASE), "")
                 val key =
-                    keyContent.lowercase()
+                    keyContent.lowercase(Locale.ROOT)
                         .replace(Regex("""[\s\p{Punct}，。！？、；：“”‘’（）【】《》]+"""), "")
                 if (key.isBlank()) return
                 val contribution = 1.0 / (RRF_RANK_CONSTANT + rank)

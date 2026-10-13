@@ -1,6 +1,7 @@
 package com.mistbell.tavern.android.data.vector
 
 import android.util.Log
+import com.mistbell.tavern.android.data.api.ApiCallTrace
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import java.util.UUID
@@ -66,8 +67,15 @@ class VectorMemoryService(
     private suspend fun embedCached(text: String, source: String): FloatArray =
         embeddingCacheMutex.withLock {
             val key = embeddingCacheKey(text)
-            synchronized(embeddingCache) {
-                embeddingCache[key]?.let { return@withLock it.copyOf() }
+            val cached = synchronized(embeddingCache) { embeddingCache[key]?.copyOf() }
+            if (cached != null) {
+                ApiCallTrace.log(
+                    ApiCallTrace.newId(),
+                    source,
+                    "CACHE_HIT",
+                    "engine=memory model=$embeddingModelId dimension=${cached.size}",
+                )
+                return@withLock cached
             }
             val generated = embeddingService.embed(text, source)
             synchronized(embeddingCache) {
