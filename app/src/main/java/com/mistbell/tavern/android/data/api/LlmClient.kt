@@ -313,7 +313,12 @@ object LlmClient {
         )
         return try {
             chatWithRetries(config, messages).also {
-                ApiCallTrace.log(traceId, "LLM_CHAT", "SUCCESS", "caller=$caller elapsedMs=${System.currentTimeMillis() - startedAt}")
+                ApiCallTrace.log(
+                    traceId,
+                    "LLM_CHAT",
+                    "SUCCESS",
+                    "caller=$caller elapsedMs=${System.currentTimeMillis() - startedAt}",
+                )
             }
         } catch (e: Exception) {
             if (config.disableThinking && isThinkingParamRejected(e)) {
@@ -324,7 +329,8 @@ object LlmClient {
                             traceId,
                             "LLM_CHAT",
                             "SUCCESS",
-                            "caller=$caller fallback=without-thinking elapsedMs=${System.currentTimeMillis() - startedAt}",
+                            "caller=$caller fallback=without-thinking " +
+                                "elapsedMs=${System.currentTimeMillis() - startedAt}",
                         )
                     }
                 } catch (fallbackError: Exception) {
@@ -337,7 +343,12 @@ object LlmClient {
                     throw fallbackError
                 }
             } else {
-                ApiCallTrace.log(traceId, "LLM_CHAT", "FAILURE", "caller=${ApiCallTrace.caller()} error=${e.javaClass.simpleName}")
+                ApiCallTrace.log(
+                    traceId,
+                    "LLM_CHAT",
+                    "FAILURE",
+                    "caller=${ApiCallTrace.caller()} error=${e.javaClass.simpleName}",
+                )
                 throw e
             }
         }
@@ -405,7 +416,10 @@ object LlmClient {
                     lastException = e
                     if (attempt < maxAttempts - 1) {
                         val delayMs = INITIAL_RETRY_DELAY_MS * (1 shl attempt) // 指数退避：1s, 2s, 4s
-                        android.util.Log.w("LlmClient", "Request timeout, retry ${attempt + 1}/$maxAttempts after ${delayMs}ms")
+                        android.util.Log.w(
+                            "LlmClient",
+                            "Request timeout, retry ${attempt + 1}/$maxAttempts after ${delayMs}ms",
+                        )
                         delay(delayMs)
                     }
                 } catch (e: IOException) {
@@ -415,7 +429,8 @@ object LlmClient {
                         val delayMs = INITIAL_RETRY_DELAY_MS * (1 shl attempt)
                         android.util.Log.w(
                             "LlmClient",
-                            "Network error, retry ${attempt + 1}/$maxAttempts after ${delayMs}ms (${e.javaClass.simpleName})",
+                            "Network error, retry ${attempt + 1}/$maxAttempts " +
+                                "after ${delayMs}ms (${e.javaClass.simpleName})",
                         )
                         delay(delayMs)
                     }
@@ -426,7 +441,10 @@ object LlmClient {
                         lastException = e
                         if (attempt < maxAttempts - 1) {
                             val delayMs = INITIAL_RETRY_DELAY_MS * (1 shl attempt) * 2 // 速率限制时延迟更久
-                            android.util.Log.w("LlmClient", "Rate limit hit, retry ${attempt + 1}/$maxAttempts after ${delayMs}ms")
+                            android.util.Log.w(
+                                "LlmClient",
+                                "Rate limit hit, retry ${attempt + 1}/$maxAttempts after ${delayMs}ms",
+                            )
                             delay(delayMs)
                         }
                     } else {
@@ -710,7 +728,10 @@ object LlmClient {
                     ) {
                         val message = t?.message ?: ""
                         // 某些兼容网关流式响应 Content-Type 非 text/event-stream 会被 okhttp-sse 拒收
-                        if (message.contains("Content-Type", ignoreCase = true) || message.contains("content type", ignoreCase = true)) {
+                        if (
+                            message.contains("Content-Type", ignoreCase = true) ||
+                            message.contains("content type", ignoreCase = true)
+                        ) {
                             close(IllegalStateException("流式响应 Content-Type 不受支持：该网关可能不兼容 SSE，请在模型设置中关闭流式输出。"))
                             return
                         }
