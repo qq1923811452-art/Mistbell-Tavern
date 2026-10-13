@@ -210,7 +210,14 @@ class OpenAIEmbeddingService(
         }
     }
 
-    override fun modelId(): String = "openai-compatible:$model:${baseUrl.trimEnd('/').hashCode()}"
+    override fun modelId(): String {
+        val endpointFingerprint =
+            java.security.MessageDigest.getInstance("SHA-256")
+                .digest(baseUrl.trimEnd('/').toByteArray())
+                .take(8)
+                .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+        return "openai-compatible:$model:$endpointFingerprint"
+    }
 
     override fun getDimension(): Int = DIMENSION
 
