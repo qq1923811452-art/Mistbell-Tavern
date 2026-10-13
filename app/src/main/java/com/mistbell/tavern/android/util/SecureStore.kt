@@ -5,6 +5,7 @@ import android.security.keystore.KeyProperties
 import android.util.Log
 import java.security.KeyStore
 import java.util.Base64
+import java.util.Locale
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -31,6 +32,15 @@ object SecureStore {
     private var cachedKey: SecretKey? = null
 
     fun isEncrypted(value: String): Boolean = value.startsWith(PREFIX)
+
+    /** Key names that may hold credentials or serialized provider secrets. */
+    fun isSensitiveKey(key: String): Boolean {
+        val normalized = key.lowercase(Locale.ROOT)
+        return normalized == "providers_json" ||
+            normalized == "llm_api_key" ||
+            normalized.contains("api_key") ||
+            normalized.contains("apikey")
+    }
 
     /** 写入敏感字段前调用；加密失败时拒绝保存，避免静默落盘明文。 */
     fun wrap(plain: String): String {
