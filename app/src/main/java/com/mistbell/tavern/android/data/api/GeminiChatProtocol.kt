@@ -68,6 +68,7 @@ internal object GeminiChatProtocol : ChatProtocol {
             @SerialName("promptTokenCount") val promptTokens: Int = 0,
             @SerialName("candidatesTokenCount") val candidatesTokens: Int = 0,
             @SerialName("totalTokenCount") val totalTokens: Int = 0,
+            @SerialName("cachedContentTokenCount") val cachedContentTokens: Int = 0,
         )
     }
 
@@ -140,6 +141,8 @@ internal object GeminiChatProtocol : ChatProtocol {
                     promptTokens = it.promptTokens,
                     completionTokens = it.candidatesTokens,
                     totalTokens = it.totalTokens,
+                    cacheHitTokens = it.cachedContentTokens,
+                    cacheMissTokens = (it.promptTokens - it.cachedContentTokens).coerceAtLeast(0),
                 )
             }
         return ProtocolContent(
