@@ -91,9 +91,10 @@ class PromptBuilderHistoryBudgetTest {
                 currentMessages = args,
                 currentUserMessage = small,
                 contextTokenLimit = 512,
-                promptCacheSnapshots = mapOf(
-                    "m2" to listOf(ChatMessage("system", huge)),
-                ),
+                promptCacheSnapshots =
+                    mapOf(
+                        "m2" to listOf(ChatMessage("system", huge)),
+                    ),
             )
 
         assertEquals(listOf("m1", "m2"), withoutSnapshots.map { it.id })
