@@ -378,7 +378,7 @@ object LlmClient {
             val statusCode = response.code
             response.close()
             // Never surface untrusted gateway error bodies, which may echo prompts or credentials.
-            throw IllegalStateException("LLM API returned HTTP $statusCode")
+            error("LLM API returned HTTP $statusCode")
         }
         val responseBody = response.body?.string() ?: throw Exception("Empty response")
         val content = chatProtocolFor(config.type).parseContent(responseBody)
