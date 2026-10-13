@@ -64,12 +64,21 @@ internal fun VectorMemorySettingsCard(viewModel: SettingsViewModel) {
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 Text(
-                    text = "命中 ${cacheStats.hitCount} 次 · 未命中 ${cacheStats.missCount} 次 · 查询 ${cacheStats.totalLookups} 次",
+                    text =
+                        "命中 ${cacheStats.hitCount} 次 · 未命中 ${cacheStats.missCount} 次 · " +
+                            "查询 ${cacheStats.totalLookups} 次",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text(
-                    text = "缓存条目 ${cacheStats.entryCount} · 写入 ${cacheStats.writeCount} 次 · 失效 ${cacheStats.invalidationCount} 次",
+                    text =
+                        "缓存条目 ${cacheStats.entryCount} · 写入 ${cacheStats.writeCount} 次 · " +
+                            "失效 ${cacheStats.invalidationCount} 次",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text = "命中率 = 命中数 ÷（命中数 + 未命中数）；写入与失效不计入分母。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
