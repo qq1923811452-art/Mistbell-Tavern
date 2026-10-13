@@ -138,12 +138,18 @@ class StructuredMemoryRepository(context: Context) {
     }
 
     // 更新记忆
-    suspend fun updateMemory(memory: StructuredMemory) {
+    suspend fun updateMemory(
+        memory: StructuredMemory,
+        preserveUpdatedAt: Boolean = false,
+    ) {
         withContext(Dispatchers.IO) {
-            val entity =
-                StructuredMemoryEntity.fromDomain(
-                    memory.copy(updatedAt = Instant.now().toString()),
-                )
+            val persistedMemory =
+                if (preserveUpdatedAt) {
+                    memory
+                } else {
+                    memory.copy(updatedAt = Instant.now().toString())
+                }
+            val entity = StructuredMemoryEntity.fromDomain(persistedMemory)
             memoryDao.update(entity)
 
             // 如果重要性 >= 7，重新同步到向量数据库；降到阈值以下则清理既有摘要副本
