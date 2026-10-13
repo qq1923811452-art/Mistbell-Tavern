@@ -14,13 +14,14 @@ class VectorCacheStatisticsTest {
 
     @Test
     fun `hit rate is computed from cache lookups only`() {
-        val stats = VectorCacheStatistics(
-            hitCount = 3,
-            missCount = 7,
-            writeCount = 9,
-            invalidationCount = 2,
-            entryCount = 4,
-        )
+        val stats =
+            VectorCacheStatistics(
+                hitCount = 3,
+                missCount = 7,
+                writeCount = 9,
+                invalidationCount = 2,
+                entryCount = 4,
+            )
 
         assertEquals(10L, stats.totalLookups)
         assertEquals(0.3, stats.hitRate, 1e-9)
