@@ -40,7 +40,9 @@ object ApiCallTrace {
     fun safeEndpoint(url: String): String =
         runCatching {
             val uri = java.net.URI(url)
-            val scheme = uri.scheme?.lowercase()?.takeIf { it == "http" || it == "https" } ?: return@runCatching "<invalid-url>"
+            val scheme =
+                uri.scheme?.lowercase()?.takeIf { it == "http" || it == "https" }
+                    ?: return@runCatching "<invalid-url>"
             val host = uri.host ?: return@runCatching "<invalid-url>"
             val port = uri.port.takeIf { it >= 0 }?.let { ":$it" }.orEmpty()
             val path = uri.path.orEmpty().trimEnd('/')
