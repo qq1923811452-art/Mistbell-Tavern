@@ -551,7 +551,7 @@ fun ModernChatListItem(
                                 SessionExportFormat.JSON
                             }
                         showExportDialog = false
-                        onExport(format, finalName, ) { result ->
+                        onExport(format, finalName) { result ->
                             result?.let {
                                 Toast.makeText(context, "已保存到 ${it.location}", Toast.LENGTH_SHORT).show()
                             }
