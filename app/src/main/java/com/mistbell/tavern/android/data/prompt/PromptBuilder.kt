@@ -20,8 +20,11 @@ object PromptBuilder {
     /** World Info 的会话内运行状态：sticky/cooldown/delay 只影响激活决策，不改变 Room 主数据。 */
     private object WorldInfoRuntime {
         private const val MAX_RECURSION_DEPTH = 3
+
         private data class EntryState(var lastTurn: Int = -1, var sticky: Boolean = false)
+
         private data class SessionState(var turn: Int = 0, val entries: MutableMap<String, EntryState> = mutableMapOf())
+
         private data class Candidate(
             val entry: WorldBookEntryEntity,
             val key: String,
@@ -30,6 +33,7 @@ object PromptBuilder {
             val secondaryHits: Int,
             val sticky: Boolean,
         )
+
         private val sessions = mutableMapOf<String, SessionState>()
 
         /**
@@ -40,7 +44,11 @@ object PromptBuilder {
          */
         @Suppress("LongMethod", "CyclomaticComplexMethod", "ComplexCondition")
         @Synchronized
-        fun activate(sessionId: String, entries: List<WorldBookEntryEntity>, scanText: String): Set<String> {
+        fun activate(
+            sessionId: String,
+            entries: List<WorldBookEntryEntity>,
+            scanText: String,
+        ): Set<String> {
             val state = sessions.getOrPut(sessionId) { SessionState() }
             state.turn += 1
             val activated = linkedSetOf<String>()
@@ -88,8 +96,9 @@ object PromptBuilder {
                         .groupBy { it.entry.groupName }
                         .values
                         .flatMap { group ->
-                            if (group.first().entry.groupName.isBlank()) group
-                            else {
+                            if (group.first().entry.groupName.isBlank()) {
+                                group
+                            } else {
                                 listOf(
                                     group.maxWithOrNull(
                                         compareBy<Candidate> { it.score }
@@ -117,7 +126,8 @@ object PromptBuilder {
                 }
                 if (newlyActivated.isEmpty()) return@repeat
                 corpus +=
-                    "\\n" + entries
+                    "\\n" +
+                    entries
                         .filter { "${it.bookId}:${it.id}" in newlyActivated }
                         .joinToString("\\n") { it.content }
             }
@@ -129,14 +139,20 @@ object PromptBuilder {
                 if (keysJson.isBlank()) emptyList() else Json.decodeFromString<List<String>>(keysJson)
             }.getOrDefault(emptyList())
 
-        private fun matchingKeywords(keysJson: String, text: String): Int =
-            matchingKeywords(parseKeywords(keysJson), text)
+        private fun matchingKeywords(
+            keysJson: String,
+            text: String,
+        ): Int = matchingKeywords(parseKeywords(keysJson), text)
 
-        private fun matchingKeywords(keys: List<String>, text: String): Int =
+        private fun matchingKeywords(
+            keys: List<String>,
+            text: String,
+        ): Int =
             keys.count { key ->
                 val normalized = key.trim()
-                if (normalized.isBlank()) false
-                else if (normalized.startsWith("/") && normalized.endsWith("/")) {
+                if (normalized.isBlank()) {
+                    false
+                } else if (normalized.startsWith("/") && normalized.endsWith("/")) {
                     runCatching {
                         Regex(normalized.substring(1, normalized.length - 1), RegexOption.IGNORE_CASE)
                             .containsMatchIn(text)
@@ -690,7 +706,7 @@ object PromptBuilder {
                     protocolConversionResult =
                         segment.protocolConversionResult
                             ?: "ChatMessage(role=${segment.message.role}, content) kept; " +
-                                "provider adapter maps this role/content",
+                            "provider adapter maps this role/content",
                 )
             }
 

@@ -588,16 +588,19 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
                     content = message.content,
                     thinking = message.thinking,
                     createdAt = message.createdAt.ifBlank { fallbackTimestamp },
-                    memoryIdsJson = message.memoryIds
-                        ?.takeIf { it.isNotEmpty() }
-                        ?.let { json.encodeToString(stringListSerializer, it) }.orEmpty(),
-                    swipesJson = message.swipes
-                        ?.takeIf { it.isNotEmpty() }
-                        ?.let { json.encodeToString(stringListSerializer, it) }.orEmpty(),
+                    memoryIdsJson =
+                        message.memoryIds
+                            ?.takeIf { it.isNotEmpty() }
+                            ?.let { json.encodeToString(stringListSerializer, it) }.orEmpty(),
+                    swipesJson =
+                        message.swipes
+                            ?.takeIf { it.isNotEmpty() }
+                            ?.let { json.encodeToString(stringListSerializer, it) }.orEmpty(),
                     swipeIndex = message.swipeIndex,
-                    thinkingSwipesJson = message.thinkingSwipes
-                        ?.takeIf { it.isNotEmpty() }
-                        ?.let { json.encodeToString(stringListSerializer, it) }.orEmpty(),
+                    thinkingSwipesJson =
+                        message.thinkingSwipes
+                            ?.takeIf { it.isNotEmpty() }
+                            ?.let { json.encodeToString(stringListSerializer, it) }.orEmpty(),
                     isRead = true,
                 )
             db.messageDao().upsert(messageEntity)

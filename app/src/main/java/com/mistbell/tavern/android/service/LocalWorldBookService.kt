@@ -92,7 +92,11 @@ class LocalWorldBookService {
     }
 
     /** 合并当前消息、历史和条目次关键词，供递归/深度扫描使用。 */
-    fun buildScanCorpus(current: String, recentTexts: List<String>, maxDepth: Int): String =
+    fun buildScanCorpus(
+        current: String,
+        recentTexts: List<String>,
+        maxDepth: Int,
+    ): String =
         buildString {
             appendLine(current)
             recentTexts.takeLast(maxDepth.coerceAtLeast(0)).forEach(::appendLine)

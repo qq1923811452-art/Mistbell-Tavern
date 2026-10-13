@@ -264,6 +264,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         // 显示全局默认配置，与会话实际使用的模型/端点不一致
         val config = repo.effectiveLlmConfig(_activeSessionId.value)
         val preset = db.settingsDao().getValue("sampling_preset") ?: "balanced"
+
         fun num(value: Double?): String = value?.toString() ?: "未设置（不发送）"
         return buildList {
             add("模型" to config.model.ifBlank { "未配置" })

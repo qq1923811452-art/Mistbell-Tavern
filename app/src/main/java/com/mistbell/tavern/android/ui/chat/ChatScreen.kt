@@ -50,18 +50,23 @@ import com.mistbell.tavern.android.ui.utils.clearFocusOnTap
 // —— 常量：集中定义，避免散落的魔法数字 ——
 // 判定“贴底”的余量：最后可见项 index >= totalItemsCount - 2 即视为贴底
 private const val BOTTOM_ANCHOR_SLACK = 2
+
 // 判定“接近顶部需加载更旧消息”的阈值：第一个可见项 index <= 1
 private const val LOAD_OLDER_THRESHOLD_INDEX = 1
+
 // 流式占位 item 的固定 key：保证 streamingText 增量只重组该 item
 private const val STREAMING_ITEM_KEY = "streaming"
 private const val BOTTOM_ANCHOR_ITEM_KEY = "bottom-anchor"
+
 // 列表顶/底渐隐遮罩高度（覆盖层绘制用）
 private val MessageListTopFadeHeight = 72.dp
 private val MessageListBottomFadeHeight = 88.dp
+
 // 角色背景大图解码上限（px）：整屏显示 1280 已足够清晰，无需原始分辨率
 private const val BACKGROUND_BITMAP_MAX_DIM_PX = 1280
 private val DefaultChatInputSurfaceHeight = 64.dp
 private val MessageToInputGap = 10.dp
+
 // 背景图只作为氛围层，不能和消息正文争夺对比度。
 private const val CHARACTER_BACKGROUND_ALPHA = 0.5f
 
@@ -882,8 +887,9 @@ private fun PromptTraceSheet(
                     )
                     trace?.let {
                         Text(
-                            text = "${it.segments.size} 条消息 · 约 ${it.totalEstimatedTokens} tokens" +
-                                if (it.truncationReasons.isNotEmpty()) " · 已裁剪" else "",
+                            text =
+                                "${it.segments.size} 条消息 · 约 ${it.totalEstimatedTokens} tokens" +
+                                    if (it.truncationReasons.isNotEmpty()) " · 已裁剪" else "",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )

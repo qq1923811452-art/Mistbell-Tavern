@@ -10,8 +10,10 @@ data class CachePolicy(
     val maxEntries: Int = DEFAULT_MAX_ENTRIES,
     val ttlMillis: Long = DEFAULT_TTL_MILLIS,
 ) {
-    fun isExpired(createdAt: Long, now: Long = System.currentTimeMillis()): Boolean =
-        now - createdAt > ttlMillis
+    fun isExpired(
+        createdAt: Long,
+        now: Long = System.currentTimeMillis(),
+    ): Boolean = now - createdAt > ttlMillis
 
     companion object {
         private const val DEFAULT_MAX_ENTRIES = 256
