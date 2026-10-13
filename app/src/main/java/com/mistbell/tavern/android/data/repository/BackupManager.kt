@@ -434,6 +434,7 @@ private fun putThemeAssets(
     context: Context,
     pack: ThemePackEntity,
 ) {
+    BackupManager.validateThemePackId(pack.id)
     val dir = File(context.filesDir, "themes/${pack.id}")
     dir.listFiles()?.forEach { f ->
         zip.putNextEntry(ZipEntry("${BackupManager.THEMES_DIR_PREFIX}${pack.id}/${f.name}"))
@@ -447,6 +448,7 @@ private fun writeThemeAssetsIfAbsent(
     pack: ThemePackEntity,
     files: Map<String, String>,
 ) {
+    BackupManager.validateThemePackId(pack.id)
     val dir = File(context.filesDir, "themes/${pack.id}")
     if (dir.exists()) return
     dir.mkdirs()
