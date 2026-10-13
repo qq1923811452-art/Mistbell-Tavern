@@ -15,6 +15,8 @@ import com.mistbell.tavern.android.data.vector.VectorStore
 import com.mistbell.tavern.android.util.MacroContext
 import com.mistbell.tavern.android.util.MacroEngine
 import kotlinx.coroutines.flow.first
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.time.Instant
 
@@ -240,6 +242,8 @@ object PromptBuilder {
         val totalEstimatedTokens: Int,
         val truncationReasons: List<String> = emptyList(),
         val protocolConversionResults: List<String> = emptyList(),
+        /** Exact dynamic prompt suffix for provider-compatible prefix-cache replay in the next turn. */
+        val cacheContextSnapshot: List<ChatMessage> = emptyList(),
     ) {
         /** 单段估算 token（预览页展示用；与 PromptDiag 同一估算口径） */
         fun tokensOf(segment: Segment): Int = estimateTokensOf(segment.message.content)
@@ -334,6 +338,7 @@ object PromptBuilder {
     // 当成"估算偏低"），实测证明 1.6 只差 5%，1.15 反而高估 26%
     private const val ASCII_CHARS_PER_TOKEN = 4.0
     private const val CJK_CHARS_PER_TOKEN = 1.5
+    private const val PROMPT_CACHE_SNAPSHOT_MAX_TOKENS = 4096
 
     suspend fun buildPrompt(
         db: AppDatabase,
@@ -350,6 +355,9 @@ object PromptBuilder {
         // continueGroupChat 场景的系统级推动语（由 ChatRepository 传入，本类不做特判）；
         // 非 null 时不再追加最终用户消息，改为注入这条 system 消息
         groupNudge: String? = null,
+        // Replay prompt suffix snapshots only for OpenAI-compatible providers that preserve
+        // message order. Anthropic/Gemini adapters reshape system messages and use native cache rules.
+        cacheSnapshotEnabled: Boolean = false,
     ): List<ChatMessage> {
         val trace =
             buildPromptTrace(
@@ -362,7 +370,26 @@ object PromptBuilder {
                 excludeFromMessageId,
                 groupContext,
                 groupNudge,
+                cacheSnapshotEnabled,
             )
+        if (cacheSnapshotEnabled && !currentMessageId.isNullOrBlank() && groupNudge == null) {
+            val snapshotJson =
+                Json.encodeToString(
+                    ListSerializer(ChatMessage.serializer()),
+                    trace.cacheContextSnapshot,
+                )
+            // Cache snapshots are an optimization only: a failed snapshot write must not fail chat.
+            runCatching {
+                db.messageDao().updatePromptContextSnapshot(
+                    messageId = currentMessageId,
+                    sessionId = sessionId,
+                    ownerId = ownerId,
+                    snapshotJson = snapshotJson,
+                )
+            }.onFailure {
+                android.util.Log.w("PromptCache", "Could not persist prompt cache snapshot", it)
+            }
+        }
         return trace.segments.map { it.message }
     }
 
@@ -382,6 +409,7 @@ object PromptBuilder {
         excludeFromMessageId: String? = null,
         groupContext: GroupChatContext? = null,
         groupNudge: String? = null,
+        cacheSnapshotEnabled: Boolean = false,
     ): PromptTrace {
         val messages = mutableListOf<Segment>()
 
@@ -578,9 +606,29 @@ object PromptBuilder {
             historySource
                 // 过滤掉刚落库的当前用户消息，避免同一条消息在 prompt 中重复出现
                 .filter { currentMessageId == null || it.id != currentMessageId }
+        val promptCacheSnapshots: Map<String, List<ChatMessage>> =
+            if (cacheSnapshotEnabled) {
+                recentMessages.mapNotNull { message ->
+                    val rawSnapshot = message.promptContextSnapshotJson
+                    if (message.role != "user" || rawSnapshot.isBlank()) {
+                        null
+                    } else {
+                        runCatching {
+                            message.id to
+                                Json.decodeFromString(
+                                    ListSerializer(ChatMessage.serializer()),
+                                    rawSnapshot,
+                                )
+                        }.getOrNull()?.takeIf { it.second.isNotEmpty() }
+                    }
+                }.toMap()
+            } else {
+                emptyMap()
+            }
         val history: List<MessageEntity> =
             selectHistoryWithinBudget(
                 recentMessages = recentMessages,
+                promptCacheSnapshots = promptCacheSnapshots,
                 // 含待注入记忆块的口径：记忆虽然后移到历史之后，但它同样占用上下文预算，
                 // 历史窗口必须据此扣减（与改动前一致，历史选取结果不因本次重排变化）
                 currentMessages = messages.map { it.message } + memoryContext.allMessages(),
@@ -588,17 +636,26 @@ object PromptBuilder {
                 contextTokenLimit = contextTokenLimit,
             )
         val historyTruncated = recentMessages.size > history.size
-        if (groupContext != null) {
-            // 群聊模式：历史消息加说话方前缀（AI 消息按 character_id 查名字，用户消息用 {{user}} 值）
-            messages.addAll(
+        val annotatedGroupHistory =
+            groupContext?.let {
+                // 群聊模式：历史消息加说话方前缀（AI 消息按 character_id 查名字，用户消息用 {{user}} 值）
                 annotateGroupHistory(
                     history = history,
-                    speakerNames = groupContext.speakerNames,
+                    speakerNames = it.speakerNames,
                     userName = mctx.user,
-                ).map { Segment(it, "历史·群聊") },
-            )
-        } else {
-            history.forEachIndexed { index, msg: MessageEntity ->
+                )
+            }
+        history.forEachIndexed { index, msg: MessageEntity ->
+            // For OpenAI-compatible providers, reinsert exactly the suffix that preceded
+            // each historical user turn. This lets the next request extend the prior prefix.
+            if (msg.role == "user") {
+                promptCacheSnapshots[msg.id].orEmpty().forEachIndexed { snapshotIndex, snapshot ->
+                    messages.add(Segment(snapshot, "历史缓存快照·${snapshotIndex + 1}"))
+                }
+            }
+            if (annotatedGroupHistory != null) {
+                messages.add(Segment(annotatedGroupHistory[index], "历史·群聊"))
+            } else {
                 // 历史消息不做宏二次渲染（生成时已解析）；仅剔除 <think>…</think> 块，
                 // 思考型模型的历史推理不进上下文（展示层不动）
                 messages.add(
@@ -610,6 +667,7 @@ object PromptBuilder {
                 )
             }
         }
+        val currentTurnContextStartIndex = messages.size
 
         // 角色卡的历史后指令（post_history_instructions）：酒馆里它插在**历史之后**，
         // 作为"最后一句指令"约束生成（走在附加指令之前——附加指令是会话级实时覆盖，仍居末位）。
@@ -687,6 +745,19 @@ object PromptBuilder {
         // @D 深度块按深度升序注入（D=1 最后，最靠近生成点）
         messages.addAll(depthBlocks)
 
+        // The snapshot excludes the final user message: when replayed next turn, it is
+        // restored immediately before that same historical user message.
+        val candidateCacheSnapshot = messages.drop(currentTurnContextStartIndex).map { it.message }
+        val cacheContextSnapshot =
+            if (
+                cacheSnapshotEnabled &&
+                candidateCacheSnapshot.sumOf { estimateTokens(it.content) } <= PROMPT_CACHE_SNAPSHOT_MAX_TOKENS
+            ) {
+                candidateCacheSnapshot
+            } else {
+                emptyList()
+            }
+
         // 最后的当前用户消息参与宏渲染；continueGroupChat 场景（groupNudge 非 null）无新用户消息，
         // 改为注入系统级推动语（classic 路径 groupNudge 恒为 null，零改动）
         if (groupNudge != null) {
@@ -748,6 +819,7 @@ object PromptBuilder {
                     "Gemini: system -> systemInstruction; assistant -> model; others -> user",
                     "Thinking remains on the unified message model and is mapped by provider response parsers",
                 ),
+            cacheContextSnapshot = cacheContextSnapshot,
         )
     }
 
@@ -804,6 +876,7 @@ object PromptBuilder {
         currentMessages: List<ChatMessage>,
         currentUserMessage: String,
         contextTokenLimit: Int,
+        promptCacheSnapshots: Map<String, List<ChatMessage>> = emptyMap(),
     ): List<MessageEntity> {
         val reservedForReply = 768
         val fixedTokens = currentMessages.sumOf { estimateTokens(it.content) }
@@ -819,11 +892,18 @@ object PromptBuilder {
         // 最新一条无条件纳入（与历史实现一致：预算极小时也带上最近一轮的上下文）
         for ((i, message) in recentMessages.asReversed().withIndex()) {
             val messageTokens = estimateTokens(message.content) + 4
-            if (i > 0 && usedTokens + messageTokens > historyBudget) {
+            val snapshotTokens =
+                if (message.role == "user") {
+                    promptCacheSnapshots[message.id].orEmpty().sumOf { estimateTokens(it.content) + 4 }
+                } else {
+                    0
+                }
+            val turnTokens = messageTokens + snapshotTokens
+            if (i > 0 && usedTokens + turnTokens > historyBudget) {
                 break
             }
             selected.addFirst(message)
-            usedTokens += messageTokens
+            usedTokens += turnTokens
         }
 
         return selected.toList()
