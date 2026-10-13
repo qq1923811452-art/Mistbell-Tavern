@@ -17,7 +17,7 @@ interface EmbeddingService {
      * 将文本转换为向量
      *
      * @param text 输入文本
-     * @return 向量数组（通常是 1536 维）
+     * @return 向量数组；具体维度由所选模型决定
      */
     suspend fun embed(text: String): FloatArray
 
