@@ -1,10 +1,10 @@
 package com.mistbell.tavern.android.data.memory
 
 import com.mistbell.tavern.android.data.api.model.StructuredMemory
-import java.time.Instant
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.time.Instant
 
 class MemoryRankingTest {
     private val now = Instant.parse("2026-10-13T00:00:00Z")

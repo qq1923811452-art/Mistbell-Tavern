@@ -7,8 +7,8 @@ import com.mistbell.tavern.android.data.api.ChatMessage
 import com.mistbell.tavern.android.data.api.LlmClient
 import com.mistbell.tavern.android.data.api.LlmConfig
 import com.mistbell.tavern.android.data.api.model.StructuredMemory
-import com.mistbell.tavern.android.data.repository.StructuredMemoryRepository
 import com.mistbell.tavern.android.data.memory.MemoryConflictResolver
+import com.mistbell.tavern.android.data.repository.StructuredMemoryRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext

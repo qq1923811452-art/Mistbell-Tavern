@@ -125,10 +125,11 @@ object SessionExporter {
         session: SessionSummary,
         messages: List<Message>,
     ): String {
-        val json = Json {
-            ignoreUnknownKeys = true
-            encodeDefaults = true
-        }
+        val json =
+            Json {
+                ignoreUnknownKeys = true
+                encodeDefaults = true
+            }
         return buildString {
             appendLine(
                 buildJsonObject {

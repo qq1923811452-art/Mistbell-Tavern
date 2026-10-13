@@ -111,8 +111,9 @@ internal object GeminiChatProtocol : ChatProtocol {
             } else {
                 "$base/v1beta/$modelPath"
             }
-        val urlBuilder = endpoint.toHttpUrl().newBuilder()
-            .addQueryParameter("key", config.apiKey)
+        val urlBuilder =
+            endpoint.toHttpUrl().newBuilder()
+                .addQueryParameter("key", config.apiKey)
         if (stream) urlBuilder.addQueryParameter("alt", "sse")
         return Request.Builder()
             .url(urlBuilder.build())

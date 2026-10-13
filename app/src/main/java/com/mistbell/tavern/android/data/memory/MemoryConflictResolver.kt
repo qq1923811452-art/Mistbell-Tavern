@@ -56,12 +56,13 @@ internal object MemoryConflictResolver {
         now: String = Instant.now().toString(),
     ): StructuredMemory {
         val oldObject = readObject(memory.structuredData)
-        val updatedJson = buildJsonObject {
-            oldObject?.forEach { (key, value) -> put(key, value) }
-            put("status", "superseded")
-            put("supersededBy", replacement)
-            put("supersededAt", now)
-        }
+        val updatedJson =
+            buildJsonObject {
+                oldObject?.forEach { (key, value) -> put(key, value) }
+                put("status", "superseded")
+                put("supersededBy", replacement)
+                put("supersededAt", now)
+            }
         return memory.copy(structuredData = updatedJson.toString(), updatedAt = now)
     }
 

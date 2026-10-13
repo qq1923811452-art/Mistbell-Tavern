@@ -6,47 +6,53 @@ import org.junit.Test
 
 class MemoryManagerTest {
     @Test
-    fun `recent returns newest memories first and respects limit`() = runBlocking {
-        val store = FakeMemoryStore(
-            listOf(
-                MemoryRecord(id = "older", content = "older memory", createdAt = OLDER_TIMESTAMP),
-                MemoryRecord(id = "newest", content = "newest memory", createdAt = NEWEST_TIMESTAMP),
-                MemoryRecord(id = "middle", content = "middle memory", createdAt = MIDDLE_TIMESTAMP),
-            ),
-        )
-        val manager = MemoryManager(store)
+    fun `recent returns newest memories first and respects limit`() =
+        runBlocking {
+            val store =
+                FakeMemoryStore(
+                    listOf(
+                        MemoryRecord(id = "older", content = "older memory", createdAt = OLDER_TIMESTAMP),
+                        MemoryRecord(id = "newest", content = "newest memory", createdAt = NEWEST_TIMESTAMP),
+                        MemoryRecord(id = "middle", content = "middle memory", createdAt = MIDDLE_TIMESTAMP),
+                    ),
+                )
+            val manager = MemoryManager(store)
 
-        assertEquals(
-            listOf("newest", "middle"),
-            manager.recent(2).map { it.id },
-        )
-    }
-
-    @Test
-    fun `recent with non positive limit returns empty list`() = runBlocking {
-        val manager = MemoryManager(
-            FakeMemoryStore(
-                listOf(
-                    MemoryRecord(id = "memory", content = "memory"),
-                ),
-            ),
-        )
-
-        assertEquals(emptyList<MemoryRecord>(), manager.recent(0))
-        assertEquals(emptyList<MemoryRecord>(), manager.recent(-1))
-    }
+            assertEquals(
+                listOf("newest", "middle"),
+                manager.recent(2).map { it.id },
+            )
+        }
 
     @Test
-    fun `clear delegates to storage`() = runBlocking {
-        val store = FakeMemoryStore(
-            listOf(MemoryRecord(id = "memory", content = "memory")),
-        )
-        val manager = MemoryManager(store)
+    fun `recent with non positive limit returns empty list`() =
+        runBlocking {
+            val manager =
+                MemoryManager(
+                    FakeMemoryStore(
+                        listOf(
+                            MemoryRecord(id = "memory", content = "memory"),
+                        ),
+                    ),
+                )
 
-        manager.clear()
+            assertEquals(emptyList<MemoryRecord>(), manager.recent(0))
+            assertEquals(emptyList<MemoryRecord>(), manager.recent(-1))
+        }
 
-        assertEquals(emptyList<MemoryRecord>(), manager.recent())
-    }
+    @Test
+    fun `clear delegates to storage`() =
+        runBlocking {
+            val store =
+                FakeMemoryStore(
+                    listOf(MemoryRecord(id = "memory", content = "memory")),
+                )
+            val manager = MemoryManager(store)
+
+            manager.clear()
+
+            assertEquals(emptyList<MemoryRecord>(), manager.recent())
+        }
 
     private class FakeMemoryStore(
         private val initial: List<MemoryRecord>,
