@@ -15,7 +15,7 @@ plugins {
 licenseReport {
     projects = [project(':app')]
     outputDir = layout.buildDirectory.dir("reports/licenses").get().asFile.absolutePath
-    renderers = [new com.github.jk1.license.render.JsonReportRenderer("index.json", false)]
+    renderers = [new com.github.jk1.license.render.CsvReportRenderer("licenses.csv")]
 }
 
 // jk1 插件任务持有 Project 引用，与配置缓存不兼容（复用缓存条目会 NPE）；
@@ -38,19 +38,14 @@ tasks.register('licenseGuard') {
             throw new GradleException("licenseGuard: 许可证报告不存在（$dir）——请先运行 licenseReport")
         }
         def violations = []
-        dir.eachFileMatch(~/.+\.json$/) { f ->
-            def parsed = new groovy.json.JsonSlurper().parse(f)
-            def walk
-            walk = { node, path ->
-                if (node instanceof String) {
-                    if (forbidden.matcher(node).find()) violations << "${f.name}${path}: ${node}"
-                } else if (node instanceof Map) {
-                    node.each { k, v -> walk(v, "${path}.${k}") }
-                } else if (node instanceof Collection) {
-                    node.eachWithIndex { v, i -> walk(v, "${path}[${i}]") }
+        dir.eachFileRecurse { f ->
+            if (f.isFile() && (f.name.endsWith('.csv') || f.name.endsWith('.json') || f.name.endsWith('.html'))) {
+                f.eachLine { line ->
+                    if (forbidden.matcher(line).find()) {
+                        violations << "${f.name}: ${line.trim()}"
+                    }
                 }
             }
-            walk(parsed, "")
         }
         if (violations) {
             violations.each { logger.lifecycle("LICENSE RED LINE: {}", it) }
