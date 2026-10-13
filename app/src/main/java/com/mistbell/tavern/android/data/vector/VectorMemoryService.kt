@@ -1,6 +1,8 @@
 package com.mistbell.tavern.android.data.vector
 
 import android.util.Log
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.util.UUID
 
 /**
@@ -43,24 +45,27 @@ class VectorMemoryService(
             EMBEDDING_CACHE_LOAD_FACTOR,
             true,
         )
+    private val embeddingCacheMutex = Mutex()
 
     /**
      * Reuse the exact text embedding across the write-then-retrieve path.
-     * Cache entries are bounded and scoped to this service/model instance.
+     * The mutex covers cache lookup and generation so concurrent requests for the same text
+     * cannot race through the miss path and issue duplicate embedding API requests.
      */
-    private suspend fun embedCached(text: String): FloatArray {
-        synchronized(embeddingCache) {
-            embeddingCache[text]?.let { return it.copyOf() }
-        }
-        val generated = embeddingService.embed(text)
-        synchronized(embeddingCache) {
-            embeddingCache[text] = generated.copyOf()
-            while (embeddingCache.size > EMBEDDING_CACHE_MAX_ENTRIES) {
-                embeddingCache.remove(embeddingCache.keys.first())
+    private suspend fun embedCached(text: String): FloatArray =
+        embeddingCacheMutex.withLock {
+            synchronized(embeddingCache) {
+                embeddingCache[text]?.let { return@withLock it.copyOf() }
             }
+            val generated = embeddingService.embed(text)
+            synchronized(embeddingCache) {
+                embeddingCache[text] = generated.copyOf()
+                while (embeddingCache.size > EMBEDDING_CACHE_MAX_ENTRIES) {
+                    embeddingCache.remove(embeddingCache.keys.first())
+                }
+            }
+            generated.copyOf()
         }
-        return generated.copyOf()
-    }
 
     /**
      * 存储消息到向量数据库
