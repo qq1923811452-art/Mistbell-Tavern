@@ -109,8 +109,10 @@ class OpenAIEmbeddingService(
         val response = client.newCall(request).execute()
 
         if (!response.isSuccessful) {
-            val errorBody = response.body?.string() ?: "Unknown error"
-            throw Exception("OpenAI API error: ${response.code} - $errorBody")
+            val statusCode = response.code
+            response.close()
+            // Do not log untrusted gateway error bodies: some relays echo request headers or credentials.
+            throw IllegalStateException("Embedding API returned HTTP $statusCode")
         }
 
         val responseBody =
@@ -192,8 +194,10 @@ class OpenAIEmbeddingService(
         val response = client.newCall(request).execute()
 
         if (!response.isSuccessful) {
-            val errorBody = response.body?.string() ?: "Unknown error"
-            throw Exception("OpenAI API error: ${response.code} - $errorBody")
+            val statusCode = response.code
+            response.close()
+            // Do not log untrusted gateway error bodies: some relays echo request headers or credentials.
+            throw IllegalStateException("Embedding API returned HTTP $statusCode")
         }
 
         val responseBody =
