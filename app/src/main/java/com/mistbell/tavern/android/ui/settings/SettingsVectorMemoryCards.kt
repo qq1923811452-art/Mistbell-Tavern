@@ -12,6 +12,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import java.util.Locale
 
 /** S2 向量记忆召回设置：记忆源（自动/API/本地 ONNX）+ 召回条数 + 相似度阈值 */
 @Suppress("FunctionNaming")
@@ -20,6 +21,8 @@ internal fun VectorMemorySettingsCard(viewModel: SettingsViewModel) {
     val embeddingSource by viewModel.embeddingSource.collectAsState()
     val recallTopK by viewModel.memoryRecallTopK.collectAsState()
     val threshold by viewModel.memorySimilarityThreshold.collectAsState()
+    val cacheStats by viewModel.vectorCacheStatistics.collectAsState()
+    val cacheHitRatePercent = String.format(Locale.US, "%.1f", cacheStats.hitRate * 100)
 
     SettingsCard(title = "向量记忆") {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -49,6 +52,33 @@ internal fun VectorMemorySettingsCard(viewModel: SettingsViewModel) {
                 steps = 17,
                 onValueChange = { viewModel.setMemorySimilarityThreshold(it) },
             )
+
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = "搜索缓存统计",
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Medium,
+                )
+                Text(
+                    text = "命中率：$cacheHitRatePercent%",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Text(
+                    text = "命中 ${cacheStats.hitCount} 次 · 未命中 ${cacheStats.missCount} 次 · 查询 ${cacheStats.totalLookups} 次",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text = "缓存条目 ${cacheStats.entryCount} · 写入 ${cacheStats.writeCount} 次 · 失效 ${cacheStats.invalidationCount} 次",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text = "统计在应用进程存活期间累计，重启应用后重新计数。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
 
             Text(
                 text =
