@@ -27,6 +27,7 @@ object SecureStore {
     private const val PREFIX = "enc:v1:"
     private const val IV_SIZE = 12
     private const val TAG_BITS = 128
+    private const val TAG_BYTES = TAG_BITS / 8
 
     @Volatile
     private var cachedKey: SecretKey? = null
@@ -35,7 +36,7 @@ object SecureStore {
         if (!value.startsWith(PREFIX)) return false
         return runCatching {
             val payload = Base64.getDecoder().decode(value.removePrefix(PREFIX))
-            payload.size > IV_SIZE + TAG_BITS / 8
+            payload.size > IV_SIZE + TAG_BYTES
         }.getOrDefault(false)
     }
 
