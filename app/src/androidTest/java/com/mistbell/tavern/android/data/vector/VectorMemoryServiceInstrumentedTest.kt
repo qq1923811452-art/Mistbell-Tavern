@@ -272,7 +272,7 @@ class VectorMemoryServiceInstrumentedTest {
             val text = "parallel-embedding-$index"
             val digest =
                 MessageDigest.getInstance("SHA-256")
-                    .digest("$modelId\\u0000$text".toByteArray(StandardCharsets.UTF_8))
+                    .digest("$modelId\u0000$text".toByteArray(StandardCharsets.UTF_8))
             val key = digest.joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
             val stripe = Math.floorMod(key.hashCode(), 32)
             val other = firstByStripe.entries.firstOrNull { it.key != stripe }
