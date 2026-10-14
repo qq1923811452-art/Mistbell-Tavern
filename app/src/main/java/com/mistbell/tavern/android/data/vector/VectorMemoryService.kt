@@ -27,6 +27,8 @@ class VectorMemoryService(
         private const val EMBEDDING_CACHE_INITIAL_CAPACITY = 32
         private const val EMBEDDING_CACHE_LOAD_FACTOR = 0.75f
         private const val EMBEDDING_CACHE_MAX_ENTRIES = 512
+        private const val HEX_BYTE_WIDTH = 2
+        private const val BYTE_MASK = 0xff
     }
 
     /**
@@ -61,10 +63,13 @@ class VectorMemoryService(
         val digest =
             MessageDigest.getInstance("SHA-256")
                 .digest("$embeddingModelId\u0000$text".toByteArray(StandardCharsets.UTF_8))
-        return digest.joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
+        return digest.joinToString("") { byte -> ("%0" + HEX_BYTE_WIDTH + "x").format(byte.toInt() and BYTE_MASK) }
     }
 
-    private suspend fun embedCached(text: String, source: String): FloatArray =
+    private suspend fun embedCached(
+        text: String,
+        source: String,
+    ): FloatArray =
         embeddingCacheMutex.withLock {
             val key = embeddingCacheKey(text)
             val cached = synchronized(embeddingCache) { embeddingCache[key]?.copyOf() }
