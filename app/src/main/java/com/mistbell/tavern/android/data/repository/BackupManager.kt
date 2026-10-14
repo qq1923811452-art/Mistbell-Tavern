@@ -470,17 +470,17 @@ private fun writeThemeAssetsIfAbsent(
         check(dir.mkdirs() || dir.isDirectory) { "无法创建主题资源目录" }
     }
     check(dir.isDirectory) { "主题资源路径不是目录" }
+    val prefix = "${BackupManager.THEMES_DIR_PREFIX}${pack.id}/"
     files.forEach { (name, content) ->
-        if (name.startsWith("${BackupManager.THEMES_DIR_PREFIX}${pack.id}/")) {
-            val fileName = name.substringAfterLast('/')
-            if (fileName.isNotBlank()) {
-                val target = File(dir, fileName)
-                if (!target.exists()) {
-                    target.writeBytes(content.toByteArray(Charsets.ISO_8859_1))
-                }
-            }
-        }
+        if (name.startsWith(prefix)) writeThemeAssetIfMissing(dir, name, content)
     }
+}
+
+private fun writeThemeAssetIfMissing(dir: File, name: String, content: String) {
+    val fileName = name.substringAfterLast('/')
+    if (fileName.isBlank()) return
+    val target = File(dir, fileName)
+    if (!target.exists()) target.writeBytes(content.toByteArray(Charsets.ISO_8859_1))
 }
 
 private fun readBoundedEntry(
