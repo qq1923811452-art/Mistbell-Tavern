@@ -47,7 +47,19 @@ object SecureStore {
         val normalized = key.trim().lowercase(Locale.ROOT).replace('-', '_').replace('.', '_').replace(' ', '_')
         val compact = normalized.filter(Char::isLetterOrDigit)
         // These are numeric usage/configuration fields, not bearer credentials.
-        if (normalized in setOf("context_token_limit", "max_tokens", "llm_max_tokens", "prompt_tokens", "completion_tokens", "total_tokens", "cached_tokens", "reasoning_tokens")) {
+        if (
+            normalized in
+            setOf(
+                "context_token_limit",
+                "max_tokens",
+                "llm_max_tokens",
+                "prompt_tokens",
+                "completion_tokens",
+                "total_tokens",
+                "cached_tokens",
+                "reasoning_tokens",
+            )
+        ) {
             return false
         }
         if (normalized == "providers_json" || compact.contains("apikey")) return true
@@ -58,8 +70,16 @@ object SecureStore {
         if (segments.any { it in credentialSegments }) return true
 
         return compact.endsWith("token") ||
-            listOf("accesstoken", "refreshtoken", "sessiontoken", "authtoken", "clientsecret", "privatekey", "authheader", "secretaccesskey")
-                .any(compact::contains)
+            listOf(
+                "accesstoken",
+                "refreshtoken",
+                "sessiontoken",
+                "authtoken",
+                "clientsecret",
+                "privatekey",
+                "authheader",
+                "secretaccesskey",
+            ).any(compact::contains)
     }
 
     /** 写入敏感字段前调用；加密失败时拒绝保存，避免静默落盘明文。 */
