@@ -41,6 +41,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ github.head_ref || github.ref_name }}
+          fetch-depth: 0
 
       - name: Set up JDK 17
         uses: actions/setup-java@v5
@@ -54,7 +55,6 @@ jobs:
         if: ${{ github.event.pull_request.number == 29 }}
         run: |
           set -euo pipefail
-          git fetch --no-tags origin f857bf4
           git worktree add /tmp/mistbell-room-v26 f857bf4
           chmod +x /tmp/mistbell-room-v26/gradlew
           cd /tmp/mistbell-room-v26
