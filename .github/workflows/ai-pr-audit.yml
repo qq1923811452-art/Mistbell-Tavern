@@ -154,11 +154,11 @@ jobs:
 
           # Redact before external transmission, and reuse the same filters for model output.
           diff = redact_sensitive_text(diff)
-          max_chars = 350000
+          max_chars = 450000
           truncated = len(diff) > max_chars
           diff_for_model = diff[:max_chars]
           truncation_note = (
-              "\nNOTE: The diff was truncated at 350,000 characters. Explicitly state this limitation in the summary."
+              "\nNOTE: The diff was truncated at 450,000 characters. Explicitly state this limitation in the summary."
               if truncated else ""
           )
 
