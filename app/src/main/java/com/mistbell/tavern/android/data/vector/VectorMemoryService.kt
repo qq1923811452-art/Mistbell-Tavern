@@ -12,6 +12,18 @@ import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import java.util.UUID
 
+private fun recordVectorStorageFailure(storageError: MutableStateFlow<String?>, error: Exception) {
+    var cause: Throwable? = error
+    while (cause != null) {
+        if (cause.message?.contains("refusing to treat it as empty") == true) {
+            storageError.value =
+                "向量记忆文件读取失败。原文件已保留；请先导出备份或联系支持，不要清空应用数据。"
+            return
+        }
+        cause = cause.cause
+    }
+}
+
 /**
  * 向量记忆服务
  *
@@ -58,20 +70,9 @@ class VectorMemoryService(
     private val embeddingCacheMutex = Mutex()
 
     private val _storageError = MutableStateFlow<String?>(null)
+
     /** Non-destructive diagnostic surfaced in Settings when persisted vectors cannot be loaded. */
     val storageError: StateFlow<String?> = _storageError.asStateFlow()
-
-    private fun recordStorageFailure(error: Exception) {
-        var cause: Throwable? = error
-        while (cause != null) {
-            if (cause.message?.contains("refusing to treat it as empty") == true) {
-                _storageError.value =
-                    "向量记忆文件读取失败。原文件已保留；请先导出备份或联系支持，不要清空应用数据。"
-                return
-            }
-            cause = cause.cause
-        }
-    }
 
     /**
      * Reuse the exact text embedding across the write-then-retrieve path.
@@ -159,7 +160,7 @@ class VectorMemoryService(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            recordStorageFailure(e)
+            recordVectorStorageFailure(_storageError, e)
             Log.e(TAG, "Failed to store message vector (${e.javaClass.simpleName})")
             throw e
         }
@@ -220,7 +221,7 @@ class VectorMemoryService(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            recordStorageFailure(e)
+            recordVectorStorageFailure(_storageError, e)
             Log.e(TAG, "Failed to search relevant memories (${e.javaClass.simpleName})")
             return emptyList()
         }
@@ -340,7 +341,7 @@ class VectorMemoryService(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            recordStorageFailure(e)
+            recordVectorStorageFailure(_storageError, e)
             Log.e(TAG, "Failed to get statistics (${e.javaClass.simpleName})")
             VectorStatistics(0, 0)
         }
