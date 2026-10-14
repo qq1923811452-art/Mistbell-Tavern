@@ -94,6 +94,27 @@ class VectorMemoryServiceInstrumentedTest {
         }
 
     @Test
+    fun concurrentRequestsForSameEmbeddingTextShareOneGeneration() =
+        runBlocking {
+            val modelId = "same-text-concurrency-model"
+            val embedding = ConcurrentEmbeddingService(modelId)
+            val service = VectorMemoryService(store, embedding)
+
+            listOf("same query", "same query").map { text ->
+                async {
+                    service.searchRelevantMemories(
+                        query = text,
+                        ownerId = "owner",
+                        characterId = "character",
+                        sessionId = null,
+                    )
+                }
+            }.forEach { it.await() }
+
+            assertEquals("Same-text concurrent misses must share one embedding request", 1, embedding.calls.get())
+        }
+
+    @Test
     fun vectorsFromDifferentModelIdentitiesAreNeverMixed() {
         runBlocking {
             val original =
@@ -287,10 +308,12 @@ class VectorMemoryServiceInstrumentedTest {
     ) : EmbeddingService {
         private val active = AtomicInteger()
         val maxConcurrent = AtomicInteger()
+        val calls = AtomicInteger()
 
         override fun modelId(): String = identity
 
         override suspend fun embed(text: String): FloatArray {
+            calls.incrementAndGet()
             val current = active.incrementAndGet()
             maxConcurrent.updateAndGet { previous -> maxOf(previous, current) }
             try {
