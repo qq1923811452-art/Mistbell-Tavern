@@ -376,6 +376,15 @@ object LlmClient {
                                 "elapsedMs=${System.currentTimeMillis() - startedAt}",
                         )
                     }
+                } catch (cancelled: CancellationException) {
+                    ApiCallTrace.log(
+                        traceId,
+                        "LLM_CHAT",
+                        "CANCELLED",
+                        "caller=$caller fallback=without-thinking " +
+                            "elapsedMs=${System.currentTimeMillis() - startedAt}",
+                    )
+                    throw cancelled
                 } catch (fallbackError: Exception) {
                     ApiCallTrace.log(
                         traceId,
@@ -601,6 +610,15 @@ object LlmClient {
                                 "elapsedMs=${System.currentTimeMillis() - startedAt}",
                         )
                     }
+                } catch (cancelled: CancellationException) {
+                    ApiCallTrace.log(
+                        traceId,
+                        "LLM_CHAT_WITH_THINKING",
+                        "CANCELLED",
+                        "caller=$caller fallback=without-thinking " +
+                            "elapsedMs=${System.currentTimeMillis() - startedAt}",
+                    )
+                    throw cancelled
                 } catch (fallbackError: Exception) {
                     ApiCallTrace.log(
                         traceId,
