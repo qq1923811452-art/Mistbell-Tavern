@@ -94,22 +94,22 @@ class BackupManager(private val context: Context) {
     ) {
         fun toEntity(): ApiConfigEntity =
             ApiConfigEntity(
-            id = id,
-            name = name,
-            apiUrl = apiUrl,
-            apiKey = if (apiKey.isEmpty()) "" else SecureStore.wrap(apiKey),
-            model = model,
-            isDefault = isDefault,
-            lastTestStatus = lastTestStatus,
-            lastTestTime = lastTestTime,
-            sortOrder = sortOrder,
-            type = type,
-            context1m = context1m,
-            streamingEnabled = streamingEnabled,
-            thinkingDisabled = thinkingDisabled,
-            createdAt = createdAt,
-            updatedAt = updatedAt,
-        )
+                id = id,
+                name = name,
+                apiUrl = apiUrl,
+                apiKey = if (apiKey.isEmpty()) "" else SecureStore.wrap(apiKey),
+                model = model,
+                isDefault = isDefault,
+                lastTestStatus = lastTestStatus,
+                lastTestTime = lastTestTime,
+                sortOrder = sortOrder,
+                type = type,
+                context1m = context1m,
+                streamingEnabled = streamingEnabled,
+                thinkingDisabled = thinkingDisabled,
+                createdAt = createdAt,
+                updatedAt = updatedAt,
+            )
 
         companion object {
             fun fromEntity(entity: ApiConfigEntity): ApiConfigBackupEntry {
@@ -149,19 +149,34 @@ class BackupManager(private val context: Context) {
     ) {
         fun toEntity() =
             CustomPromptEntity(
-            id = id, name = name, content = content, type = type, position = position,
-            isEnabled = isEnabled, priority = priority, tags = tags, description = description,
-            createdAt = createdAt, updatedAt = updatedAt,
-        )
-        
+                id = id,
+                name = name,
+                content = content,
+                type = type,
+                position = position,
+                isEnabled = isEnabled,
+                priority = priority,
+                tags = tags,
+                description = description,
+                createdAt = createdAt,
+                updatedAt = updatedAt,
+            )
+
         companion object {
             fun fromEntity(entity: CustomPromptEntity) =
                 CustomPromptBackupEntry(
-                id = entity.id, name = entity.name, content = entity.content, type = entity.type,
-                position = entity.position, isEnabled = entity.isEnabled, priority = entity.priority,
-                tags = entity.tags, description = entity.description, createdAt = entity.createdAt,
-                updatedAt = entity.updatedAt,
-            )
+                    id = entity.id,
+                    name = entity.name,
+                    content = entity.content,
+                    type = entity.type,
+                    position = entity.position,
+                    isEnabled = entity.isEnabled,
+                    priority = entity.priority,
+                    tags = entity.tags,
+                    description = entity.description,
+                    createdAt = entity.createdAt,
+                    updatedAt = entity.updatedAt,
+                )
         }
     }
 
