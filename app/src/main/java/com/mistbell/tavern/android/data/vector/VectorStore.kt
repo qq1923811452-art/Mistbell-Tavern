@@ -104,7 +104,8 @@ interface VectorStore {
      */
     data class SearchResult(
         val id: String,
-        val score: Float, // 相似度分数 (0-1)
+        // 相似度分数 (0-1)
+        val score: Float,
         val content: String,
         val metadata: Map<String, Any>,
     )
