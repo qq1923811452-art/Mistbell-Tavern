@@ -86,8 +86,9 @@ class OpenAIEmbeddingService(
             CACHE_LOAD_FACTOR,
             true,
         ) {
-            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, FloatArray>?): Boolean =
-                size > EMBEDDING_CACHE_SIZE
+            override fun removeEldestEntry(
+                eldest: MutableMap.MutableEntry<String, FloatArray>?,
+            ): Boolean = size > EMBEDDING_CACHE_SIZE
         }
 
     @Volatile
@@ -99,8 +100,9 @@ class OpenAIEmbeddingService(
             .joinToString("") { byte -> "%02x".format(byte.toInt() and BYTE_MASK) }
     }
 
-    private fun cachedEmbedding(text: String): FloatArray? =
-        synchronized(cacheLock) { embeddingCache[cacheKey(text)]?.clone() }
+    private fun cachedEmbedding(text: String): FloatArray? = synchronized(cacheLock) {
+        embeddingCache[cacheKey(text)]?.clone()
+    }
 
     private fun rememberEmbedding(
         text: String,
@@ -254,8 +256,7 @@ class OpenAIEmbeddingService(
         return FloatArray(embedding.size) { i -> embedding[i].toFloat() }
     }
 
-    override suspend fun embedBatch(texts: List<String>): List<FloatArray> =
-        embedBatch(texts, "EMBEDDING_BATCH_UNSPECIFIED")
+    override suspend fun embedBatch(texts: List<String>): List<FloatArray> = embedBatch(texts, "EMBEDDING_BATCH_UNSPECIFIED")
 
     @Suppress("TooGenericExceptionCaught", "LongMethod")
     override suspend fun embedBatch(
