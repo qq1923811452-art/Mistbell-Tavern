@@ -3,9 +3,6 @@ name: AI Pull Request Audit
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
-  # Metadata-only notice path for forks. This path must never execute PR source.
-  pull_request_target:
-    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
     inputs:
       pr_number:
@@ -24,7 +21,7 @@ permissions:
   pull-requests: write
 
 concurrency:
-  group: ai-pr-audit-${{ github.event_name == 'pull_request_target' && 'fork-notice' || 'audit' }}-${{ github.event.pull_request.number || inputs.pr_number || github.run_id }}
+  group: ai-pr-audit-${{ github.event.pull_request.number || inputs.pr_number || github.run_id }}
   cancel-in-progress: true
 
 jobs:
@@ -446,42 +443,4 @@ jobs:
             gh api --method PATCH "repos/${GITHUB_REPOSITORY}/issues/comments/${COMMENT_ID}" --field body="$(cat /tmp/ai-pr-audit-report.md)"
           else
             gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file /tmp/ai-pr-audit-report.md
-          fi
-
-  notice-skip:
-    name: Audit skip notice
-    runs-on: ubuntu-latest
-    # Metadata-only pull_request_target path: never check out or execute PR code.
-    if: github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name != github.repository
-    permissions:
-      contents: read
-      pull-requests: write
-    steps:
-      - name: Create or update the fork audit skip notice
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
-        run: |
-          set -euo pipefail
-          [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]] || { echo "::error::PR_NUMBER must be a positive integer"; exit 1; }
-          python3 - <<'PY'
-          import html, os
-          from pathlib import Path
-          head_repo = html.escape(os.environ.get("HEAD_REPO") or "unknown fork", quote=True).replace("@", "@\u200b")
-          body = (
-              "<!-- ai-pr-audit-skip -->\n"
-              "## AI Pull Request Audit — SKIPPED\n\n"
-              f"This PR comes from external fork <code>{head_repo}</code>.\n\n"
-              "Fork PRs do not receive repository secrets, so the external-model audit was **not** run.\n\n"
-              "**A green check does not mean this change was audited. A maintainer must review the source.**"
-          )
-          Path("/tmp/skip-notice.md").write_text(body + "\n", encoding="utf-8")
-          PY
-          COMMENT_ID="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" --jq '.[] | select(.body | contains("<!-- ai-pr-audit-skip -->")) | .id' | tail -n 1)"
-          if [[ -n "$COMMENT_ID" ]]; then
-            gh api --method PATCH "repos/${GITHUB_REPOSITORY}/issues/comments/${COMMENT_ID}" --field body="$(cat /tmp/skip-notice.md)"
-          else
-            gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file /tmp/skip-notice.md
           fi
