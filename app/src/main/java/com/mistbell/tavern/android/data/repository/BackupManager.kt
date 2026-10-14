@@ -182,7 +182,8 @@ class BackupManager(private val context: Context) {
         internal fun requireDecryptedSecretValue(
             key: String,
             value: String,
-        ): String = value.also { decrypted ->
+        ): String =
+            value.also { decrypted ->
                 check(decrypted.isNotEmpty()) {
                     "无法解密设置 $key，已中止备份以避免丢失敏感数据"
                 }
