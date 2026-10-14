@@ -469,6 +469,7 @@ object LlmClient {
         return explicitlyRejected || (statusCode == HTTP_BAD_REQUEST && mentionsRequestField)
     }
 
+    @Suppress("ThrowsCount")
     private suspend fun chatWithRetries(
         config: LlmConfig,
         messages: List<ChatMessage>,
