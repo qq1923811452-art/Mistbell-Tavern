@@ -36,9 +36,10 @@ class MemoryConflictResolverTest {
 
     @Test
     fun `non primitive status and fact fields are ignored safely`() {
-        val malformed = memory(
-            """{"status":{"value":"superseded"},"subject":[],"relation":{},"object":true}""",
-        )
+        val malformed =
+            memory(
+                """{"status":{"value":"superseded"},"subject":[],"relation":{},"object":true}""",
+            )
 
         assertFalse(MemoryConflictResolver.isSuperseded(malformed))
         assertTrue(
