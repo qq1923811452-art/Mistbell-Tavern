@@ -181,7 +181,7 @@ jobs:
           if len(set(paths)) != len(paths):
               sys.exit("Refusing patch: duplicate file sections")
           old_headers = re.findall(r"^--- a/(.+)$", patch, re.MULTILINE)
-          new_headers = re.findall(r"^\\+\\+\\+ b/(.+)$", patch, re.MULTILINE)
+          new_headers = re.findall(r"^\+\+\+ b/(.+)$", patch, re.MULTILINE)
           if old_headers != [old for old, _ in sections] or new_headers != [new for _, new in sections]:
               sys.exit("Refusing patch: file headers do not match the validated diff sections")
           forbidden = ("new file mode ", "deleted file mode ", "old mode ", "new mode ",
