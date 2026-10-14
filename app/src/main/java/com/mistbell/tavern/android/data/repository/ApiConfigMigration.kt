@@ -106,8 +106,12 @@ object ApiConfigMigration {
         // Encrypt legacy settings before any early return, including already-migrated installs.
         listOf("providers_json", "llm_api_key").forEach { key ->
             val value = settingsDao.getValue(key).orEmpty()
-            if (value.isNotBlank() && !SecureStore.isEncrypted(value)) {
-                settingsDao.upsert(SettingsEntity(key, SecureStore.wrap(value)))
+            if (value.isNotBlank()) {
+                val encrypted = SecureStore.isEncrypted(value)
+                check(!value.startsWith("enc:v1:") || encrypted) {
+                    "设置 $key 的加密数据不可读取，迁移已中止以保留原始数据"
+                }
+                if (!encrypted) settingsDao.upsert(SettingsEntity(key, SecureStore.wrap(value)))
             }
         }
 
@@ -153,8 +157,14 @@ object ApiConfigMigration {
      */
     private suspend fun encryptLegacyApiKeys(db: AppDatabase) {
         db.apiConfigDao().getAll().forEach { entity ->
-            if (entity.apiKey.isNotBlank() && !SecureStore.isEncrypted(entity.apiKey)) {
-                db.apiConfigDao().update(entity.copy(apiKey = SecureStore.wrap(entity.apiKey)))
+            if (entity.apiKey.isNotBlank()) {
+                val encrypted = SecureStore.isEncrypted(entity.apiKey)
+                check(!entity.apiKey.startsWith("enc:v1:") || encrypted) {
+                    "API 配置 ${entity.id} 的加密数据不可读取，迁移已中止以保留原始数据"
+                }
+                if (!encrypted) {
+                    db.apiConfigDao().update(entity.copy(apiKey = SecureStore.wrap(entity.apiKey)))
+                }
             }
         }
     }
