@@ -362,6 +362,61 @@ jobs:
           test "$ODYS_MODEL" != "$ODYS_MODEL_B" || { echo "::error::ODYS_MODEL and ODYS_MODEL_B must be different model identifiers"; exit 1; }
           echo "Two distinct relay model identifiers are configured."
 
+      - name: Preflight Model B API endpoint and model
+        id: model_b_preflight
+        env:
+          ODYS_API_KEY_B: ${{ secrets.ODYS_API_KEY_B || secrets.ODYS_API_KEY }}
+          ODYS_API_BASE_URL_B: ${{ secrets.ODYS_API_BASE_URL_B || 'https://api.odys.work/v1' }}
+          ODYS_MODEL_B: ${{ secrets.ODYS_MODEL_B }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, urllib.error, urllib.request
+          base_url = os.environ["ODYS_API_BASE_URL_B"].strip().rstrip("/")
+          api_key = os.environ["ODYS_API_KEY_B"].strip()
+          model = os.environ["ODYS_MODEL_B"].strip()
+          if not api_key:
+              raise SystemExit("Model B preflight failed: missing ODYS_API_KEY_B and fallback ODYS_API_KEY.")
+          if not base_url.startswith("https://"):
+              raise SystemExit("Model B preflight failed: endpoint must use HTTPS.")
+          if not model:
+              raise SystemExit("Model B preflight failed: ODYS_MODEL_B is empty.")
+          payload = {
+              "model": model,
+              "messages": [{"role": "user", "content": "Reply with OK only."}],
+              "temperature": 0,
+              "max_tokens": 8,
+              "stream": False,
+          }
+          req = urllib.request.Request(
+              base_url + "/chat/completions",
+              data=json.dumps(payload).encode("utf-8"),
+              headers={"Authorization": "Bearer " + api_key, "Content-Type": "application/json"},
+              method="POST",
+          )
+          try:
+              with urllib.request.urlopen(req, timeout=60) as response:
+                  data = json.loads(response.read().decode("utf-8", errors="replace"))
+          except urllib.error.HTTPError as exc:
+              # Do not print response bodies or credential-bearing request details.
+              raise SystemExit(
+                  "Model B preflight HTTP failure: status="
+                  + str(exc.code)
+                  + ". Check the endpoint, API key, and exact model identifier."
+              ) from None
+          except Exception as exc:
+              raise SystemExit(
+                  "Model B preflight connection/response failure: "
+                  + type(exc).__name__
+                  + ". Check the endpoint and OpenAI-compatible API response."
+              ) from None
+          choices = data.get("choices") if isinstance(data, dict) else None
+          if not choices or not isinstance(choices[0].get("message", {}).get("content"), str):
+              raise SystemExit("Model B preflight failed: response lacks choices[0].message.content.")
+          print("Model B preflight passed: HTTPS endpoint, authentication, model identifier, and chat-completions response verified.")
+          PY
+
       - name: Model A diagnoses and proposes a minimal patch
         id: model_a
         env:
