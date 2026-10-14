@@ -6,6 +6,7 @@ on:
   push:
     paths:
       - ".github/workflows/ai-pr-audit-batch.yml"
+      - ".github/workflows/ai-pr-audit.yml"
 
 permissions:
   contents: read
