@@ -162,6 +162,9 @@ class BackupManager(private val context: Context) {
         /** settings 导出条目：密文解为明文并标记 sensitive（明文原样直通） */
         fun toBackupEntry(entity: SettingsEntity): SettingsBackupEntry {
             val encrypted = SecureStore.isEncrypted(entity.value)
+            check(!entity.value.startsWith("enc:v1:") || encrypted) {
+                "设置 ${entity.key} 的加密格式损坏，已中止备份以避免丢失敏感数据"
+            }
             val sensitive = encrypted || isSensitiveSettingKey(entity.key)
             val value =
                 if (encrypted) {
@@ -463,13 +466,18 @@ private fun writeThemeAssetsIfAbsent(
 ) {
     BackupManager.validateThemePackId(pack.id)
     val dir = File(context.filesDir, "themes/${pack.id}")
-    if (dir.exists()) return
-    dir.mkdirs()
+    if (!dir.exists()) {
+        check(dir.mkdirs() || dir.isDirectory) { "无法创建主题资源目录" }
+    }
+    check(dir.isDirectory) { "主题资源路径不是目录" }
     files.forEach { (name, content) ->
         if (name.startsWith("${BackupManager.THEMES_DIR_PREFIX}${pack.id}/")) {
             val fileName = name.substringAfterLast('/')
             if (fileName.isNotBlank()) {
-                File(dir, fileName).writeBytes(content.toByteArray(Charsets.ISO_8859_1))
+                val target = File(dir, fileName)
+                if (!target.exists()) {
+                    target.writeBytes(content.toByteArray(Charsets.ISO_8859_1))
+                }
             }
         }
     }
