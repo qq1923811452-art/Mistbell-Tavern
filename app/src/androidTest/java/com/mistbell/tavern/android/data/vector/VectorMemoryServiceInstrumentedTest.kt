@@ -3,6 +3,8 @@ package com.mistbell.tavern.android.data.vector
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -12,6 +14,9 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
+import java.nio.charset.StandardCharsets
+import java.security.MessageDigest
+import java.util.concurrent.atomic.AtomicInteger
 
 @RunWith(AndroidJUnit4::class)
 class VectorMemoryServiceInstrumentedTest {
@@ -62,6 +67,31 @@ class VectorMemoryServiceInstrumentedTest {
             assertEquals("test-model-v1", results.single().metadata["embedding_model"])
         }
     }
+
+    @Test
+    fun differentEmbeddingTextsCanBeGeneratedConcurrently() =
+        runBlocking {
+            val modelId = "concurrency-test-model"
+            val texts = textsOnDifferentCacheStripes(modelId)
+            val embedding = ConcurrentEmbeddingService(modelId)
+            val service = VectorMemoryService(store, embedding)
+
+            listOf(texts.first, texts.second).map { text ->
+                async {
+                    service.searchRelevantMemories(
+                        query = text,
+                        ownerId = "owner",
+                        characterId = "character",
+                        sessionId = null,
+                    )
+                }
+            }.forEach { it.await() }
+
+            assertTrue(
+                "Independent embedding requests should overlap instead of sharing one global lock",
+                embedding.maxConcurrent.get() >= 2,
+            )
+        }
 
     @Test
     fun vectorsFromDifferentModelIdentitiesAreNeverMixed() {
@@ -234,6 +264,46 @@ class VectorMemoryServiceInstrumentedTest {
             assertEquals(1, results.size)
             assertEquals("persistent fact", results.single().content)
         }
+    }
+
+    private fun textsOnDifferentCacheStripes(modelId: String): Pair<String, String> {
+        val firstByStripe = mutableMapOf<Int, String>()
+        for (index in 0 until 100) {
+            val text = "parallel-embedding-$index"
+            val digest =
+                MessageDigest.getInstance("SHA-256")
+                    .digest("$modelId\\u0000$text".toByteArray(StandardCharsets.UTF_8))
+            val key = digest.joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
+            val stripe = Math.floorMod(key.hashCode(), 32)
+            val other = firstByStripe.entries.firstOrNull { it.key != stripe }
+            if (other != null) return other.value to text
+            firstByStripe.putIfAbsent(stripe, text)
+        }
+        error("Could not find two distinct embedding-cache stripes")
+    }
+
+    private class ConcurrentEmbeddingService(
+        private val identity: String,
+    ) : EmbeddingService {
+        private val active = AtomicInteger()
+        val maxConcurrent = AtomicInteger()
+
+        override fun modelId(): String = identity
+
+        override suspend fun embed(text: String): FloatArray {
+            val current = active.incrementAndGet()
+            maxConcurrent.updateAndGet { previous -> maxOf(previous, current) }
+            try {
+                delay(100)
+                return floatArrayOf(1f, 0f, 0f)
+            } finally {
+                active.decrementAndGet()
+            }
+        }
+
+        override suspend fun embedBatch(texts: List<String>): List<FloatArray> = texts.map { embed(it) }
+
+        override fun getDimension(): Int = 3
     }
 
     private class CountingEmbeddingService(
