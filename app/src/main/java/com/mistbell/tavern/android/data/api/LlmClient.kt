@@ -196,7 +196,7 @@ object SseParser {
 }
 
 object LlmClient {
-    private class ApiError(
+    internal class ApiError(
         val statusCode: Int,
         val statusMessage: String,
         val thinkingParameterRejected: Boolean,
@@ -254,10 +254,7 @@ object LlmClient {
             is ConnectException, is UnknownHostException, is NoRouteToHostException ->
                 RetryPolicy(shouldRetry = true, rateLimited = false)
             is IOException -> RetryPolicy(shouldRetry = false, rateLimited = false)
-            else -> {
-                val rateLimited = error.message?.contains(HTTP_TOO_MANY_REQUESTS.toString()) == true
-                RetryPolicy(shouldRetry = rateLimited, rateLimited = rateLimited)
-            }
+            else -> RetryPolicy(shouldRetry = false, rateLimited = false)
         }
 
     private const val HTTP_TOO_MANY_REQUESTS = 429
@@ -666,9 +663,11 @@ object LlmClient {
                     lastException = e
                     if (attempt < maxAttempts - 1) delay(INITIAL_RETRY_DELAY_MS * (1 shl attempt))
                 } catch (e: Exception) {
-                    if (e.message?.contains("429") == true && attempt < maxAttempts - 1) {
+                    val retryPolicy = retryPolicyFor(e)
+                    if (attempt < maxAttempts - 1 && retryPolicy.shouldRetry) {
                         lastException = e
-                        delay(INITIAL_RETRY_DELAY_MS * (1 shl attempt) * 2)
+                        val backoffMultiplier = if (retryPolicy.rateLimited) 2 else 1
+                        delay(INITIAL_RETRY_DELAY_MS * (1 shl attempt) * backoffMultiplier)
                     } else {
                         throw e
                     }
