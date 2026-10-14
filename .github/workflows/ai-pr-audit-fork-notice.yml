@@ -31,9 +31,12 @@ jobs:
           set -euo pipefail
           [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]] || { echo "::error::PR_NUMBER must be a positive integer"; exit 1; }
           python3 - <<'PY'
-          import html, os
+          import html, os, re
           from pathlib import Path
-          head_repo = html.escape(os.environ.get("HEAD_REPO") or "unknown fork", quote=True).replace("@", "@\u200b")
+          raw_head_repo = os.environ.get("HEAD_REPO") or ""
+          if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", raw_head_repo):
+              raw_head_repo = "unknown fork"
+          head_repo = html.escape(raw_head_repo, quote=True).replace("@", "@\u200b")
           body = (
               "<!-- ai-pr-audit-skip -->\n"
               "## AI Pull Request Audit — SKIPPED\n\n"
