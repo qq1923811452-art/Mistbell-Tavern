@@ -122,24 +122,38 @@ jobs:
           if not diff.strip():
               raise SystemExit("The pull request diff is empty or unavailable.")
 
-          # Redact common inline credential formats before sending code to the model.
-          diff = re.sub(
-              r"(?i)(authorization\s*:\s*bearer\s+)[^\s\"'<>]+",
-              r"\1[REDACTED]",
-              diff,
-          )
-          diff = re.sub(
-              r"""(?i)((?:api[_-]?key|access[_-]?token|client[_-]?secret|password)\s*[=:]\s*["']?)[A-Za-z0-9_./+=-]{12,}""",
-              r"\1[REDACTED]",
-              diff,
-          )
-          # Redact common high-confidence credential formats before external transmission.
-          diff = re.sub(r"-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----.*?-----END (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----", "[REDACTED PRIVATE KEY]", diff, flags=re.DOTALL)
-          diff = re.sub(r"\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})\b", "[REDACTED GITHUB TOKEN]", diff)
-          diff = re.sub(r"\bAKIA[0-9A-Z]{16}\b", "[REDACTED AWS KEY]", diff)
-          diff = re.sub(r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b", "[REDACTED JWT]", diff)
-          diff = re.sub(r"https://hooks\.slack\.com/services/[^\s\"'<>]+", "[REDACTED SLACK WEBHOOK]", diff, flags=re.IGNORECASE)
-          diff = re.sub(r"https://(?:discord(?:app)?\.com)/api/webhooks/[^\s\"'<>]+", "[REDACTED DISCORD WEBHOOK]", diff, flags=re.IGNORECASE)
+          def redact_sensitive_text(value):
+              text = str(value or "")
+              text = re.sub(
+                  r"(?i)(authorization\s*:\s*bearer\s+)[^\s\"'<>]+",
+                  r"\1[REDACTED]",
+                  text,
+              )
+              text = re.sub(
+                  r"""(?i)((?:api[_-]?key|access[_-]?token|refresh[_-]?token|session[_-]?token|client[_-]?secret|secret[_-]?access[_-]?key|private[_-]?key|password|credential|secret)\s*[=:]\s*["']?)[A-Za-z0-9_./+=-]{12,}""",
+                  r"\1[REDACTED]",
+                  text,
+              )
+              text = re.sub(
+                  r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----.*?(?:-----END [A-Z0-9 ]*PRIVATE KEY-----|$)",
+                  "[REDACTED PRIVATE KEY]",
+                  text,
+                  flags=re.DOTALL,
+              )
+              text = re.sub(
+                  r"\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,})\b",
+                  "[REDACTED ACCESS TOKEN]",
+                  text,
+              )
+              text = re.sub(r"\bAKIA[0-9A-Z]{16}\b", "[REDACTED AWS KEY]", text)
+              text = re.sub(r"\b(?:sk-(?:proj-)?[A-Za-z0-9_-]{20,}|(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{16,}|AIza[0-9A-Za-z_-]{30,})\b", "[REDACTED API KEY]", text)
+              text = re.sub(r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b", "[REDACTED JWT]", text)
+              text = re.sub(r"https://hooks\.slack\.com/services/[^\s\"'<>]+", "[REDACTED SLACK WEBHOOK]", text, flags=re.IGNORECASE)
+              text = re.sub(r"https://(?:discord(?:app)?\.com)/api/webhooks/[^\s\"'<>]+", "[REDACTED DISCORD WEBHOOK]", text, flags=re.IGNORECASE)
+              return text
+
+          # Redact before external transmission, and reuse the same filters for model output.
+          diff = redact_sensitive_text(diff)
           max_chars = 70000
           truncated = len(diff) > max_chars
           diff_for_model = diff[:max_chars]
@@ -346,7 +360,7 @@ jobs:
 
           def safe_markdown(value, limit=1200):
               # Model output is untrusted; neutralize links, HTML, mentions, and Markdown syntax.
-              text = html.unescape(str(value or ""))
+              text = redact_sensitive_text(html.unescape(str(value or "")))
               text = re.sub(r"(?i)(?:https?://|www\.)[^\s]+", "[URL omitted]", text)
               text = re.sub(r"(?i)mailto:[^\s]+", "[URL omitted]", text)
               text = text.replace("<", "&lt;").replace(">", "&gt;")
@@ -365,7 +379,7 @@ jobs:
               "## AI Pull Request Audit",
               "",
               f"- **Audited head SHA:** `{head_sha}`",
-              f"- **Model configured:** `{model}`",
+              f"- **Model configured:** `{safe_markdown(model, 100)}`",
               f"- **Diff size:** {len(diff)} characters" + (" (truncated before analysis; manual review required)" if truncated else ""),
               "- **Important:** AI findings are untrusted advisory text. Verify them against source and CI.",
               "",
