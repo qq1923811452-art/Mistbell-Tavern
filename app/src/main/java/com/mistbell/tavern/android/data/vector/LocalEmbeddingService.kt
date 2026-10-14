@@ -5,11 +5,11 @@ import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
 import android.content.Context
 import com.mistbell.tavern.android.data.api.ApiCallTrace
+import java.nio.LongBuffer
+import kotlin.math.sqrt
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.nio.LongBuffer
-import kotlin.math.sqrt
 
 /**
  * 本地语义向量服务（FOUNDATION F3 落地）：onnxruntime-android 跑量化 BGE 中文模型，
@@ -123,7 +123,8 @@ class LocalEmbeddingService private constructor(
     override suspend fun embedBatch(
         texts: List<String>,
         source: String,
-    ): List<FloatArray> = texts.map { embed(it, source) }
+    ): List<FloatArray> =
+        texts.map { embed(it, source) }
 
     private fun normalize(vector: FloatArray): FloatArray {
         var norm = 0.0
