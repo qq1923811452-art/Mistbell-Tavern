@@ -24,7 +24,7 @@ permissions:
   pull-requests: write
 
 concurrency:
-  group: ai-pr-audit-${{ github.event_name }}-${{ github.event.pull_request.number || inputs.pr_number || github.run_id }}
+  group: ai-pr-audit-${{ github.event_name == 'pull_request_target' && 'fork-notice' || 'audit' }}-${{ github.event.pull_request.number || inputs.pr_number || github.run_id }}
   cancel-in-progress: true
 
 jobs:
