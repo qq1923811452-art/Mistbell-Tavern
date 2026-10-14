@@ -15,7 +15,7 @@ internal object ApiBaseUrlPolicy {
     fun isValid(rawUrl: String): Boolean = validateUri(rawUrl.trim())
 
     fun requiresCleartextWarning(rawUrl: String): Boolean =
-        parseUri(rawUrl)?.let { uri ->
+        parseUri(rawUrl.trim())?.let { uri ->
             uri.scheme.equals("http", ignoreCase = true) &&
                 uri.host?.lowercase(Locale.ROOT)?.let { host -> host !in cleartextAllowedHosts } == true
         } ?: false
