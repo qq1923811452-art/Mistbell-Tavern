@@ -18,7 +18,11 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
-internal fun validateEmbeddingResponseOrder(indexes: List<Int?>, expectedCount: Int): List<Int> {
+
+internal fun validateEmbeddingResponseOrder(
+    indexes: List<Int?>,
+    expectedCount: Int,
+): List<Int> {
     require(indexes.size == expectedCount) {
         "Embedding API returned ${indexes.size} vectors for $expectedCount inputs"
     }
