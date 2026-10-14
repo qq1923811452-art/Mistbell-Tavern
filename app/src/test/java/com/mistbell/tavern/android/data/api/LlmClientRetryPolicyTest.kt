@@ -4,6 +4,10 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.IOException
+import java.net.ConnectException
+import java.net.NoRouteToHostException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 import java.util.concurrent.CancellationException
 
 class LlmClientRetryPolicyTest {
@@ -23,8 +27,16 @@ class LlmClientRetryPolicyTest {
     }
 
     @Test
-    fun `network IO errors remain retryable`() {
-        assertTrue(LlmClient.isRetryableException(IOException("connection reset")))
+    fun `only failures known to happen before provider acceptance are retryable`() {
+        assertTrue(LlmClient.isRetryableException(ConnectException("connection refused")))
+        assertTrue(LlmClient.isRetryableException(UnknownHostException("DNS lookup failed")))
+        assertTrue(LlmClient.isRetryableException(NoRouteToHostException("no route to host")))
+    }
+
+    @Test
+    fun `ambiguous IO failures and socket timeouts are not retryable`() {
+        assertFalse(LlmClient.isRetryableException(IOException("connection reset after request send")))
+        assertFalse(LlmClient.isRetryableException(SocketTimeoutException("read timed out")))
     }
 
     @Test
