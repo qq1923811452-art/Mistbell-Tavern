@@ -1,5 +1,6 @@
 package com.mistbell.tavern.android.data.prompt
 
+import com.mistbell.tavern.android.TavernApplication
 import com.mistbell.tavern.android.data.api.ChatMessage
 import com.mistbell.tavern.android.data.api.model.GroupChatContext
 import com.mistbell.tavern.android.data.api.model.StructuredMemory
@@ -11,14 +12,13 @@ import com.mistbell.tavern.android.data.memory.MemoryRanking
 import com.mistbell.tavern.android.data.repository.ChatSettingsResolver
 import com.mistbell.tavern.android.data.repository.LexicalMemoryService
 import com.mistbell.tavern.android.data.vector.VectorStore
-import com.mistbell.tavern.android.TavernApplication
 import com.mistbell.tavern.android.util.MacroContext
 import com.mistbell.tavern.android.util.MacroEngine
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.Serializable
 import java.security.MessageDigest
 import java.time.Instant
 import java.util.Locale
