@@ -399,6 +399,31 @@ private fun ApiTypeSelectorField(
     }
 }
 
+
+
+@Suppress("FunctionNaming")
+@Composable
+private fun ApiUrlValidationMessage(apiUrl: String) {
+    when {
+        apiUrl.isNotBlank() && !ApiBaseUrlPolicy.isValid(apiUrl) -> {
+            Text(
+                text = "地址格式无效，请输入包含主机名的 http:// 或 https:// URL。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
+        ApiBaseUrlPolicy.requiresCleartextWarning(apiUrl) -> {
+            Text(
+                text =
+                    "安全提示：Android 默认阻止明文 HTTP，此地址可能无法连接。" +
+                        "建议改用 HTTPS；仅 localhost、127.0.0.1 和 10.0.2.2 有例外。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.tertiary,
+            )
+        }
+    }
+}
+
 /**
  * API 配置编辑对话框。
  *
@@ -529,24 +554,7 @@ fun ApiConfigEditorDialog(
                     shape = RoundedCornerShape(16.dp),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
                 )
-                when {
-                    apiUrl.isNotBlank() && !ApiBaseUrlPolicy.isValid(apiUrl) -> {
-                        Text(
-                            text = "地址格式无效，请输入包含主机名的 http:// 或 https:// URL。",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error,
-                        )
-                    }
-                    ApiBaseUrlPolicy.requiresCleartextWarning(apiUrl) -> {
-                        Text(
-                            text =
-                                "安全提示：Android 默认阻止明文 HTTP，此地址可能无法连接。" +
-                                    "建议改用 HTTPS；仅 localhost、127.0.0.1 和 10.0.2.2 有例外。",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.tertiary,
-                        )
-                    }
-                }
+                ApiUrlValidationMessage(apiUrl)
                 // API 密钥
                 ApiKeyField(
                     apiKey = apiKey,
