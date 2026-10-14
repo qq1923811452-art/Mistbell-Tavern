@@ -16,15 +16,15 @@ object ApiCallTrace {
     fun caller(skipClassNames: Set<String> = emptySet()): String {
         val frame =
             Throwable("API call source trace").stackTrace.firstOrNull {
-            val name = it.className
-            !name.startsWith("java.") &&
-                !name.startsWith("kotlin.") &&
-                !name.startsWith("kotlinx.coroutines.") &&
-                !name.startsWith("okhttp3.") &&
-                !name.startsWith("com.mistbell.tavern.android.data.api.ApiCallTrace") &&
-                !name.startsWith("com.mistbell.tavern.android.data.api.LlmClient") &&
-                skipClassNames.none { skipped -> name.startsWith(skipped) }
-        }
+                val name = it.className
+                !name.startsWith("java.") &&
+                    !name.startsWith("kotlin.") &&
+                    !name.startsWith("kotlinx.coroutines.") &&
+                    !name.startsWith("okhttp3.") &&
+                    !name.startsWith("com.mistbell.tavern.android.data.api.ApiCallTrace") &&
+                    !name.startsWith("com.mistbell.tavern.android.data.api.LlmClient") &&
+                    skipClassNames.none { skipped -> name.startsWith(skipped) }
+            }
         return frame?.let { "${it.className}#${it.methodName}:${it.lineNumber}" } ?: "unknown"
     }
 
