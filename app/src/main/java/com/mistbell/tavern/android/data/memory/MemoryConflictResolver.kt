@@ -21,7 +21,8 @@ import java.util.Locale
 internal object MemoryConflictResolver {
     private data class Fact(val subject: String, val relation: String, val value: String)
 
-    fun isSuperseded(memory: StructuredMemory): Boolean = readObject(memory.structuredData)?.stringValue("status") == "superseded"
+    fun isSuperseded(memory: StructuredMemory): Boolean =
+        readObject(memory.structuredData)?.stringValue("status") == "superseded"
 
     fun findSuperseded(
         subject: String,
