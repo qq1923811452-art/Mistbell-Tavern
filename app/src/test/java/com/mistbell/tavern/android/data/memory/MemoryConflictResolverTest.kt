@@ -41,7 +41,9 @@ class MemoryConflictResolverTest {
         )
 
         assertFalse(MemoryConflictResolver.isSuperseded(malformed))
-        assertTrue(MemoryConflictResolver.findSuperseded("user", "name", "Jordan", listOf(malformed)).isEmpty())
+        assertTrue(
+            MemoryConflictResolver.findSuperseded("user", "name", "Jordan", listOf(malformed)).isEmpty(),
+        )
     }
 
     @Test
