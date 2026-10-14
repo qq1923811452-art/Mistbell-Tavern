@@ -166,7 +166,13 @@ class BackupManagerTest {
 
     @Test
     fun `numeric token settings are not classified as credentials`() {
-        listOf("context_token_limit", "max_tokens", "llm_max_tokens", "prompt_tokens", "completion_tokens").forEach { key ->
+        listOf(
+            "context_token_limit",
+            "max_tokens",
+            "llm_max_tokens",
+            "prompt_tokens",
+            "completion_tokens",
+        ).forEach { key ->
             assertFalse("$key is a numeric setting, not a credential", BackupManager.isSensitiveSettingKey(key))
         }
     }
