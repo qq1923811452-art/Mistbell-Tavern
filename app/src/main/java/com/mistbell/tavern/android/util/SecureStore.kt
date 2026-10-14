@@ -44,11 +44,22 @@ object SecureStore {
 
     /** Key names that may hold credentials or serialized provider secrets. */
     fun isSensitiveKey(key: String): Boolean {
-        val normalized = key.lowercase(Locale.ROOT)
-        return normalized == "providers_json" ||
-            normalized == "llm_api_key" ||
-            normalized.contains("api_key") ||
-            normalized.contains("apikey")
+        val normalized = key.trim().lowercase(Locale.ROOT).replace('-', '_').replace('.', '_').replace(' ', '_')
+        val compact = normalized.filter(Char::isLetterOrDigit)
+        // These are numeric usage/configuration fields, not bearer credentials.
+        if (normalized in setOf("context_token_limit", "max_tokens", "llm_max_tokens", "prompt_tokens", "completion_tokens", "total_tokens", "cached_tokens", "reasoning_tokens")) {
+            return false
+        }
+        if (normalized == "providers_json" || compact.contains("apikey")) return true
+
+        val segments = normalized.split('_').filter(String::isNotBlank)
+        val credentialSegments =
+            setOf("token", "secret", "password", "passwd", "credential", "credentials", "authorization", "bearer")
+        if (segments.any { it in credentialSegments }) return true
+
+        return compact.endsWith("token") ||
+            listOf("accesstoken", "refreshtoken", "sessiontoken", "authtoken", "clientsecret", "privatekey", "authheader", "secretaccesskey")
+                .any(compact::contains)
     }
 
     /** 写入敏感字段前调用；加密失败时拒绝保存，避免静默落盘明文。 */
