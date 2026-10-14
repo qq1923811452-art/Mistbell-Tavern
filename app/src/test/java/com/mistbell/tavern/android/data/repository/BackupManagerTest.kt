@@ -147,6 +147,7 @@ class BackupManagerTest {
         val decoded = BackupManager.decodeList(encoded, BackupManager.SettingsBackupEntry.serializer())
         assertTrue(decoded.isEmpty())
     }
+
     @Test
     fun `credential aliases are classified as sensitive backup keys`() {
         listOf(
@@ -180,5 +181,4 @@ class BackupManagerTest {
             assertFalse("$key is a numeric setting, not a credential", BackupManager.isSensitiveSettingKey(key))
         }
     }
-
 }
