@@ -2,12 +2,16 @@ package com.mistbell.tavern.android.data.local.entity
 
 import androidx.room.ColumnInfo
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
 /**
  * API 配置实体
  */
-@Entity(tableName = "api_configs")
+@Entity(
+    tableName = "api_configs",
+    indices = [Index(value = ["isDefault"]), Index(value = ["sortOrder"])],
+)
 data class ApiConfigEntity(
     @PrimaryKey val id: String,
     val name: String,
