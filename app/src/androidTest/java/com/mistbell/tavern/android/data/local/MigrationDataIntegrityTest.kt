@@ -596,4 +596,88 @@ class MigrationDataIntegrityTest {
             assertEquals("assistant", entries[0].depthRole)
             assertEquals(0.5, entries[0].probability, 0.0001)
         }
+
+    @Test
+    fun migrateV11ToV27_preservesMessagesAndAppliesV26V27ColumnDefaults() =
+        runBlocking {
+            createV11Database()
+            db = openWithRoom()
+
+            // Existing messages must survive v25→26→27 without inventing usage data.
+            db.openHelper.writableDatabase
+                .query(
+                    "SELECT id, content, usage_json, prompt_context_snapshot_json FROM messages WHERE id IN (?, ?, ?) ORDER BY id",
+                    arrayOf("msg-1", "msg-2", "msg-3"),
+                ).use { cursor ->
+                    assertEquals("三条旧消息均应保留", 3, cursor.count)
+                    val idIdx = cursor.getColumnIndexOrThrow("id")
+                    val contentIdx = cursor.getColumnIndexOrThrow("content")
+                    val usageIdx = cursor.getColumnIndexOrThrow("usage_json")
+                    val snapshotIdx = cursor.getColumnIndexOrThrow("prompt_context_snapshot_json")
+                    val expectedContent =
+                        mapOf(
+                            "msg-1" to "你好",
+                            "msg-2" to "你好！我是测试角色。",
+                            "msg-3" to "再见",
+                        )
+                    while (cursor.moveToNext()) {
+                        val id = cursor.getString(idIdx)
+                        assertEquals("旧消息内容不得改变：$id", expectedContent[id], cursor.getString(contentIdx))
+                        assertTrue("旧消息 usage 未上报时必须保持 SQL NULL：$id", cursor.isNull(usageIdx))
+                        assertEquals("旧消息的内部快照默认应为空字符串：$id", "", cursor.getString(snapshotIdx))
+                    }
+                }
+
+            // Validate the migration's actual SQLite defaults, not just Kotlin constructor defaults.
+            db.openHelper.writableDatabase.query("PRAGMA table_info(api_configs)").use { cursor ->
+                val nameIdx = cursor.getColumnIndexOrThrow("name")
+                val defaultIdx = cursor.getColumnIndexOrThrow("dflt_value")
+                var found = false
+                while (cursor.moveToNext()) {
+                    if (cursor.getString(nameIdx) == "thinkingDisabled") {
+                        found = true
+                        assertEquals("thinkingDisabled 的 SQL 默认值应为 0", "0", cursor.getString(defaultIdx))
+                    }
+                }
+                assertTrue("迁移后 api_configs.thinkingDisabled 列应存在", found)
+            }
+
+            // Insert a row omitting thinkingDisabled to prove SQLite itself applies the legacy-safe default.
+            db.openHelper.writableDatabase.execSQL(
+                """
+                INSERT INTO api_configs (
+                    id, name, apiUrl, apiKey, model, isDefault, lastTestStatus,
+                    lastTestTime, sortOrder, type, context1m, streamingEnabled, createdAt, updatedAt
+                ) VALUES ('migration-default-test', '迁移默认值测试', 'https://example.invalid/v1', 'test-key',
+                    'test-model', 0, 'UNKNOWN', 0, 0, 'openai', 0, 1, 0, 0)
+                """.trimIndent(),
+            )
+            db.openHelper.writableDatabase
+                .query("SELECT thinkingDisabled FROM api_configs WHERE id = ?", arrayOf("migration-default-test"))
+                .use { cursor ->
+                    assertTrue("测试 API 配置应写入成功", cursor.moveToFirst())
+                    assertEquals("省略 thinkingDisabled 时数据库默认应为 false/0", 0, cursor.getInt(0))
+                }
+
+            // The migrated Room database must still accept writes after the new columns are validated.
+            db.messageDao().upsert(
+                com.mistbell.tavern.android.data.local.entity.MessageEntity(
+                    id = "msg-v27-write",
+                    sessionId = "sess-1",
+                    ownerId = "local-user",
+                    characterId = "char-1",
+                    role = "assistant",
+                    content = "v27 写入验证",
+                    thinking = null,
+                    createdAt = "2026-10-14T00:00:00Z",
+                    memoryIdsJson = "",
+                    swipesJson = "",
+                    swipeIndex = 0,
+                    thinkingSwipesJson = "",
+                ),
+            )
+            val written = db.messageDao().getBySession("sess-1", "local-user").first()
+            assertTrue("迁移后的消息表应可正常写入和查询", written.any { it.id == "msg-v27-write" })
+        }
+
 }
