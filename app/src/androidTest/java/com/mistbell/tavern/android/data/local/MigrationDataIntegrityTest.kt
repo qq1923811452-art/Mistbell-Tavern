@@ -682,5 +682,4 @@ class MigrationDataIntegrityTest {
             val written = db.messageDao().getBySession("sess-1", "local-user").first()
             assertTrue("迁移后的消息表应可正常写入和查询", written.any { it.id == "msg-v27-write" })
         }
-
 }
