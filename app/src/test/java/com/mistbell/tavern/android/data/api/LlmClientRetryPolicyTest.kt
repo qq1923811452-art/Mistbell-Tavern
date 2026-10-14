@@ -1,5 +1,7 @@
 package com.mistbell.tavern.android.data.api
 
+import java.io.IOException
+import java.util.concurrent.CancellationException
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -13,6 +15,16 @@ class LlmClientRetryPolicyTest {
                 LlmClient.isTransientServerError(statusCode),
             )
         }
+    }
+
+    @Test
+    fun `cancellation is never classified as retryable even when message contains 429`() {
+        assertFalse(LlmClient.isRetryableException(CancellationException("cancelled after HTTP 429")))
+    }
+
+    @Test
+    fun `network IO errors remain retryable`() {
+        assertTrue(LlmClient.isRetryableException(IOException("connection reset")))
     }
 
     @Test
