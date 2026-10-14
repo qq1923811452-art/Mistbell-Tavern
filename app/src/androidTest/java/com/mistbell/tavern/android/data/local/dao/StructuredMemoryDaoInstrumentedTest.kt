@@ -31,7 +31,8 @@ class StructuredMemoryDaoInstrumentedTest {
     }
 
     @Test
-    fun promptCandidatesExcludeSupersededFactsWithJsonWhitespace() = runBlocking {
+    fun promptCandidatesExcludeSupersededFactsWithJsonWhitespace() =
+        runBlocking {
         database.structuredMemoryDao().insert(
             memory("old", "{ \"status\" : \"superseded\" }", 10),
         )
