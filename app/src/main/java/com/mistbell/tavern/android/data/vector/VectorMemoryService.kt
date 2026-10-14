@@ -202,11 +202,13 @@ class VectorMemoryService(
             // 1. 查询向量化
             val queryEmbedding = embedCached(query, "EMBEDDING_MEMORY_QUERY")
 
-            // 2. 构建基础过滤器；模型兼容性在结果层处理，以保留可安全复用的旧向量。
+            // 2. Filter by scope and embedding model in the store first. This avoids
+            // materializing and sorting vectors from unrelated embedding spaces on the common path.
             val filters =
                 mutableMapOf<String, Any>(
                     "owner_id" to ownerId,
                     "character_id" to characterId,
+                    "embedding_model" to embeddingModelId,
                 )
 
             // 如果指定了会话ID，则只检索当前会话
@@ -214,19 +216,26 @@ class VectorMemoryService(
                 filters["session_id"] = sessionId
             }
 
-            // Retrieve all candidates so incompatible model vectors cannot crowd legacy matches
-            // out of the top-K window. InMemoryVectorStore filters incompatible dimensions first.
-            val candidateLimit = maxOf(topK, vectorStore.count())
-            val candidates = vectorStore.search(queryEmbedding, candidateLimit, filters)
+            val modelResults = vectorStore.search(queryEmbedding, topK, filters)
             val results =
-                candidates
-                    .filter { result ->
-                        if (result.metadata.containsKey("embedding_model")) {
-                            result.metadata["embedding_model"]?.toString() == embeddingModelId
-                        } else {
-                            legacyVectorsCompatible
-                        }
-                    }.take(topK)
+                if (!legacyVectorsCompatible || modelResults.size >= topK) {
+                    modelResults
+                } else {
+                    // Only known-compatible embedding services may reuse legacy vectors without
+                    // embedding_model metadata. Fall back to a broad search only when the current
+                    // model cannot fill top-K, so legacy entries remain available without taxing
+                    // every query. The result-layer check still excludes other model identities.
+                    filters.remove("embedding_model")
+                    val candidateLimit = maxOf(topK, vectorStore.count())
+                    vectorStore.search(queryEmbedding, candidateLimit, filters)
+                        .filter { result ->
+                            if (result.metadata.containsKey("embedding_model")) {
+                                result.metadata["embedding_model"]?.toString() == embeddingModelId
+                            } else {
+                                true
+                            }
+                        }.take(topK)
+                }
 
             Log.d(TAG, "Search found ${results.size} relevant memories for queryLength=${query.length}")
 
