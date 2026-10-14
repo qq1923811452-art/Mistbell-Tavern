@@ -45,6 +45,21 @@ class StructuredMemoryDaoInstrumentedTest {
             assertEquals(listOf("current"), candidates.map { it.content })
         }
 
+    @Test
+    fun promptCandidatesKeepActiveFactWhenNestedTextMentionsSupersededStatus() =
+        runBlocking {
+            database.structuredMemoryDao().insert(
+                memory("quoted status", """{"object":"{\\"status\\": \\"superseded\\"}","status":"active"}""", 11),
+            )
+            database.structuredMemoryDao().insert(
+                memory("current", """{"status":"active"}""", 9),
+            )
+
+            val candidates = database.structuredMemoryDao().getPromptCandidates("owner", "character", 1)
+
+            assertEquals(listOf("quoted status"), candidates.map { it.content })
+        }
+
     private fun memory(
         content: String,
         structuredData: String,
