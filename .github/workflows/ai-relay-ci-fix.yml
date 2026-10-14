@@ -296,17 +296,18 @@ jobs:
                       block = text_lines[block_start:block_end]
                       if not any("##[error]" in line or "Process completed with exit code" in line
                                  for line in block):
-                          # Keep the timestamp-bounded fallback strict: it must visibly contain a failure.
+                          # GitHub text/plain logs do not always preserve an explicit failure marker.
+                          # The Jobs API already identified this step as failed; use its timestamps
+                          # as the isolation boundary and keep only timestamped lines in that window.
                           bounded = [
                               line for line in block
                               if (stamp := line_time(line)) is not None
                               and started - timedelta(seconds=1) <= stamp <= completed + timedelta(seconds=2)
                           ]
-                          if not any("##[error]" in line or "Process completed with exit code" in line
-                                     for line in bounded):
+                          if not bounded:
                               raise SystemExit(
-                                  f"Isolated block for failed step #{step_number} ({step_name}) did not contain "
-                                  "a failure marker; refusing to send ambiguous logs."
+                                  f"Could not isolate timestamped output for failed step #{step_number} "
+                                  f"({step_name}); refusing to send ambiguous logs."
                               )
                           block = bounded
                       redact_and_append(job, step, "\n".join(block))
