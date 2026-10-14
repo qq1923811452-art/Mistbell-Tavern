@@ -10,8 +10,7 @@ class CacheManager<K, V>(maxEntries: Int = DEFAULT_MAX_ENTRIES) {
     private val lock = Any()
     private val cache =
         object : LinkedHashMap<K, CacheEntry<V>>(capacity + 1, CACHE_LOAD_FACTOR, true) {
-            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<K, CacheEntry<V>>?): Boolean =
-                size > capacity
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<K, CacheEntry<V>>?): Boolean = size > capacity
         }
     private val stats = CacheStats()
 
