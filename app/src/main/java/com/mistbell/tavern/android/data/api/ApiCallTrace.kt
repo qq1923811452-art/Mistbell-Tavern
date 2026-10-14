@@ -9,8 +9,9 @@ import java.util.UUID
  */
 object ApiCallTrace {
     private const val TAG = "ApiCallTrace"
+    private const val TRACE_ID_LENGTH = 8
 
-    fun newId(): String = UUID.randomUUID().toString().take(8)
+    fun newId(): String = UUID.randomUUID().toString().take(TRACE_ID_LENGTH)
 
     /** Finds the first app frame outside this tracer and the transport client. */
     fun caller(skipClassNames: Set<String> = emptySet()): String {
