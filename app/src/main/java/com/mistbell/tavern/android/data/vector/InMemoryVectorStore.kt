@@ -12,6 +12,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.io.File
 import java.io.FileOutputStream
+import java.util.UUID
 
 /**
  * 内存向量存储实现（带持久化和内存限制）
@@ -182,7 +183,7 @@ class InMemoryVectorStore(
             val existingFiles = listOf(storageFile, backupFile).filter { it.exists() }
             if (existingFiles.isEmpty()) return@withLock false
 
-            val recoveryId = System.currentTimeMillis().toString()
+            val recoveryId = UUID.randomUUID().toString()
             existingFiles.forEach { file ->
                 val suffix = if (file == backupFile) ".bak" else ".json"
                 val quarantine = File(context.filesDir, "vector_store.corrupt-$recoveryId$suffix")
