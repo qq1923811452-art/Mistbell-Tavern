@@ -15,7 +15,7 @@ permissions:
   pull-requests: write
 
 concurrency:
-  group: ai-pr-audit-${{ github.event.pull_request.number || inputs.pr_number }}
+  group: ai-pr-audit-${{ github.event.pull_request.number || inputs.pr_number || github.run_id }}
   cancel-in-progress: true
 
 jobs:
@@ -65,14 +65,42 @@ jobs:
           model = os.environ["ODYS_MODEL"]
           api_key = os.environ["ODYS_API_KEY"]
 
-          diff_url = f"https://api.github.com/repos/{repository}/pulls/{pr_number}"
+          try:
+              pr_number_int = int(pr_number)
+              if pr_number_int < 1:
+                  raise ValueError("PR number must be positive")
+              pr_number = str(pr_number_int)
+          except (TypeError, ValueError):
+              raise SystemExit("PR_NUMBER must be a positive integer.")
+
+          api_headers = {
+              "Authorization": "Bearer " + token,
+              "Accept": "application/vnd.github+json",
+              "X-GitHub-Api-Version": "2022-11-28",
+              "User-Agent": "mistbell-tavern-ai-pr-audit",
+          }
+          metadata_url = f"https://api.github.com/repos/{repository}/pulls/{pr_number}"
+          metadata_request = urllib.request.Request(metadata_url, headers=api_headers)
+          try:
+              with urllib.request.urlopen(metadata_request, timeout=30) as response:
+                  pr_metadata = json.loads(response.read().decode("utf-8", errors="replace"))
+          except urllib.error.HTTPError as exc:
+              print(f"GitHub PR metadata request failed with HTTP {exc.code}")
+              raise SystemExit(1)
+          except Exception as exc:
+              print("GitHub PR metadata request failed:", type(exc).__name__)
+              raise SystemExit(1)
+
+          head_repo = ((pr_metadata.get("head") or {}).get("repo") or {}).get("full_name")
+          if head_repo != repository:
+              raise SystemExit("Refusing to send a fork PR diff to the external model, including workflow_dispatch runs.")
+
+          diff_url = metadata_url
           diff_request = urllib.request.Request(
               diff_url,
               headers={
-                  "Authorization": "Bearer " + token,
+                  **api_headers,
                   "Accept": "application/vnd.github.v3.diff",
-                  "X-GitHub-Api-Version": "2022-11-28",
-                  "User-Agent": "mistbell-tavern-ai-pr-audit",
               },
           )
           try:
@@ -99,6 +127,13 @@ jobs:
               r"\1[REDACTED]",
               diff,
           )
+          # Redact common high-confidence credential formats before external transmission.
+          diff = re.sub(r"-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----.*?-----END (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----", "[REDACTED PRIVATE KEY]", diff, flags=re.DOTALL)
+          diff = re.sub(r"\\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})\\b", "[REDACTED GITHUB TOKEN]", diff)
+          diff = re.sub(r"\\bAKIA[0-9A-Z]{16}\\b", "[REDACTED AWS KEY]", diff)
+          diff = re.sub(r"\\beyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\b", "[REDACTED JWT]", diff)
+          diff = re.sub(r"https://hooks\\.slack\\.com/services/[^\\s\"'<>]+", "[REDACTED SLACK WEBHOOK]", diff, flags=re.IGNORECASE)
+          diff = re.sub(r"https://(?:discord(?:app)?\\.com)/api/webhooks/[^\\s\"'<>]+", "[REDACTED DISCORD WEBHOOK]", diff, flags=re.IGNORECASE)
           max_chars = 70000
           truncated = len(diff) > max_chars
           diff_for_model = diff[:max_chars]
