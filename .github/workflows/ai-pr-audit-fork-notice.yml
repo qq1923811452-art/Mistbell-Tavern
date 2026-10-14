@@ -33,15 +33,15 @@ jobs:
           python3 - <<'PY'
           import html, os
           from pathlib import Path
-          head_repo = html.escape(os.environ.get("HEAD_REPO") or "unknown fork", quote=True).replace("@", "@\\u200b")
+          head_repo = html.escape(os.environ.get("HEAD_REPO") or "unknown fork", quote=True).replace("@", "@\u200b")
           body = (
-              "<!-- ai-pr-audit-skip -->\\n"
-              "## AI Pull Request Audit — SKIPPED\\n\\n"
-              f"This PR comes from external fork <code>{head_repo}</code>.\\n\\n"
-              "Fork PRs do not receive repository secrets, so the external-model audit was **not** run.\\n\\n"
+              "<!-- ai-pr-audit-skip -->\n"
+              "## AI Pull Request Audit — SKIPPED\n\n"
+              f"This PR comes from external fork <code>{head_repo}</code>.\n\n"
+              "Fork PRs do not receive repository secrets, so the external-model audit was **not** run.\n\n"
               "**A green check does not mean this change was audited. A maintainer must review the source.**"
           )
-          Path("/tmp/skip-notice.md").write_text(body + "\\n", encoding="utf-8")
+          Path("/tmp/skip-notice.md").write_text(body + "\n", encoding="utf-8")
           PY
           COMMENT_ID="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" --jq '.[] | select(.body | contains("<!-- ai-pr-audit-skip -->")) | .id' | tail -n 1)"
           if [[ -n "$COMMENT_ID" ]]; then
