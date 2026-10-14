@@ -1,12 +1,12 @@
 package com.mistbell.tavern.android.util
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import java.util.Base64
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
-import org.junit.Test
 import org.junit.runner.RunWith
+import org.junit.Test
+import java.util.Base64
 
 @RunWith(AndroidJUnit4::class)
 class SecureStoreInstrumentedTest {
