@@ -10,7 +10,6 @@ import kotlin.math.sqrt
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-
 /**
  * 本地语义向量服务（FOUNDATION F3 落地）：onnxruntime-android 跑量化 BGE 中文模型，
  * 无需 API Key 即可获得真实语义 embedding——兑现 README"基于向量检索的语义记忆"的承诺。
