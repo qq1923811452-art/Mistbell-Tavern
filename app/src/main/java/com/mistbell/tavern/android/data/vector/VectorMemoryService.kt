@@ -12,7 +12,10 @@ import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import java.util.UUID
 
-private fun recordVectorStorageFailure(storageError: MutableStateFlow<String?>, error: Exception) {
+private fun recordVectorStorageFailure(
+    storageError: MutableStateFlow<String?>,
+    error: Exception,
+) {
     var cause: Throwable? = error
     while (cause != null) {
         if (cause.message?.contains("refusing to treat it as empty") == true) {
