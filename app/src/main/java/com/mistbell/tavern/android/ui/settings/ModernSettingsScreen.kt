@@ -480,7 +480,14 @@ private fun DataManagementSection(
     viewModel: SettingsViewModel,
     isLoading: Boolean,
 ) {
-    DataBackupCard(viewModel = viewModel, isLoading = isLoading)
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            text = "安全提示：备份 ZIP 可能包含解密后的 API 密钥等敏感信息，文件本身未加密。请妥善保管，不要上传或分享给他人。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+        )
+        DataBackupCard(viewModel = viewModel, isLoading = isLoading)
+    }
 }
 
 /**
