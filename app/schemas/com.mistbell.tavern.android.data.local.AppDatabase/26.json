@@ -93,7 +93,9 @@
           "columnNames": [
             "id"
           ]
-        }
+        },
+        "indices": [],
+        "foreignKeys": []
       },
       {
         "tableName": "sessions",
@@ -182,7 +184,8 @@
           {
             "fieldPath": "pinnedAt",
             "columnName": "pinned_at",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           },
           {
             "fieldPath": "isMuted",
@@ -194,12 +197,14 @@
           {
             "fieldPath": "enableLongTermMemory",
             "columnName": "enable_long_term_memory",
-            "affinity": "INTEGER"
+            "affinity": "INTEGER",
+            "notNull": false
           },
           {
             "fieldPath": "contextTokenLimit",
             "columnName": "context_token_limit",
-            "affinity": "INTEGER"
+            "affinity": "INTEGER",
+            "notNull": false
           },
           {
             "fieldPath": "participantCharacterIdsJson",
@@ -278,7 +283,8 @@
             "orders": [],
             "createSql": "CREATE INDEX IF NOT EXISTS `index_sessions_owner_id_character_id_updated_at` ON `${TABLE_NAME}` (`owner_id`, `character_id`, `updated_at`)"
           }
-        ]
+        ],
+        "foreignKeys": []
       },
       {
         "tableName": "messages",
@@ -323,7 +329,8 @@
           {
             "fieldPath": "thinking",
             "columnName": "thinking",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           },
           {
             "fieldPath": "createdAt",
@@ -365,7 +372,8 @@
           {
             "fieldPath": "usageJson",
             "columnName": "usage_json",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           }
         ],
         "primaryKey": {
@@ -430,7 +438,8 @@
             "orders": [],
             "createSql": "CREATE INDEX IF NOT EXISTS `index_messages_owner_id_session_id_created_at` ON `${TABLE_NAME}` (`owner_id`, `session_id`, `created_at`)"
           }
-        ]
+        ],
+        "foreignKeys": []
       },
       {
         "tableName": "memories",
@@ -485,7 +494,7 @@
             "notNull": true
           },
           {
-            "fieldPath": "objectValue",
+            "fieldPath": "object",
             "columnName": "object",
             "affinity": "TEXT",
             "notNull": true
@@ -538,7 +547,9 @@
           "columnNames": [
             "id"
           ]
-        }
+        },
+        "indices": [],
+        "foreignKeys": []
       },
       {
         "tableName": "world_books",
@@ -568,7 +579,9 @@
           "columnNames": [
             "id"
           ]
-        }
+        },
+        "indices": [],
+        "foreignKeys": []
       },
       {
         "tableName": "world_book_entries",
@@ -692,7 +705,9 @@
             "id",
             "book_id"
           ]
-        }
+        },
+        "indices": [],
+        "foreignKeys": []
       },
       {
         "tableName": "settings",
@@ -716,7 +731,9 @@
           "columnNames": [
             "key"
           ]
-        }
+        },
+        "indices": [],
+        "foreignKeys": []
       },
       {
         "tableName": "pending_sync",
@@ -764,7 +781,9 @@
           "columnNames": [
             "id"
           ]
-        }
+        },
+        "indices": [],
+        "foreignKeys": []
       },
       {
         "tableName": "structured_memory",
@@ -785,12 +804,14 @@
           {
             "fieldPath": "characterId",
             "columnName": "character_id",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           },
           {
             "fieldPath": "sessionId",
             "columnName": "session_id",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           },
           {
             "fieldPath": "memoryType",
@@ -801,7 +822,8 @@
           {
             "fieldPath": "title",
             "columnName": "title",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           },
           {
             "fieldPath": "content",
@@ -812,7 +834,8 @@
           {
             "fieldPath": "structuredData",
             "columnName": "structured_data",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           },
           {
             "fieldPath": "importance",
@@ -823,12 +846,14 @@
           {
             "fieldPath": "tags",
             "columnName": "tags",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           },
           {
             "fieldPath": "keywords",
             "columnName": "keywords",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           },
           {
             "fieldPath": "createdAt",
@@ -845,7 +870,8 @@
           {
             "fieldPath": "lastAccessedAt",
             "columnName": "last_accessed_at",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           },
           {
             "fieldPath": "accessCount",
@@ -856,7 +882,8 @@
           {
             "fieldPath": "relatedMessageIds",
             "columnName": "related_message_ids",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           },
           {
             "fieldPath": "sourceType",
@@ -931,7 +958,8 @@
             "orders": [],
             "createSql": "CREATE INDEX IF NOT EXISTS `index_structured_memory_owner_id_session_id_created_at` ON `${TABLE_NAME}` (`owner_id`, `session_id`, `created_at`)"
           }
-        ]
+        ],
+        "foreignKeys": []
       },
       {
         "tableName": "vector_memory",
@@ -964,7 +992,8 @@
           {
             "fieldPath": "messageId",
             "columnName": "message_id",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           },
           {
             "fieldPath": "content",
@@ -981,7 +1010,8 @@
           {
             "fieldPath": "vectorId",
             "columnName": "vector_id",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           },
           {
             "fieldPath": "embeddingModel",
@@ -998,7 +1028,8 @@
           {
             "fieldPath": "tokenCount",
             "columnName": "token_count",
-            "affinity": "INTEGER"
+            "affinity": "INTEGER",
+            "notNull": false
           },
           {
             "fieldPath": "createdAt",
@@ -1052,7 +1083,8 @@
             "orders": [],
             "createSql": "CREATE INDEX IF NOT EXISTS `index_vector_memory_created_at` ON `${TABLE_NAME}` (`created_at`)"
           }
-        ]
+        ],
+        "foreignKeys": []
       },
       {
         "tableName": "theme_packs",
@@ -1091,7 +1123,8 @@
           {
             "fieldPath": "backgroundFile",
             "columnName": "background_file",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           },
           {
             "fieldPath": "createdAt",
@@ -1105,7 +1138,9 @@
           "columnNames": [
             "id"
           ]
-        }
+        },
+        "indices": [],
+        "foreignKeys": []
       },
       {
         "tableName": "api_configs",
@@ -1208,7 +1243,9 @@
           "columnNames": [
             "id"
           ]
-        }
+        },
+        "indices": [],
+        "foreignKeys": []
       },
       {
         "tableName": "custom_prompts",
@@ -1286,9 +1323,12 @@
           "columnNames": [
             "id"
           ]
-        }
+        },
+        "indices": [],
+        "foreignKeys": []
       }
     ],
+    "views": [],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
       "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '126345db4e632a13e90bbea3aacf75ea')"
