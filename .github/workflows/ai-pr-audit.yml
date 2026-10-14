@@ -198,10 +198,12 @@ jobs:
           payload = {
               "model": model,
               "messages": [
-                  {"role": "system", "content": "You are a conservative senior software auditor. Return only valid JSON matching the requested schema."},
+                  {"role": "system", "content": "You are a conservative senior software auditor. Return exactly one valid JSON object only. Do not output Markdown fences, analysis, or prose outside the JSON object. The JSON object must have a string summary and a findings array. If no actionable issues are supported, return an empty findings array."},
                   {"role": "user", "content": prompt},
               ],
               "temperature": 0.1,
+              "max_tokens": 8192,
+              "response_format": {"type": "json_object"},
               "stream": False,
           }
           request = urllib.request.Request(
@@ -235,6 +237,8 @@ jobs:
               print("AI relay request failed:", type(exc).__name__)
               raise SystemExit(1)
 
+          finish_reason = None
+          answer = None
           try:
               relay_data = json.loads(response_body)
               if not isinstance(relay_data, dict):
@@ -242,6 +246,7 @@ jobs:
               choices = relay_data.get("choices")
               if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
                   raise ValueError("relay response has missing or empty choices")
+              finish_reason = choices[0].get("finish_reason")
               message = choices[0].get("message")
               if not isinstance(message, dict):
                   raise ValueError("first choice has no message object")
@@ -252,7 +257,30 @@ jobs:
               if cleaned.startswith("```"):
                   cleaned = re.sub(r"^\`\`\`(?:json)?\s*", "", cleaned)
                   cleaned = re.sub(r"\s*\`\`\`$", "", cleaned)
-              report = json.loads(cleaned)
+              try:
+                  report = json.loads(cleaned)
+              except json.JSONDecodeError:
+                  # Relays can occasionally wrap a valid object in short preamble/trailing text.
+                  # Recover only a complete object with the expected schema fields; exact-diff
+                  # evidence verification below remains mandatory for every finding.
+                  decoder = json.JSONDecoder()
+                  report = None
+                  for offset, char in enumerate(cleaned):
+                      if char != "{":
+                          continue
+                      try:
+                          candidate, _ = decoder.raw_decode(cleaned[offset:])
+                      except json.JSONDecodeError:
+                          continue
+                      if (
+                          isinstance(candidate, dict)
+                          and isinstance(candidate.get("summary"), str)
+                          and isinstance(candidate.get("findings"), list)
+                      ):
+                          report = candidate
+                          break
+                  if report is None:
+                      raise
               if not isinstance(report, dict):
                   raise ValueError("response is not a JSON object")
               if not isinstance(report.get("summary"), str):
@@ -359,7 +387,13 @@ jobs:
                       "请维护者人工复核。"
                   )
           except Exception as exc:
-              print("Could not validate structured AI response:", type(exc).__name__)
+              answer_length = len(answer) if isinstance(answer, str) else 0
+              print(
+                  "Could not validate structured AI response:",
+                  type(exc).__name__,
+                  "finish_reason=", finish_reason,
+                  "content_length=", answer_length,
+              )
               raise SystemExit(1)
 
           allowed_severities = {"critical", "high", "medium", "low"}
