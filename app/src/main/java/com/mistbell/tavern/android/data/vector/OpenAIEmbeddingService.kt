@@ -6,14 +6,14 @@ import java.io.IOException
 import java.net.SocketTimeoutException
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
-import java.util.concurrent.TimeUnit
 import java.util.LinkedHashMap
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.json.Json
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -65,9 +65,8 @@ class OpenAIEmbeddingService(
             CACHE_LOAD_FACTOR,
             true,
         ) {
-            override fun removeEldestEntry(
-                eldest: MutableMap.MutableEntry<String, FloatArray>?,
-            ): Boolean = size > EMBEDDING_CACHE_SIZE
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, FloatArray>?): Boolean =
+                size > EMBEDDING_CACHE_SIZE
         }
 
     @Volatile
@@ -231,8 +230,7 @@ class OpenAIEmbeddingService(
         return FloatArray(embedding.size) { i -> embedding[i].toFloat() }
     }
 
-    override suspend fun embedBatch(texts: List<String>): List<FloatArray> =
-        embedBatch(texts, "EMBEDDING_BATCH_UNSPECIFIED")
+    override suspend fun embedBatch(texts: List<String>): List<FloatArray> = embedBatch(texts, "EMBEDDING_BATCH_UNSPECIFIED")
 
     @Suppress("TooGenericExceptionCaught", "LongMethod")
     override suspend fun embedBatch(
@@ -415,8 +413,7 @@ class OpenAIEmbeddingService(
         return "openai-compatible:$model:$endpointFingerprint"
     }
 
-    override fun supportsLegacyVectors(): Boolean =
-        model == "text-embedding-3-small" && normalizedBaseUrl == "https://api.openai.com/v1"
+    override fun supportsLegacyVectors(): Boolean = model == "text-embedding-3-small" && normalizedBaseUrl == "https://api.openai.com/v1"
 
     override fun getDimension(): Int = lastKnownDimension
 
