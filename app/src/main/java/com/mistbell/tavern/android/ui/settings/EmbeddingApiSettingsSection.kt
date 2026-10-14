@@ -199,7 +199,8 @@ private fun saveEmbeddingApiSettings(
             null
         } ?: return
 
-    val normalizedUrl = values.baseUrl.trim().trimEnd('/').ifBlank { "https://api.openai.com/v1" }
+    val normalizedUrl =
+        values.baseUrl.trim().trimEnd('/').ifBlank { "https://api.openai.com/v1" }
     val model =
         (if (values.selectedModel == "自定义模型 ID") values.customModel else values.selectedModel).trim()
     val normalizedModel = model.ifBlank { "text-embedding-3-small" }
