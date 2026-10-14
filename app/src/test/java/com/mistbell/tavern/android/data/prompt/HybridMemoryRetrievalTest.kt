@@ -30,6 +30,49 @@ class HybridMemoryRetrievalTest {
     }
 
     @Test
+    fun `long lexical duplicate is deduplicated using the full original message`() {
+        val content = (1..40).joinToString(" ") { "same fact $it" }
+        val vector =
+            VectorStore.SearchResult(
+                id = "vector-long",
+                score = 0.9f,
+                content = content,
+                metadata = emptyMap(),
+            )
+
+        val result =
+            PromptBuilder.buildHybridMemoryContextForPrompt(
+                vectorResults = listOf(vector),
+                lexicalItems = listOf(message(content)),
+                alreadyInjected = emptyList(),
+            )
+
+        assertTrue(result.contains("语义+关键词"))
+        assertEquals(1, Regex(Regex.escape(content)).findAll(result).count())
+    }
+
+    @Test
+    fun `punctuation differences do not collapse distinct recall facts`() {
+        val vector =
+            VectorStore.SearchResult(
+                id = "vector-punctuation",
+                score = 0.9f,
+                content = "I like cats-dogs",
+                metadata = emptyMap(),
+            )
+
+        val result =
+            PromptBuilder.buildHybridMemoryContextForPrompt(
+                vectorResults = listOf(vector),
+                lexicalItems = listOf(message("I like cats dogs")),
+                alreadyInjected = emptyList(),
+            )
+
+        assertTrue(result.contains("I like cats-dogs"))
+        assertTrue(result.contains("I like cats dogs"))
+    }
+
+    @Test
     fun `structured facts already injected are excluded from hybrid history`() {
         val vector =
             VectorStore.SearchResult(
