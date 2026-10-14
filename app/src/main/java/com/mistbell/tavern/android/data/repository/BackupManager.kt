@@ -92,12 +92,27 @@ class BackupManager(private val context: Context) {
         val createdAt: Long,
         val updatedAt: Long,
     ) {
-        fun toEntity(): ApiConfigEntity =
-            ApiConfigEntity(
+        fun toEntity(): ApiConfigEntity {
+            val plainApiKey =
+                when {
+                    apiKey.isEmpty() -> ""
+                    apiKey.startsWith("enc:v1:") -> {
+                        check(SecureStore.isEncrypted(apiKey)) {
+                            "备份中的 API 配置 $id 使用不可解密的密钥，已中止恢复；请重新输入 API Key"
+                        }
+                        SecureStore.unwrap(apiKey).also { decrypted ->
+                            check(decrypted.isNotEmpty()) {
+                                "备份中的 API 配置 $id 无法解密，已中止恢复；请重新输入 API Key"
+                            }
+                        }
+                    }
+                    else -> apiKey
+                }
+            return ApiConfigEntity(
                 id = id,
                 name = name,
                 apiUrl = apiUrl,
-                apiKey = if (apiKey.isEmpty()) "" else SecureStore.wrap(apiKey),
+                apiKey = SecureStore.wrap(plainApiKey),
                 model = model,
                 isDefault = isDefault,
                 lastTestStatus = lastTestStatus,
@@ -110,6 +125,7 @@ class BackupManager(private val context: Context) {
                 createdAt = createdAt,
                 updatedAt = updatedAt,
             )
+        }
 
         companion object {
             fun fromEntity(entity: ApiConfigEntity): ApiConfigBackupEntry {
