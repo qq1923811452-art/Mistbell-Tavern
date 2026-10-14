@@ -134,15 +134,13 @@ fun EmbeddingApiSettingsSection() {
                 visualTransformation = PasswordVisualTransformation(),
             )
             EmbeddingApiSaveButton(
-                context = context,
                 prefs = prefs,
                 scope = scope,
-                apiKey = apiKey,
-                baseUrl = baseUrl,
-                selectedModel = selectedModel,
-                customModel = customModel,
-                onBaseUrlNormalized = { baseUrl = it },
-                onStatusChanged = { status = it },
+                values = EmbeddingApiSaveValues(apiKey, baseUrl, selectedModel, customModel),
+                callbacks = EmbeddingApiSaveCallbacks(
+                    onBaseUrlNormalized = { baseUrl = it },
+                    onStatusChanged = { status = it },
+                ),
             )
             status?.let {
                 Text(
@@ -155,31 +153,29 @@ fun EmbeddingApiSettingsSection() {
     }
 }
 
+private data class EmbeddingApiSaveValues(
+    val apiKey: String,
+    val baseUrl: String,
+    val selectedModel: String,
+    val customModel: String,
+)
 
+private data class EmbeddingApiSaveCallbacks(
+    val onBaseUrlNormalized: (String) -> Unit,
+    val onStatusChanged: (String) -> Unit,
+)
+
+@Suppress("FunctionNaming")
 @Composable
 private fun EmbeddingApiSaveButton(
-    context: Context,
     prefs: android.content.SharedPreferences,
     scope: kotlinx.coroutines.CoroutineScope,
-    apiKey: String,
-    baseUrl: String,
-    selectedModel: String,
-    customModel: String,
-    onBaseUrlNormalized: (String) -> Unit,
-    onStatusChanged: (String) -> Unit,
+    values: EmbeddingApiSaveValues,
+    callbacks: EmbeddingApiSaveCallbacks,
 ) {
     Button(
         onClick = {
-            saveEmbeddingApiSettings(
-                prefs = prefs,
-                scope = scope,
-                apiKey = apiKey,
-                baseUrl = baseUrl,
-                selectedModel = selectedModel,
-                customModel = customModel,
-                onBaseUrlNormalized = onBaseUrlNormalized,
-                onStatusChanged = onStatusChanged,
-            )
+            saveEmbeddingApiSettings(prefs, scope, values, callbacks)
         },
         modifier = Modifier.fillMaxWidth(),
     ) {
@@ -190,32 +186,30 @@ private fun EmbeddingApiSaveButton(
 private fun saveEmbeddingApiSettings(
     prefs: android.content.SharedPreferences,
     scope: kotlinx.coroutines.CoroutineScope,
-    apiKey: String,
-    baseUrl: String,
-    selectedModel: String,
-    customModel: String,
-    onBaseUrlNormalized: (String) -> Unit,
-    onStatusChanged: (String) -> Unit,
+    values: EmbeddingApiSaveValues,
+    callbacks: EmbeddingApiSaveCallbacks,
 ) {
+    val apiKey = values.apiKey
     // Do not modify preferences unless secret encryption succeeds.
     val wrappedApiKey =
         try {
             SecureStore.wrap(apiKey.trim())
         } catch (_: Exception) {
-            onStatusChanged("保存失败：系统安全密钥库不可用，未保存配置。")
+            callbacks.onStatusChanged("保存失败：系统安全密钥库不可用，未保存配置。")
             null
         } ?: return
 
-    val normalizedUrl = baseUrl.trim().trimEnd('/').ifBlank { "https://api.openai.com/v1" }
-    val model = (if (selectedModel == "自定义模型 ID") customModel else selectedModel).trim()
+    val normalizedUrl = values.baseUrl.trim().trimEnd('/').ifBlank { "https://api.openai.com/v1" }
+    val model =
+        (if (values.selectedModel == "自定义模型 ID") values.customModel else values.selectedModel).trim()
     val normalizedModel = model.ifBlank { "text-embedding-3-small" }
     prefs.edit()
         .putString("embedding_api_key", wrappedApiKey)
         .putString("embedding_base_url", normalizedUrl)
         .putString("embedding_model", normalizedModel)
         .apply()
-    onBaseUrlNormalized(normalizedUrl)
-    onStatusChanged("配置已保存，正在刷新记忆服务…")
+    callbacks.onBaseUrlNormalized(normalizedUrl)
+    callbacks.onStatusChanged("配置已保存，正在刷新记忆服务…")
     scope.launch {
         val source =
             runCatching {
@@ -226,7 +220,7 @@ private fun saveEmbeddingApiSettings(
             runCatching {
                 TavernApplication.instance.container.refreshEmbeddingSource(source)
             }.getOrDefault(false)
-        onStatusChanged(
+        callbacks.onStatusChanged(
             when {
                 active -> "已保存并立即生效，Embedding 服务已启用。"
                 apiKey.isBlank() -> "已保存。密钥为空，向量记忆 API 暂不可用。"

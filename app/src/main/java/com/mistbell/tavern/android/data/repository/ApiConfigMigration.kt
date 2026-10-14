@@ -152,7 +152,8 @@ object ApiConfigMigration {
 
         val activeId = settingsDao.getValue("active_provider_id") ?: ""
         val now = System.currentTimeMillis()
-        val entities = toApiConfigEntities(providers, activeId, now).map { entity ->
+        val entities =
+            toApiConfigEntities(providers, activeId, now).map { entity ->
             entity.copy(apiKey = SecureStore.wrap(entity.apiKey))
         }
         db.apiConfigDao().insertAll(entities)
