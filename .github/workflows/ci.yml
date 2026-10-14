@@ -51,28 +51,6 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
-      - name: Generate Room v26 schema from its source point
-        if: ${{ github.event.pull_request.number == 29 }}
-        run: |
-          set -euo pipefail
-          git worktree add /tmp/mistbell-room-v26 f857bf4
-          chmod +x /tmp/mistbell-room-v26/gradlew
-          cd /tmp/mistbell-room-v26
-          ./gradlew :app:kspDebugKotlin --no-daemon --no-parallel
-          test -f app/schemas/com.mistbell.tavern.android.data.local.AppDatabase/26.json
-          mkdir -p "$GITHUB_WORKSPACE/room-schema-v26"
-          cp app/schemas/com.mistbell.tavern.android.data.local.AppDatabase/26.json "$GITHUB_WORKSPACE/room-schema-v26/26.json"
-
-      - name: Upload generated Room v26 schema
-        if: ${{ always() && github.event.pull_request.number == 29 && hashFiles('room-schema-v26/26.json') != '' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: room-schema-v26
-          path: room-schema-v26/26.json
-          if-no-files-found: error
-          retention-days: 14
-
-
       - name: Ensure Gradle wrapper is executable
         run: chmod +x ./gradlew
 
