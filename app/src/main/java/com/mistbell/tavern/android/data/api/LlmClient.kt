@@ -358,7 +358,7 @@ object LlmClient {
                     traceId,
                     "LLM_CHAT",
                     "FAILURE",
-                    "caller=${ApiCallTrace.caller()} error=${e.javaClass.simpleName}",
+                    "caller=$caller error=${e.javaClass.simpleName}",
                 )
                 throw e
             }
@@ -583,7 +583,7 @@ object LlmClient {
                     traceId,
                     "LLM_CHAT_WITH_THINKING",
                     "FAILURE",
-                    "caller=${ApiCallTrace.caller()} error=${e.javaClass.simpleName}",
+                    "caller=$caller error=${e.javaClass.simpleName}",
                 )
                 throw e
             }
@@ -649,10 +649,15 @@ object LlmClient {
                     "endpoint=${ApiCallTrace.safeEndpoint(config.baseUrl)} mode=stream",
             )
             val maxAttempts = maxAttemptsFor(config) // S1: 复用配置重试上限（流式）
-            for (attempt in 0 until maxAttempts) {
+            var activeConfig = config
+            var fallbackUsed = false
+            var attempt = 0
+            var requestAttempts = 0
+            while (attempt < maxAttempts) {
                 var emittedAny = false
+                requestAttempts++
                 try {
-                    chatStreamOnce(config, messages).collect { delta ->
+                    chatStreamOnce(activeConfig, messages).collect { delta ->
                         emittedAny = true
                         emit(delta)
                     }
@@ -660,7 +665,7 @@ object LlmClient {
                         traceId,
                         "LLM_CHAT_STREAM",
                         "SUCCESS",
-                        "caller=$caller attempts=${attempt + 1} elapsedMs=${System.currentTimeMillis() - startedAt}",
+                        "caller=$caller attempts=$requestAttempts elapsedMs=${System.currentTimeMillis() - startedAt}",
                     )
                     return@flow
                 } catch (e: CancellationException) {
@@ -672,17 +677,18 @@ object LlmClient {
                     )
                     throw e // 取消不重试
                 } catch (e: Exception) {
-                    // If the gateway rejects the optional thinking field before the first token,
-                    // retry once without that field. The response body is used only for classification.
-                    if (!emittedAny && config.disableThinking && isThinkingParamRejected(e)) {
+                    // A single capability fallback shares this trace and the same transient retry budget.
+                    if (!emittedAny && !fallbackUsed && activeConfig.disableThinking && isThinkingParamRejected(e)) {
+                        fallbackUsed = true
+                        activeConfig = config.copy(disableThinking = false)
                         ApiCallTrace.log(
                             traceId,
                             "LLM_CHAT_STREAM",
                             "FALLBACK",
-                            "caller=$caller fallback=without-thinking",
+                            "caller=$caller fallback=without-thinking requestAttempts=$requestAttempts",
                         )
-                        emitAll(chatStreamWithThinking(config.copy(disableThinking = false), messages))
-                        return@flow
+                        // Do not consume a transient retry slot for the one protocol-capability fallback.
+                        continue
                     }
                     // 已发出增量后不再重试
                     if (emittedAny) {
@@ -702,7 +708,8 @@ object LlmClient {
                             traceId,
                             "LLM_CHAT_STREAM",
                             "RETRY",
-                            "caller=$caller attempt=${attempt + 1} error=${e.javaClass.simpleName} delayMs=$delayMs",
+                            "caller=$caller retry=${attempt + 1}/$maxAttempts requestAttempts=$requestAttempts " +
+                                "error=${e.javaClass.simpleName} delayMs=${delayMs}",
                         )
                         android.util.Log.w(
                             "LlmClient",
@@ -710,13 +717,14 @@ object LlmClient {
                                 "after ${delayMs}ms (${e.javaClass.simpleName})",
                         )
                         delay(delayMs)
+                        attempt++
                     } else {
                         ApiCallTrace.log(
                             traceId,
                             "LLM_CHAT_STREAM",
                             "FAILURE",
                             "caller=$caller emittedAny=false error=${e.javaClass.simpleName} " +
-                                "elapsedMs=${System.currentTimeMillis() - startedAt}",
+                                "requestAttempts=$requestAttempts elapsedMs=${System.currentTimeMillis() - startedAt}",
                         )
                         throw e
                     }

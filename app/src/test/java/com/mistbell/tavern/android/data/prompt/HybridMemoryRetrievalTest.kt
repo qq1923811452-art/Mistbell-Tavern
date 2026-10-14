@@ -92,6 +92,26 @@ class HybridMemoryRetrievalTest {
     }
 
     @Test
+    fun hybridHelperDoesNotApplySecondHardcodedVectorThreshold() {
+        val vector =
+            VectorStore.SearchResult(
+                id = "vector-low-score",
+                score = 0.3f,
+                content = "A relevant fact accepted by the configured threshold",
+                metadata = emptyMap(),
+            )
+
+        val result =
+            PromptBuilder.buildHybridMemoryContextForPrompt(
+                vectorResults = listOf(vector),
+                lexicalItems = emptyList(),
+                alreadyInjected = emptyList(),
+            )
+
+        assertTrue(result.contains("A relevant fact accepted by the configured threshold"))
+    }
+
+    @Test
     fun `non-positive limit returns no prompt block`() {
         val result =
             PromptBuilder.buildHybridMemoryContextForPrompt(

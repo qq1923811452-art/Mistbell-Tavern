@@ -1392,7 +1392,6 @@ object PromptBuilder {
             }
 
             vectorResults
-                .filter { it.score > MIN_HYBRID_VECTOR_SCORE }
                 .forEachIndexed { index, result -> add(result.content, index + 1, "语义") }
             lexicalItems.forEachIndexed { index, message ->
                 val stamp = message.createdAt.take(HISTORY_TIMESTAMP_PREFIX_LENGTH).replace('T', ' ')

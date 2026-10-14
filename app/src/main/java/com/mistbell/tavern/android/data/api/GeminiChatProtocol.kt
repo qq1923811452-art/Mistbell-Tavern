@@ -140,7 +140,7 @@ internal object GeminiChatProtocol : ChatProtocol {
                 Usage(
                     promptTokens = it.promptTokens,
                     completionTokens = it.candidatesTokens,
-                    totalTokens = it.totalTokens,
+                    totalTokens = if (it.totalTokens > 0) it.totalTokens else it.promptTokens + it.candidatesTokens,
                     cacheHitTokens = it.cachedContentTokens,
                     cacheMissTokens = (it.promptTokens - it.cachedContentTokens).coerceAtLeast(0),
                 )
@@ -174,7 +174,7 @@ internal object GeminiChatProtocol : ChatProtocol {
                 Usage(
                     promptTokens = it.promptTokens,
                     completionTokens = it.candidatesTokens,
-                    totalTokens = it.totalTokens,
+                    totalTokens = if (it.totalTokens > 0) it.totalTokens else it.promptTokens + it.candidatesTokens,
                 )
             }
         val usageUpdate = usage?.let { StreamParseResult.UsageUpdate(it) }

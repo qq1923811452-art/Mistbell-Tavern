@@ -319,6 +319,21 @@ class ChatProtocolTest {
     }
 
     @Test
+    fun geminiUsageTotalFallsBackToPromptPlusCompletionWhenOmitted() {
+        val nonStream =
+            GeminiChatProtocol.parseContent(
+                """{"candidates":[{"content":{"parts":[{"text":"ok"}]}}],"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":4}}""",
+            )
+        val stream =
+            GeminiChatProtocol.parseStreamData(
+                """{"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":4}}""",
+            )
+
+        assertEquals(14, nonStream.usage?.totalTokens)
+        assertEquals(14, (stream as StreamParseResult.UsageUpdate).usage.totalTokens)
+    }
+
+    @Test
     fun `gemini 流式 chunk 产出正文增量`() {
         val data =
             """{"candidates":[{"content":{"parts":[{"text":"逐字"}],"role":"model"}}]}"""
