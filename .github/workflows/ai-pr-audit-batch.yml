@@ -2,7 +2,7 @@ name: Batch AI PR Audit
 
 on:
   workflow_dispatch:
-  # Editing the file on a feature branch validates YAML only; merging it to the default branch starts the initial historical audit sweep.
+  # Any change to this workflow on the default branch triggers the initial historical audit sweep.
   push:
     paths:
       - ".github/workflows/ai-pr-audit-batch.yml"
