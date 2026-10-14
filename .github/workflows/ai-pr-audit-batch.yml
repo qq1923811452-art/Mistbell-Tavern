@@ -16,22 +16,30 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write
+  actions: write
 
 concurrency:
   group: ai-pr-audit-batch-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  audit:
-    name: Audit PR #${{ matrix.pr_number }}
+  dispatch-audits:
+    name: Queue audit for PR ${{ matrix.pr_number }}
     if: ${{ matrix.pr_number >= inputs.start_pr && matrix.pr_number <= inputs.end_pr }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
     strategy:
       fail-fast: false
       max-parallel: 3
       matrix:
         pr_number: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25]
-    uses: ./.github/workflows/ai-pr-audit.yml
-    with:
-      pr_number: ${{ matrix.pr_number }}
-    secrets: inherit
+    steps:
+      - name: Dispatch individual audit workflow
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ matrix.pr_number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh workflow run ai-pr-audit.yml --repo "$GITHUB_REPOSITORY" --ref feature -f "pr_number=$PR_NUMBER"
+          echo "Queued AI audit for PR #$PR_NUMBER"
