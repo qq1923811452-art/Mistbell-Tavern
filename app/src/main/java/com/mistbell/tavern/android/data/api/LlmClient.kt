@@ -373,23 +373,24 @@ object LlmClient {
             val message = e.message.orEmpty()
             val mentionsThinking = message.contains("thinking", ignoreCase = true)
             val parameterRejectionTerms =
-            listOf(
-                "unrecognized",
-                "unknown parameter",
-                "unsupported parameter",
-                "invalid parameter",
-                "not allowed",
-                "unexpected field",
-                "unknown field",
-                "extra inputs",
-                "not supported",
-            )
-        val explicitlyRejected = parameterRejectionTerms.any { message.contains(it, ignoreCase = true) }
-        val isBadRequest = Regex("""\b400\b""").containsMatchIn(message)
-        val mentionsRequestField =
-            listOf("parameter", "argument", "field").any { message.contains(it, ignoreCase = true) }
-        return explicitlyRejected || (isBadRequest && mentionsRequestField)
-    }
+                listOf(
+                    "unrecognized",
+                    "unknown parameter",
+                    "unsupported parameter",
+                    "invalid parameter",
+                    "not allowed",
+                    "unexpected field",
+                    "unknown field",
+                    "extra inputs",
+                    "not supported",
+                )
+            val explicitlyRejected =
+                parameterRejectionTerms.any { message.contains(it, ignoreCase = true) }
+            val isBadRequest = Regex("""\\b$HTTP_BAD_REQUEST\\b""").containsMatchIn(message)
+            val mentionsRequestField =
+                listOf("parameter", "argument", "field").any { message.contains(it, ignoreCase = true) }
+            mentionsThinking && (explicitlyRejected || (isBadRequest && mentionsRequestField))
+        }
 
     private fun isThinkingParameterRejected(
         statusCode: Int,
