@@ -1,0 +1,98 @@
+name: AI Relay Model Dialog
+
+on:
+  workflow_dispatch:
+    inputs:
+      topic:
+        description: "Topic or task for the two models"
+        required: true
+        type: string
+      rounds:
+        description: "Round trips (1 round = A drafts, B reviews, A replies)"
+        required: false
+        default: "2"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: relay-dialog-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  dialog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Run two-model dialog
+        env:
+          ODYS_API_KEY: ${{ secrets.ODYS_API_KEY }}
+          MODEL_A: ${{ secrets.ODYS_MODEL }}
+          MODEL_B: ${{ secrets.ODYS_MODEL_B }}
+          TOPIC: ${{ inputs.topic }}
+          ROUNDS: ${{ inputs.rounds }}
+        run: |
+          set -euo pipefail
+          test -n "$ODYS_API_KEY" || { echo "::error::Missing secret ODYS_API_KEY"; exit 1; }
+          test -n "$MODEL_A" || { echo "::error::Missing secret ODYS_MODEL"; exit 1; }
+          if [ -z "$MODEL_B" ]; then
+            echo "::warning::ODYS_MODEL_B not set; using the same model for A and B."
+            MODEL_B="$MODEL_A"
+          fi
+          export MODEL_B
+          python3 - <<'PY'
+          import json, os, urllib.error, urllib.request
+
+          URL = "https://api.odys.work/v1/chat/completions"
+          KEY = os.environ["ODYS_API_KEY"]
+          A, B = os.environ["MODEL_A"], os.environ["MODEL_B"]
+          TOPIC = os.environ["TOPIC"]
+          ROUNDS = max(1, min(int(os.environ.get("ROUNDS", "2") or "2"), 5))
+
+          EVIDENCE = ("Every factual claim must cite [file path + verbatim snippet]. "
+                      "If you cannot cite it, mark it [unverified]. Never guess file contents. "
+                      "When rejecting a point, quote it first.")
+
+          def call(model, messages):
+              payload = {"model": model, "messages": messages,
+                         "stream": False, "temperature": 0.3}
+              req = urllib.request.Request(
+                  URL, data=json.dumps(payload).encode("utf-8"),
+                  headers={"Authorization": "Bearer " + KEY,
+                           "Content-Type": "application/json"},
+                  method="POST")
+              try:
+                  with urllib.request.urlopen(req, timeout=180) as r:
+                      data = json.loads(r.read().decode("utf-8"))
+              except urllib.error.HTTPError as exc:
+                  raise SystemExit(f"HTTP {exc.code} for model {model}")
+              except Exception as exc:
+                  raise SystemExit(f"Request failed for {model}: {type(exc).__name__}")
+              ch = data.get("choices") or []
+              if not ch:
+                  raise SystemExit(f"No choices for {model}")
+              return data.get("model", model), ch[0]["message"]["content"]
+
+          def show(who, model, text):
+              print(f"\n===== [{who}] {model} =====\n{text}\n")
+
+          served_a, a = call(A, [{"role": "system", "content":
+              "You are AI-A. Produce a concrete, executable plan. " + EVIDENCE},
+              {"role": "user", "content": TOPIC}])
+          show("A", served_a, a)
+
+          for i in range(ROUNDS):
+              served_b, b = call(B, [{"role": "system", "content":
+                  "You are AI-B. Adversarially review AI-A: only errors, omissions, "
+                  "and unexecutable parts, plus alternatives. " + EVIDENCE},
+                  {"role": "user", "content": f"Task: {TOPIC}\n\nAI-A:\n{a}"}])
+              show("B", served_b, b)
+
+              served_a, a = call(A, [{"role": "system", "content":
+                  "You are AI-A. Reply point by point: accept, reject, and why. " + EVIDENCE},
+                  {"role": "user", "content": f"Task: {TOPIC}\n\nYour plan:\n{a}\n\nAI-B:\n{b}"}])
+              show("A", served_a, a)
+
+          print(f"\nDone. rounds={ROUNDS} requested A={A} B={B}")
+          PY
