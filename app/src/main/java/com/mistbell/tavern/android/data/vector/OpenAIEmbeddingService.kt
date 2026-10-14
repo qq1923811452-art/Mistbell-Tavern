@@ -2,22 +2,22 @@ package com.mistbell.tavern.android.data.vector
 
 import android.util.Log
 import com.mistbell.tavern.android.data.api.ApiCallTrace
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.withContext
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
 import java.net.SocketTimeoutException
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
-import java.util.LinkedHashMap
 import java.util.concurrent.TimeUnit
+import java.util.LinkedHashMap
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.Serializable
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 
 /**
  * OpenAI Embedding 服务实现
@@ -79,10 +79,14 @@ class OpenAIEmbeddingService(
         synchronized(cacheLock) { embeddingCache[cacheKey(text)] = embedding.clone() }
     }
 
-    override suspend fun embed(text: String): FloatArray = embed(text, "EMBEDDING_UNSPECIFIED")
+    override suspend fun embed(text: String): FloatArray =
+        embed(text, "EMBEDDING_UNSPECIFIED")
 
     @Suppress("TooGenericExceptionCaught")
-    override suspend fun embed(text: String, source: String): FloatArray =
+    override suspend fun embed(
+        text: String,
+        source: String,
+    ): FloatArray =
         withContext(Dispatchers.IO) {
             val traceId = ApiCallTrace.newId()
             val startedAt = System.currentTimeMillis()
@@ -225,7 +229,11 @@ class OpenAIEmbeddingService(
         embedBatch(texts, "EMBEDDING_BATCH_UNSPECIFIED")
 
     @Suppress("TooGenericExceptionCaught")
-    override suspend fun embedBatch(texts: List<String>, source: String): List<FloatArray> =
+
+    override suspend fun embedBatch(
+        texts: List<String>,
+        source: String,
+    ): List<FloatArray> =
         withContext(Dispatchers.IO) {
             if (texts.isEmpty()) return@withContext emptyList()
 
