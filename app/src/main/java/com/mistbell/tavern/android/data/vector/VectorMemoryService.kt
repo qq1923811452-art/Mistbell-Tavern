@@ -45,6 +45,7 @@ class VectorMemoryService(
         private const val EMBEDDING_CACHE_INITIAL_CAPACITY = 32
         private const val EMBEDDING_CACHE_LOAD_FACTOR = 0.75f
         private const val EMBEDDING_CACHE_MAX_ENTRIES = 512
+        private const val EMBEDDING_CACHE_STRIPE_COUNT = 32
         private const val HEX_BYTE_WIDTH = 2
         private const val BYTE_MASK = 0xff
     }
@@ -70,9 +71,10 @@ class VectorMemoryService(
             EMBEDDING_CACHE_LOAD_FACTOR,
             true,
         )
+
     // Per-key hashing stripes preserve same-text single-flight while allowing unrelated
     // embedding requests (including remote API calls) to proceed concurrently.
-    private val embeddingCacheMutexes = Array(32) { Mutex() }
+    private val embeddingCacheMutexes = Array(EMBEDDING_CACHE_STRIPE_COUNT) { Mutex() }
 
     private val _storageError = MutableStateFlow<String?>(null)
 
