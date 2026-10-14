@@ -70,7 +70,9 @@ class VectorMemoryService(
             EMBEDDING_CACHE_LOAD_FACTOR,
             true,
         )
-    private val embeddingCacheMutex = Mutex()
+    // Per-key hashing stripes preserve same-text single-flight while allowing unrelated
+    // embedding requests (including remote API calls) to proceed concurrently.
+    private val embeddingCacheMutexes = Array(32) { Mutex() }
 
     private val _storageError = MutableStateFlow<String?>(null)
 
@@ -96,9 +98,10 @@ class VectorMemoryService(
     private suspend fun embedCached(
         text: String,
         source: String,
-    ): FloatArray =
-        embeddingCacheMutex.withLock {
-            val key = embeddingCacheKey(text)
+    ): FloatArray {
+        val key = embeddingCacheKey(text)
+        val mutex = embeddingCacheMutexes[Math.floorMod(key.hashCode(), embeddingCacheMutexes.size)]
+        return mutex.withLock {
             val cached = synchronized(embeddingCache) { embeddingCache[key]?.copyOf() }
             if (cached != null) {
                 ApiCallTrace.log(
@@ -118,6 +121,7 @@ class VectorMemoryService(
             }
             generated.copyOf()
         }
+    }
 
     /**
      * 存储消息到向量数据库
