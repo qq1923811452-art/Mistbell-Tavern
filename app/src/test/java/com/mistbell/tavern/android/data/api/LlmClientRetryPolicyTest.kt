@@ -40,6 +40,26 @@ class LlmClientRetryPolicyTest {
     }
 
     @Test
+    fun `HTTP retry classification uses structured status codes`() {
+        assertTrue(
+            LlmClient.isRetryableException(
+                LlmClient.ApiError(429, "Too Many Requests", thinkingParameterRejected = false),
+            ),
+        )
+        assertTrue(
+            LlmClient.isRetryableException(
+                LlmClient.ApiError(503, "Service Unavailable", thinkingParameterRejected = false),
+            ),
+        )
+        assertFalse(
+            LlmClient.isRetryableException(
+                LlmClient.ApiError(400, "Bad Request", thinkingParameterRejected = false),
+            ),
+        )
+        assertFalse(LlmClient.isRetryableException(IllegalStateException("HTTP 429 Too Many Requests")))
+    }
+
+    @Test
     fun `non 5xx status codes are not transient server errors`() {
         listOf(400, 429, 499, 600).forEach { statusCode ->
             assertFalse(
