@@ -21,7 +21,10 @@ import okhttp3.sse.EventSource
 import okhttp3.sse.EventSourceListener
 import okhttp3.sse.EventSources
 import java.io.IOException
+import java.net.ConnectException
+import java.net.NoRouteToHostException
 import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 
@@ -245,10 +248,12 @@ object LlmClient {
                     rateLimited = rateLimited,
                 )
             }
-            is IOException -> {
-                val rateLimited = error.message?.contains(HTTP_TOO_MANY_REQUESTS.toString()) == true
-                RetryPolicy(shouldRetry = true, rateLimited = rateLimited)
-            }
+            // Only retry failures that prove the request could not reach the provider.
+            // Generic I/O errors and socket timeouts may occur after a POST was accepted,
+            // so retrying them can duplicate generations or charges.
+            is ConnectException, is UnknownHostException, is NoRouteToHostException ->
+                RetryPolicy(shouldRetry = true, rateLimited = false)
+            is IOException -> RetryPolicy(shouldRetry = false, rateLimited = false)
             else -> {
                 val rateLimited = error.message?.contains(HTTP_TOO_MANY_REQUESTS.toString()) == true
                 RetryPolicy(shouldRetry = rateLimited, rateLimited = rateLimited)
@@ -475,23 +480,18 @@ object LlmClient {
                 try {
                     return@withContext executeChatRequest(config, messages)
                 } catch (e: SocketTimeoutException) {
-                    lastException = e
-                    if (attempt < maxAttempts - 1) {
-                        val delayMs = INITIAL_RETRY_DELAY_MS * (1 shl attempt) // 指数退避：1s, 2s, 4s
-                        android.util.Log.w(
-                            "LlmClient",
-                            "Request timeout, retry ${attempt + 1}/$maxAttempts after ${delayMs}ms",
-                        )
-                        delay(delayMs)
-                    }
+                    // A timeout does not reveal whether the provider completed the POST.
+                    // Fail rather than blindly create a second generation.
+                    throw e
                 } catch (e: IOException) {
+                    if (!isRetryableException(e)) throw e
                     lastException = e
-                    // 网络错误可重试
+                    // These classified failures happen before the provider can accept the request.
                     if (attempt < maxAttempts - 1) {
                         val delayMs = INITIAL_RETRY_DELAY_MS * (1 shl attempt)
                         android.util.Log.w(
                             "LlmClient",
-                            "Network error, retry ${attempt + 1}/$maxAttempts " +
+                            "Pre-connect network error, retry ${attempt + 1}/$maxAttempts " +
                                 "after ${delayMs}ms (${e.javaClass.simpleName})",
                         )
                         delay(delayMs)
