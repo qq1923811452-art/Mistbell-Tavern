@@ -86,7 +86,7 @@ fun EmbeddingApiSettingsSection() {
                 }
                 ApiBaseUrlPolicy.requiresCleartextWarning(baseUrl) -> {
                     Text(
-                        text = "安全提示：Android 默认阻止明文 HTTP，此地址可能无法连接。建议改用 HTTPS；仅 localhost、127.0.0.1 和 10.0.2.2 有例外。",
+                        text = "无法保存：Android 网络安全策略阻止此地址使用明文 HTTP。请改用 HTTPS；仅 localhost、127.0.0.1 和 10.0.2.2 有例外。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.tertiary,
                     )
@@ -211,6 +211,10 @@ private fun saveEmbeddingApiSettings(
         values.baseUrl.trim().trimEnd('/').ifBlank { "https://api.openai.com/v1" }
     if (!ApiBaseUrlPolicy.isValid(normalizedUrl)) {
         callbacks.onStatusChanged("保存失败：API 地址格式无效，请输入包含主机名的 http:// 或 https:// URL。")
+        return
+    }
+    if (ApiBaseUrlPolicy.requiresCleartextWarning(normalizedUrl)) {
+        callbacks.onStatusChanged("保存失败：Android 网络安全策略阻止此地址使用明文 HTTP，请改用 HTTPS。")
         return
     }
 
