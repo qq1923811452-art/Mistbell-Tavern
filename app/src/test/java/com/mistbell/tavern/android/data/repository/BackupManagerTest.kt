@@ -142,22 +142,22 @@ class BackupManagerTest {
     fun `API 配置备份 DTO 保留全部字段并允许空密钥恢复`() {
         val entry =
             BackupManager.ApiConfigBackupEntry(
-            id = "provider-1",
-            name = "Local provider",
-            apiUrl = "https://example.invalid/v1",
-            apiKey = "",
-            model = "model-x",
-            isDefault = true,
-            lastTestStatus = "SUCCESS",
-            lastTestTime = 123L,
-            sortOrder = 4,
-            type = "custom",
-            context1m = true,
-            streamingEnabled = false,
-            thinkingDisabled = true,
-            createdAt = 100L,
-            updatedAt = 200L,
-        )
+                id = "provider-1",
+                name = "Local provider",
+                apiUrl = "https://example.invalid/v1",
+                apiKey = "",
+                model = "model-x",
+                isDefault = true,
+                lastTestStatus = "SUCCESS",
+                lastTestTime = 123L,
+                sortOrder = 4,
+                type = "custom",
+                context1m = true,
+                streamingEnabled = false,
+                thinkingDisabled = true,
+                createdAt = 100L,
+                updatedAt = 200L,
+            )
 
         val restored = entry.toEntity()
 
@@ -181,31 +181,31 @@ class BackupManagerTest {
     fun `自定义提示词备份 DTO 完整往返`() {
         val entity =
             CustomPromptEntity(
-            id = "prompt-1",
-            name = "Writing style",
-            content = "Keep the voice concise.",
-            type = "WRITING_STYLE",
-            position = "SYSTEM_START",
-            isEnabled = false,
-            priority = 7,
-            tags = """["style","concise"]""",
-            description = "test prompt",
-            createdAt = 100L,
-            updatedAt = 200L,
-        )
+                id = "prompt-1",
+                name = "Writing style",
+                content = "Keep the voice concise.",
+                type = "WRITING_STYLE",
+                position = "SYSTEM_START",
+                isEnabled = false,
+                priority = 7,
+                tags = """["style","concise"]""",
+                description = "test prompt",
+                createdAt = 100L,
+                updatedAt = 200L,
+            )
 
         val entry =
             BackupManager.CustomPromptBackupEntry.fromEntity(entity)
         val encoded =
             BackupManager.json.encodeToString(
-            ListSerializer(BackupManager.CustomPromptBackupEntry.serializer()),
-            listOf(entry),
-        )
+                ListSerializer(BackupManager.CustomPromptBackupEntry.serializer()),
+                listOf(entry),
+            )
         val decoded =
             BackupManager.decodeList(
-            encoded,
-            BackupManager.CustomPromptBackupEntry.serializer(),
-        )
+                encoded,
+                BackupManager.CustomPromptBackupEntry.serializer(),
+            )
 
         assertEquals(listOf(entity), decoded.map(BackupManager.CustomPromptBackupEntry::toEntity))
     }
