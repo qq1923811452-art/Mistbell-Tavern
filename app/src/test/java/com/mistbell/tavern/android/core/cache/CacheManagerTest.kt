@@ -48,6 +48,7 @@ class CacheManagerTest {
         assertEquals(1L, manager.getStats().hitCount)
         assertEquals(2L, manager.getStats().missCount)
     }
+
     @Test
     fun `expired entries are treated as misses`() {
         val manager = CacheManager<String, String>()
@@ -70,6 +71,4 @@ class CacheManagerTest {
         assertNull(manager.get("b"))
         assertEquals("three", manager.get("c"))
     }
-
-
 }
