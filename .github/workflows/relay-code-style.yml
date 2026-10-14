@@ -1,10 +1,7 @@
 name: AI Relay Code Style
 
 on:
-  push:
-    branches: [ feature ]
-    paths:
-      - "app/src/main/java/**/*.kt"
+  # Manual only: do not let every push trigger an external-model source-editing workflow.
   workflow_dispatch:
     inputs:
       scope:
@@ -24,8 +21,21 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  reject-wrong-branch:
+    name: Explain required target branch
+    if: github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/feature'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Require the feature branch
+        shell: bash
+        run: |
+          echo "::error::This workflow only writes to feature. Select the feature branch in Run workflow."
+          exit 1
+
   standardize:
-    if: github.ref == 'refs/heads/feature' && github.actor != 'github-actions[bot]'
+    if: github.ref == 'refs/heads/feature'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -56,9 +66,8 @@ jobs:
           test -n "$ODYS_API_KEY" || { echo "::error::Missing repository secret ODYS_API_KEY"; exit 1; }
           test -n "$ODYS_MODEL" || { echo "::error::Missing repository secret ODYS_MODEL"; exit 1; }
 
-      - name: Apply deterministic Kotlin formatting
-        # Let ktlint make safe, deterministic style changes before asking the relay model.
-        run: ./gradlew :app:ktlintFormat --rerun-tasks --no-daemon --no-configuration-cache || echo "Formatter reported remaining style issues; collecting exact diagnostics."
+      # Deliberately do not run ktlintFormat here: it can rewrite unrelated Kotlin files.
+      # Collect diagnostics first and only apply the explicitly validated AI patch.
 
       - name: Collect diagnostics and recent Kotlin changes
         id: context
@@ -68,7 +77,7 @@ jobs:
           ./gradlew :app:detekt :app:ktlintCheck --continue --no-daemon --no-configuration-cache > /tmp/style-check.log 2>&1
           CHECK_EXIT=$?
           set -e
-          git diff HEAD~10..HEAD -- '*.kt' > /tmp/recent-kotlin.diff || true
+          git log --no-merges --no-ext-diff -p -n 10 -- '*.kt' > /tmp/recent-kotlin.diff || true
           git diff HEAD -- '*.kt' > /tmp/working-kotlin.diff || true
           CHECK_EXIT="$CHECK_EXIT" python3 - <<'PY'
           from pathlib import Path
@@ -146,8 +155,7 @@ jobs:
           patch = content[start:] if start >= 0 else ""
           if patch and ("*** Begin Patch" in patch or "\x00" in patch):
               raise SystemExit("Relay returned a non-git or invalid patch format")
-          # Relay models sometimes append unprefixed blank lines after the final hunk.
-          # Keep the patch syntactically valid; git apply --recount repairs hunk counts.
+          # Fail closed on malformed hunk counts; do not repair a model-generated patch.
           patch = patch.rstrip() + "\n" if patch.strip() else ""
           open("/tmp/relay-style.patch", "w", encoding="utf-8").write(patch)
           print("Relay model:", data.get("model", os.environ["ODYS_MODEL"]))
@@ -166,15 +174,53 @@ jobs:
           fi
           python3 - <<'PY'
           from pathlib import Path
-          import re, sys
+          import re, shlex, subprocess, sys
           patch = Path("/tmp/relay-style.patch").read_text(encoding="utf-8")
-          paths = re.findall(r"^\+\+\+ b/(.+)$", patch, re.MULTILINE)
-          if not paths or any(not p.endswith(".kt") or p.startswith("/") or ".." in Path(p).parts for p in paths):
-              sys.exit("Refusing patch: only tracked Kotlin source files may be changed")
-          print("Validated Kotlin-only patch paths:", ", ".join(paths))
+          sections = []
+          old_headers = []
+          new_headers = []
+          for raw_line in patch.splitlines():
+              if raw_line.startswith(("diff --git ", "--- ", "+++ ")):
+                  try:
+                      header = shlex.split(raw_line)
+                  except ValueError:
+                      sys.exit("Refusing patch: malformed quoted diff header")
+                  if raw_line.startswith("diff --git "):
+                      if (len(header) != 4 or not header[2].startswith("a/")
+                              or not header[3].startswith("b/")):
+                          sys.exit("Refusing patch: unsupported diff header")
+                      sections.append((header[2][2:], header[3][2:]))
+                  elif raw_line.startswith("--- "):
+                      old_headers.append(header[1][2:] if len(header) == 2 and header[1].startswith("a/") else (header[1] if len(header) == 2 else ""))
+                  else:
+                      new_headers.append(header[1][2:] if len(header) == 2 and header[1].startswith("b/") else (header[1] if len(header) == 2 else ""))
+          if not sections or len(sections) > 8:
+              sys.exit("Refusing patch: expected 1-8 Kotlin file sections")
+          paths = []
+          for old_path, new_path in sections:
+              if old_path != new_path:
+                  sys.exit("Refusing patch: renames are not allowed")
+              p = Path(new_path)
+              if (not new_path.endswith(".kt") or p.is_absolute()
+                      or ".." in p.parts or new_path.startswith("/")):
+                  sys.exit("Refusing patch: only repository-relative Kotlin files are allowed")
+              if subprocess.run(["git", "ls-files", "--error-unmatch", "--", new_path],
+                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode != 0:
+                  sys.exit("Refusing patch: file must already be tracked")
+              paths.append(new_path)
+          if len(set(paths)) != len(paths):
+              sys.exit("Refusing patch: duplicate file sections")
+          if old_headers != [old for old, _ in sections] or new_headers != [new for _, new in sections]:
+              sys.exit("Refusing patch: file headers do not match the validated diff sections")
+          forbidden = ("new file mode ", "deleted file mode ", "old mode ", "new mode ",
+                       "rename from ", "rename to ", "GIT binary patch", "Binary files ")
+          if any(marker in patch for marker in forbidden) or "--- /dev/null" in patch or "+++ /dev/null" in patch:
+              sys.exit("Refusing patch: file creation, deletion, rename, mode changes, and binary edits are forbidden")
+          Path("/tmp/relay-style-paths.txt").write_text("".join(p + "\n" for p in paths), encoding="utf-8")
+          print("Validated tracked Kotlin-only patch paths:", ", ".join(paths))
           PY
-          git apply --recount --check /tmp/relay-style.patch
-          git apply --recount /tmp/relay-style.patch
+          git apply --check /tmp/relay-style.patch
+          git apply /tmp/relay-style.patch
           git diff --check
           git diff --stat
 
@@ -193,7 +239,11 @@ jobs:
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- '*.kt'
+          if [ ! -s /tmp/relay-style-paths.txt ]; then
+            echo "::error::Validated patch path list is missing; refusing to stage files."
+            exit 1
+          fi
+          git add --pathspec-from-file=/tmp/relay-style-paths.txt
           git commit -m "Apply verified Kotlin style cleanup"
           BRANCH="automation/relay-style-${GITHUB_RUN_ID}"
           git push origin "HEAD:refs/heads/${BRANCH}"
