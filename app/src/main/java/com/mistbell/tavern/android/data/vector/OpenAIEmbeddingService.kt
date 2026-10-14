@@ -231,7 +231,8 @@ class OpenAIEmbeddingService(
         return FloatArray(embedding.size) { i -> embedding[i].toFloat() }
     }
 
-    override suspend fun embedBatch(texts: List<String>): List<FloatArray> = embedBatch(texts, "EMBEDDING_BATCH_UNSPECIFIED")
+    override suspend fun embedBatch(texts: List<String>): List<FloatArray> =
+        embedBatch(texts, "EMBEDDING_BATCH_UNSPECIFIED")
 
     @Suppress("TooGenericExceptionCaught", "LongMethod")
     override suspend fun embedBatch(
@@ -414,7 +415,8 @@ class OpenAIEmbeddingService(
         return "openai-compatible:$model:$endpointFingerprint"
     }
 
-    override fun supportsLegacyVectors(): Boolean = model == "text-embedding-3-small" && normalizedBaseUrl == "https://api.openai.com/v1"
+    override fun supportsLegacyVectors(): Boolean =
+        model == "text-embedding-3-small" && normalizedBaseUrl == "https://api.openai.com/v1"
 
     override fun getDimension(): Int = lastKnownDimension
 
