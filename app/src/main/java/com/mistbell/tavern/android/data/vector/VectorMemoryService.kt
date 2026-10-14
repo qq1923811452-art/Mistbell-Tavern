@@ -2,12 +2,13 @@ package com.mistbell.tavern.android.data.vector
 
 import android.util.Log
 import com.mistbell.tavern.android.data.api.ApiCallTrace
-import java.nio.charset.StandardCharsets
-import java.security.MessageDigest
-import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import java.nio.charset.StandardCharsets
+import java.security.MessageDigest
+import java.util.UUID
+
 /**
  * 向量记忆服务
  *
