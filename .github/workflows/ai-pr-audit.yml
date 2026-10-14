@@ -3,6 +3,9 @@ name: AI Pull Request Audit
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
+  # Metadata-only notice path for forks. This path must never execute PR source.
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
     inputs:
       pr_number:
@@ -15,14 +18,14 @@ permissions:
   pull-requests: write
 
 concurrency:
-  group: ai-pr-audit-${{ github.event.pull_request.number || inputs.pr_number || github.run_id }}
+  group: ai-pr-audit-${{ github.event_name }}-${{ github.event.pull_request.number || inputs.pr_number || github.run_id }}
   cancel-in-progress: true
 
 jobs:
   audit:
     name: DeepSeek diff audit
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 15
     # Fork PRs do not receive repository secrets. Do not run a secret-dependent
     # external-model request for them; maintainers can audit after reviewing the source.
     if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
@@ -193,7 +196,19 @@ jobs:
               with urllib.request.urlopen(request, timeout=180) as response:
                   response_body = response.read().decode("utf-8", errors="replace")
           except urllib.error.HTTPError as exc:
-              print(f"AI relay request failed with HTTP {exc.code}")
+              # Bound and sanitize untrusted relay diagnostics; never print request headers.
+              try:
+                  err_body = exc.read().decode("utf-8", errors="replace")[:500]
+              except Exception:
+                  err_body = "<unreadable>"
+              err_body = err_body.replace(api_key, "[REDACTED API KEY]")
+              err_body = re.sub(
+                  r"(?i)(authorization\\s*:\\s*bearer\\s+)[^\\s\"'<>]+",
+                  r"\\1[REDACTED]",
+                  err_body,
+              )
+              err_body = re.sub(r"[\\x00-\\x08\\x0b-\\x1f\\x7f]", " ", err_body)
+              print(f"AI relay request failed with HTTP {exc.code}: {err_body}")
               raise SystemExit(1)
           except Exception as exc:
               print("AI relay request failed:", type(exc).__name__)
@@ -226,8 +241,20 @@ jobs:
                   raise ValueError("findings must be a list")
               if any(not isinstance(item, dict) for item in findings):
                   raise ValueError("every finding must be an object")
-              report["findings"] = findings[:20]
-              report["findings_truncated"] = len(findings) > 20
+              raw_findings_count = len(findings)
+              verified_findings = []
+              rejected_evidence_count = 0
+              for finding in findings:
+                  evidence = finding.get("evidence")
+                  # Require a verbatim match against the exact diff sent to the model.
+                  if isinstance(evidence, str) and evidence.strip() and evidence.strip() in diff_for_model:
+                      finding["_verified_evidence"] = evidence.strip()
+                      verified_findings.append(finding)
+                  else:
+                      rejected_evidence_count += 1
+              report["findings"] = verified_findings[:20]
+              report["findings_truncated"] = raw_findings_count > 20 or len(verified_findings) > 20
+              report["unverified_findings_dropped"] = rejected_evidence_count
           except Exception as exc:
               print("Could not validate structured AI response:", type(exc).__name__)
               raise SystemExit(1)
@@ -237,8 +264,8 @@ jobs:
           def safe_markdown(value, limit=1200):
               # Model output is untrusted; neutralize links, HTML, mentions, and Markdown syntax.
               text = html.unescape(str(value or ""))
-              text = re.sub(r"(?i)(?:https?://|www\.)[^ ]+", "[URL omitted]", text)
-              text = re.sub(r"(?i)mailto:[^ ]+", "[URL omitted]", text)
+              text = re.sub(r"(?i)(?:https?://|www\.)[^\\s]+", "[URL omitted]", text)
+              text = re.sub(r"(?i)mailto:[^\\s]+", "[URL omitted]", text)
               text = text.replace("<", "&lt;").replace(">", "&gt;")
               text = text.replace("@", "@" + chr(8203))
               text = text.replace(chr(13), " ").replace(chr(10), " ")
@@ -247,6 +274,9 @@ jobs:
               return text[:limit]
 
           summary = safe_markdown(report.get("summary"), 2000)
+          truncation_prefix = "【已截断：仅审计前70k字符，其余未审】"
+          if truncated and not summary.startswith(truncation_prefix):
+              summary = truncation_prefix + " " + summary
           lines = [
               "## AI Pull Request Audit",
               "",
@@ -260,6 +290,11 @@ jobs:
               "### Findings",
           ]
           findings = report["findings"]
+          if report.get("unverified_findings_dropped"):
+              lines.extend([
+                  "",
+                  f"⚠️ 已丢弃 {report['unverified_findings_dropped']} 条证据无法与送审 diff 逐字匹配的 finding。",
+              ])
           if not findings:
               lines.append("No actionable findings were returned. This is not proof that the change is defect-free.")
           if report.get("findings_truncated"):
@@ -300,4 +335,43 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]] || { echo "::error::PR_NUMBER must be a positive integer"; exit 1; }
           gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file /tmp/ai-pr-audit-report.md
+
+  notice-skip:
+    name: Audit skip notice
+    runs-on: ubuntu-latest
+    # Metadata-only pull_request_target path: never check out or execute PR code.
+    if: github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name != github.repository
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Create or update the fork audit skip notice
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        run: |
+          set -euo pipefail
+          [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]] || { echo "::error::PR_NUMBER must be a positive integer"; exit 1; }
+          python3 - <<'PY'
+          import html, os
+          from pathlib import Path
+          head_repo = html.escape(os.environ["HEAD_REPO"], quote=True).replace("@", "@\u200b")
+          body = (
+              "<!-- ai-pr-audit-skip -->\n"
+              "## AI Pull Request Audit — SKIPPED\n\n"
+              f"This PR comes from external fork <code>{head_repo}</code>.\n\n"
+              "Fork PRs do not receive repository secrets, so the external-model audit was **not** run.\n\n"
+              "**A green check does not mean this change was audited. A maintainer must review the source.**"
+          )
+          Path("/tmp/skip-notice.md").write_text(body + "\n", encoding="utf-8")
+          PY
+          COMMENT_ID="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" --jq '.[] | select(.body | contains("<!-- ai-pr-audit-skip -->")) | .id' | tail -n 1)"
+          if [[ -n "$COMMENT_ID" ]]; then
+            gh api --method PATCH "repos/${GITHUB_REPOSITORY}/issues/comments/${COMMENT_ID}" --field body="$(cat /tmp/skip-notice.md)"
+          else
+            gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file /tmp/skip-notice.md
+          fi
