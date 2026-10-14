@@ -120,10 +120,7 @@ class LocalEmbeddingService private constructor(
     override suspend fun embedBatch(texts: List<String>): List<FloatArray> =
         texts.map { embed(it) }
 
-    override suspend fun embedBatch(
-        texts: List<String>,
-        source: String,
-    ): List<FloatArray> = texts.map { embed(it, source) }
+    override suspend fun embedBatch(texts: List<String>, source: String): List<FloatArray> = texts.map { embed(it, source) }
 
     private fun normalize(vector: FloatArray): FloatArray {
         var norm = 0.0
