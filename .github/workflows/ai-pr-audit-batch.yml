@@ -2,17 +2,6 @@ name: Batch AI PR Audit
 
 on:
   workflow_dispatch:
-    inputs:
-      start_pr:
-        description: "First PR number to audit (1–25)"
-        required: true
-        default: 1
-        type: number
-      end_pr:
-        description: "Last PR number to audit (1–25)"
-        required: true
-        default: 25
-        type: number
 
 permissions:
   contents: read
@@ -25,7 +14,6 @@ concurrency:
 jobs:
   dispatch-audits:
     name: Queue audit for PR ${{ matrix.pr_number }}
-    if: ${{ matrix.pr_number >= inputs.start_pr && matrix.pr_number <= inputs.end_pr }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     strategy:
