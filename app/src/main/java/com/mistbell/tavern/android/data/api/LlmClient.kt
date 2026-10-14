@@ -386,7 +386,7 @@ object LlmClient {
                 )
             val explicitlyRejected =
                 parameterRejectionTerms.any { message.contains(it, ignoreCase = true) }
-            val isBadRequest = Regex("""\\b$HTTP_BAD_REQUEST\\b""").containsMatchIn(message)
+            val isBadRequest = Regex("""\b$HTTP_BAD_REQUEST\b""").containsMatchIn(message)
             val mentionsRequestField =
                 listOf("parameter", "argument", "field").any { message.contains(it, ignoreCase = true) }
             mentionsThinking && (explicitlyRejected || (isBadRequest && mentionsRequestField))
