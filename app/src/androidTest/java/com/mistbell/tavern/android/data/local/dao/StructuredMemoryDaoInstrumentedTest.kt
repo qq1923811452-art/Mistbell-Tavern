@@ -32,16 +32,23 @@ class StructuredMemoryDaoInstrumentedTest {
 
     @Test
     fun promptCandidatesExcludeSupersededFactsWithJsonWhitespace() = runBlocking {
-        database.structuredMemoryDao().insert(memory("old", "{ \"status\" : \"superseded\" }", 10))
-        database.structuredMemoryDao().insert(memory("current", "{\"status\":\"active\"}", 9))
+        database.structuredMemoryDao().insert(
+            memory("old", "{ \"status\" : \"superseded\" }", 10),
+        )
+        database.structuredMemoryDao().insert(
+            memory("current", "{\"status\":\"active\"}", 9),
+        )
 
         val candidates = database.structuredMemoryDao().getPromptCandidates("owner", "character", 1)
 
         assertEquals(listOf("current"), candidates.map { it.content })
     }
 
-    private fun memory(content: String, structuredData: String, importance: Int) =
-        StructuredMemoryEntity(
+    private fun memory(
+        content: String,
+        structuredData: String,
+        importance: Int,
+    ) = StructuredMemoryEntity(
             ownerId = "owner",
             characterId = "character",
             sessionId = "session",
