@@ -563,9 +563,52 @@ abstract class AppDatabase : RoomDatabase() {
                 }
             }
 
+        // v26→v27：新增提示词快照，并统一 v26 新建数据库与历史迁移数据库的 api_configs schema。
+        // v26 的 Room schema 未声明 type/context1m/streamingEnabled 默认值和部分索引；
+        // v27 实体已声明它们，因此重建 api_configs 以对齐默认值，并补齐实体索引。
         internal val MIGRATION_26_27_SQL: List<String> =
             listOf(
                 "ALTER TABLE messages ADD COLUMN prompt_context_snapshot_json TEXT NOT NULL DEFAULT ''",
+                """
+                CREATE TABLE IF NOT EXISTS api_configs_new (
+                    id TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    apiUrl TEXT NOT NULL,
+                    apiKey TEXT NOT NULL,
+                    model TEXT NOT NULL,
+                    isDefault INTEGER NOT NULL,
+                    lastTestStatus TEXT NOT NULL,
+                    lastTestTime INTEGER NOT NULL,
+                    sortOrder INTEGER NOT NULL,
+                    type TEXT NOT NULL DEFAULT 'openai',
+                    context1m INTEGER NOT NULL DEFAULT 0,
+                    streamingEnabled INTEGER NOT NULL DEFAULT 1,
+                    thinkingDisabled INTEGER NOT NULL DEFAULT 0,
+                    createdAt INTEGER NOT NULL,
+                    updatedAt INTEGER NOT NULL,
+                    PRIMARY KEY(id)
+                )
+                """.trimIndent(),
+                """
+                INSERT INTO api_configs_new (
+                    id, name, apiUrl, apiKey, model, isDefault, lastTestStatus,
+                    lastTestTime, sortOrder, type, context1m, streamingEnabled,
+                    thinkingDisabled, createdAt, updatedAt
+                )
+                SELECT
+                    id, name, apiUrl, apiKey, model, isDefault, lastTestStatus,
+                    lastTestTime, sortOrder, type, context1m, streamingEnabled,
+                    thinkingDisabled, createdAt, updatedAt
+                FROM api_configs
+                """.trimIndent(),
+                "DROP TABLE api_configs",
+                "ALTER TABLE api_configs_new RENAME TO api_configs",
+                "CREATE INDEX IF NOT EXISTS index_api_configs_isDefault ON api_configs(isDefault)",
+                "CREATE INDEX IF NOT EXISTS index_api_configs_sortOrder ON api_configs(sortOrder)",
+                "CREATE INDEX IF NOT EXISTS index_custom_prompts_type ON custom_prompts(type)",
+                "CREATE INDEX IF NOT EXISTS index_custom_prompts_position ON custom_prompts(position)",
+                "CREATE INDEX IF NOT EXISTS index_custom_prompts_isEnabled ON custom_prompts(isEnabled)",
+                "CREATE INDEX IF NOT EXISTS index_custom_prompts_priority ON custom_prompts(priority)",
             )
 
         @Suppress("MagicNumber")
