@@ -56,7 +56,8 @@ class LocalEmbeddingService private constructor(
 
     override fun modelId(): String = "local:bge-small-zh-v1.5-int8:$DIM"
 
-    override fun supportsLegacyVectors(): Boolean = true
+    // Untagged vectors cannot be proven to originate from this exact local BGE model.
+    override fun supportsLegacyVectors(): Boolean = false
 
     override fun getDimension(): Int = DIM
 
