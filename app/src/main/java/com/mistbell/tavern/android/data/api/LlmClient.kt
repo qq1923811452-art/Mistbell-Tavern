@@ -223,6 +223,7 @@ object LlmClient {
 
     private const val LOG_TAG = "LlmUsage"
     private const val PERCENT_MULTIPLIER = 100.0
+    private const val HTTP_BAD_REQUEST = 400
 
     /**
      * Merge usage fields from stream frames without counting repeated cumulative values twice.
@@ -298,7 +299,7 @@ object LlmClient {
      * 重试一次——思考开关是 DeepSeek 系参数，OpenAI 兼容网关未必认（400 Unrecognized request argument），
      * 不回退的话一次参数差异就会打死整轮调用。
      */
-    @Suppress("TooGenericExceptionCaught")
+    @Suppress("TooGenericExceptionCaught", "LongMethod", "ThrowsCount")
     suspend fun chat(
         config: LlmConfig,
         messages: List<ChatMessage>,
@@ -365,12 +366,13 @@ object LlmClient {
     }
 
     /** 疑似"思考参数被拒"：错误正文提到 thinking，或 HTTP 400（请求格式错误） */
-    private fun isThinkingParamRejected(e: Exception): Boolean {
-        if (e is ApiError) return e.thinkingParameterRejected
-        val message = e.message.orEmpty()
-        val mentionsThinking = message.contains("thinking", ignoreCase = true)
-        if (!mentionsThinking) return false
-        val parameterRejectionTerms =
+    private fun isThinkingParamRejected(e: Exception): Boolean =
+        if (e is ApiError) {
+            e.thinkingParameterRejected
+        } else {
+            val message = e.message.orEmpty()
+            val mentionsThinking = message.contains("thinking", ignoreCase = true)
+            val parameterRejectionTerms =
             listOf(
                 "unrecognized",
                 "unknown parameter",
@@ -412,7 +414,7 @@ object LlmClient {
             listOf("parameter", "argument", "field").any {
                 responseBody.contains(it, ignoreCase = true)
             }
-        return explicitlyRejected || (statusCode == 400 && mentionsRequestField)
+        return explicitlyRejected || (statusCode == HTTP_BAD_REQUEST && mentionsRequestField)
     }
 
     private suspend fun chatWithRetries(
@@ -504,7 +506,7 @@ object LlmClient {
             response.body?.string()
                 ?: run {
                     response.close()
-                    throw IllegalStateException("Empty response")
+                    error("Empty response")
                 }
         val content = chatProtocolFor(config.type).parseContent(responseBody)
         logUsage(content.usage, config.model, "non-stream")
@@ -521,7 +523,7 @@ object LlmClient {
     }
 
     /** 非流式响应的正文与思维链，供聊天落库使用；普通 [chat] 保持只返回正文的兼容接口。 */
-    @Suppress("TooGenericExceptionCaught")
+    @Suppress("TooGenericExceptionCaught", "LongMethod", "ThrowsCount")
     suspend fun chatWithThinking(
         config: LlmConfig,
         messages: List<ChatMessage>,
@@ -629,6 +631,7 @@ object LlmClient {
             .filter { it.isNotEmpty() }
 
     /** 流式正文接口的增强版，保留思维链增量（最后一帧可能只带 [ChatDelta.usage]）。 */
+    @Suppress("LongMethod")
     fun chatStreamWithThinking(
         config: LlmConfig,
         messages: List<ChatMessage>,
