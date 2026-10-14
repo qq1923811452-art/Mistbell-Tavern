@@ -221,8 +221,37 @@ object LlmClient {
     private fun maxAttemptsFor(config: LlmConfig): Int = 1 + config.retries.coerceIn(0, 5)
 
     /** HTTP 5xx responses are transient and may be retried before any stream output. */
-    internal fun isTransientServerError(statusCode: Int): Boolean = statusCode in 500..599
+    internal fun isTransientServerError(statusCode: Int): Boolean =
+        statusCode in HTTP_SERVER_ERROR_MIN..HTTP_SERVER_ERROR_MAX
 
+    private data class RetryPolicy(
+        val shouldRetry: Boolean,
+        val rateLimited: Boolean,
+    )
+
+    /** Centralize retry classification so stream handling does not duplicate status/type branches. */
+    private fun retryPolicyFor(error: Exception): RetryPolicy =
+        when (error) {
+            is ApiError -> {
+                val rateLimited = error.statusCode == HTTP_TOO_MANY_REQUESTS
+                RetryPolicy(
+                    shouldRetry = rateLimited || isTransientServerError(error.statusCode),
+                    rateLimited = rateLimited,
+                )
+            }
+            is IOException -> {
+                val rateLimited = error.message?.contains(HTTP_TOO_MANY_REQUESTS.toString()) == true
+                RetryPolicy(shouldRetry = true, rateLimited = rateLimited)
+            }
+            else -> {
+                val rateLimited = error.message?.contains(HTTP_TOO_MANY_REQUESTS.toString()) == true
+                RetryPolicy(shouldRetry = rateLimited, rateLimited = rateLimited)
+            }
+        }
+
+    private const val HTTP_TOO_MANY_REQUESTS = 429
+    private const val HTTP_SERVER_ERROR_MIN = 500
+    private const val HTTP_SERVER_ERROR_MAX = 599
     private const val LOG_TAG = "LlmUsage"
     private const val PERCENT_MULTIPLIER = 100.0
     private const val HTTP_BAD_REQUEST = 400
@@ -453,24 +482,21 @@ object LlmClient {
                         delay(delayMs)
                     }
                 } catch (e: Exception) {
-                    val rateLimited = e.message?.contains("429") == true
-                    val retryableServerError =
-                        e is ApiError && isTransientServerError(e.statusCode)
-                    if (rateLimited || retryableServerError) {
-                        // Rate limits use longer backoff; 5xx responses use normal exponential backoff.
-                        lastException = e
-                        if (attempt < maxAttempts - 1) {
-                            val backoffMultiplier = if (rateLimited) 2 else 1
-                            val delayMs = INITIAL_RETRY_DELAY_MS * (1 shl attempt) * backoffMultiplier
-                            android.util.Log.w(
-                                "LlmClient",
-                                "Retryable HTTP error, retry ${attempt + 1}/$maxAttempts after ${delayMs}ms",
-                            )
-                            delay(delayMs)
-                        }
-                    } else {
+                    val retryPolicy = retryPolicyFor(e)
+                    if (!retryPolicy.shouldRetry) {
                         // 其他错误直接抛出
                         throw e
+                    }
+                    lastException = e
+                    if (attempt < maxAttempts - 1) {
+                        // Rate limits use longer backoff; 5xx responses use normal exponential backoff.
+                        val backoffMultiplier = if (retryPolicy.rateLimited) 2 else 1
+                        val delayMs = INITIAL_RETRY_DELAY_MS * (1 shl attempt) * backoffMultiplier
+                        android.util.Log.w(
+                            "LlmClient",
+                            "Retryable HTTP error, retry ${attempt + 1}/$maxAttempts after ${delayMs}ms",
+                        )
+                        delay(delayMs)
                     }
                 }
             }
@@ -708,13 +734,10 @@ object LlmClient {
                         )
                         throw e
                     }
-                    val rateLimited = e.message?.contains("429") == true
-                    val retryableServerError =
-                        e is ApiError && isTransientServerError(e.statusCode)
-                    val retryable = e is IOException || rateLimited || retryableServerError
-                    if (attempt < maxAttempts - 1 && retryable) {
-                        val backoffMultiplier = if (rateLimited) 2 else 1
-                        val delayMs = 1000L * (1 shl attempt) * backoffMultiplier
+                    val retryPolicy = retryPolicyFor(e)
+                    if (attempt < maxAttempts - 1 && retryPolicy.shouldRetry) {
+                        val backoffMultiplier = if (retryPolicy.rateLimited) 2 else 1
+                        val delayMs = INITIAL_RETRY_DELAY_MS * (1 shl attempt) * backoffMultiplier
                         ApiCallTrace.log(
                             traceId,
                             "LLM_CHAT_STREAM",
