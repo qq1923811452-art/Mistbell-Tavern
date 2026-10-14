@@ -33,36 +33,36 @@ class StructuredMemoryDaoInstrumentedTest {
     @Test
     fun promptCandidatesExcludeSupersededFactsWithJsonWhitespace() =
         runBlocking {
-        database.structuredMemoryDao().insert(
-            memory("old", "{ \"status\" : \"superseded\" }", 10),
-        )
-        database.structuredMemoryDao().insert(
-            memory("current", "{\"status\":\"active\"}", 9),
-        )
+            database.structuredMemoryDao().insert(
+                memory("old", "{ \"status\" : \"superseded\" }", 10),
+            )
+            database.structuredMemoryDao().insert(
+                memory("current", "{\"status\":\"active\"}", 9),
+            )
 
-        val candidates = database.structuredMemoryDao().getPromptCandidates("owner", "character", 1)
+            val candidates = database.structuredMemoryDao().getPromptCandidates("owner", "character", 1)
 
-        assertEquals(listOf("current"), candidates.map { it.content })
-    }
+            assertEquals(listOf("current"), candidates.map { it.content })
+        }
 
     private fun memory(
         content: String,
         structuredData: String,
         importance: Int,
     ) = StructuredMemoryEntity(
-            ownerId = "owner",
-            characterId = "character",
-            sessionId = "session",
-            memoryType = "fact",
-            title = content,
-            content = content,
-            structuredData = structuredData,
-            importance = importance,
-            tags = null,
-            keywords = null,
-            createdAt = "2026-10-14T00:00:00Z",
-            updatedAt = "2026-10-14T00:00:00Z",
-            lastAccessedAt = null,
-            relatedMessageIds = null,
-        )
+        ownerId = "owner",
+        characterId = "character",
+        sessionId = "session",
+        memoryType = "fact",
+        title = content,
+        content = content,
+        structuredData = structuredData,
+        importance = importance,
+        tags = null,
+        keywords = null,
+        createdAt = "2026-10-14T00:00:00Z",
+        updatedAt = "2026-10-14T00:00:00Z",
+        lastAccessedAt = null,
+        relatedMessageIds = null,
+    )
 }
