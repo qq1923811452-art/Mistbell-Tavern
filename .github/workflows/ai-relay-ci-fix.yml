@@ -80,6 +80,12 @@ jobs:
           pull_requests = run.get("pull_requests") or []
           if pull_requests:
               base_sha = ((pull_requests[0].get("base") or {}).get("sha") or "")
+          if not base_sha:
+              owner = repo.split("/", 1)[0]
+              query = quote(owner + ":" + branch, safe="")
+              matching_prs = get_json(f"https://api.github.com/repos/{repo}/pulls?state=open&head={query}")
+              if matching_prs:
+                  base_sha = ((matching_prs[0].get("base") or {}).get("sha") or "")
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
               f.write(f"head_sha={target_sha}\n")
               f.write(f"failed_ci_sha={head_sha}\n")
@@ -472,7 +478,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: relay-ci-fix-readonly-${{ inputs.run_id }}-${{ github.run_id }}
+          name: relay-ci-fix-verified-${{ inputs.run_id }}-${{ github.run_id }}
           path: relay-report/
           if-no-files-found: warn
           retention-days: 14
