@@ -26,6 +26,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
  *
  * 使用可配置的 OpenAI 兼容 Embeddings 模型生成向量
  */
+@Suppress("TooManyFunctions")
 class OpenAIEmbeddingService(
     private val apiKey: String,
     private val baseUrl: String = "https://api.openai.com/v1",
@@ -228,7 +229,7 @@ class OpenAIEmbeddingService(
     override suspend fun embedBatch(texts: List<String>): List<FloatArray> =
         embedBatch(texts, "EMBEDDING_BATCH_UNSPECIFIED")
 
-    @Suppress("TooGenericExceptionCaught")
+    @Suppress("TooGenericExceptionCaught", "LongMethod")
 
     override suspend fun embedBatch(
         texts: List<String>,
