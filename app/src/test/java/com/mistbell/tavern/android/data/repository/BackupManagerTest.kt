@@ -194,7 +194,7 @@ class BackupManagerTest {
             entry.toEntity()
             fail("无法解密的备份 API Key 必须中止恢复")
         } catch (e: IllegalStateException) {
-            assertTrue(e.message!!.contains("无法解密"))
+            assertTrue(e.message!!.contains("密钥"))
         }
     }
 
