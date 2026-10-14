@@ -99,7 +99,9 @@ object ApiConfigMigration {
     /**
      * 幂等迁移入口：已迁移 / api_configs 已有数据 / 无 providers_json 都直接置标志返回。
      */
-    suspend fun migrateIfNeeded(db: AppDatabase) = db.withTransaction {
+    suspend fun migrateIfNeeded(
+        db: AppDatabase,
+    ) = db.withTransaction {
         encryptLegacyApiKeys(db)
         val settingsDao = db.settingsDao()
 
