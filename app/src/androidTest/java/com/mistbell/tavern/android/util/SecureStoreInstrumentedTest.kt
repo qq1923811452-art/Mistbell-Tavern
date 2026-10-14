@@ -67,4 +67,30 @@ class SecureStoreInstrumentedTest {
         assertTrue(SecureStore.isEncrypted(restored.value))
         assertEquals("backup-api-key", SecureStore.unwrap(restored.value))
     }
+    @Test
+    fun backupCredentialAliasesAreEncryptedEvenWhenUntrustedSensitiveFlagIsFalse() {
+        listOf(
+            "openai_token",
+            "custom-token",
+            "embedding_secret",
+            "auth_header",
+            "authorization",
+            "client_secret",
+            "service_password",
+            "private_key",
+        ).forEach { key ->
+            val entry =
+                com.mistbell.tavern.android.data.repository.BackupManager.SettingsBackupEntry(
+                    key = key,
+                    value = "untrusted-backup-secret",
+                    sensitive = false,
+                )
+
+            val restored = com.mistbell.tavern.android.data.repository.BackupManager.toSettingsEntity(entry)
+
+            assertTrue("$key must be encrypted after restore", SecureStore.isEncrypted(restored.value))
+            assertEquals("untrusted-backup-secret", SecureStore.unwrap(restored.value))
+        }
+    }
+
 }
