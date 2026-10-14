@@ -231,8 +231,12 @@ object LlmClient {
     )
 
     /** Centralize retry classification so stream handling does not duplicate status/type branches. */
+    internal fun isRetryableException(error: Exception): Boolean =
+        error !is CancellationException && retryPolicyFor(error).shouldRetry
+
     private fun retryPolicyFor(error: Exception): RetryPolicy =
         when (error) {
+            is CancellationException -> RetryPolicy(shouldRetry = false, rateLimited = false)
             is ApiError -> {
                 val rateLimited = error.statusCode == HTTP_TOO_MANY_REQUESTS
                 RetryPolicy(
@@ -493,7 +497,7 @@ object LlmClient {
                     }
                 } catch (e: Exception) {
                     val retryPolicy = retryPolicyFor(e)
-                    if (!retryPolicy.shouldRetry) {
+                    if (!isRetryableException(e)) {
                         // 其他错误直接抛出
                         throw e
                     }
