@@ -12,21 +12,22 @@ import java.util.Locale
 internal object ApiBaseUrlPolicy {
     private val cleartextAllowedHosts = setOf("localhost", "127.0.0.1", "10.0.2.2")
 
-    fun isValid(rawUrl: String): Boolean {
-        val value = rawUrl.trim()
-        if (value.isEmpty()) return false
-        val uri = runCatching { URI(value) }.getOrNull() ?: return false
-        val scheme = uri.scheme?.lowercase(Locale.ROOT) ?: return false
-        return scheme in setOf("http", "https") &&
-            !uri.host.isNullOrBlank() &&
-            uri.rawUserInfo == null &&
-            uri.rawFragment == null
-    }
+    fun isValid(rawUrl: String): Boolean = validateUri(rawUrl.trim())
 
-    fun requiresCleartextWarning(rawUrl: String): Boolean {
-        val uri = runCatching { URI(rawUrl.trim()) }.getOrNull() ?: return false
-        if (!uri.scheme.equals("http", ignoreCase = true)) return false
-        val host = uri.host?.lowercase(Locale.ROOT) ?: return false
-        return host !in cleartextAllowedHosts
-    }
+    fun requiresCleartextWarning(rawUrl: String): Boolean =
+        parseUri(rawUrl)?.let { uri ->
+            uri.scheme.equals("http", ignoreCase = true) &&
+                uri.host?.lowercase(Locale.ROOT)?.let { host -> host !in cleartextAllowedHosts } == true
+        } ?: false
+
+    private fun validateUri(value: String): Boolean =
+        value.isNotEmpty() &&
+            parseUri(value)?.let { uri ->
+                uri.scheme?.lowercase(Locale.ROOT) in setOf("http", "https") &&
+                    !uri.host.isNullOrBlank() &&
+                    uri.rawUserInfo == null &&
+                    uri.rawFragment == null
+            } == true
+
+    private fun parseUri(value: String): URI? = runCatching { URI(value) }.getOrNull()
 }
