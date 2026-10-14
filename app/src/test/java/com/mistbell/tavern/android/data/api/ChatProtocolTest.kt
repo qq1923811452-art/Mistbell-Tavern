@@ -322,7 +322,12 @@ class ChatProtocolTest {
     fun geminiUsageTotalFallsBackToPromptPlusCompletionWhenOmitted() {
         val nonStream =
             GeminiChatProtocol.parseContent(
-                """{"candidates":[{"content":{"parts":[{"text":"ok"}]}}],"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":4}}""",
+                """
+                {
+                  "candidates": [{"content": {"parts": [{"text": "ok"}]}}],
+                  "usageMetadata": {"promptTokenCount": 10, "candidatesTokenCount": 4}
+                }
+                """.trimIndent(),
             )
         val stream =
             GeminiChatProtocol.parseStreamData(

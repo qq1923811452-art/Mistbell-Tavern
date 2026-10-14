@@ -19,6 +19,8 @@ import java.security.MessageDigest
 import java.util.LinkedHashMap
 import java.util.concurrent.TimeUnit
 
+private typealias EmbeddingCacheEntry = MutableMap.MutableEntry<String, FloatArray>
+
 internal fun validateEmbeddingResponseOrder(
     indexes: List<Int?>,
     expectedCount: Int,
@@ -72,6 +74,7 @@ class OpenAIEmbeddingService(
         private const val TAG = "OpenAIEmbedding"
         private const val MAX_RETRIES = 3
         private const val EMBEDDING_CACHE_SIZE = 512
+        private const val DEFAULT_BATCH_SOURCE = "EMBEDDING_BATCH_UNSPECIFIED"
         private const val CACHE_LOAD_FACTOR = 0.75f
         private const val INITIAL_RETRY_DELAY_MS = 1000L
         private const val ENDPOINT_FINGERPRINT_BYTES = 8
@@ -86,8 +89,7 @@ class OpenAIEmbeddingService(
             CACHE_LOAD_FACTOR,
             true,
         ) {
-            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, FloatArray>?) =
-                size > EMBEDDING_CACHE_SIZE
+            override fun removeEldestEntry(eldest: EmbeddingCacheEntry?) = size > EMBEDDING_CACHE_SIZE
         }
 
     @Volatile
@@ -256,9 +258,7 @@ class OpenAIEmbeddingService(
         return FloatArray(embedding.size) { i -> embedding[i].toFloat() }
     }
 
-    override suspend fun embedBatch(
-        texts: List<String>,
-    ): List<FloatArray> = embedBatch(texts, "EMBEDDING_BATCH_UNSPECIFIED")
+    override suspend fun embedBatch(texts: List<String>): List<FloatArray> = embedBatch(texts, DEFAULT_BATCH_SOURCE)
 
     @Suppress("TooGenericExceptionCaught", "LongMethod")
     override suspend fun embedBatch(

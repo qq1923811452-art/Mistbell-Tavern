@@ -8,7 +8,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.callbackFlow
-import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
@@ -678,17 +677,19 @@ object LlmClient {
                     throw e // 取消不重试
                 } catch (e: Exception) {
                     // A single capability fallback shares this trace and the same transient retry budget.
-                    if (!emittedAny && !fallbackUsed && activeConfig.disableThinking && isThinkingParamRejected(e)) {
-                        fallbackUsed = true
-                        activeConfig = config.copy(disableThinking = false)
-                        ApiCallTrace.log(
-                            traceId,
-                            "LLM_CHAT_STREAM",
-                            "FALLBACK",
-                            "caller=$caller fallback=without-thinking requestAttempts=$requestAttempts",
-                        )
-                        // Do not consume a transient retry slot for the one protocol-capability fallback.
-                        continue
+                    if (!emittedAny && !fallbackUsed && activeConfig.disableThinking) {
+                        if (isThinkingParamRejected(e)) {
+                            fallbackUsed = true
+                            activeConfig = config.copy(disableThinking = false)
+                            ApiCallTrace.log(
+                                traceId,
+                                "LLM_CHAT_STREAM",
+                                "FALLBACK",
+                                "caller=$caller fallback=without-thinking requestAttempts=$requestAttempts",
+                            )
+                            // Do not consume a transient retry slot for the one protocol-capability fallback.
+                            continue
+                        }
                     }
                     // 已发出增量后不再重试
                     if (emittedAny) {
@@ -709,7 +710,7 @@ object LlmClient {
                             "LLM_CHAT_STREAM",
                             "RETRY",
                             "caller=$caller retry=${attempt + 1}/$maxAttempts requestAttempts=$requestAttempts " +
-                                "error=${e.javaClass.simpleName} delayMs=${delayMs}",
+                                "error=${e.javaClass.simpleName} delayMs=$delayMs",
                         )
                         android.util.Log.w(
                             "LlmClient",

@@ -1437,7 +1437,7 @@ object PromptBuilder {
     ): String {
         val relevantResults =
             results
-                .filter { it.score > 0.5 }
+                .filter { it.score > MIN_HYBRID_VECTOR_SCORE }
                 .filterNot { result -> isDuplicateOfInjected(result.content, alreadyInjected) }
         if (relevantResults.isEmpty()) return ""
 

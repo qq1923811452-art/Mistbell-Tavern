@@ -154,11 +154,11 @@ jobs:
 
           # Redact before external transmission, and reuse the same filters for model output.
           diff = redact_sensitive_text(diff)
-          max_chars = 240000
+          max_chars = 300000
           truncated = len(diff) > max_chars
           diff_for_model = diff[:max_chars]
           truncation_note = (
-              "\nNOTE: The diff was truncated at 240,000 characters. Explicitly state this limitation in the summary."
+              "\nNOTE: The diff was truncated at 300,000 characters. Explicitly state this limitation in the summary."
               if truncated else ""
           )
 
@@ -371,7 +371,7 @@ jobs:
               return text[:limit]
 
           summary = safe_markdown(report.get("summary"), 2000)
-          truncation_prefix = "【已截断：仅审计前240k字符，其余未审】"
+          truncation_prefix = "【已截断：仅审计前300k字符，其余未审】"
           if truncated and not summary.startswith(truncation_prefix):
               summary = truncation_prefix + " " + summary
           lines = [

@@ -56,11 +56,13 @@ class AppContainer(private val appContext: Context) {
      * - api：强制 API（无 key 则 Mock）；
      * - local：本地 ONNX（bge-small-zh）；初始化失败回退 Mock 并记日志。
      */
-    @Volatile
-    private var runtimeEmbeddingService: EmbeddingService? = null
+    private data class RuntimeEmbeddingServices(
+        val embeddingService: EmbeddingService,
+        val vectorMemoryService: VectorMemoryService,
+    )
 
     @Volatile
-    private var runtimeVectorMemoryService: VectorMemoryService? = null
+    private var runtimeEmbeddingServices: RuntimeEmbeddingServices? = null
 
     private val initialEmbeddingService: EmbeddingService by lazy {
         kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
@@ -69,7 +71,7 @@ class AppContainer(private val appContext: Context) {
     }
 
     val embeddingService: EmbeddingService
-        get() = runtimeEmbeddingService ?: initialEmbeddingService
+        get() = runtimeEmbeddingServices?.embeddingService ?: initialEmbeddingService
 
     /**
      * Rebuild both services after the user changes embedding source.
@@ -79,10 +81,9 @@ class AppContainer(private val appContext: Context) {
      */
     suspend fun refreshEmbeddingSource(source: String): Boolean {
         val service = assembleEmbeddingService(source)
-        synchronized(this) {
-            runtimeEmbeddingService = service
-            runtimeVectorMemoryService = VectorMemoryService(vectorStore, service)
-        }
+        val memoryService = VectorMemoryService(vectorStore, service)
+        // Publish the matching pair atomically so concurrent callers cannot observe mixed generations.
+        runtimeEmbeddingServices = RuntimeEmbeddingServices(service, memoryService)
         Log.i(TAG, "Embedding source switched: requested=$source, active=${service::class.java.simpleName}")
         return service is OpenAIEmbeddingService || service is LocalEmbeddingService
     }
@@ -150,7 +151,7 @@ class AppContainer(private val appContext: Context) {
     }
 
     val vectorMemoryService: VectorMemoryService
-        get() = runtimeVectorMemoryService ?: initialVectorMemoryService
+        get() = runtimeEmbeddingServices?.vectorMemoryService ?: initialVectorMemoryService
 
     private fun getEmbeddingApiKey(): String {
         val prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
