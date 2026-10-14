@@ -211,11 +211,42 @@ class MigrationSchemaAlignmentTest {
     }
 
     @Test
-    fun `v26_27 迁移增加空默认的提示词缓存快照列`() {
+    fun `v26_27 迁移对齐快照列 api配置默认值和索引`() {
+        val sql = AppDatabase.MIGRATION_26_27_SQL
         assertEquals(
-            listOf("ALTER TABLE messages ADD COLUMN prompt_context_snapshot_json TEXT NOT NULL DEFAULT ''"),
-            AppDatabase.MIGRATION_26_27_SQL,
+            "ALTER TABLE messages ADD COLUMN prompt_context_snapshot_json TEXT NOT NULL DEFAULT ''",
+            sql.first(),
         )
+
+        val createApiConfigs =
+            sql.firstOrNull { it.contains("CREATE TABLE IF NOT EXISTS api_configs_new") }
+        assertNotNull("v27 迁移应重建 api_configs 以统一默认值", createApiConfigs)
+        listOf(
+            "type TEXT NOT NULL DEFAULT 'openai'",
+            "context1m INTEGER NOT NULL DEFAULT 0",
+            "streamingEnabled INTEGER NOT NULL DEFAULT 1",
+            "thinkingDisabled INTEGER NOT NULL DEFAULT 0",
+        ).forEach { columnDdl ->
+            assertTrue("api_configs_new 缺少默认值定义: $columnDdl", createApiConfigs!!.contains(columnDdl))
+        }
+        assertTrue(
+            "v27 迁移应完整复制 api_configs 的已有数据",
+            sql.any { it.contains("INSERT INTO api_configs_new") && it.contains("FROM api_configs") },
+        )
+        assertTrue("v27 迁移应替换旧 api_configs 表", "DROP TABLE api_configs" in sql)
+        assertTrue("v27 迁移应恢复 api_configs 表名", "ALTER TABLE api_configs_new RENAME TO api_configs" in sql)
+
+        val expectedIndexes =
+            setOf(
+                "index_api_configs_isDefault",
+                "index_api_configs_sortOrder",
+                "index_custom_prompts_type",
+                "index_custom_prompts_position",
+                "index_custom_prompts_isEnabled",
+                "index_custom_prompts_priority",
+            )
+        val actualIndexes = extractIndexNames(sql).filter { it in expectedIndexes }
+        assertEquals("v27 迁移应补齐 v26 新建数据库缺少的全部实体索引", expectedIndexes, actualIndexes)
     }
 
     @Test
