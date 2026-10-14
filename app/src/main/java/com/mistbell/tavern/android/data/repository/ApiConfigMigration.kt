@@ -53,14 +53,10 @@ internal data class ProviderConfig(
 object ApiConfigMigration {
     const val MIGRATED_FLAG_KEY = "providers_migrated_v1"
 
-    /** 纯函数：解密后的 providers_json → ProviderConfig 列表（坏 JSON/空串容错为空） */
+    /** 纯函数：解密后的 providers_json → ProviderConfig 列表；空串合法，非空坏 JSON 必须失败。 */
     internal fun parseProvidersJson(json: String): List<ProviderConfig> {
         if (json.isBlank()) return emptyList()
-        return try {
-            Json.decodeFromString(ListSerializer(ProviderConfig.serializer()), json)
-        } catch (_: Exception) {
-            emptyList()
-        }
+        return Json.decodeFromString(ListSerializer(ProviderConfig.serializer()), json)
     }
 
     /** 纯函数：ProviderConfig 列表 → ApiConfigEntity 列表（id 保留；activeId 为默认，缺省取第一个） */
