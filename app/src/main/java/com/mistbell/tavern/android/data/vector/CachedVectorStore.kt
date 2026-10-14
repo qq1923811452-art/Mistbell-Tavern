@@ -117,6 +117,11 @@ class CachedVectorStore(
         return delegate.count()
     }
 
+    override suspend fun recoverCorruptStorage(): Boolean =
+        mutateStore {
+            delegate.recoverCorruptStorage()
+        }
+
     override suspend fun clear() {
         mutateStore {
             delegate.clear()

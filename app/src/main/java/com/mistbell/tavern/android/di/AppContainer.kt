@@ -50,6 +50,21 @@ class AppContainer(private val appContext: Context) {
     }
 
     /**
+     * Quarantine the unreadable vector-store file, then publish a fresh service pair so
+     * the settings diagnostic clears only after recovery has succeeded.
+     */
+    suspend fun recoverCorruptVectorStorage(): Boolean {
+        val previousMemoryService = vectorMemoryService
+        val recovered = vectorStore.recoverCorruptStorage()
+        if (recovered) {
+            previousMemoryService.clearStorageError()
+            val service = embeddingService
+            runtimeEmbeddingServices = RuntimeEmbeddingServices(service, VectorMemoryService(vectorStore, service))
+        }
+        return recovered
+    }
+
+    /**
      * Embedding 服务（延迟初始化，源路由：settings `embedding_source`）
      *
      * - auto（默认）：有 embedding API key → OpenAI；无 key → Mock（词法回退）——兼容历史行为；

@@ -60,6 +60,12 @@ interface VectorStore {
     suspend fun count(): Int
 
     /**
+     * Preserve corrupt persisted data and recreate an empty store after explicit user confirmation.
+     * Returns false when there is no persisted file to recover.
+     */
+    suspend fun recoverCorruptStorage(): Boolean = false
+
+    /**
      * 清空所有向量
      */
     suspend fun clear()

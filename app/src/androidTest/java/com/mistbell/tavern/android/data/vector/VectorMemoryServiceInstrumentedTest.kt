@@ -190,6 +190,26 @@ class VectorMemoryServiceInstrumentedTest {
     }
 
     @Test
+    fun confirmedRecoveryQuarantinesCorruptFileAndCreatesEmptyStore() {
+        runBlocking {
+            val storageFile = File(context.filesDir, "vector_store.json")
+            val corruptContents = "{not-valid-json"
+            storageFile.writeText(corruptContents)
+
+            assertTrue("Recovery should run only after explicit invocation", store.recoverCorruptStorage())
+
+            val quarantined =
+                context.filesDir.listFiles()?.firstOrNull {
+                    it.name.startsWith("vector_store.corrupt-") && it.name.endsWith(".json")
+                }
+            assertNotNull("The original corrupt file must be preserved", quarantined)
+            assertEquals(corruptContents, quarantined!!.readText())
+            assertTrue("Recovery should create a fresh persisted store", storageFile.exists())
+            assertEquals(0, InMemoryVectorStore(context).count())
+        }
+    }
+
+    @Test
     fun vectorStorePersistsEntriesAcrossInstances() {
         runBlocking {
             store.add(

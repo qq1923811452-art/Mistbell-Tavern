@@ -308,6 +308,23 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    fun recoverCorruptVectorStorage() {
+        viewModelScope.launch {
+            try {
+                val recovered = TavernApplication.instance.container.recoverCorruptVectorStorage()
+                _message.value =
+                    if (recovered) {
+                        "损坏的向量记忆文件已保留到隔离备份，并已重建空存储；旧记忆不会自动恢复。"
+                    } else {
+                        "未找到需要恢复的向量记忆文件。"
+                    }
+            } catch (e: Exception) {
+                android.util.Log.e("Settings", "Vector-store recovery failed", e)
+                _message.value = "恢复失败。请勿清除应用数据；原始文件可能仍在，请联系支持。"
+            }
+        }
+    }
+
     fun setMemoryRecallTopK(value: Int) {
         val normalized =
             value.coerceIn(

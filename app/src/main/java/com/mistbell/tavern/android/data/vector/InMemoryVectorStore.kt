@@ -176,6 +176,29 @@ class InMemoryVectorStore(
         }
     }
 
+    override suspend fun recoverCorruptStorage(): Boolean {
+        return mutex.withLock {
+            val backupFile = File(storageFile.path + ".bak")
+            val existingFiles = listOf(storageFile, backupFile).filter { it.exists() }
+            if (existingFiles.isEmpty()) return@withLock false
+
+            val recoveryId = System.currentTimeMillis().toString()
+            existingFiles.forEach { file ->
+                val suffix = if (file == backupFile) ".bak" else ".json"
+                val quarantine = File(context.filesDir, "vector_store.corrupt-$recoveryId$suffix")
+                check(file.renameTo(quarantine)) {
+                    "Unable to preserve corrupt vector memory file at ${file.name}"
+                }
+            }
+
+            vectors.clear()
+            isLoaded = true
+            saveToDisk()
+            Log.w(TAG, "Corrupt vector store quarantined; recreated an empty store")
+            true
+        }
+    }
+
     override suspend fun clear() {
         mutex.withLock {
             vectors.clear()
