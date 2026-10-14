@@ -174,9 +174,26 @@ jobs:
           fi
           python3 - <<'PY'
           from pathlib import Path
-          import re, subprocess, sys
+          import re, shlex, subprocess, sys
           patch = Path("/tmp/relay-style.patch").read_text(encoding="utf-8")
-          sections = re.findall(r"^diff --git a/(.+) b/(.+)$", patch, re.MULTILINE)
+          sections = []
+          old_headers = []
+          new_headers = []
+          for raw_line in patch.splitlines():
+              if raw_line.startswith(("diff --git ", "--- ", "+++ ")):
+                  try:
+                      header = shlex.split(raw_line)
+                  except ValueError:
+                      sys.exit("Refusing patch: malformed quoted diff header")
+                  if raw_line.startswith("diff --git "):
+                      if (len(header) != 4 or not header[2].startswith("a/")
+                              or not header[3].startswith("b/")):
+                          sys.exit("Refusing patch: unsupported diff header")
+                      sections.append((header[2][2:], header[3][2:]))
+                  elif raw_line.startswith("--- "):
+                      old_headers.append(header[1][2:] if len(header) == 2 and header[1].startswith("a/") else (header[1] if len(header) == 2 else ""))
+                  else:
+                      new_headers.append(header[1][2:] if len(header) == 2 and header[1].startswith("b/") else (header[1] if len(header) == 2 else ""))
           if not sections or len(sections) > 8:
               sys.exit("Refusing patch: expected 1-8 Kotlin file sections")
           paths = []
@@ -193,8 +210,6 @@ jobs:
               paths.append(new_path)
           if len(set(paths)) != len(paths):
               sys.exit("Refusing patch: duplicate file sections")
-          old_headers = re.findall(r"^--- a/(.+)$", patch, re.MULTILINE)
-          new_headers = re.findall(r"^\+\+\+ b/(.+)$", patch, re.MULTILINE)
           if old_headers != [old for old, _ in sections] or new_headers != [new for _, new in sections]:
               sys.exit("Refusing patch: file headers do not match the validated diff sections")
           forbidden = ("new file mode ", "deleted file mode ", "old mode ", "new mode ",
