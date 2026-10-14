@@ -231,8 +231,9 @@ object LlmClient {
     )
 
     /** Centralize retry classification so stream handling does not duplicate status/type branches. */
-    internal fun isRetryableException(error: Exception): Boolean =
-        error !is CancellationException && retryPolicyFor(error).shouldRetry
+    internal fun isRetryableException(error: Exception): Boolean {
+        return error !is CancellationException && retryPolicyFor(error).shouldRetry
+    }
 
     private fun retryPolicyFor(error: Exception): RetryPolicy =
         when (error) {
