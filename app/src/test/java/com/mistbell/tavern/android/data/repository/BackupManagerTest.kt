@@ -147,4 +147,28 @@ class BackupManagerTest {
         val decoded = BackupManager.decodeList(encoded, BackupManager.SettingsBackupEntry.serializer())
         assertTrue(decoded.isEmpty())
     }
+    @Test
+    fun `credential aliases are classified as sensitive backup keys`() {
+        listOf(
+            "openai_token",
+            "custom-token",
+            "embedding_secret",
+            "auth_header",
+            "authorization",
+            "client_secret",
+            "service_password",
+            "private_key",
+            "api-key",
+        ).forEach { key ->
+            assertTrue("$key should be considered sensitive", BackupManager.isSensitiveSettingKey(key))
+        }
+    }
+
+    @Test
+    fun `numeric token settings are not classified as credentials`() {
+        listOf("context_token_limit", "max_tokens", "llm_max_tokens", "prompt_tokens", "completion_tokens").forEach { key ->
+            assertFalse("$key is a numeric setting, not a credential", BackupManager.isSensitiveSettingKey(key))
+        }
+    }
+
 }
