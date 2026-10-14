@@ -4,10 +4,11 @@ import com.mistbell.tavern.android.data.api.model.StructuredMemory
 import java.time.Instant
 import java.util.Locale
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 /**
  * Temporal fact handling without a destructive schema migration.
@@ -20,7 +21,7 @@ internal object MemoryConflictResolver {
     private data class Fact(val subject: String, val relation: String, val value: String)
 
     fun isSuperseded(memory: StructuredMemory): Boolean =
-        readObject(memory.structuredData)?.get("status")?.jsonPrimitive?.contentOrNull == "superseded"
+        readObject(memory.structuredData)?.stringValue("status") == "superseded"
 
     fun findSuperseded(
         subject: String,
@@ -69,12 +70,15 @@ internal object MemoryConflictResolver {
 
     private fun readFact(raw: String?): Fact? {
         val obj = readObject(raw)
-        val subject = obj?.get("subject")?.jsonPrimitive?.contentOrNull.orEmpty()
-        val relation = obj?.get("relation")?.jsonPrimitive?.contentOrNull.orEmpty()
-        val value = obj?.get("object")?.jsonPrimitive?.contentOrNull.orEmpty()
+        val subject = obj?.stringValue("subject").orEmpty()
+        val relation = obj?.stringValue("relation").orEmpty()
+        val value = obj?.stringValue("object").orEmpty()
         val hasMissingField = subject.isBlank() || relation.isBlank() || value.isBlank()
         return if (obj == null || hasMissingField) null else Fact(subject, relation, value)
     }
+
+    private fun JsonObject.stringValue(key: String): String? =
+        (this[key] as? JsonPrimitive)?.contentOrNull
 
     private fun readObject(raw: String?) =
         try {
