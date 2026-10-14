@@ -221,8 +221,7 @@ object LlmClient {
     private fun maxAttemptsFor(config: LlmConfig): Int = 1 + config.retries.coerceIn(0, 5)
 
     /** HTTP 5xx responses are transient and may be retried before any stream output. */
-    internal fun isTransientServerError(statusCode: Int): Boolean =
-        statusCode in HTTP_SERVER_ERROR_MIN..HTTP_SERVER_ERROR_MAX
+    internal fun isTransientServerError(statusCode: Int): Boolean = statusCode in HTTP_SERVER_ERROR_MIN..HTTP_SERVER_ERROR_MAX
 
     private data class RetryPolicy(
         val shouldRetry: Boolean,
