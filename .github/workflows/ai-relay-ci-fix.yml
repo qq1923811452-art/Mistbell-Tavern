@@ -100,6 +100,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPOSITORY: ${{ github.repository }}
           RUN_ID: ${{ inputs.run_id }}
+          BASE_SHA: ${{ steps.context.outputs.base_sha }}
         shell: bash
         run: |
           set -euo pipefail
@@ -191,8 +192,6 @@ jobs:
           Path("relay-report/recent-production-diff.txt").write_text(diff, encoding="utf-8")
           print("Collected redacted failed-step logs and a bounded production diff.")
           PY
-        env:
-          BASE_SHA: ${{ steps.context.outputs.base_sha }}
 
       - name: Validate two-model relay configuration
         env:
