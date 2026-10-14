@@ -358,7 +358,7 @@ jobs:
           import re
           from pathlib import Path
           patch = Path("relay-report/final.patch").read_text(encoding="utf-8")
-          if "\\x00" in patch or "*** Begin Patch" in patch or not patch.startswith("diff --git "):
+          if "\x00" in patch or "*** Begin Patch" in patch or not patch.startswith("diff --git "):
               raise SystemExit("Rejected: invalid unified diff format.")
           sections = re.split(r"(?=^diff --git )", patch, flags=re.MULTILINE)
           sections = [part for part in sections if part.strip()]
@@ -369,14 +369,14 @@ jobs:
           for section in sections:
               header = re.search(r"^diff --git a/(.+) b/(.+)$", section, re.MULTILINE)
               old = re.search(r"^--- (.+)$", section, re.MULTILINE)
-              new = re.search(r"^\\+\\+\\+ (.+)$", section, re.MULTILINE)
+              new = re.search(r"^\+\+\+ (.+)$", section, re.MULTILINE)
               if not header or not old or not new:
                   raise SystemExit("Rejected: malformed or binary diff section.")
               old_path, new_path = header.group(1), header.group(2)
               for path in (old_path, new_path):
                   parts = Path(path).parts
                   if (not path.startswith(allowed_roots) or not path.endswith(".kt")
-                      or ".." in parts or path.startswith("/") or "\\\\" in path):
+                      or ".." in parts or path.startswith("/") or "\\" in path):
                       raise SystemExit("Rejected path outside allowed Kotlin source/test directories: " + path)
               if old.group(1) not in ("/dev/null", "a/" + old_path):
                   raise SystemExit("Rejected: old path header mismatch or unsupported rename.")
