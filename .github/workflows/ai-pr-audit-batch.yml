@@ -2,7 +2,7 @@ name: Batch AI PR Audit
 
 on:
   workflow_dispatch:
-  # Validate this workflow on edits without accidentally launching the batch.
+  # Editing the file on a feature branch validates YAML only; merging it to the default branch starts the initial historical audit sweep.
   push:
     paths:
       - ".github/workflows/ai-pr-audit-batch.yml"
@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   dispatch-audits:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref_name == github.event.repository.default_branch)
     name: Queue audit for PR ${{ matrix.pr_number }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
