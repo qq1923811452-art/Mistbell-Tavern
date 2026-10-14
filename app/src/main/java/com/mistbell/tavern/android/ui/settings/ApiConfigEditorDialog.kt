@@ -184,6 +184,7 @@ private fun DialogConfirmButtons(
     val canConfirm =
         name.isNotBlank() &&
             ApiBaseUrlPolicy.isValid(apiUrl) &&
+            !ApiBaseUrlPolicy.requiresCleartextWarning(apiUrl) &&
             apiKey.isNotBlank() &&
             model.isNotBlank()
     Row(
@@ -415,8 +416,7 @@ private fun ApiUrlValidationMessage(apiUrl: String) {
         ApiBaseUrlPolicy.requiresCleartextWarning(apiUrl) -> {
             Text(
                 text =
-                    "安全提示：Android 默认阻止明文 HTTP，此地址可能无法连接。" +
-                        "建议改用 HTTPS；仅 localhost、127.0.0.1 和 10.0.2.2 有例外。",
+                    "无法保存：Android 网络安全策略阻止此地址使用明文 HTTP。请改用 HTTPS；仅 localhost、127.0.0.1 和 10.0.2.2 有例外。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.tertiary,
             )
