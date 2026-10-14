@@ -6,10 +6,12 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.io.File
 
 @RunWith(AndroidJUnit4::class)
 class VectorMemoryServiceInstrumentedTest {
@@ -157,6 +159,33 @@ class VectorMemoryServiceInstrumentedTest {
                 "Unknown legacy vector space must not be mixed into custom models",
                 incompatibleResults.isEmpty(),
             )
+        }
+    }
+
+    @Test
+    fun corruptedPersistedStoreSurfacesDiagnosticWithoutOverwritingFile() {
+        runBlocking {
+            val storageFile = File(context.filesDir, "vector_store.json")
+            storageFile.writeText("{not-valid-json")
+
+            val corruptedStore = InMemoryVectorStore(context)
+            val service =
+                VectorMemoryService(
+                    corruptedStore,
+                    CountingEmbeddingService("test-model", floatArrayOf(1f, 0f, 0f)),
+                )
+
+            val results =
+                service.searchRelevantMemories(
+                    query = "remembered fact",
+                    ownerId = "owner",
+                    characterId = "character",
+                    sessionId = null,
+                )
+
+            assertTrue("Corrupt storage must not be interpreted as valid results", results.isEmpty())
+            assertNotNull("Settings should receive a storage-corruption diagnostic", service.storageError.value)
+            assertEquals("Corrupt file contents must remain available for recovery", "{not-valid-json", storageFile.readText())
         }
     }
 
