@@ -129,11 +129,11 @@ jobs:
           )
           # Redact common high-confidence credential formats before external transmission.
           diff = re.sub(r"-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----.*?-----END (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----", "[REDACTED PRIVATE KEY]", diff, flags=re.DOTALL)
-          diff = re.sub(r"\\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})\\b", "[REDACTED GITHUB TOKEN]", diff)
-          diff = re.sub(r"\\bAKIA[0-9A-Z]{16}\\b", "[REDACTED AWS KEY]", diff)
-          diff = re.sub(r"\\beyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\b", "[REDACTED JWT]", diff)
-          diff = re.sub(r"https://hooks\\.slack\\.com/services/[^\\s\"'<>]+", "[REDACTED SLACK WEBHOOK]", diff, flags=re.IGNORECASE)
-          diff = re.sub(r"https://(?:discord(?:app)?\\.com)/api/webhooks/[^\\s\"'<>]+", "[REDACTED DISCORD WEBHOOK]", diff, flags=re.IGNORECASE)
+          diff = re.sub(r"\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})\b", "[REDACTED GITHUB TOKEN]", diff)
+          diff = re.sub(r"\bAKIA[0-9A-Z]{16}\b", "[REDACTED AWS KEY]", diff)
+          diff = re.sub(r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b", "[REDACTED JWT]", diff)
+          diff = re.sub(r"https://hooks\.slack\.com/services/[^\s\"'<>]+", "[REDACTED SLACK WEBHOOK]", diff, flags=re.IGNORECASE)
+          diff = re.sub(r"https://(?:discord(?:app)?\.com)/api/webhooks/[^\s\"'<>]+", "[REDACTED DISCORD WEBHOOK]", diff, flags=re.IGNORECASE)
           max_chars = 70000
           truncated = len(diff) > max_chars
           diff_for_model = diff[:max_chars]
