@@ -1,6 +1,5 @@
 package com.mistbell.tavern.android.data.repository
 
-import com.mistbell.tavern.android.data.local.entity.ApiConfigEntity
 import com.mistbell.tavern.android.data.local.entity.CustomPromptEntity
 import com.mistbell.tavern.android.data.local.entity.SettingsEntity
 import kotlinx.serialization.builtins.ListSerializer
@@ -141,7 +140,8 @@ class BackupManagerTest {
 
     @Test
     fun `API 配置备份 DTO 保留全部字段并允许空密钥恢复`() {
-        val entry = BackupManager.ApiConfigBackupEntry(
+        val entry =
+            BackupManager.ApiConfigBackupEntry(
             id = "provider-1",
             name = "Local provider",
             apiUrl = "https://example.invalid/v1",
@@ -179,7 +179,8 @@ class BackupManagerTest {
 
     @Test
     fun `自定义提示词备份 DTO 完整往返`() {
-        val entity = CustomPromptEntity(
+        val entity =
+            CustomPromptEntity(
             id = "prompt-1",
             name = "Writing style",
             content = "Keep the voice concise.",
@@ -193,12 +194,15 @@ class BackupManagerTest {
             updatedAt = 200L,
         )
 
-        val entry = BackupManager.CustomPromptBackupEntry.fromEntity(entity)
-        val encoded = BackupManager.json.encodeToString(
+        val entry =
+            BackupManager.CustomPromptBackupEntry.fromEntity(entity)
+        val encoded =
+            BackupManager.json.encodeToString(
             ListSerializer(BackupManager.CustomPromptBackupEntry.serializer()),
             listOf(entry),
         )
-        val decoded = BackupManager.decodeList(
+        val decoded =
+            BackupManager.decodeList(
             encoded,
             BackupManager.CustomPromptBackupEntry.serializer(),
         )
