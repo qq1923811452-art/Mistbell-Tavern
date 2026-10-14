@@ -24,7 +24,7 @@ import java.util.Locale
 private const val HIT_RATE_PERCENT_MULTIPLIER = 100
 
 /** S2 向量记忆召回设置：记忆源（自动/API/本地 ONNX）+ 召回条数 + 相似度阈值 */
-@Suppress("FunctionNaming")
+@Suppress("FunctionNaming", "LongMethod")
 @Composable
 internal fun VectorMemorySettingsCard(viewModel: SettingsViewModel) {
     val embeddingSource by viewModel.embeddingSource.collectAsState()
