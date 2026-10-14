@@ -58,7 +58,7 @@ jobs:
           git worktree add /tmp/mistbell-room-v26 f857bf4
           chmod +x /tmp/mistbell-room-v26/gradlew
           cd /tmp/mistbell-room-v26
-          ./gradlew :app:compileDebugKotlin --no-daemon --no-parallel
+          ./gradlew :app:kspDebugKotlin --no-daemon --no-parallel
           test -f app/schemas/com.mistbell.tavern.android.data.local.AppDatabase/26.json
           mkdir -p "$GITHUB_WORKSPACE/room-schema-v26"
           cp app/schemas/com.mistbell.tavern.android.data.local.AppDatabase/26.json "$GITHUB_WORKSPACE/room-schema-v26/26.json"
