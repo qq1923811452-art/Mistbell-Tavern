@@ -2,10 +2,10 @@ package com.mistbell.tavern.android.data.repository
 
 import android.content.Context
 import android.util.Log
-import com.mistbell.tavern.android.TavernApplication
 import com.mistbell.tavern.android.data.api.model.StructuredMemory
 import com.mistbell.tavern.android.data.local.entity.StructuredMemoryEntity
 import com.mistbell.tavern.android.data.memory.MemoryConflictResolver
+import com.mistbell.tavern.android.TavernApplication
 import java.time.Instant
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
