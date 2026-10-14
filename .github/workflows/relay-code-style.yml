@@ -77,7 +77,7 @@ jobs:
           ./gradlew :app:detekt :app:ktlintCheck --continue --no-daemon --no-configuration-cache > /tmp/style-check.log 2>&1
           CHECK_EXIT=$?
           set -e
-          git log -p -n 10 -- '*.kt' > /tmp/recent-kotlin.diff || true
+          git log --no-merges --no-ext-diff -p -n 10 -- '*.kt' > /tmp/recent-kotlin.diff || true
           git diff HEAD -- '*.kt' > /tmp/working-kotlin.diff || true
           CHECK_EXIT="$CHECK_EXIT" python3 - <<'PY'
           from pathlib import Path
