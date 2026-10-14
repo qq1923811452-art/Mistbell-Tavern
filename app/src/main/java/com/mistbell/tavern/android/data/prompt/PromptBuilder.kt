@@ -1374,21 +1374,16 @@ object PromptBuilder {
                 content: String,
                 rank: Int,
                 source: String,
+                dedupeContent: String = content,
             ) {
                 val trimmed = content.trim()
-                if (trimmed.isBlank() || isDuplicateOfInjected(trimmed, alreadyInjected)) return
-                val keyContent =
-                    trimmed
-                        .replace(Regex("""^\[[^]]+\]\s*"""), "")
-                        .replace(Regex("""^(user|assistant|system|角色|用户):\s*""", RegexOption.IGNORE_CASE), "")
-                val key =
-                    keyContent.lowercase(Locale.ROOT)
-                        .replace(Regex("""[\s\p{Punct}，。！？、；：“”‘’（）【】《》]+"""), "")
-                if (key.isBlank()) return
+                val canonicalContent = normalizeHybridDedupeContent(dedupeContent)
+                if (trimmed.isBlank() || isDuplicateOfInjected(dedupeContent, alreadyInjected)) return
+                if (canonicalContent.isBlank()) return
                 val contribution = 1.0 / (RRF_RANK_CONSTANT + rank)
-                val candidate = candidates[key]
+                val candidate = candidates[canonicalContent]
                 if (candidate == null) {
-                    candidates[key] = HybridCandidate(trimmed, contribution, linkedSetOf(source))
+                    candidates[canonicalContent] = HybridCandidate(trimmed, contribution, linkedSetOf(source))
                 } else {
                     candidate.score += contribution
                     candidate.sources.add(source)
@@ -1400,7 +1395,12 @@ object PromptBuilder {
                 .forEachIndexed { index, result -> add(result.content, index + 1, "语义") }
             lexicalItems.forEachIndexed { index, message ->
                 val stamp = message.createdAt.take(HISTORY_TIMESTAMP_PREFIX_LENGTH).replace('T', ' ')
-                add("[$stamp] ${message.role}: ${message.content.take(MAX_LEXICAL_CONTENT_CHARS)}", index + 1, "关键词")
+                add(
+                    content = "[$stamp] ${message.role}: ${message.content.take(MAX_LEXICAL_CONTENT_CHARS)}",
+                    rank = index + 1,
+                    source = "关键词",
+                    dedupeContent = message.content,
+                )
             }
 
             val ranked = candidates.values.sortedByDescending { it.score }.take(limit)
@@ -1415,6 +1415,13 @@ object PromptBuilder {
                 }.trim()
             }
         }
+
+    private fun normalizeHybridDedupeContent(content: String): String =
+        content.trim()
+            .replace(Regex("""^\[[^]]+\]\s*"""), "")
+            .replace(Regex("""^(user|assistant|system|角色|用户):\s*""", RegexOption.IGNORE_CASE), "")
+            .lowercase(Locale.ROOT)
+            .replace(Regex("\\s+"), " ")
 
     /**
      * 构建向量记忆上下文（用于 Prompt 注入）。
