@@ -200,6 +200,15 @@ private fun EmbeddingApiSaveButton(
     }
 }
 
+private fun embeddingApiUrlValidationError(url: String): String? =
+    when {
+        !ApiBaseUrlPolicy.isValid(url) ->
+            "保存失败：API 地址格式无效，请输入包含主机名的 http:// 或 https:// URL。"
+        ApiBaseUrlPolicy.requiresCleartextWarning(url) ->
+            "保存失败：Android 网络安全策略阻止此地址使用明文 HTTP，请改用 HTTPS。"
+        else -> null
+    }
+
 private fun saveEmbeddingApiSettings(
     prefs: android.content.SharedPreferences,
     scope: kotlinx.coroutines.CoroutineScope,
@@ -209,12 +218,9 @@ private fun saveEmbeddingApiSettings(
     val apiKey = values.apiKey
     val normalizedUrl =
         values.baseUrl.trim().trimEnd('/').ifBlank { "https://api.openai.com/v1" }
-    if (!ApiBaseUrlPolicy.isValid(normalizedUrl)) {
-        callbacks.onStatusChanged("保存失败：API 地址格式无效，请输入包含主机名的 http:// 或 https:// URL。")
-        return
-    }
-    if (ApiBaseUrlPolicy.requiresCleartextWarning(normalizedUrl)) {
-        callbacks.onStatusChanged("保存失败：Android 网络安全策略阻止此地址使用明文 HTTP，请改用 HTTPS。")
+    val validationError = embeddingApiUrlValidationError(normalizedUrl)
+    if (validationError != null) {
+        callbacks.onStatusChanged(validationError)
         return
     }
 
