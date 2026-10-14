@@ -317,13 +317,22 @@ jobs:
                   candidates = [evidence_lines]
                   if all(line[:1] in ("+", "-", " ") for line in evidence_lines):
                       candidates.append([line[1:] for line in evidence_lines])
+                  def normalize_snippet(lines):
+                      trimmed = [line.rstrip() for line in lines]
+                      nonempty_indents = [
+                          len(line) - len(line.lstrip())
+                          for line in trimmed
+                          if line.strip()
+                      ]
+                      common_indent = min(nonempty_indents, default=0)
+                      return [line[common_indent:] for line in trimmed]
+
                   for candidate in candidates:
                       width = len(candidate)
-                      if any(
-                          file_lines[i:i + width] == candidate
-                          for i in range(len(file_lines) - width + 1)
-                      ):
-                          return True
+                      normalized_candidate = normalize_snippet(candidate)
+                      for index in range(len(file_lines) - width + 1):
+                          if normalize_snippet(file_lines[index:index + width]) == normalized_candidate:
+                              return True
                   return False
               verified_findings = []
               rejected_evidence_count = 0
