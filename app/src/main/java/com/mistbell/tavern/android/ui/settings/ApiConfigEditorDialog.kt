@@ -181,7 +181,11 @@ private fun DialogConfirmButtons(
     onDismiss: () -> Unit,
     onConfirm: () -> Unit,
 ) {
-    val canConfirm = name.isNotBlank() && apiUrl.isNotBlank() && apiKey.isNotBlank() && model.isNotBlank()
+    val canConfirm =
+        name.isNotBlank() &&
+            ApiBaseUrlPolicy.isValid(apiUrl) &&
+            apiKey.isNotBlank() &&
+            model.isNotBlank()
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -525,6 +529,22 @@ fun ApiConfigEditorDialog(
                     shape = RoundedCornerShape(16.dp),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
                 )
+                when {
+                    apiUrl.isNotBlank() && !ApiBaseUrlPolicy.isValid(apiUrl) -> {
+                        Text(
+                            text = "地址格式无效，请输入包含主机名的 http:// 或 https:// URL。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                    ApiBaseUrlPolicy.requiresCleartextWarning(apiUrl) -> {
+                        Text(
+                            text = "安全提示：Android 默认阻止明文 HTTP，此地址可能无法连接。建议改用 HTTPS；仅 localhost、127.0.0.1 和 10.0.2.2 有例外。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.tertiary,
+                        )
+                    }
+                }
                 // API 密钥
                 ApiKeyField(
                     apiKey = apiKey,
