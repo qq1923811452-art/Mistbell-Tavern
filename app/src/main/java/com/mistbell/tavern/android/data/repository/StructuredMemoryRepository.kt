@@ -2,16 +2,17 @@ package com.mistbell.tavern.android.data.repository
 
 import android.content.Context
 import android.util.Log
-import com.mistbell.tavern.android.TavernApplication
 import com.mistbell.tavern.android.data.api.model.StructuredMemory
 import com.mistbell.tavern.android.data.local.entity.StructuredMemoryEntity
 import com.mistbell.tavern.android.data.memory.MemoryConflictResolver
-import java.time.Instant
+import com.mistbell.tavern.android.TavernApplication
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
+import java.time.Instant
+
 class StructuredMemoryRepository(context: Context) {
     private val db = TavernApplication.instance.container.database
     private val memoryDao = db.structuredMemoryDao()
