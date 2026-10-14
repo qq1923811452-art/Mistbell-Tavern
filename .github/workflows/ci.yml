@@ -55,6 +55,17 @@ jobs:
       - name: Run quality gate
         id: quality_gate
         run: ./gradlew :app:assembleDebug :app:testDebugUnitTest :app:detekt :app:ktlintCheck licenseGuard --continue --no-daemon --no-parallel
+      
+      # Keep Room's compiler-generated schema available for review and committing.
+      # In particular, migration PRs must not hand-author identity hashes.
+      - name: Upload generated Room schema
+        if: ${{ always() && hashFiles('app/schemas/com.mistbell.tavern.android.data.local.AppDatabase/27.json') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: room-schema-v27
+          path: app/schemas/com.mistbell.tavern.android.data.local.AppDatabase/27.json
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Generate APK checksum
         if: ${{ always() && hashFiles('app/build/outputs/apk/debug/*.apk') != '' }}
