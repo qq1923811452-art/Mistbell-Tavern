@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [ feature, main, master ]
+    branches: [ feature, main, master, ai-relay-isolated-test-20261015 ]
   pull_request:
 
 jobs:
