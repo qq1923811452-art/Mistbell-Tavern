@@ -60,10 +60,16 @@ class OpenAIEmbeddingService(
 
     private val cacheLock = Any()
     private val embeddingCache =
-        object : LinkedHashMap<String, FloatArray>(EMBEDDING_CACHE_SIZE + 1, CACHE_LOAD_FACTOR, true) {
-            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, FloatArray>?): Boolean =
-                size > EMBEDDING_CACHE_SIZE
+        object : LinkedHashMap<String, FloatArray>(
+            EMBEDDING_CACHE_SIZE + 1,
+            CACHE_LOAD_FACTOR,
+            true,
+        ) {
+            override fun removeEldestEntry(
+                eldest: MutableMap.MutableEntry<String, FloatArray>?,
+            ): Boolean = size > EMBEDDING_CACHE_SIZE
         }
+
     @Volatile
     private var lastKnownDimension = 0
 
@@ -80,8 +86,7 @@ class OpenAIEmbeddingService(
         synchronized(cacheLock) { embeddingCache[cacheKey(text)] = embedding.clone() }
     }
 
-    override suspend fun embed(text: String): FloatArray =
-        embed(text, "EMBEDDING_UNSPECIFIED")
+    override suspend fun embed(text: String): FloatArray = embed(text, "EMBEDDING_UNSPECIFIED")
 
     @Suppress("TooGenericExceptionCaught")
     override suspend fun embed(
@@ -230,7 +235,6 @@ class OpenAIEmbeddingService(
         embedBatch(texts, "EMBEDDING_BATCH_UNSPECIFIED")
 
     @Suppress("TooGenericExceptionCaught", "LongMethod")
-
     override suspend fun embedBatch(
         texts: List<String>,
         source: String,
@@ -411,8 +415,7 @@ class OpenAIEmbeddingService(
         return "openai-compatible:$model:$endpointFingerprint"
     }
 
-    override fun supportsLegacyVectors(): Boolean =
-        model == "text-embedding-3-small" && normalizedBaseUrl == "https://api.openai.com/v1"
+    override fun supportsLegacyVectors(): Boolean = model == "text-embedding-3-small" && normalizedBaseUrl == "https://api.openai.com/v1"
 
     override fun getDimension(): Int = lastKnownDimension
 
