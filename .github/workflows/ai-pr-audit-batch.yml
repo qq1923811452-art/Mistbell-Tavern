@@ -1,0 +1,37 @@
+name: Batch AI PR Audit
+
+on:
+  workflow_dispatch:
+    inputs:
+      start_pr:
+        description: "First PR number to audit (1–25)"
+        required: true
+        default: 1
+        type: number
+      end_pr:
+        description: "Last PR number to audit (1–25)"
+        required: true
+        default: 25
+        type: number
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: ai-pr-audit-batch-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    name: Audit PR #${{ matrix.pr_number }}
+    if: ${{ matrix.pr_number >= inputs.start_pr && matrix.pr_number <= inputs.end_pr }}
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        pr_number: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25]
+    uses: ./.github/workflows/ai-pr-audit.yml
+    with:
+      pr_number: ${{ matrix.pr_number }}
+    secrets: inherit
