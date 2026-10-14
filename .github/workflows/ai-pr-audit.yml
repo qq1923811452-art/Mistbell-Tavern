@@ -130,7 +130,7 @@ jobs:
                   text,
               )
               text = re.sub(
-                  r"""(?i)((?:api[_-]?key|access[_-]?token|refresh[_-]?token|session[_-]?token|client[_-]?secret|secret[_-]?access[_-]?key|private[_-]?key|password|credential|secret)\s*[=:]\s*["']?)[A-Za-z0-9_./+=-]{12,}""",
+                  r"""(?i)((?:api[_-]?key|token|bearer|client[_-]?secret|secret[_-]?access[_-]?key|private[_-]?key|password|passwd|credential|authorization|secret)\s*[=:]\s*["']?)[A-Za-z0-9_./+=-]{12,}""",
                   r"\1[REDACTED]",
                   text,
               )
