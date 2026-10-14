@@ -119,8 +119,12 @@ object ApiConfigMigration {
             return@withTransaction
         }
 
-        val providers =
-            parseProvidersJson(SecureStore.unwrap(settingsDao.getValue("providers_json") ?: ""))
+        val storedProvidersJson = settingsDao.getValue("providers_json").orEmpty()
+        val decodedProvidersJson = SecureStore.unwrap(storedProvidersJson)
+        check(!storedProvidersJson.startsWith("enc:v1:") || decodedProvidersJson.isNotEmpty()) {
+            "无法解密旧版 API 配置，迁移已中止以保留原始数据"
+        }
+        val providers = parseProvidersJson(decodedProvidersJson)
         if (providers.isEmpty()) {
             settingsDao.upsert(SettingsEntity(MIGRATED_FLAG_KEY, "1"))
             return@withTransaction
