@@ -2,6 +2,10 @@ name: Batch AI PR Audit
 
 on:
   workflow_dispatch:
+  # Validate this workflow on edits without accidentally launching the batch.
+  push:
+    paths:
+      - ".github/workflows/ai-pr-audit-batch.yml"
 
 permissions:
   contents: read
@@ -13,6 +17,7 @@ concurrency:
 
 jobs:
   dispatch-audits:
+    if: github.event_name == 'workflow_dispatch'
     name: Queue audit for PR ${{ matrix.pr_number }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
