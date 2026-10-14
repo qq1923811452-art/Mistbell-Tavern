@@ -9,12 +9,6 @@ on:
         description: "Pull request number to audit"
         required: true
         type: number
-  workflow_call:
-    inputs:
-      pr_number:
-        description: "Pull request number to audit from a trusted batch workflow"
-        required: true
-        type: number
 
 permissions:
   contents: read
@@ -31,7 +25,7 @@ jobs:
     timeout-minutes: 15
     # Fork PRs do not receive repository secrets. Do not run a secret-dependent
     # external-model request for them; maintainers can audit after reviewing the source.
-    if: github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
     steps:
       - name: Validate required secrets
         env:
