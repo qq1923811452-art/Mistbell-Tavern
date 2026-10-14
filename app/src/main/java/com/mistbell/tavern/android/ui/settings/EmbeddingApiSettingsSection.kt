@@ -135,33 +135,44 @@ fun EmbeddingApiSettingsSection() {
             )
             Button(
                 onClick = {
-                    val normalizedUrl =
-                        baseUrl.trim().trimEnd('/').ifBlank { "https://api.openai.com/v1" }
-                    val normalizedModel =
-                        (if (selectedModel == "自定义模型 ID") customModel else selectedModel).trim()
-                    prefs.edit()
-                        .putString("embedding_api_key", SecureStore.wrap(apiKey.trim()))
-                        .putString("embedding_base_url", normalizedUrl)
-                        .putString("embedding_model", normalizedModel.ifBlank { "text-embedding-3-small" })
-                        .apply()
-                    baseUrl = normalizedUrl
-                    status = "配置已保存，正在刷新记忆服务…"
-                    scope.launch {
-                        val source =
-                            runCatching {
-                                TavernApplication.instance.container.database.settingsDao()
-                                    .getValue("embedding_source") ?: "auto"
-                            }.getOrDefault("auto")
-                        val active =
-                            runCatching {
-                                TavernApplication.instance.container.refreshEmbeddingSource(source)
-                            }.getOrDefault(false)
-                        status =
-                            when {
-                                active -> "已保存并立即生效，Embedding 服务已启用。"
-                                apiKey.isBlank() -> "已保存。密钥为空，向量记忆 API 暂不可用。"
-                                else -> "已保存，但服务未能启用；请检查 API 地址、密钥和模型兼容性。"
-                            }
+                    // Do not modify preferences unless secret encryption succeeds. In particular,
+                    // never fall back to storing the Embedding API key in plaintext.
+                    val wrappedApiKey =
+                        try {
+                            SecureStore.wrap(apiKey.trim())
+                        } catch (_: Exception) {
+                            status = "保存失败：系统安全密钥库不可用，未保存配置。"
+                            null
+                        }
+                    if (wrappedApiKey != null) {
+                        val normalizedUrl =
+                            baseUrl.trim().trimEnd('/').ifBlank { "https://api.openai.com/v1" }
+                        val normalizedModel =
+                            (if (selectedModel == "自定义模型 ID") customModel else selectedModel).trim()
+                        prefs.edit()
+                            .putString("embedding_api_key", wrappedApiKey)
+                            .putString("embedding_base_url", normalizedUrl)
+                            .putString("embedding_model", normalizedModel.ifBlank { "text-embedding-3-small" })
+                            .apply()
+                        baseUrl = normalizedUrl
+                        status = "配置已保存，正在刷新记忆服务…"
+                        scope.launch {
+                            val source =
+                                runCatching {
+                                    TavernApplication.instance.container.database.settingsDao()
+                                        .getValue("embedding_source") ?: "auto"
+                                }.getOrDefault("auto")
+                            val active =
+                                runCatching {
+                                    TavernApplication.instance.container.refreshEmbeddingSource(source)
+                                }.getOrDefault(false)
+                            status =
+                                when {
+                                    active -> "已保存并立即生效，Embedding 服务已启用。"
+                                    apiKey.isBlank() -> "已保存。密钥为空，向量记忆 API 暂不可用。"
+                                    else -> "已保存，但服务未能启用；请检查 API 地址、密钥和模型兼容性。"
+                                }
+                        }
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
