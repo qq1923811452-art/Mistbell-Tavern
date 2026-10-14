@@ -195,7 +195,7 @@ jobs:
           def safe_markdown(value, limit=1200):
               # Model output is untrusted; neutralize links, HTML, mentions, and Markdown syntax.
               text = html.unescape(str(value or ""))
-              text = re.sub(r"(?i)(?:https?://|www\\.)[^ ]+", "[URL omitted]", text)
+              text = re.sub(r"(?i)(?:https?://|www\.)[^ ]+", "[URL omitted]", text)
               text = re.sub(r"(?i)mailto:[^ ]+", "[URL omitted]", text)
               text = text.replace("<", "&lt;").replace(">", "&gt;")
               text = text.replace("@", "@" + chr(8203))
