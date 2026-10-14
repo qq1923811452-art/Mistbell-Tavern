@@ -178,6 +178,27 @@ class BackupManagerTest {
     }
 
     @Test
+    fun `API 配置备份拒绝无法解密的密钥`() {
+        val entry =
+            BackupManager.ApiConfigBackupEntry(
+                id = "provider-bad-key",
+                name = "Provider",
+                apiUrl = "https://example.invalid/v1",
+                apiKey = "enc:v1:not-base64",
+                model = "model-x",
+                createdAt = 100L,
+                updatedAt = 200L,
+            )
+
+        try {
+            entry.toEntity()
+            fail("无法解密的备份 API Key 必须中止恢复")
+        } catch (e: IllegalStateException) {
+            assertTrue(e.message!!.contains("无法解密"))
+        }
+    }
+
+    @Test
     fun `自定义提示词备份 DTO 完整往返`() {
         val entity =
             CustomPromptEntity(
