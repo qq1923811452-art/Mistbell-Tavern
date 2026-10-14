@@ -34,10 +34,13 @@ object SecureStore {
 
     fun isEncrypted(value: String): Boolean {
         if (!value.startsWith(PREFIX)) return false
-        return runCatching {
-            val payload = Base64.getDecoder().decode(value.removePrefix(PREFIX))
-            payload.size > IV_SIZE + TAG_BYTES
-        }.getOrDefault(false)
+        val payload =
+            runCatching { Base64.getDecoder().decode(value.removePrefix(PREFIX)) }
+                .getOrNull() ?: return false
+        if (payload.size <= IV_SIZE + TAG_BYTES) return false
+        // A prefix and plausible Base64 length are not proof of encryption: a literal API key
+        // can imitate the envelope. Only accept values that authenticate and decrypt with our key.
+        return unwrap(value).isNotEmpty()
     }
 
     /** Key names that may hold credentials or serialized provider secrets. */
