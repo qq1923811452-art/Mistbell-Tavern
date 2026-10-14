@@ -3,6 +3,9 @@ package com.mistbell.tavern.android.data.vector
 import android.util.Log
 import com.mistbell.tavern.android.data.api.ApiCallTrace
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.nio.charset.StandardCharsets
@@ -53,6 +56,22 @@ class VectorMemoryService(
             true,
         )
     private val embeddingCacheMutex = Mutex()
+
+    private val _storageError = MutableStateFlow<String?>(null)
+    /** Non-destructive diagnostic surfaced in Settings when persisted vectors cannot be loaded. */
+    val storageError: StateFlow<String?> = _storageError.asStateFlow()
+
+    private fun recordStorageFailure(error: Exception) {
+        var cause: Throwable? = error
+        while (cause != null) {
+            if (cause.message?.contains("refusing to treat it as empty") == true) {
+                _storageError.value =
+                    "向量记忆文件读取失败。原文件已保留；请先导出备份或联系支持，不要清空应用数据。"
+                return
+            }
+            cause = cause.cause
+        }
+    }
 
     /**
      * Reuse the exact text embedding across the write-then-retrieve path.
@@ -140,6 +159,7 @@ class VectorMemoryService(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
+            recordStorageFailure(e)
             Log.e(TAG, "Failed to store message vector (${e.javaClass.simpleName})")
             throw e
         }
@@ -200,6 +220,7 @@ class VectorMemoryService(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
+            recordStorageFailure(e)
             Log.e(TAG, "Failed to search relevant memories (${e.javaClass.simpleName})")
             return emptyList()
         }
@@ -319,6 +340,7 @@ class VectorMemoryService(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
+            recordStorageFailure(e)
             Log.e(TAG, "Failed to get statistics (${e.javaClass.simpleName})")
             VectorStatistics(0, 0)
         }
