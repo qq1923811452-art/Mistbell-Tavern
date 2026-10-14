@@ -103,13 +103,21 @@ object ApiConfigMigration {
         db.withTransaction {
             encryptLegacyApiKeys(db)
             val settingsDao = db.settingsDao()
+            val alreadyMigrated =
+                settingsDao.getValue(MIGRATED_FLAG_KEY) == "1" || db.apiConfigDao().getCount() > 0
 
-            // Encrypt legacy settings before any early return, including already-migrated installs.
+            // Encrypt active/legacy settings before returning from an already-migrated install.
             listOf("providers_json", "llm_api_key").forEach { key ->
                 val value = settingsDao.getValue(key).orEmpty()
                 if (value.isNotBlank()) {
                     val encrypted = SecureStore.isEncrypted(value)
-                    check(!value.startsWith("enc:v1:") || encrypted) {
+                    val unreadableCiphertext = value.startsWith("enc:v1:") && !encrypted
+                    if (unreadableCiphertext && key == "providers_json" && alreadyMigrated) {
+                        // This legacy blob is no longer the source of truth after migration.
+                        // Preserve it untouched, but do not let it block encryption of active secrets.
+                        return@forEach
+                    }
+                    check(!unreadableCiphertext) {
                         "设置 $key 的加密数据不可读取，迁移已中止以保留原始数据"
                     }
                     if (!encrypted) settingsDao.upsert(SettingsEntity(key, SecureStore.wrap(value)))
@@ -117,8 +125,6 @@ object ApiConfigMigration {
             }
 
             // 已迁移 / api_configs 已有数据（恢复备份场景）：置标志后返回
-            val alreadyMigrated =
-                settingsDao.getValue(MIGRATED_FLAG_KEY) == "1" || db.apiConfigDao().getCount() > 0
             if (alreadyMigrated) {
                 settingsDao.upsert(SettingsEntity(MIGRATED_FLAG_KEY, "1"))
                 return@withTransaction
