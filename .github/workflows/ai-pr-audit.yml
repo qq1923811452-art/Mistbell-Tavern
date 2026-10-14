@@ -352,6 +352,12 @@ jobs:
               report["findings"] = verified_findings[:20]
               report["findings_truncated"] = raw_findings_count > 20 or len(verified_findings) > 20
               report["unverified_findings_dropped"] = rejected_evidence_count
+              if rejected_evidence_count > 0 and not verified_findings:
+                  report["summary"] = (
+                      "模型返回了候选问题，但所有候选 finding 的证据都无法与送审 diff 精确匹配，"
+                      "因此已全部丢弃。当前没有经过证据验证的可行动 finding；这不能视为无缺陷结论，"
+                      "请维护者人工复核。"
+                  )
           except Exception as exc:
               print("Could not validate structured AI response:", type(exc).__name__)
               raise SystemExit(1)
