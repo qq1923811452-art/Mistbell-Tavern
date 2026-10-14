@@ -4,7 +4,9 @@ import android.content.Context
 import android.net.Uri
 import androidx.room.withTransaction
 import com.mistbell.tavern.android.TavernApplication
+import com.mistbell.tavern.android.data.local.entity.ApiConfigEntity
 import com.mistbell.tavern.android.data.local.entity.CharacterEntity
+import com.mistbell.tavern.android.data.local.entity.CustomPromptEntity
 import com.mistbell.tavern.android.data.local.entity.MemoryEntity
 import com.mistbell.tavern.android.data.local.entity.MessageEntity
 import com.mistbell.tavern.android.data.local.entity.SessionEntity
@@ -71,7 +73,95 @@ class BackupManager(private val context: Context) {
         val sensitive: Boolean = false,
     )
 
-    /** 十张业务表的完整快照（导出采集 / 恢复解码共用结构） */
+    /** API 配置备份 DTO：API Key 在 ZIP 中明文保存，恢复时重新绑定本机 Keystore。 */
+    @Serializable
+    data class ApiConfigBackupEntry(
+        val id: String,
+        val name: String,
+        val apiUrl: String,
+        val apiKey: String,
+        val model: String,
+        val isDefault: Boolean = false,
+        val lastTestStatus: String = "UNKNOWN",
+        val lastTestTime: Long = 0L,
+        val sortOrder: Int = 0,
+        val type: String = "openai",
+        val context1m: Boolean = false,
+        val streamingEnabled: Boolean = true,
+        val thinkingDisabled: Boolean = false,
+        val createdAt: Long,
+        val updatedAt: Long,
+    ) {
+        fun toEntity(): ApiConfigEntity = ApiConfigEntity(
+            id = id,
+            name = name,
+            apiUrl = apiUrl,
+            apiKey = if (apiKey.isEmpty()) "" else SecureStore.wrap(apiKey),
+            model = model,
+            isDefault = isDefault,
+            lastTestStatus = lastTestStatus,
+            lastTestTime = lastTestTime,
+            sortOrder = sortOrder,
+            type = type,
+            context1m = context1m,
+            streamingEnabled = streamingEnabled,
+            thinkingDisabled = thinkingDisabled,
+            createdAt = createdAt,
+            updatedAt = updatedAt,
+        )
+
+        companion object {
+            fun fromEntity(entity: ApiConfigEntity): ApiConfigBackupEntry {
+                val encrypted = SecureStore.isEncrypted(entity.apiKey)
+                check(!entity.apiKey.startsWith("enc:v1:") || encrypted) {
+                    "API 配置 ${entity.id} 的加密格式损坏，已中止备份以避免丢失敏感数据"
+                }
+                val plainKey = if (encrypted) SecureStore.unwrap(entity.apiKey) else entity.apiKey
+                check(!encrypted || plainKey.isNotEmpty()) {
+                    "无法解密 API 配置 ${entity.id}，已中止备份以避免丢失敏感数据"
+                }
+                return ApiConfigBackupEntry(
+                    id = entity.id, name = entity.name, apiUrl = entity.apiUrl,
+                    apiKey = plainKey, model = entity.model, isDefault = entity.isDefault,
+                    lastTestStatus = entity.lastTestStatus, lastTestTime = entity.lastTestTime,
+                    sortOrder = entity.sortOrder, type = entity.type, context1m = entity.context1m,
+                    streamingEnabled = entity.streamingEnabled, thinkingDisabled = entity.thinkingDisabled,
+                    createdAt = entity.createdAt, updatedAt = entity.updatedAt,
+                )
+            }
+        }
+    }
+
+    @Serializable
+    data class CustomPromptBackupEntry(
+        val id: String,
+        val name: String,
+        val content: String,
+        val type: String,
+        val position: String,
+        val isEnabled: Boolean = true,
+        val priority: Int = 0,
+        val tags: String = "",
+        val description: String = "",
+        val createdAt: Long,
+        val updatedAt: Long,
+    ) {
+        fun toEntity() = CustomPromptEntity(
+            id = id, name = name, content = content, type = type, position = position,
+            isEnabled = isEnabled, priority = priority, tags = tags, description = description,
+            createdAt = createdAt, updatedAt = updatedAt,
+        )
+        companion object {
+            fun fromEntity(entity: CustomPromptEntity) = CustomPromptBackupEntry(
+                id = entity.id, name = entity.name, content = entity.content, type = entity.type,
+                position = entity.position, isEnabled = entity.isEnabled, priority = entity.priority,
+                tags = entity.tags, description = entity.description, createdAt = entity.createdAt,
+                updatedAt = entity.updatedAt,
+            )
+        }
+    }
+
+    /** 当前快照包含全部 12 张业务表（导出采集 / 恢复解码共用结构）。 */
     private data class Tables(
         val characters: List<CharacterEntity> = emptyList(),
         val sessions: List<SessionEntity> = emptyList(),
@@ -83,6 +173,8 @@ class BackupManager(private val context: Context) {
         val structuredMemories: List<StructuredMemoryEntity> = emptyList(),
         val vectorMemories: List<VectorMemoryEntity> = emptyList(),
         val themePacks: List<ThemePackEntity> = emptyList(),
+        val apiConfigs: List<ApiConfigBackupEntry> = emptyList(),
+        val customPrompts: List<CustomPromptBackupEntry> = emptyList(),
     )
 
     companion object {
@@ -98,6 +190,8 @@ class BackupManager(private val context: Context) {
         private const val STRUCTURED_MEMORY = "structured_memory.json"
         private const val VECTOR_MEMORY = "vector_memory.json"
         private const val THEME_PACKS = "theme_packs.json"
+        private const val API_CONFIGS = "api_configs.json"
+        private const val CUSTOM_PROMPTS = "custom_prompts.json"
         internal const val VECTOR_STORE_FILE = "vector_store.json"
         internal const val THEMES_DIR_PREFIX = "themes/"
         private const val MAX_BACKUP_ENTRIES = 4096
@@ -256,6 +350,8 @@ class BackupManager(private val context: Context) {
                     )
                     zip.putJsonEntry(VECTOR_MEMORY, encodeList(tables.vectorMemories, VectorMemoryEntity.serializer()))
                     zip.putJsonEntry(THEME_PACKS, encodeList(tables.themePacks, ThemePackEntity.serializer()))
+                    zip.putJsonEntry(API_CONFIGS, encodeList(tables.apiConfigs, ApiConfigBackupEntry.serializer()))
+                    zip.putJsonEntry(CUSTOM_PROMPTS, encodeList(tables.customPrompts, CustomPromptBackupEntry.serializer()))
 
                     // 主题包资产与向量库文件（可选条目；缺失不报错）
                     tables.themePacks.forEach { pack -> putThemeAssets(zip, context, pack) }
@@ -289,6 +385,8 @@ class BackupManager(private val context: Context) {
             structuredMemories = db.structuredMemoryDao().getAllOnce(),
             vectorMemories = db.vectorMemoryDao().getAllOnce(),
             themePacks = db.themePackDao().observeAll().first(),
+            apiConfigs = db.apiConfigDao().getAll().map(ApiConfigBackupEntry::fromEntity),
+            customPrompts = db.customPromptDao().getAll().map(CustomPromptBackupEntry::fromEntity),
         )
     }
 
@@ -324,6 +422,8 @@ class BackupManager(private val context: Context) {
             structuredMemories = decodeList(files[STRUCTURED_MEMORY], StructuredMemoryEntity.serializer()),
             vectorMemories = decodeList(files[VECTOR_MEMORY], VectorMemoryEntity.serializer()),
             themePacks = decodeList(files[THEME_PACKS], ThemePackEntity.serializer()),
+            apiConfigs = decodeList(files[API_CONFIGS], ApiConfigBackupEntry.serializer()),
+            customPrompts = decodeList(files[CUSTOM_PROMPTS], CustomPromptBackupEntry.serializer()),
         )
 
     /** 全部表在同一事务合并：要么全部成功，要么回到恢复前状态 */
@@ -382,6 +482,16 @@ class BackupManager(private val context: Context) {
             newPacks.forEach { db.themePackDao().upsert(it) }
             added[THEME_PACKS] = newPacks.size
             skipped[THEME_PACKS] = dupPacks.size
+
+            val (newApiConfigs, dupApiConfigs) = t.apiConfigs.partition { db.apiConfigDao().getById(it.id) == null }
+            db.apiConfigDao().insertAll(newApiConfigs.map(ApiConfigBackupEntry::toEntity))
+            added[API_CONFIGS] = newApiConfigs.size
+            skipped[API_CONFIGS] = dupApiConfigs.size
+
+            val (newCustomPrompts, dupCustomPrompts) = t.customPrompts.partition { db.customPromptDao().getById(it.id) == null }
+            db.customPromptDao().insertAll(newCustomPrompts.map(CustomPromptBackupEntry::toEntity))
+            added[CUSTOM_PROMPTS] = newCustomPrompts.size
+            skipped[CUSTOM_PROMPTS] = dupCustomPrompts.size
         }
         return BackupSummary(added = added, skipped = skipped.filterValues { it > 0 })
     }
@@ -412,6 +522,8 @@ class BackupManager(private val context: Context) {
             STRUCTURED_MEMORY to t.structuredMemories.size,
             VECTOR_MEMORY to t.vectorMemories.size,
             THEME_PACKS to t.themePacks.size,
+            API_CONFIGS to t.apiConfigs.size,
+            CUSTOM_PROMPTS to t.customPrompts.size,
         )
 
     /**
