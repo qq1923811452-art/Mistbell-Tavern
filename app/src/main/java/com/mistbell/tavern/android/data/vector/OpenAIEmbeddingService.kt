@@ -401,7 +401,24 @@ class OpenAIEmbeddingService(
 
         Log.d(TAG, "Generated ${embeddingResponse.data.size} embeddings in batch")
 
-        return embeddingResponse.data.sortedBy { it.index }.map { data ->
+        require(embeddingResponse.data.size == texts.size) {
+            "Embedding API returned ${embeddingResponse.data.size} vectors for ${texts.size} inputs"
+        }
+        val responseIndexes = embeddingResponse.data.map { it.index }
+        val orderedData =
+            when {
+                responseIndexes.all { it == null } -> embeddingResponse.data
+                responseIndexes.any { it == null } ->
+                    error("Embedding API returned a mixture of indexed and unindexed vectors")
+                else -> {
+                    val sorted = embeddingResponse.data.sortedBy { it.index }
+                    require(sorted.mapNotNull { it.index } == texts.indices.toList()) {
+                        "Embedding API returned missing or duplicate vector indexes"
+                    }
+                    sorted
+                }
+            }
+        return orderedData.map { data ->
             FloatArray(data.embedding.size) { i -> data.embedding[i].toFloat() }
         }
     }
@@ -441,6 +458,6 @@ class OpenAIEmbeddingService(
     @Serializable
     private data class EmbeddingData(
         val embedding: List<Double>,
-        val index: Int = 0,
+        val index: Int? = null,
     )
 }
