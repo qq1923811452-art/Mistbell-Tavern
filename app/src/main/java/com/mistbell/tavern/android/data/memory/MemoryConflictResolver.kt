@@ -1,12 +1,12 @@
 package com.mistbell.tavern.android.data.memory
 
 import com.mistbell.tavern.android.data.api.model.StructuredMemory
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
 import java.time.Instant
 import java.util.Locale
@@ -21,8 +21,7 @@ import java.util.Locale
 internal object MemoryConflictResolver {
     private data class Fact(val subject: String, val relation: String, val value: String)
 
-    fun isSuperseded(memory: StructuredMemory): Boolean =
-        readObject(memory.structuredData)?.stringValue("status") == "superseded"
+    fun isSuperseded(memory: StructuredMemory): Boolean = readObject(memory.structuredData)?.stringValue("status") == "superseded"
 
     fun findSuperseded(
         subject: String,
@@ -78,8 +77,7 @@ internal object MemoryConflictResolver {
         return if (obj == null || hasMissingField) null else Fact(subject, relation, value)
     }
 
-    private fun JsonObject.stringValue(key: String): String? =
-        (this[key] as? JsonPrimitive)?.contentOrNull
+    private fun JsonObject.stringValue(key: String): String? = (this[key] as? JsonPrimitive)?.contentOrNull
 
     private fun readObject(raw: String?) =
         try {
