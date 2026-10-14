@@ -201,7 +201,7 @@ jobs:
               for line in raw.splitlines():
                   if re.search(r"(?i)\b(KEY|TOKEN|SECRET|PASSWORD|PASSWD|AUTHORIZATION|CREDENTIAL)\b", line):
                       line = "[redacted: sensitive-looking log line]"
-                  line = re.sub(r"(?i)(authorization\s*:\s*bearer\s+)[^\s\\"'<>]+", r"\1[REDACTED]", line)
+                  line = re.sub(r"(?i)(authorization\s*:\s*bearer\s+)[^\s\"'<>]+", r"\1[REDACTED]", line)
                   line = re.sub(r"\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{30,})\b", "[REDACTED TOKEN]", line)
                   line = re.sub(r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b", "[REDACTED JWT]", line)
                   safe_lines.append(line)
