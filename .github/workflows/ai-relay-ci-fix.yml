@@ -197,7 +197,7 @@ jobs:
                   head = archive[:4]
                   if head.startswith(b"PK"):
                       guess = "zip-like-but-invalid"
-                  elif head.startswith(b"\\x1f\\x8b"):
+                  elif head.startswith(b"\x1f\x8b"):
                       guess = "gzip"
                   elif archive[:1] in (b"<", b"{", b"["):
                       guess = "html-json-or-text"
