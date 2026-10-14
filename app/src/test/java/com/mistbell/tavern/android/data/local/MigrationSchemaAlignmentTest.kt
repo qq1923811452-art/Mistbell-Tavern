@@ -245,7 +245,7 @@ class MigrationSchemaAlignmentTest {
                 "index_custom_prompts_isEnabled",
                 "index_custom_prompts_priority",
             )
-        val actualIndexes = extractIndexNames(sql).filter { it in expectedIndexes }
+        val actualIndexes = extractIndexNames(sql).filter { it in expectedIndexes }.toSet()
         assertEquals("v27 迁移应补齐 v26 新建数据库缺少的全部实体索引", expectedIndexes, actualIndexes)
     }
 
