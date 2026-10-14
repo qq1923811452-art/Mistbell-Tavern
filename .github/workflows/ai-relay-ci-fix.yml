@@ -280,7 +280,7 @@ jobs:
                           if "##[group]Run " not in line:
                               continue
                           stamp = line_time(line)
-                          if stamp is not None and started <= stamp <= completed + timedelta(seconds=1):
+                          if stamp is not None and started - timedelta(seconds=1) <= stamp <= completed + timedelta(seconds=2):
                               candidates.append((abs((stamp - started).total_seconds()), i))
                       if not candidates:
                           raise SystemExit(
