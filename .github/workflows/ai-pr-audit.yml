@@ -201,10 +201,17 @@ jobs:
 
           try:
               relay_data = json.loads(response_body)
-              choices = relay_data.get("choices") or []
-              answer = choices[0]["message"]["content"]
-              if not isinstance(answer, str):
-                  raise ValueError("model content is not text")
+              if not isinstance(relay_data, dict):
+                  raise ValueError("relay response is not a JSON object")
+              choices = relay_data.get("choices")
+              if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
+                  raise ValueError("relay response has missing or empty choices")
+              message = choices[0].get("message")
+              if not isinstance(message, dict):
+                  raise ValueError("first choice has no message object")
+              answer = message.get("content")
+              if not isinstance(answer, str) or not answer.strip():
+                  raise ValueError("first choice has empty or non-text content")
               cleaned = answer.strip()
               if cleaned.startswith("```"):
                   cleaned = re.sub(r"^\`\`\`(?:json)?\s*", "", cleaned)
