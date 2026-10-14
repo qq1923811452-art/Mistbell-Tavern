@@ -67,6 +67,7 @@ class SecureStoreInstrumentedTest {
         assertTrue(SecureStore.isEncrypted(restored.value))
         assertEquals("backup-api-key", SecureStore.unwrap(restored.value))
     }
+
     @Test
     fun backupCredentialAliasesAreEncryptedEvenWhenUntrustedSensitiveFlagIsFalse() {
         listOf(
@@ -92,5 +93,4 @@ class SecureStoreInstrumentedTest {
             assertEquals("untrusted-backup-secret", SecureStore.unwrap(restored.value))
         }
     }
-
 }
