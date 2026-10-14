@@ -606,7 +606,10 @@ class MigrationDataIntegrityTest {
             // Existing messages must survive v25→26→27 without inventing usage data.
             db.openHelper.writableDatabase
                 .query(
-                    "SELECT id, content, usage_json, prompt_context_snapshot_json FROM messages WHERE id IN (?, ?, ?) ORDER BY id",
+                    """
+                    SELECT id, content, usage_json, prompt_context_snapshot_json
+                    FROM messages WHERE id IN (?, ?, ?) ORDER BY id
+                    """.trimIndent(),
                     arrayOf("msg-1", "msg-2", "msg-3"),
                 ).use { cursor ->
                     assertEquals("三条旧消息均应保留", 3, cursor.count)
