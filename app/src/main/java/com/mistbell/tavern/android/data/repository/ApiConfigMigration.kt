@@ -1,5 +1,6 @@
 package com.mistbell.tavern.android.data.repository
 
+import androidx.room.withTransaction
 import com.mistbell.tavern.android.data.local.AppDatabase
 import com.mistbell.tavern.android.data.local.entity.ApiConfigEntity
 import com.mistbell.tavern.android.data.local.entity.SettingsEntity
@@ -98,7 +99,7 @@ object ApiConfigMigration {
     /**
      * 幂等迁移入口：已迁移 / api_configs 已有数据 / 无 providers_json 都直接置标志返回。
      */
-    suspend fun migrateIfNeeded(db: AppDatabase) {
+    suspend fun migrateIfNeeded(db: AppDatabase) = db.withTransaction {
         encryptLegacyApiKeys(db)
         val settingsDao = db.settingsDao()
 
@@ -115,14 +116,14 @@ object ApiConfigMigration {
             settingsDao.getValue(MIGRATED_FLAG_KEY) == "1" || db.apiConfigDao().getCount() > 0
         if (alreadyMigrated) {
             settingsDao.upsert(SettingsEntity(MIGRATED_FLAG_KEY, "1"))
-            return
+            return@withTransaction
         }
 
         val providers =
             parseProvidersJson(SecureStore.unwrap(settingsDao.getValue("providers_json") ?: ""))
         if (providers.isEmpty()) {
             settingsDao.upsert(SettingsEntity(MIGRATED_FLAG_KEY, "1"))
-            return
+            return@withTransaction
         }
 
         val activeId = settingsDao.getValue("active_provider_id") ?: ""
