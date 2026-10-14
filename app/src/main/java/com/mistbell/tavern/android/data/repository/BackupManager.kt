@@ -163,9 +163,19 @@ class BackupManager(private val context: Context) {
         fun toBackupEntry(entity: SettingsEntity): SettingsBackupEntry {
             val encrypted = SecureStore.isEncrypted(entity.value)
             val sensitive = encrypted || isSensitiveSettingKey(entity.key)
+            val value =
+                if (encrypted) {
+                    SecureStore.unwrap(entity.value).also { decrypted ->
+                        check(decrypted.isNotEmpty()) {
+                            "无法解密设置 ${entity.key}，已中止备份以避免丢失敏感数据"
+                        }
+                    }
+                } else {
+                    entity.value
+                }
             return SettingsBackupEntry(
                 key = entity.key,
-                value = if (encrypted) SecureStore.unwrap(entity.value) else entity.value,
+                value = value,
                 sensitive = sensitive,
             )
         }
