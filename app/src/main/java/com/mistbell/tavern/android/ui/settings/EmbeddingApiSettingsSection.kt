@@ -76,6 +76,22 @@ fun EmbeddingApiSettingsSection() {
                 placeholder = { Text("https://api.openai.com/v1") },
                 singleLine = true,
             )
+            when {
+                baseUrl.isNotBlank() && !ApiBaseUrlPolicy.isValid(baseUrl) -> {
+                    Text(
+                        text = "地址格式无效，请输入包含主机名的 http:// 或 https:// URL。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+                ApiBaseUrlPolicy.requiresCleartextWarning(baseUrl) -> {
+                    Text(
+                        text = "安全提示：Android 默认阻止明文 HTTP，此地址可能无法连接。建议改用 HTTPS；仅 localhost、127.0.0.1 和 10.0.2.2 有例外。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.tertiary,
+                    )
+                }
+            }
             ExposedDropdownMenuBox(
                 expanded = modelMenuExpanded,
                 onExpandedChange = { modelMenuExpanded = it },
@@ -137,10 +153,11 @@ fun EmbeddingApiSettingsSection() {
                 prefs = prefs,
                 scope = scope,
                 values = EmbeddingApiSaveValues(apiKey, baseUrl, selectedModel, customModel),
-                callbacks = EmbeddingApiSaveCallbacks(
-                    onBaseUrlNormalized = { baseUrl = it },
-                    onStatusChanged = { status = it },
-                ),
+                callbacks =
+                    EmbeddingApiSaveCallbacks(
+                        onBaseUrlNormalized = { baseUrl = it },
+                        onStatusChanged = { status = it },
+                    ),
             )
             status?.let {
                 Text(
@@ -190,6 +207,13 @@ private fun saveEmbeddingApiSettings(
     callbacks: EmbeddingApiSaveCallbacks,
 ) {
     val apiKey = values.apiKey
+    val normalizedUrl =
+        values.baseUrl.trim().trimEnd('/').ifBlank { "https://api.openai.com/v1" }
+    if (!ApiBaseUrlPolicy.isValid(normalizedUrl)) {
+        callbacks.onStatusChanged("保存失败：API 地址格式无效，请输入包含主机名的 http:// 或 https:// URL。")
+        return
+    }
+
     // Do not modify preferences unless secret encryption succeeds.
     val wrappedApiKey =
         try {
@@ -199,8 +223,6 @@ private fun saveEmbeddingApiSettings(
             null
         } ?: return
 
-    val normalizedUrl =
-        values.baseUrl.trim().trimEnd('/').ifBlank { "https://api.openai.com/v1" }
     val model =
         (if (values.selectedModel == "自定义模型 ID") values.customModel else values.selectedModel).trim()
     val normalizedModel = model.ifBlank { "text-embedding-3-small" }
