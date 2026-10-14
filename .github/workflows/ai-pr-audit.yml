@@ -305,15 +305,26 @@ jobs:
                       return False
                   if not isinstance(evidence, str) or not evidence.strip():
                       return False
+                  normalized_path = file_name.strip().strip("`")
+                  if normalized_path.startswith(("./", "a/", "b/")):
+                      normalized_path = normalized_path[2:] if normalized_path.startswith("./") else normalized_path[2:]
+                  file_lines = diff_lines_by_file.get(normalized_path, [])
                   evidence_lines = evidence.strip().splitlines()
                   if not 1 <= len(evidence_lines) <= 3:
                       return False
-                  file_lines = diff_lines_by_file.get(file_name.strip(), [])
-                  width = len(evidence_lines)
-                  return any(
-                      file_lines[i:i + width] == evidence_lines
-                      for i in range(len(file_lines) - width + 1)
-                  )
+                  # Some models include the leading +/- diff marker when quoting a line.
+                  # Try both raw source text and marker-stripped text; both must match contiguously.
+                  candidates = [evidence_lines]
+                  if all(line[:1] in ("+", "-", " ") for line in evidence_lines):
+                      candidates.append([line[1:] for line in evidence_lines])
+                  for candidate in candidates:
+                      width = len(candidate)
+                      if any(
+                          file_lines[i:i + width] == candidate
+                          for i in range(len(file_lines) - width + 1)
+                      ):
+                          return True
+                  return False
               verified_findings = []
               rejected_evidence_count = 0
               for finding in findings:
