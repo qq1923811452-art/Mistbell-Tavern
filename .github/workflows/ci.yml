@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [ feature, main, master ]
+    branches: [ feature, main, master, 'upgrade/**' ]
   pull_request:
 
 jobs:
@@ -34,6 +34,15 @@ jobs:
 
       - name: License audit (required)
         run: ./gradlew licenseGuard --stacktrace --no-daemon --no-parallel
+
+      - name: Upload generated Room v26 schema
+        if: ${{ always() && hashFiles('app/schemas/com.mistbell.tavern.android.data.local.AppDatabase/26.json') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: room-schema-v26
+          path: app/schemas/com.mistbell.tavern.android.data.local.AppDatabase/26.json
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Upload debug APK
         if: success()
