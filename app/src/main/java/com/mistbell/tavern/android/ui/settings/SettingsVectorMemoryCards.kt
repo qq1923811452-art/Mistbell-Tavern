@@ -25,6 +25,7 @@ internal fun VectorMemorySettingsCard(viewModel: SettingsViewModel) {
     val recallTopK by viewModel.memoryRecallTopK.collectAsState()
     val threshold by viewModel.memorySimilarityThreshold.collectAsState()
     val cacheStats by viewModel.vectorCacheStatistics.collectAsState()
+    val storageError by viewModel.vectorStorageError.collectAsState()
     val cacheHitRatePercent =
         String.format(Locale.US, "%.1f", cacheStats.hitRate * HIT_RATE_PERCENT_MULTIPLIER)
 
@@ -56,6 +57,14 @@ internal fun VectorMemorySettingsCard(viewModel: SettingsViewModel) {
                 steps = 17,
                 onValueChange = { viewModel.setMemorySimilarityThreshold(it) },
             )
+
+            storageError?.let { message ->
+                Text(
+                    text = message,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
 
             VectorCacheStatisticsSection(cacheStats, cacheHitRatePercent)
 
