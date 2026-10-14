@@ -85,8 +85,8 @@ class VectorMemoryService(
 
     /**
      * Reuse the exact text embedding across the write-then-retrieve path.
-     * The mutex covers cache lookup and generation so concurrent requests for the same text
-     * cannot race through the miss path and issue duplicate embedding API requests.
+     * A deterministic stripe lock covers cache lookup and generation for each key, preventing
+     * duplicate same-text misses while allowing most unrelated texts to embed concurrently.
      */
     private fun embeddingCacheKey(text: String): String {
         val digest =
