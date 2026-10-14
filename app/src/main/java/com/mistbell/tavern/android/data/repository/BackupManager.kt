@@ -208,6 +208,16 @@ class BackupManager(private val context: Context) {
                 "备份文件非法：主题包 ID 包含不安全的路径字符"
             }
         }
+
+        internal fun validateBackupEntryPath(name: String, isDirectory: Boolean) {
+            val path = if (isDirectory) name.removeSuffix("/") else name
+            require(path.isNotBlank() && !path.startsWith("/") && '\\' !in path) {
+                "备份文件非法：条目路径格式不安全"
+            }
+            require(path.split('/').none { it.isBlank() || it == "." || it == ".." }) {
+                "备份文件非法：条目路径包含不安全的路径段"
+            }
+        }
     }
 
     // ---- 导出 ----
@@ -513,12 +523,7 @@ private fun storeEntry(
     bytes: ByteArray,
 ) {
     val name = entry.name
-    require(name.isNotBlank() && !name.startsWith("/") && '\\' !in name) {
-        "备份文件非法：条目路径格式不安全"
-    }
-    require(name.split('/').none { it.isBlank() || it == "." || it == ".." }) {
-        "备份文件非法：条目路径包含不安全的路径段"
-    }
+    BackupManager.validateBackupEntryPath(name, entry.isDirectory)
     if (entry.isDirectory) return
     require(!files.containsKey(name)) { "备份文件非法：存在重复条目 $name" }
     files[name] =
