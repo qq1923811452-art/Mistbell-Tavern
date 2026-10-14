@@ -662,6 +662,31 @@ class MigrationDataIntegrityTest {
                     assertEquals("省略 thinkingDisabled 时数据库默认应为 false/0", 0, cursor.getInt(0))
                 }
 
+            // The v26→v27 table rebuild must leave exactly the indexes declared by Room v27.
+            // This guards against both dropped indexes and accidental undeclared leftovers.
+            val expectedIndexes =
+                mapOf(
+                    "api_configs" to setOf("index_api_configs_isDefault", "index_api_configs_sortOrder"),
+                    "custom_prompts" to
+                        setOf(
+                            "index_custom_prompts_type",
+                            "index_custom_prompts_position",
+                            "index_custom_prompts_isEnabled",
+                            "index_custom_prompts_priority",
+                        ),
+                )
+            expectedIndexes.forEach { (table, expected) ->
+                val actual = mutableSetOf<String>()
+                db.openHelper.writableDatabase
+                    .query(
+                        "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = ? AND name NOT LIKE 'sqlite_autoindex%'",
+                        arrayOf(table),
+                    ).use { cursor ->
+                        while (cursor.moveToNext()) actual += cursor.getString(0)
+                    }
+                assertEquals("$table 的迁移后索引应与 Room v27 schema 完全一致", expected, actual)
+            }
+
             // The migrated Room database must still accept writes after the new columns are validated.
             db.messageDao().upsert(
                 com.mistbell.tavern.android.data.local.entity.MessageEntity(
