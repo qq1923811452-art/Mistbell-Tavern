@@ -92,7 +92,8 @@ class BackupManager(private val context: Context) {
         val createdAt: Long,
         val updatedAt: Long,
     ) {
-        fun toEntity(): ApiConfigEntity = ApiConfigEntity(
+        fun toEntity(): ApiConfigEntity =
+            ApiConfigEntity(
             id = id,
             name = name,
             apiUrl = apiUrl,
@@ -146,13 +147,16 @@ class BackupManager(private val context: Context) {
         val createdAt: Long,
         val updatedAt: Long,
     ) {
-        fun toEntity() = CustomPromptEntity(
+        fun toEntity() =
+            CustomPromptEntity(
             id = id, name = name, content = content, type = type, position = position,
             isEnabled = isEnabled, priority = priority, tags = tags, description = description,
             createdAt = createdAt, updatedAt = updatedAt,
         )
+        
         companion object {
-            fun fromEntity(entity: CustomPromptEntity) = CustomPromptBackupEntry(
+            fun fromEntity(entity: CustomPromptEntity) =
+                CustomPromptBackupEntry(
                 id = entity.id, name = entity.name, content = entity.content, type = entity.type,
                 position = entity.position, isEnabled = entity.isEnabled, priority = entity.priority,
                 tags = entity.tags, description = entity.description, createdAt = entity.createdAt,
@@ -351,7 +355,10 @@ class BackupManager(private val context: Context) {
                     zip.putJsonEntry(VECTOR_MEMORY, encodeList(tables.vectorMemories, VectorMemoryEntity.serializer()))
                     zip.putJsonEntry(THEME_PACKS, encodeList(tables.themePacks, ThemePackEntity.serializer()))
                     zip.putJsonEntry(API_CONFIGS, encodeList(tables.apiConfigs, ApiConfigBackupEntry.serializer()))
-                    zip.putJsonEntry(CUSTOM_PROMPTS, encodeList(tables.customPrompts, CustomPromptBackupEntry.serializer()))
+                    zip.putJsonEntry(
+                        CUSTOM_PROMPTS,
+                        encodeList(tables.customPrompts, CustomPromptBackupEntry.serializer()),
+                    )
 
                     // 主题包资产与向量库文件（可选条目；缺失不报错）
                     tables.themePacks.forEach { pack -> putThemeAssets(zip, context, pack) }
@@ -488,7 +495,8 @@ class BackupManager(private val context: Context) {
             added[API_CONFIGS] = newApiConfigs.size
             skipped[API_CONFIGS] = dupApiConfigs.size
 
-            val (newCustomPrompts, dupCustomPrompts) = t.customPrompts.partition { db.customPromptDao().getById(it.id) == null }
+            val (newCustomPrompts, dupCustomPrompts) =
+                t.customPrompts.partition { db.customPromptDao().getById(it.id) == null }
             db.customPromptDao().insertAll(newCustomPrompts.map(CustomPromptBackupEntry::toEntity))
             added[CUSTOM_PROMPTS] = newCustomPrompts.size
             skipped[CUSTOM_PROMPTS] = dupCustomPrompts.size
