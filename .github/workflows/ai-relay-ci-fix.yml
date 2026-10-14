@@ -351,10 +351,12 @@ jobs:
           ODYS_API_KEY: ${{ secrets.ODYS_API_KEY }}
           ODYS_MODEL: ${{ secrets.ODYS_MODEL }}
           ODYS_MODEL_B: ${{ secrets.ODYS_MODEL_B }}
+          ODYS_API_BASE_URL: ${{ secrets.ODYS_API_BASE_URL || 'https://api.odys.work/v1' }}
         shell: bash
         run: |
           set -euo pipefail
           test -n "$ODYS_API_KEY" || { echo "::error::Missing repository secret ODYS_API_KEY"; exit 1; }
+          case "$ODYS_API_BASE_URL" in https://*) ;; *) echo "::error::ODYS_API_BASE_URL must use HTTPS"; exit 1;; esac
           test -n "$ODYS_MODEL" || { echo "::error::Missing repository secret ODYS_MODEL"; exit 1; }
           test -n "$ODYS_MODEL_B" || { echo "::error::Missing repository secret ODYS_MODEL_B (second reviewer model)"; exit 1; }
           test "$ODYS_MODEL" != "$ODYS_MODEL_B" || { echo "::error::ODYS_MODEL and ODYS_MODEL_B must be different model identifiers"; exit 1; }
@@ -365,11 +367,12 @@ jobs:
         env:
           ODYS_API_KEY: ${{ secrets.ODYS_API_KEY }}
           ODYS_MODEL: ${{ secrets.ODYS_MODEL }}
+          ODYS_API_BASE_URL: ${{ secrets.ODYS_API_BASE_URL || 'https://api.odys.work/v1' }}
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import json, os, re, urllib.request
+          import json, os, re, urllib.error, urllib.request
           from pathlib import Path
           logs = Path("relay-report/failed-steps-redacted.log").read_text(encoding="utf-8")
           diff = Path("relay-report/recent-production-diff.txt").read_text(encoding="utf-8")
@@ -382,7 +385,10 @@ jobs:
           payload = {"model": os.environ["ODYS_MODEL"], "messages": [
               {"role": "system", "content": "Return only a minimal valid unified diff or NO_PATCH. Never return prose."},
               {"role": "user", "content": prompt}], "temperature": 0.1, "stream": False}
-          req = urllib.request.Request("https://api.odys.work/v1/chat/completions",
+          base_url = os.environ["ODYS_API_BASE_URL"].strip().rstrip("/")
+          if not base_url.startswith("https://"):
+              raise SystemExit("ODYS_API_BASE_URL must use HTTPS.")
+          req = urllib.request.Request(base_url + "/chat/completions",
               data=json.dumps(payload, ensure_ascii=False).encode(),
               headers={"Authorization": "Bearer " + os.environ["ODYS_API_KEY"], "Content-Type": "application/json"},
               method="POST")
@@ -390,12 +396,15 @@ jobs:
               data = json.loads(r.read().decode("utf-8", errors="replace"))
           choices = data.get("choices") or []
           if not choices or not isinstance(choices[0].get("message", {}).get("content"), str):
-              raise SystemExit("Model A returned no text patch.")
+              raise SystemExit("Model A response schema invalid: missing choices[0].message.content (response body suppressed).")
           answer = choices[0]["message"]["content"].strip()
+          if answer == "NO_PATCH":
+              raise SystemExit("Model A explicitly returned NO_PATCH: no evidence-supported fix was proposed; no code changed.")
           start = answer.find("diff --git ")
           patch = answer[start:].strip() + "\n" if start >= 0 else ""
           if not patch:
-              raise SystemExit("Model A returned no applicable patch; refusing to invent changes.")
+              print("Model A response diagnostic: content_present=true, diff_header_found=false, explicit_no_patch=false; response body suppressed.")
+              raise SystemExit("Model A returned neither NO_PATCH nor a unified diff; check model/API output-format compatibility.")
           Path("relay-report/model-a-candidate.patch").write_text(patch, encoding="utf-8")
           print("Model A candidate received; no code has been applied yet.")
           PY
@@ -443,6 +452,7 @@ jobs:
         env:
           ODYS_API_KEY: ${{ secrets.ODYS_API_KEY }}
           ODYS_MODEL: ${{ secrets.ODYS_MODEL }}
+          ODYS_API_BASE_URL: ${{ secrets.ODYS_API_BASE_URL || 'https://api.odys.work/v1' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -458,7 +468,10 @@ jobs:
           payload = {"model": os.environ["ODYS_MODEL"], "messages": [
               {"role": "system", "content": "Return only a final unified diff or NO_PATCH. Never claim verification."},
               {"role": "user", "content": prompt}], "temperature": 0.1, "stream": False}
-          req = urllib.request.Request("https://api.odys.work/v1/chat/completions",
+          base_url = os.environ["ODYS_API_BASE_URL"].strip().rstrip("/")
+          if not base_url.startswith("https://"):
+              raise SystemExit("ODYS_API_BASE_URL must use HTTPS.")
+          req = urllib.request.Request(base_url + "/chat/completions",
               data=json.dumps(payload, ensure_ascii=False).encode(),
               headers={"Authorization": "Bearer " + os.environ["ODYS_API_KEY"], "Content-Type": "application/json"},
               method="POST")
@@ -468,10 +481,13 @@ jobs:
           if not choices or not isinstance(choices[0].get("message", {}).get("content"), str):
               raise SystemExit("Final model response was empty.")
           answer = choices[0]["message"]["content"].strip()
+          if answer == "NO_PATCH":
+              raise SystemExit("Model A explicitly returned NO_PATCH after review; no code changed.")
           start = answer.find("diff --git ")
           patch = answer[start:].strip() + "\n" if start >= 0 else ""
           if not patch:
-              raise SystemExit("Model A declined or failed to produce a final patch; no code changed.")
+              print("Final response diagnostic: content_present=true, diff_header_found=false, explicit_no_patch=false; response body suppressed.")
+              raise SystemExit("Final Model A response was not a unified diff; check model/API output-format compatibility. No code changed.")
           Path("relay-report/final.patch").write_text(patch, encoding="utf-8")
           print("Final patch generated; awaiting machine validation.")
           PY
