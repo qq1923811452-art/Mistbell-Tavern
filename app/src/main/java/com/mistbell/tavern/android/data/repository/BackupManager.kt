@@ -209,7 +209,10 @@ class BackupManager(private val context: Context) {
             }
         }
 
-        internal fun validateBackupEntryPath(name: String, isDirectory: Boolean) {
+        internal fun validateBackupEntryPath(
+            name: String,
+            isDirectory: Boolean,
+        ) {
             val path = if (isDirectory) name.removeSuffix("/") else name
             require(path.isNotBlank() && !path.startsWith("/") && '\\' !in path) {
                 "备份文件非法：条目路径格式不安全"
