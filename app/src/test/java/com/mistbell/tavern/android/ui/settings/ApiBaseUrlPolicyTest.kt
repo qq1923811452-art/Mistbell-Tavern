@@ -35,6 +35,11 @@ class ApiBaseUrlPolicyTest {
             "http://localhost:8080/v1",
             "http://127.0.0.1:8080/v1",
             "http://10.0.2.2:8080/v1",
-        ).forEach { assertFalse("$it should not show a cleartext warning", ApiBaseUrlPolicy.requiresCleartextWarning(it)) }
+        ).forEach { url ->
+            assertFalse(
+                "$url should not show a cleartext warning",
+                ApiBaseUrlPolicy.requiresCleartextWarning(url),
+            )
+        }
     }
 }
