@@ -75,6 +75,9 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     val vectorCacheStatistics: StateFlow<VectorCacheStatistics> =
         TavernApplication.instance.container.vectorCacheStatistics
 
+    val vectorStorageError: StateFlow<String?> =
+        TavernApplication.instance.container.vectorMemoryService.storageError
+
     // --- 提示词模板（全局 KV，明文存储；空值语义见各 resolver） ---
     //
     // 用 observeValue + stateIn 而不是一次性 getValue：备份恢复或别处改写后，编辑对话框能实时同步。
