@@ -154,8 +154,8 @@ object ApiConfigMigration {
         val now = System.currentTimeMillis()
         val entities =
             toApiConfigEntities(providers, activeId, now).map { entity ->
-            entity.copy(apiKey = SecureStore.wrap(entity.apiKey))
-        }
+                entity.copy(apiKey = SecureStore.wrap(entity.apiKey))
+            }
         db.apiConfigDao().insertAll(entities)
 
         val active = providers.firstOrNull { it.id == activeId } ?: providers.first()
