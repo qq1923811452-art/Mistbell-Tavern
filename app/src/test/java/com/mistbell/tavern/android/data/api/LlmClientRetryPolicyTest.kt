@@ -1,10 +1,10 @@
 package com.mistbell.tavern.android.data.api
 
-import java.io.IOException
-import java.util.concurrent.CancellationException
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.IOException
+import java.util.concurrent.CancellationException
 
 class LlmClientRetryPolicyTest {
     @Test
