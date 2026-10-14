@@ -3,11 +3,11 @@ package com.mistbell.tavern.android.data.vector
 import android.util.Log
 import com.mistbell.tavern.android.data.api.ApiCallTrace
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.json.Json
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -16,8 +16,8 @@ import java.io.IOException
 import java.net.SocketTimeoutException
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
-import java.util.concurrent.TimeUnit
 import java.util.LinkedHashMap
+import java.util.concurrent.TimeUnit
 
 internal fun validateEmbeddingResponseOrder(
     indexes: List<Int?>,
@@ -86,9 +86,8 @@ class OpenAIEmbeddingService(
             CACHE_LOAD_FACTOR,
             true,
         ) {
-            override fun removeEldestEntry(
-                eldest: MutableMap.MutableEntry<String, FloatArray>?,
-            ): Boolean = size > EMBEDDING_CACHE_SIZE
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, FloatArray>?): Boolean =
+                size > EMBEDDING_CACHE_SIZE
         }
 
     @Volatile
@@ -100,9 +99,8 @@ class OpenAIEmbeddingService(
             .joinToString("") { byte -> "%02x".format(byte.toInt() and BYTE_MASK) }
     }
 
-    private fun cachedEmbedding(
-        text: String,
-    ): FloatArray? = synchronized(cacheLock) { embeddingCache[cacheKey(text)]?.clone() }
+    private fun cachedEmbedding(text: String): FloatArray? =
+        synchronized(cacheLock) { embeddingCache[cacheKey(text)]?.clone() }
 
     private fun rememberEmbedding(
         text: String,
