@@ -18,6 +18,24 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+internal fun validateEmbeddingResponseOrder(indexes: List<Int?>, expectedCount: Int): List<Int> {
+    require(indexes.size == expectedCount) {
+        "Embedding API returned ${indexes.size} vectors for $expectedCount inputs"
+    }
+    return when {
+        indexes.all { it == null } -> indexes.indices.toList()
+        indexes.any { it == null } ->
+            error("Embedding API returned a mixture of indexed and unindexed vectors")
+        else -> {
+            val ordered = indexes.indices.sortedBy { indexes[it] }
+            require(ordered.mapNotNull { indexes[it] } == (0 until expectedCount).toList()) {
+                "Embedding API returned missing or duplicate vector indexes"
+            }
+            ordered
+        }
+    }
+}
+
 /**
  * OpenAI Embedding 服务实现
  *
@@ -401,25 +419,10 @@ class OpenAIEmbeddingService(
 
         Log.d(TAG, "Generated ${embeddingResponse.data.size} embeddings in batch")
 
-        require(embeddingResponse.data.size == texts.size) {
-            "Embedding API returned ${embeddingResponse.data.size} vectors for ${texts.size} inputs"
-        }
-        val responseIndexes = embeddingResponse.data.map { it.index }
-        val orderedData =
-            when {
-                responseIndexes.all { it == null } -> embeddingResponse.data
-                responseIndexes.any { it == null } ->
-                    error("Embedding API returned a mixture of indexed and unindexed vectors")
-                else -> {
-                    val sorted = embeddingResponse.data.sortedBy { it.index }
-                    require(sorted.mapNotNull { it.index } == texts.indices.toList()) {
-                        "Embedding API returned missing or duplicate vector indexes"
-                    }
-                    sorted
-                }
-            }
-        return orderedData.map { data ->
-            FloatArray(data.embedding.size) { i -> data.embedding[i].toFloat() }
+        val orderedIndexes = validateEmbeddingResponseOrder(embeddingResponse.data.map { it.index }, texts.size)
+        return orderedIndexes.map { index ->
+            val embedding = embeddingResponse.data[index].embedding
+            FloatArray(embedding.size) { i -> embedding[i].toFloat() }
         }
     }
 
