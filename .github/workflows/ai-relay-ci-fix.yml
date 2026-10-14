@@ -76,6 +76,15 @@ jobs:
           target_sha = ((branch_data.get("commit") or {}).get("sha") or "")
           if not re.fullmatch(r"[0-9a-fA-F]{40}", target_sha):
               raise SystemExit("Current source branch has no valid commit SHA.")
+          # A failed CI run only diagnoses the exact commit that produced its logs.
+          # Never send stale failure logs to a model while checking out a different branch head.
+          if target_sha.lower() != head_sha.lower():
+              raise SystemExit(
+                  "Stale failed CI run: the selected run tested commit "
+                  + head_sha + ", but source branch " + branch + " now points to "
+                  + target_sha + ". No model was called and no code was changed. "
+                  "Select a failed CI run for the current branch head, or verify the newer head first."
+              )
           base_sha = ""
           pull_requests = run.get("pull_requests") or []
           if pull_requests:
