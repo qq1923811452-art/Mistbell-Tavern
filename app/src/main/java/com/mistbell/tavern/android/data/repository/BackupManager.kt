@@ -479,7 +479,11 @@ private fun writeThemeAssetsIfAbsent(
     }
 }
 
-private fun writeThemeAssetIfMissing(dir: File, name: String, content: String) {
+private fun writeThemeAssetIfMissing(
+    dir: File,
+    name: String,
+    content: String,
+) {
     val fileName = name.substringAfterLast('/')
     if (fileName.isBlank()) return
     val target = File(dir, fileName)
