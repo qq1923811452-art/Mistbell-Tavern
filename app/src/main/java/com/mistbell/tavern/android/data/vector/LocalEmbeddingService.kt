@@ -79,17 +79,20 @@ class LocalEmbeddingService private constructor(
                 val tokenTypeIds = LongArray(seqLen) { 0L }
 
                 val shape = longArrayOf(1, seqLen.toLong())
-                val inputs =
-                    mapOf(
-                        INPUT_IDS to OnnxTensor.createTensor(env, LongBuffer.wrap(inputIds), shape),
-                        ATTENTION_MASK to OnnxTensor.createTensor(env, LongBuffer.wrap(attentionMask), shape),
-                        TOKEN_TYPE_IDS to OnnxTensor.createTensor(env, LongBuffer.wrap(tokenTypeIds), shape),
-                    )
+                val inputs = linkedMapOf<String, OnnxTensor>()
                 val embedding =
-                    session.run(inputs).use { result ->
-                        @Suppress("UNCHECKED_CAST")
-                        val output = result.get(0).value as Array<Array<FloatArray>>
-                        normalize(output[0][0])
+                    try {
+                        inputs[INPUT_IDS] = OnnxTensor.createTensor(env, LongBuffer.wrap(inputIds), shape)
+                        inputs[ATTENTION_MASK] = OnnxTensor.createTensor(env, LongBuffer.wrap(attentionMask), shape)
+                        inputs[TOKEN_TYPE_IDS] = OnnxTensor.createTensor(env, LongBuffer.wrap(tokenTypeIds), shape)
+                        session.run(inputs).use { result ->
+                            @Suppress("UNCHECKED_CAST")
+                            val output = result.get(0).value as Array<Array<FloatArray>>
+                            normalize(output[0][0])
+                        }
+                    } finally {
+                        // ONNX Runtime does not own input tensors; release them even if inference fails.
+                        inputs.values.forEach { tensor -> runCatching { tensor.close() } }
                     }
                 ApiCallTrace.log(
                     traceId,
