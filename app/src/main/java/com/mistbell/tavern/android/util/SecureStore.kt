@@ -46,9 +46,16 @@ object SecureStore {
     fun isSensitiveKey(key: String): Boolean {
         val normalized = key.trim().lowercase(Locale.ROOT).replace('-', '_').replace('.', '_').replace(' ', '_')
         val compact = normalized.filter(Char::isLetterOrDigit)
-        // These are numeric usage/configuration fields, not bearer credentials.
-        if (
-            normalized in
+        return when {
+            isUsageMetricKey(normalized) -> false
+            normalized == "providers_json" || compact.contains("apikey") -> true
+            containsCredentialSegment(normalized) -> true
+            else -> containsSensitivePattern(compact)
+        }
+    }
+
+    private fun isUsageMetricKey(normalized: String): Boolean =
+        normalized in
             setOf(
                 "context_token_limit",
                 "max_tokens",
@@ -59,17 +66,15 @@ object SecureStore {
                 "cached_tokens",
                 "reasoning_tokens",
             )
-        ) {
-            return false
-        }
-        if (normalized == "providers_json" || compact.contains("apikey")) return true
 
-        val segments = normalized.split('_').filter(String::isNotBlank)
+    private fun containsCredentialSegment(normalized: String): Boolean {
         val credentialSegments =
             setOf("token", "secret", "password", "passwd", "credential", "credentials", "authorization", "bearer")
-        if (segments.any { it in credentialSegments }) return true
+        return normalized.split('_').filter(String::isNotBlank).any { it in credentialSegments }
+    }
 
-        return compact.endsWith("token") ||
+    private fun containsSensitivePattern(compact: String): Boolean =
+        compact.endsWith("token") ||
             listOf(
                 "accesstoken",
                 "refreshtoken",
@@ -86,7 +91,6 @@ object SecureStore {
                 "authorization",
                 "bearer",
             ).any(compact::contains)
-    }
 
     /** 写入敏感字段前调用；加密失败时拒绝保存，避免静默落盘明文。 */
     fun wrap(plain: String): String {
