@@ -79,6 +79,12 @@ object SecureStore {
                 "privatekey",
                 "authheader",
                 "secretaccesskey",
+                "secret",
+                "password",
+                "passwd",
+                "credential",
+                "authorization",
+                "bearer",
             ).any(compact::contains)
     }
 
