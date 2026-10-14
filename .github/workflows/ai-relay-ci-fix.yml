@@ -184,12 +184,28 @@ jobs:
               except zipfile.BadZipFile:
                   raise SystemExit("Could not safely inspect the job-log archive; refusing to send unfiltered logs.")
               names = zf.namelist()
+              print("Inspected job-log archive; entries:", ", ".join(n.rsplit("/", 1)[-1] for n in names)[:3000])
               for step in steps:
-                  prefix = f"{int(step.get('number', -1))}_"
+                  step_number = int(step.get("number", -1))
+                  step_name = str(step.get("name", "unknown"))
+                  prefix = f"{step_number}_"
                   matches = [n for n in names if n.rsplit("/", 1)[-1].startswith(prefix)]
                   if not matches:
+                      # Some archive variants normalize spaces/punctuation in the filename.
+                      normalized_name = re.sub(r"[^a-z0-9]+", "", step_name.lower())
+                      matches = [
+                          n for n in names
+                          if normalized_name and normalized_name in re.sub(
+                              r"[^a-z0-9]+", "", n.rsplit("/", 1)[-1].lower()
+                          )
+                      ]
+                  if not matches:
                       # Fail closed instead of sending an entire job log when a failed step cannot be isolated.
-                      raise SystemExit("Could not isolate failed step log: " + str(step.get("name", "unknown")))
+                      names_hint = ", ".join(n.rsplit("/", 1)[-1] for n in names)[:1200]
+                      raise SystemExit(
+                          f"Could not isolate failed step log #{step_number} ({step_name}). "
+                          f"Archive entries: {names_hint or '(none)'}. Refusing to send unfiltered logs."
+                      )
                   for name in matches:
                       raw = zf.read(name).decode("utf-8", errors="replace")
                       safe_lines = []
