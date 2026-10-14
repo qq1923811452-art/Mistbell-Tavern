@@ -400,8 +400,6 @@ private fun ApiTypeSelectorField(
     }
 }
 
-
-
 @Suppress("FunctionNaming")
 @Composable
 private fun ApiUrlValidationMessage(apiUrl: String) {
