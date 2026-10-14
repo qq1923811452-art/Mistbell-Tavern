@@ -28,6 +28,7 @@ class ApiBaseUrlPolicyTest {
         listOf(
             "http://192.168.1.20:8000/v1",
             "http://gateway.office.local/v1",
+            " http://192.168.1.20:8000/v1 ",
         ).forEach { assertTrue("$it should show a cleartext warning", ApiBaseUrlPolicy.requiresCleartextWarning(it)) }
 
         listOf(
