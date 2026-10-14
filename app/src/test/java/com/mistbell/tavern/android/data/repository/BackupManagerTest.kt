@@ -1,6 +1,7 @@
 package com.mistbell.tavern.android.data.repository
 
 import com.mistbell.tavern.android.data.local.entity.SettingsEntity
+import java.util.Base64
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
@@ -94,6 +95,17 @@ class BackupManagerTest {
 
         assertEquals("legacy-secret", entry.value)
         assertTrue(entry.sensitive)
+    }
+
+    @Test
+    fun `backup aborts instead of silently dropping an undecryptable encrypted secret`() {
+        val invalidCiphertext = "enc:v1:" + Base64.getEncoder().encodeToString(ByteArray(29))
+        try {
+            BackupManager.toBackupEntry(SettingsEntity("llm_api_key", invalidCiphertext))
+            fail("Undecryptable encrypted credentials must stop backup export")
+        } catch (e: IllegalStateException) {
+            assertTrue(e.message!!.contains("中止备份"))
+        }
     }
 
     @Test
