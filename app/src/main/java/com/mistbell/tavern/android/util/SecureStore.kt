@@ -32,16 +32,13 @@ object SecureStore {
     @Volatile
     private var cachedKey: SecretKey? = null
 
-    fun isEncrypted(value: String): Boolean {
-        if (!value.startsWith(PREFIX)) return false
-        val payload =
-            runCatching { Base64.getDecoder().decode(value.removePrefix(PREFIX)) }
-                .getOrNull() ?: return false
-        if (payload.size <= IV_SIZE + TAG_BYTES) return false
-        // A prefix and plausible Base64 length are not proof of encryption: a literal API key
-        // can imitate the envelope. Only accept values that authenticate and decrypt with our key.
-        return unwrap(value).isNotEmpty()
-    }
+    fun isEncrypted(value: String): Boolean =
+        value.startsWith(PREFIX) &&
+            (runCatching { Base64.getDecoder().decode(value.removePrefix(PREFIX)) }
+                .getOrNull()
+                ?.let { payload ->
+                    payload.size > IV_SIZE + TAG_BYTES && unwrap(value).isNotEmpty()
+                } ?: false)
 
     /** Key names that may hold credentials or serialized provider secrets. */
     fun isSensitiveKey(key: String): Boolean {
