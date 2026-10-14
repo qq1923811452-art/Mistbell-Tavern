@@ -101,56 +101,56 @@ object ApiConfigMigration {
      */
     suspend fun migrateIfNeeded(db: AppDatabase) =
         db.withTransaction {
-        encryptLegacyApiKeys(db)
-        val settingsDao = db.settingsDao()
+            encryptLegacyApiKeys(db)
+            val settingsDao = db.settingsDao()
 
-        // Encrypt legacy settings before any early return, including already-migrated installs.
-        listOf("providers_json", "llm_api_key").forEach { key ->
-            val value = settingsDao.getValue(key).orEmpty()
-            if (value.isNotBlank()) {
-                val encrypted = SecureStore.isEncrypted(value)
-                check(!value.startsWith("enc:v1:") || encrypted) {
-                    "设置 $key 的加密数据不可读取，迁移已中止以保留原始数据"
+            // Encrypt legacy settings before any early return, including already-migrated installs.
+            listOf("providers_json", "llm_api_key").forEach { key ->
+                val value = settingsDao.getValue(key).orEmpty()
+                if (value.isNotBlank()) {
+                    val encrypted = SecureStore.isEncrypted(value)
+                    check(!value.startsWith("enc:v1:") || encrypted) {
+                        "设置 $key 的加密数据不可读取，迁移已中止以保留原始数据"
+                    }
+                    if (!encrypted) settingsDao.upsert(SettingsEntity(key, SecureStore.wrap(value)))
                 }
-                if (!encrypted) settingsDao.upsert(SettingsEntity(key, SecureStore.wrap(value)))
             }
-        }
 
-        // 已迁移 / api_configs 已有数据（恢复备份场景）：置标志后返回
-        val alreadyMigrated =
-            settingsDao.getValue(MIGRATED_FLAG_KEY) == "1" || db.apiConfigDao().getCount() > 0
-        if (alreadyMigrated) {
+            // 已迁移 / api_configs 已有数据（恢复备份场景）：置标志后返回
+            val alreadyMigrated =
+                settingsDao.getValue(MIGRATED_FLAG_KEY) == "1" || db.apiConfigDao().getCount() > 0
+            if (alreadyMigrated) {
+                settingsDao.upsert(SettingsEntity(MIGRATED_FLAG_KEY, "1"))
+                return@withTransaction
+            }
+
+            val storedProvidersJson = settingsDao.getValue("providers_json").orEmpty()
+            val decodedProvidersJson = SecureStore.unwrap(storedProvidersJson)
+            check(!storedProvidersJson.startsWith("enc:v1:") || decodedProvidersJson.isNotEmpty()) {
+                "无法解密旧版 API 配置，迁移已中止以保留原始数据"
+            }
+            val providers = parseProvidersJson(decodedProvidersJson)
+            if (providers.isEmpty()) {
+                settingsDao.upsert(SettingsEntity(MIGRATED_FLAG_KEY, "1"))
+                return@withTransaction
+            }
+
+            val activeId = settingsDao.getValue("active_provider_id") ?: ""
+            val now = System.currentTimeMillis()
+
+            db.apiConfigDao().insertAll(
+                toApiConfigEntities(providers, activeId, now).map { entity ->
+                    entity.copy(apiKey = SecureStore.wrap(entity.apiKey))
+                },
+            )
+
+            val active = providers.firstOrNull { it.id == activeId } ?: providers.first()
+            activeProviderOverrides(active).forEach { (key, value) ->
+                settingsDao.upsert(SettingsEntity(key, value))
+            }
+
             settingsDao.upsert(SettingsEntity(MIGRATED_FLAG_KEY, "1"))
-            return@withTransaction
         }
-
-        val storedProvidersJson = settingsDao.getValue("providers_json").orEmpty()
-        val decodedProvidersJson = SecureStore.unwrap(storedProvidersJson)
-        check(!storedProvidersJson.startsWith("enc:v1:") || decodedProvidersJson.isNotEmpty()) {
-            "无法解密旧版 API 配置，迁移已中止以保留原始数据"
-        }
-        val providers = parseProvidersJson(decodedProvidersJson)
-        if (providers.isEmpty()) {
-            settingsDao.upsert(SettingsEntity(MIGRATED_FLAG_KEY, "1"))
-            return@withTransaction
-        }
-
-        val activeId = settingsDao.getValue("active_provider_id") ?: ""
-        val now = System.currentTimeMillis()
-
-        db.apiConfigDao().insertAll(
-            toApiConfigEntities(providers, activeId, now).map { entity ->
-                entity.copy(apiKey = SecureStore.wrap(entity.apiKey))
-            },
-        )
-
-        val active = providers.firstOrNull { it.id == activeId } ?: providers.first()
-        activeProviderOverrides(active).forEach { (key, value) ->
-            settingsDao.upsert(SettingsEntity(key, value))
-        }
-
-        settingsDao.upsert(SettingsEntity(MIGRATED_FLAG_KEY, "1"))
-    }
 
     /**
      * Encrypt API keys created by earlier versions. Encryption errors deliberately propagate:
