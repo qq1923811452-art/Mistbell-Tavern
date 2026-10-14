@@ -434,6 +434,21 @@ class MigrationSchemaAlignmentTest {
     }
 
     @Test
+    fun `v21_22 migration creates both declared api_configs indexes`() {
+        val expected =
+            setOf(
+                roomDefaultIndexName("api_configs", "isDefault"),
+                roomDefaultIndexName("api_configs", "sortOrder"),
+            )
+        val actual =
+            extractIndexNames(AppDatabase.MIGRATION_21_22_SQL)
+                .filter { it.startsWith("index_api_configs_") }
+                .toSet()
+
+        assertEquals(expected, actual)
+    }
+
+    @Test
     fun `v22 迁移真实 SQL 的 api_configs 新列与实体注解对齐`() {
         // ALTER 语句必须带 DEFAULT（Room TableInfo 逐字符比对默认值）。
         // 沿用修复5模式：直接断言迁移实际执行的常量，而非测试自拼接的字符串
