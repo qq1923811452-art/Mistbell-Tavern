@@ -107,6 +107,24 @@ class BackupManagerTest {
     }
 
     @Test
+    fun `safe ZIP directory entries with trailing slashes are accepted`() {
+        BackupManager.validateBackupEntryPath("themes/", isDirectory = true)
+        BackupManager.validateBackupEntryPath("themes/default/", isDirectory = true)
+    }
+
+    @Test
+    fun `unsafe ZIP directory entry paths are rejected`() {
+        listOf("../", "themes/../", "/themes/", "themes//", "themes/./").forEach { path ->
+            try {
+                BackupManager.validateBackupEntryPath(path, isDirectory = true)
+                fail("Unsafe ZIP directory path should be rejected: $path")
+            } catch (e: IllegalArgumentException) {
+                assertTrue(e.message!!.contains("路径"))
+            }
+        }
+    }
+
+    @Test
     fun `unsafe theme pack IDs are rejected`() {
         listOf("../outside", "folder/name", "folder\\\\name", "..").forEach { id ->
             try {
