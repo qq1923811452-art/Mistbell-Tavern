@@ -403,7 +403,8 @@ jobs:
       - name: Model B adversarially reviews Model A patch
         id: model_b
         env:
-          ODYS_API_KEY: ${{ secrets.ODYS_API_KEY }}
+          ODYS_API_KEY_B: ${{ secrets.ODYS_API_KEY_B || secrets.ODYS_API_KEY }}
+          ODYS_API_BASE_URL_B: ${{ secrets.ODYS_API_BASE_URL_B || 'https://api.odys.work/v1' }}
           ODYS_MODEL_B: ${{ secrets.ODYS_MODEL_B }}
         shell: bash
         run: |
@@ -420,9 +421,12 @@ jobs:
           payload = {"model": os.environ["ODYS_MODEL_B"], "messages": [
               {"role": "system", "content": "Act as a skeptical independent reviewer. Never claim tests were run."},
               {"role": "user", "content": prompt}], "temperature": 0.1, "stream": False}
-          req = urllib.request.Request("https://api.odys.work/v1/chat/completions",
+          base_url = os.environ["ODYS_API_BASE_URL_B"].strip().rstrip("/")
+          if not base_url.startswith("https://"):
+              raise SystemExit("Model B API base URL must use HTTPS.")
+          req = urllib.request.Request(base_url + "/chat/completions",
               data=json.dumps(payload, ensure_ascii=False).encode(),
-              headers={"Authorization": "Bearer " + os.environ["ODYS_API_KEY"], "Content-Type": "application/json"},
+              headers={"Authorization": "Bearer " + os.environ["ODYS_API_KEY_B"], "Content-Type": "application/json"},
               method="POST")
           with urllib.request.urlopen(req, timeout=300) as r:
               data = json.loads(r.read().decode("utf-8", errors="replace"))
