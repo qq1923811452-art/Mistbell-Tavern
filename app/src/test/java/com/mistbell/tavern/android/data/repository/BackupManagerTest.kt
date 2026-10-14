@@ -159,6 +159,10 @@ class BackupManagerTest {
             "service_password",
             "private_key",
             "api-key",
+            "customSecretValue",
+            "servicePassword",
+            "authorizationHeader",
+            "myCredential",
         ).forEach { key ->
             assertTrue("$key should be considered sensitive", BackupManager.isSensitiveSettingKey(key))
         }
