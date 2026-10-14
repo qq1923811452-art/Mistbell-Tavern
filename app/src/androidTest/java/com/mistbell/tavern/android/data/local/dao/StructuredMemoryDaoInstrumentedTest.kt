@@ -49,7 +49,7 @@ class StructuredMemoryDaoInstrumentedTest {
     fun promptCandidatesKeepActiveFactWhenNestedTextMentionsSupersededStatus() =
         runBlocking {
             database.structuredMemoryDao().insert(
-                memory("quoted status", """{"object":"{\"status\": \"superseded\"}","status":"active"}""", 11),
+                memory("quoted status", """{"object":{"status":"superseded"},"status":"active"}""", 11),
             )
             database.structuredMemoryDao().insert(
                 memory("current", """{"status":"active"}""", 9),
