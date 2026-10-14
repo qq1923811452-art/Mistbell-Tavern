@@ -177,15 +177,8 @@ class ChatRepository(private val context: Context) {
                 MessageEntity.fromDomain(userMsg, sessionId, ownerId, characterId),
             )
 
-            // 1.5. 写入用户消息向量；VectorMemoryService 缓存该文本的 embedding，
-            // 供随后提示词召回复用，避免对同一条用户消息重复请求 embedding。
-            storeUserMessageVector(
-                content = message,
-                ownerId = ownerId,
-                characterId = characterId,
-                sessionId = sessionId,
-                messageId = msgId,
-            )
+            // The current message's embedding is written inside the guarded LLM try block below.
+            // Keep the count update ahead of cancellable vector I/O so cancel cannot leave it stale.
 
             // 2. Update session message count
             val session = db.sessionDao().get(sessionId, ownerId, characterId)
@@ -213,6 +206,15 @@ class ChatRepository(private val context: Context) {
             // 流式累计缓冲，作用域覆盖整个 try，取消时据此判断是否已有部分回复
             val sb = StringBuilder()
             try {
+                // Store before prompt construction so this message's embedding can be reused by retrieval.
+                // This must stay inside try: cancellation must follow the repository's established cancel path.
+                storeUserMessageVector(
+                    content = message,
+                    ownerId = ownerId,
+                    characterId = characterId,
+                    sessionId = sessionId,
+                    messageId = msgId,
+                )
                 val llmConfig = loadLlmConfig(sessionId)
                 if (llmConfig.baseUrl.isNotBlank() && llmConfig.apiKey.isNotBlank()) {
                     // 群聊模式：优先用 VM 传入的 groupContext；未传时按会话 mode/参与者兜底构建
