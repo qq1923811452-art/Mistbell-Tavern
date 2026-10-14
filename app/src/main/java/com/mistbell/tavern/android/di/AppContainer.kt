@@ -57,7 +57,7 @@ class AppContainer(private val appContext: Context) {
         val previousMemoryService = vectorMemoryService
         val recovered = vectorStore.recoverCorruptStorage()
         if (recovered) {
-            previousMemoryService.clearStorageError()
+            previousMemoryService.storageErrorState.value = null
             val service = embeddingService
             runtimeEmbeddingServices = RuntimeEmbeddingServices(service, VectorMemoryService(vectorStore, service))
         }

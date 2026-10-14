@@ -77,10 +77,9 @@ class VectorMemoryService(
     /** Non-destructive diagnostic surfaced in Settings when persisted vectors cannot be loaded. */
     val storageError: StateFlow<String?> = _storageError.asStateFlow()
 
-    /** Clear the diagnostic only after a successful, explicit storage recovery. */
-    fun clearStorageError() {
-        _storageError.value = null
-    }
+    /** Mutable diagnostic state for the container's confirmed recovery path. */
+    internal val storageErrorState: MutableStateFlow<String?>
+        get() = _storageError
 
     /**
      * Reuse the exact text embedding across the write-then-retrieve path.
