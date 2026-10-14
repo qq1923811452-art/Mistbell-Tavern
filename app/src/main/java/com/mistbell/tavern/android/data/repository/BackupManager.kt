@@ -165,11 +165,7 @@ class BackupManager(private val context: Context) {
             val sensitive = encrypted || isSensitiveSettingKey(entity.key)
             val value =
                 if (encrypted) {
-                    SecureStore.unwrap(entity.value).also { decrypted ->
-                        check(decrypted.isNotEmpty()) {
-                            "无法解密设置 ${entity.key}，已中止备份以避免丢失敏感数据"
-                        }
-                    }
+                    requireDecryptedSecretValue(entity.key, SecureStore.unwrap(entity.value))
                 } else {
                     entity.value
                 }
@@ -179,6 +175,13 @@ class BackupManager(private val context: Context) {
                 sensitive = sensitive,
             )
         }
+
+        internal fun requireDecryptedSecretValue(key: String, value: String): String =
+            value.also { decrypted ->
+                check(decrypted.isNotEmpty()) {
+                    "无法解密设置 $key，已中止备份以避免丢失敏感数据"
+                }
+            }
 
         /** Treat credential-bearing keys as sensitive even when importing an untrusted backup. */
         internal fun isSensitiveSettingKey(key: String): Boolean = SecureStore.isSensitiveKey(key)
