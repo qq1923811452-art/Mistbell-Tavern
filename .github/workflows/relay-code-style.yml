@@ -21,6 +21,19 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  reject-wrong-branch:
+    name: Explain required target branch
+    if: github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/feature'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Require the feature branch
+        shell: bash
+        run: |
+          echo "::error::This workflow only writes to feature. Select the feature branch in Run workflow."
+          exit 1
+
   standardize:
     if: github.ref == 'refs/heads/feature'
     runs-on: ubuntu-latest
