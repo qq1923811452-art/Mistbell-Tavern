@@ -1,5 +1,7 @@
 package com.mistbell.tavern.android.data.repository
 
+import com.mistbell.tavern.android.data.local.entity.ApiConfigEntity
+import com.mistbell.tavern.android.data.local.entity.CustomPromptEntity
 import com.mistbell.tavern.android.data.local.entity.SettingsEntity
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
@@ -135,6 +137,73 @@ class BackupManagerTest {
             }
         }
         BackupManager.validateThemePackId("safe-theme_123")
+    }
+
+    @Test
+    fun `API 配置备份 DTO 保留全部字段并允许空密钥恢复`() {
+        val entry = BackupManager.ApiConfigBackupEntry(
+            id = "provider-1",
+            name = "Local provider",
+            apiUrl = "https://example.invalid/v1",
+            apiKey = "",
+            model = "model-x",
+            isDefault = true,
+            lastTestStatus = "SUCCESS",
+            lastTestTime = 123L,
+            sortOrder = 4,
+            type = "custom",
+            context1m = true,
+            streamingEnabled = false,
+            thinkingDisabled = true,
+            createdAt = 100L,
+            updatedAt = 200L,
+        )
+
+        val restored = entry.toEntity()
+
+        assertEquals(entry.id, restored.id)
+        assertEquals(entry.apiUrl, restored.apiUrl)
+        assertEquals("", restored.apiKey)
+        assertEquals(entry.model, restored.model)
+        assertEquals(entry.isDefault, restored.isDefault)
+        assertEquals(entry.lastTestStatus, restored.lastTestStatus)
+        assertEquals(entry.lastTestTime, restored.lastTestTime)
+        assertEquals(entry.sortOrder, restored.sortOrder)
+        assertEquals(entry.type, restored.type)
+        assertEquals(entry.context1m, restored.context1m)
+        assertEquals(entry.streamingEnabled, restored.streamingEnabled)
+        assertEquals(entry.thinkingDisabled, restored.thinkingDisabled)
+        assertEquals(entry.createdAt, restored.createdAt)
+        assertEquals(entry.updatedAt, restored.updatedAt)
+    }
+
+    @Test
+    fun `自定义提示词备份 DTO 完整往返`() {
+        val entity = CustomPromptEntity(
+            id = "prompt-1",
+            name = "Writing style",
+            content = "Keep the voice concise.",
+            type = "WRITING_STYLE",
+            position = "SYSTEM_START",
+            isEnabled = false,
+            priority = 7,
+            tags = """["style","concise"]""",
+            description = "test prompt",
+            createdAt = 100L,
+            updatedAt = 200L,
+        )
+
+        val entry = BackupManager.CustomPromptBackupEntry.fromEntity(entity)
+        val encoded = BackupManager.json.encodeToString(
+            ListSerializer(BackupManager.CustomPromptBackupEntry.serializer()),
+            listOf(entry),
+        )
+        val decoded = BackupManager.decodeList(
+            encoded,
+            BackupManager.CustomPromptBackupEntry.serializer(),
+        )
+
+        assertEquals(listOf(entity), decoded.map(BackupManager.CustomPromptBackupEntry::toEntity))
     }
 
     @Test
