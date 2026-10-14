@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       run_id:
-        description: "Failed CI workflow run ID to diagnose (not the URL)"
+        description: "ID of a failed run from the CI workflow (do not use an AI Relay/dialog run ID or URL)"
         required: true
         type: string
 
@@ -32,6 +32,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          mkdir -p relay-report
           python3 - <<'PY'
           import json, os, re, urllib.error, urllib.request
           run_id = os.environ["RUN_ID"].strip()
@@ -49,8 +50,14 @@ jobs:
               with urllib.request.urlopen(req, timeout=30) as r:
                   return json.loads(r.read().decode("utf-8", errors="replace"))
           run = get_json(f"https://api.github.com/repos/{repo}/actions/runs/{run_id}")
-          if run.get("name") != "CI":
-              raise SystemExit("Refusing run: selected workflow is not named CI.")
+          workflow_name = run.get("name") or "(unnamed)"
+          workflow_path = (run.get("path") or "").strip()
+          if workflow_name != "CI" and not workflow_path.endswith("/ci.yml"):
+              raise SystemExit(
+                  "Wrong source run ID: selected run is workflow "
+                  + repr(workflow_name) + " (" + str(run.get("html_url", "")) + "). "
+                  "Enter the run ID of a failed CI workflow run, not an AI Relay/dialog run."
+              )
           if run.get("conclusion") != "failure":
               raise SystemExit("Refusing run: only completed CI runs with conclusion=failure are accepted.")
           if (run.get("repository") or {}).get("full_name") not in (None, repo):
