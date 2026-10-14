@@ -187,7 +187,7 @@ jobs:
               raise SystemExit("GitHub reported a failed run, but no failed steps were found. No logs sent to the relay.")
           chunks = []
           from datetime import datetime, timedelta
-          timestamp_re = re.compile(r"^(\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z)\\s")
+          timestamp_re = re.compile(r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z)\s")
           def line_time(line):
               match = timestamp_re.match(line)
               if not match:
@@ -199,15 +199,15 @@ jobs:
           def redact_and_append(job, step, raw):
               safe_lines = []
               for line in raw.splitlines():
-                  if re.search(r"(?i)\\b(KEY|TOKEN|SECRET|PASSWORD|PASSWD|AUTHORIZATION|CREDENTIAL)\\b", line):
+                  if re.search(r"(?i)\b(KEY|TOKEN|SECRET|PASSWORD|PASSWD|AUTHORIZATION|CREDENTIAL)\b", line):
                       line = "[redacted: sensitive-looking log line]"
-                  line = re.sub(r"(?i)(authorization\\s*:\\s*bearer\\s+)[^\\s\\\"'<>]+", r"\\1[REDACTED]", line)
-                  line = re.sub(r"\\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{30,})\\b", "[REDACTED TOKEN]", line)
-                  line = re.sub(r"\\beyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\b", "[REDACTED JWT]", line)
+                  line = re.sub(r"(?i)(authorization\s*:\s*bearer\s+)[^\s\\"'<>]+", r"\1[REDACTED]", line)
+                  line = re.sub(r"\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{30,})\b", "[REDACTED TOKEN]", line)
+                  line = re.sub(r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b", "[REDACTED JWT]", line)
                   safe_lines.append(line)
               chunks.append(
-                  f"JOB: {job.get('name')}\\nFAILED STEP: {step.get('name')}\\n"
-                  + "\\n".join(safe_lines)
+                  f"JOB: {job.get('name')}\nFAILED STEP: {step.get('name')}\n"
+                  + "\n".join(safe_lines)
               )
           for job, steps in failed:
               archive = request(
@@ -224,7 +224,7 @@ jobs:
                       head = archive[:4]
                       if head.startswith(b"PK"):
                           guess = "zip-like-but-invalid"
-                      elif head.startswith(b"\\x1f\\x8b"):
+                      elif head.startswith(b"\x1f\x8b"):
                           guess = "gzip"
                       elif archive[:1] in (b"<", b"{", b"["):
                           guess = "html-json-or-text"
@@ -309,7 +309,7 @@ jobs:
                                   "a failure marker; refusing to send ambiguous logs."
                               )
                           block = bounded
-                      redact_and_append(job, step, "\\n".join(block))
+                      redact_and_append(job, step, "\n".join(block))
           text = "\n\n===== FAILED STEP =====\n\n".join(chunks)
           # Only the isolated failed-step logs are retained; hard cap after redaction.
           text = text[-24000:]
