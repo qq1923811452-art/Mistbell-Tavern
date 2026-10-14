@@ -21,6 +21,7 @@ data class ApiConfigEntity(
     // 用于自定义排序
     val sortOrder: Int = 0,
     // 接口类型：openai / anthropic / gemini / custom（custom = 任意 OpenAI 兼容网关）
+    @ColumnInfo(defaultValue = "'openai'")
     val type: String = "openai",
     // 1M 上下文开关（解锁 1M 档位）
     @ColumnInfo(defaultValue = "0")
