@@ -657,9 +657,12 @@ object LlmClient {
                 try {
                     return@withContext executeChatContentRequest(config, messages)
                 } catch (e: SocketTimeoutException) {
-                    lastException = e
-                    if (attempt < maxAttempts - 1) delay(INITIAL_RETRY_DELAY_MS * (1 shl attempt))
+                    // The provider may have accepted and billed the POST before the response timed out.
+                    // Do not retry an ambiguous outcome.
+                    throw e
                 } catch (e: IOException) {
+                    // Retry only failures classified as occurring before provider acceptance.
+                    if (!isRetryableException(e)) throw e
                     lastException = e
                     if (attempt < maxAttempts - 1) delay(INITIAL_RETRY_DELAY_MS * (1 shl attempt))
                 } catch (e: Exception) {
