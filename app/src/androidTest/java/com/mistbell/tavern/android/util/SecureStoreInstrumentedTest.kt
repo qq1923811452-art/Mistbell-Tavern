@@ -1,6 +1,7 @@
 package com.mistbell.tavern.android.util
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import java.util.Base64
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
@@ -34,6 +35,16 @@ class SecureStoreInstrumentedTest {
         assertTrue(SecureStore.isEncrypted(encrypted))
         assertNotEquals(apiKey, encrypted)
         assertEquals(apiKey, SecureStore.unwrap(encrypted))
+    }
+
+    @Test
+    fun validLookingBase64EnvelopeCannotBypassEncryption() {
+        val fakeEnvelope = "enc:v1:" + Base64.getEncoder().encodeToString(ByteArray(29))
+
+        assertTrue(!SecureStore.isEncrypted(fakeEnvelope))
+        val encrypted = SecureStore.wrap(fakeEnvelope)
+        assertNotEquals(fakeEnvelope, encrypted)
+        assertEquals(fakeEnvelope, SecureStore.unwrap(encrypted))
     }
 
     @Test
