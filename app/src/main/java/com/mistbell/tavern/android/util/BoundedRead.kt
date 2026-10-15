@@ -32,14 +32,15 @@ object BoundedRead {
         maxBytes: Int = DEFAULT_MAX_BYTES,
         label: String = "导入文件",
     ): ByteArray {
+        require(maxBytes >= 0) { "maxBytes must not be negative" }
         val output = ByteArrayOutputStream()
         val buffer = ByteArray(IO_BUFFER_SIZE_BYTES)
-        var total = 0
+        var total = 0L
         while (true) {
             val read = input.read(buffer)
             if (read < 0) break
-            total += read
-            require(total <= maxBytes) { "${label}超过 ${maxBytes / BYTES_PER_MIB} MiB 限制" }
+            total += read.toLong()
+            require(total <= maxBytes.toLong()) { "${label}超过 ${maxBytes / BYTES_PER_MIB} MiB 限制" }
             output.write(buffer, 0, read)
         }
         return output.toByteArray()
