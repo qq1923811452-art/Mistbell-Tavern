@@ -156,7 +156,8 @@ class StructuredMemoryRepository(context: Context) {
                     val updated =
                         supersededIds.distinct().mapNotNull { oldId ->
                             val oldMemory = memoryDao.getById(oldId)?.toDomain() ?: return@mapNotNull null
-                            val transformed = transformSuperseded(oldMemory, newId).copy(updatedAt = Instant.now().toString())
+                            val transformed =
+                                transformSuperseded(oldMemory, newId).copy(updatedAt = Instant.now().toString())
                             memoryDao.update(StructuredMemoryEntity.fromDomain(transformed))
                             transformed
                         }
