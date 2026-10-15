@@ -15,6 +15,9 @@ import kotlinx.coroutines.job
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
@@ -34,8 +37,21 @@ import kotlin.math.sqrt
  */
 class EmbeddingGemma2LocalEmbeddingService private constructor(
     private val engine: EmbeddingEngine,
+    private val backendName: String,
+    private val modelVariant: String,
 ) : EmbeddingService, AutoCloseable {
     override val isSemantic: Boolean = true
+
+    private val _runtimeStatus =
+        MutableStateFlow(
+            EmbeddingRuntimeStatus(
+                source = "local-gemma",
+                backend = backendName,
+                modelVariant = modelVariant,
+                initialized = true,
+            ),
+        )
+    val runtimeStatus: StateFlow<EmbeddingRuntimeStatus> = _runtimeStatus.asStateFlow()
 
     companion object {
         private const val TAG = "EmbeddingGemma2Local"
@@ -288,7 +304,7 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
                 npuEngine = candidate
                 candidate.initialize()
                 Log.i(TAG, "EmbeddingGemma 2 initialized with Qualcomm NPU backend (SM8650 model)")
-                return EmbeddingGemma2LocalEmbeddingService(candidate)
+                return EmbeddingGemma2LocalEmbeddingService(candidate, "NPU", "sm8650")
             } catch (e: Exception) {
                 npuFailure = e
                 npuEngine?.let { runCatching { it.close() } }
@@ -311,7 +327,7 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
                 gpuEngine = candidate
                 candidate.initialize()
                 Log.i(TAG, "EmbeddingGemma 2 initialized with GPU backend")
-                return EmbeddingGemma2LocalEmbeddingService(candidate)
+                return EmbeddingGemma2LocalEmbeddingService(candidate, "GPU", "sm8650")
             } catch (e: Exception) {
                 gpuFailure = e
                 gpuEngine?.let { runCatching { it.close() } }
@@ -329,7 +345,7 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
                 cpuEngine = candidate
                 candidate.initialize()
                 Log.i(TAG, "EmbeddingGemma 2 initialized with CPU backend")
-                return EmbeddingGemma2LocalEmbeddingService(candidate)
+                return EmbeddingGemma2LocalEmbeddingService(candidate, "CPU", "sm8650")
             } catch (e: Exception) {
                 cpuEngine?.let { runCatching { it.close() } }
                 throw IOException("EmbeddingGemma 2 could not initialize on NPU, GPU or CPU", e).also {
@@ -355,7 +371,7 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
             gpuEngine = candidate
             candidate.initialize()
             Log.i(TAG, "Generic EmbeddingGemma 2 initialized with GPU backend (NPU intentionally skipped)")
-            return EmbeddingGemma2LocalEmbeddingService(candidate)
+            return EmbeddingGemma2LocalEmbeddingService(candidate, "GPU", "generic-8c9f652")
         } catch (e: Exception) {
             gpuFailure = e
             gpuEngine?.let { runCatching { it.close() } }
@@ -373,7 +389,7 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
             cpuEngine = candidate
             candidate.initialize()
             Log.i(TAG, "Generic EmbeddingGemma 2 initialized with CPU backend")
-            return EmbeddingGemma2LocalEmbeddingService(candidate)
+            return EmbeddingGemma2LocalEmbeddingService(candidate, "CPU", "generic-8c9f652")
         } catch (e: Exception) {
             cpuEngine?.let { runCatching { it.close() } }
             throw IOException("Generic EmbeddingGemma 2 could not initialize on GPU or CPU", e).also {
@@ -390,7 +406,7 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
     private val inferenceMutex = Mutex()
 
     override fun modelId(): String =
-        "local:embeddinggemma-2-text-270m-litertlm:auto-sm8650-then-generic-8c9f652:$EXPECTED_DIMENSION"
+        "local:embeddinggemma-2-text-270m-litertlm:$modelVariant:$EXPECTED_DIMENSION"
 
     override fun supportsLegacyVectors(): Boolean = false
 
@@ -436,23 +452,39 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
                     "EmbeddingGemma 2 returned ${vector.size} dimensions; expected $EXPECTED_DIMENSION"
                 }
                 val normalized = normalize(vector)
+                val finishedAt = System.currentTimeMillis()
+                _runtimeStatus.update { status ->
+                    status.copy(
+                        successfulInferenceCount = status.successfulInferenceCount + 1,
+                        lastInferenceAtMillis = finishedAt,
+                        lastInferenceSucceeded = true,
+                        errorMessage = null,
+                    )
+                }
                 ApiCallTrace.log(
                     traceId,
                     source,
                     "SUCCESS",
-                    "engine=LiteRT-LM model=EmbeddingGemma2 backend=local dimension=${normalized.size} " +
-                        "elapsedMs=${System.currentTimeMillis() - startedAt}",
+                    "engine=LiteRT-LM model=EmbeddingGemma2 backend=$backendName variant=$modelVariant " +
+                        "dimension=${normalized.size} elapsedMs=${finishedAt - startedAt}",
                 )
                 normalized
             } catch (e: CancellationException) {
                 ApiCallTrace.log(traceId, source, "CANCELLED", "engine=LiteRT-LM model=EmbeddingGemma2")
                 throw e
             } catch (e: Exception) {
+                _runtimeStatus.update { status ->
+                    status.copy(
+                        lastInferenceAtMillis = System.currentTimeMillis(),
+                        lastInferenceSucceeded = false,
+                        errorMessage = "推理失败：${e.javaClass.simpleName}",
+                    )
+                }
                 ApiCallTrace.log(
                     traceId,
                     source,
                     "FAILURE",
-                    "engine=LiteRT-LM model=EmbeddingGemma2 error=${e.javaClass.simpleName}",
+                    "engine=LiteRT-LM model=EmbeddingGemma2 backend=$backendName error=${e.javaClass.simpleName}",
                 )
                 throw e
             }
