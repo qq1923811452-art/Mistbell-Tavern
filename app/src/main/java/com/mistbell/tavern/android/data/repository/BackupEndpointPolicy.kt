@@ -4,6 +4,7 @@ import com.mistbell.tavern.android.util.ApiEndpointPolicy
 
 /** Quarantine unsafe API endpoints imported from an untrusted backup. */
 internal fun endpointForRestore(endpoint: String): String = if (ApiEndpointPolicy.writeRejectionReason(endpoint) == null) endpoint else ""
+
 /** Add the config ID to Keystore failures so a failed restore is diagnosable. */
 internal fun wrapRestoredApiKey(
     id: String,
