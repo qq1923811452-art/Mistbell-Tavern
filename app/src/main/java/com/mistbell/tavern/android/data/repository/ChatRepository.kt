@@ -1363,7 +1363,19 @@ class ChatRepository(private val context: Context) {
     // 独立记忆模型优先；未配置时保持原有会话 provider → 默认 provider → 活跃 LLM 的回退顺序。
     // 记忆抽取仍在后台运行，且不进入聊天请求的稳定提示词前缀。
     private suspend fun resolveExtractionConfig(providerId: String): LlmConfig? {
-        val dedicatedConfig = memoryExtractionModelSettingsRepo.resolveLlmConfigOrNull()
+        val dedicatedConfig =
+            try {
+                memoryExtractionModelSettingsRepo.resolveLlmConfigOrNull()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (e: Exception) {
+                // A stale Keystore entry must not disable the existing chat-provider fallback.
+                android.util.Log.w(
+                    "ChatRepository",
+                    "Independent memory model settings unavailable (${e.javaClass.simpleName}); using chat fallback",
+                )
+                null
+            }
         if (dedicatedConfig != null) {
             android.util.Log.d("ChatRepository", "Using independent memory extraction model configuration")
         }
