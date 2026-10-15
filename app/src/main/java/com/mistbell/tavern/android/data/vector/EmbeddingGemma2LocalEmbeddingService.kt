@@ -308,31 +308,37 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
             nativeLibraryDir: String,
         ): EmbeddingGemma2LocalEmbeddingService {
             var npuFailure: Throwable? = null
-            var npuEngine: EmbeddingEngine? = null
-            try {
-                val candidate =
-                    EmbeddingEngine(
-                        EmbeddingEngineConfig(
-                            modelPath = modelPath,
-                            backend = Backend.NPU(nativeLibraryDir = nativeLibraryDir),
-                        ),
-                    )
-                npuEngine = candidate
-                candidate.initialize()
-                Log.i(TAG, "EmbeddingGemma 2 initialized with Qualcomm NPU backend (SM8650 model)")
-                return EmbeddingGemma2LocalEmbeddingService(candidate, "NPU", "sm8650")
-            } catch (e: Exception) {
-                npuFailure = e
-                npuEngine?.let { runCatching { it.close() } }
-                Log.w(
+            val missingNpuLibraries =
+                QualcommNpuRuntimeAvailability.missingLibraries(File(nativeLibraryDir))
+            if (missingNpuLibraries.isNotEmpty()) {
+                Log.i(
                     TAG,
-                    "Qualcomm NPU unavailable or its runtime libraries are missing; retrying on GPU",
-                    e,
+                    "Qualcomm NPU skipped: compatible dispatch/runtime libraries are missing " +
+                        "(${missingNpuLibraries.joinToString()}); trying GPU",
                 )
-            } catch (e: LinkageError) {
-                npuFailure = e
-                npuEngine?.let { runCatching { it.close() } }
-                Log.w(TAG, "Qualcomm NPU native runtime unavailable; retrying on GPU", e)
+            } else {
+                var npuEngine: EmbeddingEngine? = null
+                try {
+                    val candidate =
+                        EmbeddingEngine(
+                            EmbeddingEngineConfig(
+                                modelPath = modelPath,
+                                backend = Backend.NPU(nativeLibraryDir = nativeLibraryDir),
+                            ),
+                        )
+                    npuEngine = candidate
+                    candidate.initialize()
+                    Log.i(TAG, "EmbeddingGemma 2 initialized with Qualcomm NPU backend (SM8650 model)")
+                    return EmbeddingGemma2LocalEmbeddingService(candidate, "NPU", "sm8650")
+                } catch (e: Exception) {
+                    npuFailure = e
+                    npuEngine?.let { runCatching { it.close() } }
+                    Log.w(TAG, "Qualcomm NPU initialization failed; retrying on GPU", e)
+                } catch (e: LinkageError) {
+                    npuFailure = e
+                    npuEngine?.let { runCatching { it.close() } }
+                    Log.w(TAG, "Qualcomm NPU native runtime failed; retrying on GPU", e)
+                }
             }
 
             var gpuFailure: Throwable? = null
