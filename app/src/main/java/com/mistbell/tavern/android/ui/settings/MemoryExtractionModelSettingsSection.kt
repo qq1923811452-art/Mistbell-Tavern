@@ -106,8 +106,12 @@ fun MemoryExtractionModelSettingsSection() {
                             repository.save(MemoryExtractionModelSettings(baseUrl, apiKey, model))
                             keyNeedsReentry = false
                             val configured = repository.resolveLlmConfigOrNull() != null
+                            val endpointError =
+                                MemoryExtractionModelSettings(baseUrl, apiKey, model).endpointRejectionReason()
                             status = if (configured) {
                                 "独立记忆模型配置已保存；后续后台抽取将优先使用它"
+                            } else if (endpointError != null) {
+                                "配置已保存，但 $endpointError；当前将回退到聊天 API"
                             } else if (isRemoteApiMissingKey(baseUrl, apiKey, model)) {
                                 "配置已保存；远程 API 还需要 Key，当前将回退到聊天 API"
                             } else {
