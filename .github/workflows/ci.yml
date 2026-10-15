@@ -149,11 +149,11 @@ jobs:
           actual_sha="$(git rev-parse HEAD)"
           test "$actual_sha" = "$SOURCE_SHA"
           mkdir -p build-artifacts
-          find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' -exec cp {} build-artifacts/ \\;
+          find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' -exec cp {} build-artifacts/ \;
           test -n "$(find build-artifacts -maxdepth 1 -type f -name '*.apk' -print -quit)"
           cd build-artifacts
           sha256sum *.apk | tee SHA256SUMS.txt
-          printf 'source_sha=%s\\nworkflow_run_id=%s\\nartifact_role=build-only-not-quality-gate-verified\\n' "$SOURCE_SHA" "$GITHUB_RUN_ID" > SOURCE.txt
+          printf 'source_sha=%s\nworkflow_run_id=%s\nartifact_role=build-only-not-quality-gate-verified\n' "$SOURCE_SHA" "$GITHUB_RUN_ID" > SOURCE.txt
 
       - name: Upload build-only debug APK
         uses: actions/upload-artifact@v4
