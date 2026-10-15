@@ -56,6 +56,11 @@ object CrashLogger {
             "CharacterImporter",
             "CharacterEditor",
             "SecureStore",
+            // `Throwable.printStackTrace()` 写到 System.err，logcat 会以这两个 tag 记录。
+            // 它们不带上文里的任何业务 tag，因此**不受上面的黑名单约束**——不显式排除的话，
+            // 各处 printStackTrace() 的完整堆栈（可能含聊天/记忆片段）会直接进入导出报告。
+            "System.err",
+            "System.out",
         )
 
     // threadtime 格式日志首行：日期 时间 PID TID 优先级 TAG: 消息
