@@ -646,7 +646,11 @@ jobs:
           else
             COMMENT_MARKER="<!-- ai-pr-audit-report -->"
           fi
-          COMMENT_ID="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" --jq --arg marker "$COMMENT_MARKER" '.[] | select(.user.login == "github-actions[bot]" and (.body | contains($marker))) | .id' | tail -n 1)"
+          if [[ "$REVIEW_MODE" == "re-review" ]]; then
+            COMMENT_ID="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | contains("<!-- ai-pr-audit-rereview-report -->"))) | .id' | tail -n 1)"
+          else
+            COMMENT_ID="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | contains("<!-- ai-pr-audit-report -->"))) | .id' | tail -n 1)"
+          fi
           if [[ -n "$COMMENT_ID" ]]; then
             gh api --method PATCH "repos/${GITHUB_REPOSITORY}/issues/comments/${COMMENT_ID}" --raw-field body="$(cat /tmp/ai-pr-audit-report.md)"
           else
