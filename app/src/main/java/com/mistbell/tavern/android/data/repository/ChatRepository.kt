@@ -1363,34 +1363,36 @@ class ChatRepository(private val context: Context) {
     // 独立记忆模型优先；未配置时保持原有会话 provider → 默认 provider → 活跃 LLM 的回退顺序。
     // 记忆抽取仍在后台运行，且不进入聊天请求的稳定提示词前缀。
     private suspend fun resolveExtractionConfig(providerId: String): LlmConfig? {
-        memoryExtractionModelSettingsRepo.resolveLlmConfigOrNull()?.let { dedicatedConfig ->
+        val dedicatedConfig = memoryExtractionModelSettingsRepo.resolveLlmConfigOrNull()
+        if (dedicatedConfig != null) {
             android.util.Log.d("ChatRepository", "Using independent memory extraction model configuration")
-            return dedicatedConfig
         }
 
         val dao = db.apiConfigDao()
         val matched = if (providerId.isNotBlank()) dao.getById(providerId) else null
         val fallback = matched ?: dao.getDefault()
-        if (fallback != null) {
-            android.util.Log.d("ChatRepository", "Memory extraction using chat config: ${fallback.name}")
-            return LlmConfig(
-                baseUrl = fallback.apiUrl,
-                apiKey = fallback.apiKey,
-                model = fallback.model,
-            )
-        }
-
-        val llmConfig = loadLlmConfig()
-        return if (
-            llmConfig.baseUrl.isNotBlank() &&
-            llmConfig.apiKey.isNotBlank() &&
-            llmConfig.model.isNotBlank()
-        ) {
-            android.util.Log.i("ChatRepository", "Using active LLM config for memory extraction")
-            llmConfig
-        } else {
-            android.util.Log.w("ChatRepository", "No LLM configs available, memory extraction disabled")
-            null
-        }
+        val chatConfig =
+            if (fallback != null) {
+                android.util.Log.d("ChatRepository", "Memory extraction using chat config: ${fallback.name}")
+                LlmConfig(
+                    baseUrl = fallback.apiUrl,
+                    apiKey = fallback.apiKey,
+                    model = fallback.model,
+                )
+            } else {
+                val llmConfig = loadLlmConfig()
+                if (
+                    llmConfig.baseUrl.isNotBlank() &&
+                    llmConfig.apiKey.isNotBlank() &&
+                    llmConfig.model.isNotBlank()
+                ) {
+                    android.util.Log.i("ChatRepository", "Using active LLM config for memory extraction")
+                    llmConfig
+                } else {
+                    android.util.Log.w("ChatRepository", "No LLM configs available, memory extraction disabled")
+                    null
+                }
+            }
+        return dedicatedConfig ?: chatConfig
     }
 }
