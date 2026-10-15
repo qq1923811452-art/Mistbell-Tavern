@@ -2,6 +2,15 @@ package com.mistbell.tavern.android.data.image
 
 import android.content.Context
 import com.mistbell.tavern.android.util.ApiEndpointPolicy
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import java.io.File
+import java.io.IOException
+import java.util.Base64
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerializationException
@@ -12,15 +21,6 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
-import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
-import java.io.File
-import java.io.IOException
-import java.util.Base64
-import java.util.concurrent.TimeUnit
 
 /** Dedicated image API configuration. Kept separate from chat/embedding provider credentials. */
 data class ImageGenerationConfig(
@@ -79,8 +79,9 @@ class ImageGenerationService(
 
             val response = executeGenerationRequest(requestBuilder.build())
 
-            val first = response["data"]?.jsonArray?.firstOrNull()?.jsonObject
-                ?: throw IOException("生图 API 响应中没有 data[0]")
+            val first =
+                response["data"]?.jsonArray?.firstOrNull()?.jsonObject
+                    ?: throw IOException("生图 API 响应中没有 data[0]")
             val remoteUrl = first["url"]?.jsonPrimitive?.contentOrNull()
             val base64 = first["b64_json"]?.jsonPrimitive?.contentOrNull()
             val outputFile = createOutputFile()
@@ -256,8 +257,7 @@ class ImageGenerationService(
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
         private val JSON = Json { ignoreUnknownKeys = true }
 
-        internal fun isEncodedImageLengthAllowed(encodedLength: Long): Boolean =
-            encodedLength in 1L..MAX_BASE64_CHARS
+        internal fun isEncodedImageLengthAllowed(encodedLength: Long): Boolean = encodedLength in 1L..MAX_BASE64_CHARS
 
         private fun defaultClient(): OkHttpClient =
             OkHttpClient.Builder()
