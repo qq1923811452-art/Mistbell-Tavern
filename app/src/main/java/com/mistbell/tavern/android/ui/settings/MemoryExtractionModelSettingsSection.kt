@@ -56,7 +56,10 @@ fun MemoryExtractionModelSettingsSection() {
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text(
-                text = "可单独配置 Qwen 等模型整理长期记忆，不占用聊天模型的上下文。完整填写基础地址和模型 ID 后优先用于后台记忆抽取；留空则沿用当前会话的 API 配置。此设置不改变聊天提示词前缀或缓存布局。",
+                text =
+                    "可单独配置 Qwen 等模型整理长期记忆，不占用聊天模型的上下文。" +
+                        "完整填写基础地址和模型 ID 后优先用于后台记忆抽取；留空则沿用当前会话的 API 配置。" +
+                        "此设置不改变聊天提示词前缀或缓存布局。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
