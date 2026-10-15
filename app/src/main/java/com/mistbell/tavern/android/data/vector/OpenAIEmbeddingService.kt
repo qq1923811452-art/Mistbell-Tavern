@@ -222,8 +222,8 @@ class OpenAIEmbeddingService(
                 "Unexpected embedding dimensions for model $model: $dimensions (expected $DIMENSION)",
             )
         }
-        if (orderedData.map { it.index } != texts.indices.toList()) {
-            throw IllegalStateException("Embedding response contains missing or duplicate input indices")
+        if (orderedData.map { it.index }.distinct().size != orderedData.size) {
+            throw IllegalStateException("Embedding response contains duplicate input indices")
         }
 
         return orderedData.map { data ->
