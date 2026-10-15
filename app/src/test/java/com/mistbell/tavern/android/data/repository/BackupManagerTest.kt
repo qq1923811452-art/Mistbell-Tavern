@@ -21,7 +21,7 @@ class BackupManagerTest {
 
     @Test
     fun unsafeBackupApiEndpointsAreQuarantinedInsteadOfBlockingRestore() {
-        assertEquals("", BackupManager.endpointForRestore("http://api.example.com/v1"))
+        assertEquals("", endpointForRestore("http://api.example.com/v1"))
         assertEquals("", BackupManager.endpointForRestore("https://user:secret@api.example.com/v1"))
         assertEquals("https://api.example.com/v1", BackupManager.endpointForRestore("https://api.example.com/v1"))
         assertEquals("http://10.0.2.2:3000/", BackupManager.endpointForRestore("http://10.0.2.2:3000/"))
