@@ -10,18 +10,6 @@ on:
         options:
           - debug
         default: debug
-  push:
-    branches:
-      - feature
-    paths:
-      - "app/**"
-      - "gradle/**"
-      - "gradlew"
-      - "build.gradle*"
-      - "settings.gradle*"
-      - ".github/workflows/build-apk.yml"
-      - ".github/workflows/ci.yml"
-
 permissions:
   contents: read
 
