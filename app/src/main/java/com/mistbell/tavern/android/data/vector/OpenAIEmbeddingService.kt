@@ -68,6 +68,8 @@ class OpenAIEmbeddingService(
     private val baseUrl: String = "https://api.openai.com/v1",
     private val model: String = "text-embedding-3-small",
 ) : EmbeddingService {
+    override val isSemantic: Boolean = true
+
     private val normalizedBaseUrl = baseUrl.trim().trimEnd('/')
 
     private val client =
