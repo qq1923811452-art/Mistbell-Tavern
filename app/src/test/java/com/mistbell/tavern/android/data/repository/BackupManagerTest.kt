@@ -330,4 +330,17 @@ class BackupManagerTest {
             assertTrue(e.message!!.contains("重复 ID"))
         }
     }
+
+    @Test
+    fun `恢复 API Key 加密失败时错误包含配置 ID 且保留原始原因`() {
+        val cause = IllegalStateException("Keystore unavailable")
+        try {
+            wrapRestoredApiKey("api-config-7", "plain-key") { throw cause }
+            fail("Keystore 不可用时应中止恢复")
+        } catch (e: IllegalStateException) {
+            assertTrue(e.message!!.contains("api-config-7"))
+            assertTrue(e.message!!.contains("无法加密"))
+            assertEquals(cause, e.cause)
+        }
+    }
 }
