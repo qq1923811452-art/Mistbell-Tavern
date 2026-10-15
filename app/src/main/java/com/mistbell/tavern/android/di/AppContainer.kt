@@ -81,10 +81,15 @@ class AppContainer(private val appContext: Context) {
     @Volatile
     private var runtimeEmbeddingServices: RuntimeEmbeddingServices? = null
 
-    private val initialEmbeddingService: EmbeddingService by lazy {
-        kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
-            assembleEmbeddingService()
-        }
+    // Never download or initialize a large on-device model from a synchronous lazy getter.
+    // Startup initializes the configured source asynchronously; Mock remains a safe temporary fallback.
+    private val initialEmbeddingService: EmbeddingService by lazy { MockEmbeddingService() }
+
+    suspend fun initializeConfiguredEmbeddingSource() {
+        val source =
+            runCatching { database.settingsDao().getValue("embedding_source") }
+                .getOrNull() ?: "auto"
+        refreshEmbeddingSource(source)
     }
 
     val embeddingService: EmbeddingService
