@@ -96,17 +96,22 @@ jobs:
           if audit_pass not in {"1", "2"}:
               raise SystemExit("AUDIT_PASS must be 1 or 2.")
           model = os.environ.get(f"ODYS_MODEL_{model_slot}", "").strip()
-          api_key = os.environ.get(f"ODYS_API_KEY_{model_slot}", "").strip()
+          key_source = f"ODYS_API_KEY_{model_slot}"
+          api_key = os.environ.get(key_source, "").strip()
           if model_slot == "B" and not api_key:
               api_key = os.environ.get("ODYS_API_KEY_A", "").strip()
-          api_base_url = os.environ.get(f"ODYS_API_BASE_URL_{model_slot}", "").strip()
+              key_source = "ODYS_API_KEY (shared fallback)"
+          base_source = f"ODYS_API_BASE_URL_{model_slot}"
+          api_base_url = os.environ.get(base_source, "").strip()
           if not api_base_url:
               api_base_url = os.environ.get("ODYS_API_BASE_URL_A", "").strip()
+              base_source = "ODYS_API_BASE_URL (shared fallback)" if api_base_url else "default relay URL"
           if not api_base_url:
               api_base_url = "https://api.odys.work/v1"
           api_base_url = api_base_url.rstrip("/")
           if not model or not api_key:
               raise SystemExit(f"Model {model_slot} is missing its model ID or API key.")
+          print(f"Model slot {model_slot}; credential source: {key_source}; API base source: {base_source}.")
 
           try:
               pr_number_int = int(pr_number)
@@ -474,6 +479,16 @@ jobs:
               report["findings"] = verified_findings[:20]
               report["findings_truncated"] = raw_findings_count > 20 or len(verified_findings) > 20
               report["unverified_findings_dropped"] = rejected_evidence_count
+              if rejected_evidence_count and not verified_findings:
+                  report["summary"] = (
+                      "所有候选问题都因证据无法与本次送审 diff 匹配而被丢弃；"
+                      "这不代表代码没有问题，必须人工复核本次变更。"
+                  )
+              elif rejected_evidence_count:
+                  report["summary"] = (
+                      str(report.get("summary", "")).strip()
+                      + f"（另有 {rejected_evidence_count} 条候选问题因证据无法匹配而被丢弃。）"
+                  )
           except Exception as exc:
               print("Could not validate structured AI response:", type(exc).__name__)
               raise SystemExit(1)
@@ -505,6 +520,8 @@ jobs:
               f"- **Audited head SHA:** `{head_sha}`",
               f"- **Model configured (request):** `{safe_markdown(model, 100)}`",
               f"- **Model returned by relay:** `{safe_markdown(returned_model, 100)}`",
+              f"- **Credential source:** `{safe_markdown(key_source, 100)}`",
+              f"- **API base source:** `{safe_markdown(base_source, 100)}`",
               "- **Model identity note:** relay response metadata is self-reported and is not independent proof of the upstream backend.",
               f"- **Diff size:** {len(diff)} characters" + (" (truncated before analysis; manual review required)" if truncated else ""),
               "- **Important:** AI findings are untrusted advisory text. Verify them against source and CI.",
