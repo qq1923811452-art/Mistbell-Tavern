@@ -289,93 +289,98 @@ class VectorMemoryService(
 
         val modelId = embeddingService.getModelId()
         val legacyEntries = vectorStore.getAllEntries().filter { it.metadata["embedding_model"] == null }
-        var migrated = 0
-        var skipped = 0
-        var reused = 0
-        val candidates = mutableListOf<LegacyVectorCandidate>()
-
-        for (entry in legacyEntries) {
-            val metadata = entry.metadata
-            val content = metadata["content"] as? String
-            val ownerId = metadata["owner_id"] as? String
-            val characterId = metadata["character_id"] as? String
-            val sessionId = metadata["session_id"] as? String
-            val messageId = metadata["message_id"] as? String
-            val contentType = metadata["content_type"] as? String
-
-            if (
-                content.isNullOrBlank() ||
-                ownerId.isNullOrBlank() ||
-                characterId.isNullOrBlank() ||
-                sessionId == null ||
-                messageId.isNullOrBlank() ||
-                contentType.isNullOrBlank()
-            ) {
-                skipped++
-                continue
-            }
-
-            val targetId = generateVectorId(
-                VectorIdentity(
-                    ownerId = ownerId,
-                    characterId = characterId,
-                    sessionId = sessionId,
-                    messageId = messageId,
-                    contentType = contentType,
-                    modelId = modelId,
-                ),
-            )
-            val targetMetadata = metadata.toMutableMap().apply {
-                put("embedding_model", modelId)
-            }
-            val existingTarget = vectorStore.get(targetId)
-            if (
-                existingTarget != null &&
-                existingTarget.metadata["embedding_model"] == modelId &&
-                existingTarget.metadata["content"] == content
-            ) {
-                if (entry.id != targetId) vectorStore.delete(entry.id)
-                migrated++
-                reused++
-                continue
-            }
-
-            candidates += LegacyVectorCandidate(entry.id, targetId, content, targetMetadata)
-        }
-
-        for (batch in candidates.chunked(batchSize)) {
-            val embeddings = embeddingService.embedBatch(batch.map { it.content })
-            if (embeddings.size != batch.size) {
-                error("Legacy vector reindex count mismatch: expected ${batch.size}, received ${embeddings.size}")
-            }
-            val expectedDimension = embeddingService.getDimension()
-            if (embeddings.any { it.size != expectedDimension }) {
-                error("Legacy vector reindex returned an unexpected embedding dimension")
-            }
-
-            vectorStore.addBatch(
-                batch.mapIndexed { index, candidate ->
-                    VectorStore.VectorEntry(
-                        id = candidate.targetId,
-                        vector = embeddings[index],
-                        metadata = candidate.metadata,
-                    )
-                },
-            )
-
-            // Remove old entries only after the replacement batch has been persisted.
-            batch.filter { it.legacyId != it.targetId }.forEach { candidate ->
-                vectorStore.delete(candidate.legacyId)
-            }
-            migrated += batch.size
-        }
+        val preparation = prepareLegacyCandidates(legacyEntries, modelId)
+        preparation.candidates.chunked(batchSize).forEach { batch -> reindexLegacyBatch(batch) }
 
         return LegacyReindexResult(
             scannedLegacy = legacyEntries.size,
-            migrated = migrated,
-            skipped = skipped,
-            reused = reused,
+            migrated = preparation.reused + preparation.candidates.size,
+            skipped = preparation.skipped,
+            reused = preparation.reused,
         )
+    }
+
+    private suspend fun prepareLegacyCandidates(
+        entries: List<VectorStore.VectorEntry>,
+        modelId: String,
+    ): LegacyCandidatePreparation {
+        val candidates = mutableListOf<LegacyVectorCandidate>()
+        var skipped = 0
+        var reused = 0
+        for (entry in entries) {
+            when (val decision = prepareLegacyCandidate(entry, modelId)) {
+                LegacyCandidateDecision.Skip -> skipped++
+                LegacyCandidateDecision.Reused -> reused++
+                is LegacyCandidateDecision.Reindex -> candidates += decision.candidate
+            }
+        }
+        return LegacyCandidatePreparation(candidates, skipped, reused)
+    }
+
+    private suspend fun prepareLegacyCandidate(
+        entry: VectorStore.VectorEntry,
+        modelId: String,
+    ): LegacyCandidateDecision {
+        val metadata = entry.metadata
+        val content = metadata["content"] as? String
+        val ownerId = metadata["owner_id"] as? String
+        val characterId = metadata["character_id"] as? String
+        val sessionId = metadata["session_id"] as? String
+        val messageId = metadata["message_id"] as? String
+        val contentType = metadata["content_type"] as? String
+        if (content.isNullOrBlank() || ownerId.isNullOrBlank() || characterId.isNullOrBlank() ||
+            sessionId == null || messageId.isNullOrBlank() || contentType.isNullOrBlank()
+        ) {
+            return LegacyCandidateDecision.Skip
+        }
+
+        val targetId = generateVectorId(
+            VectorIdentity(ownerId, characterId, sessionId, messageId, contentType, modelId),
+        )
+        val targetMetadata = metadata.toMutableMap().apply { put("embedding_model", modelId) }
+        val existingTarget = vectorStore.get(targetId)
+        val canReuseTarget = existingTarget != null &&
+            existingTarget.metadata["embedding_model"] == modelId &&
+            existingTarget.metadata["content"] == content
+        if (canReuseTarget) {
+            if (entry.id != targetId) vectorStore.delete(entry.id)
+            return LegacyCandidateDecision.Reused
+        }
+        return LegacyCandidateDecision.Reindex(
+            LegacyVectorCandidate(entry.id, targetId, content, targetMetadata),
+        )
+    }
+
+    private suspend fun reindexLegacyBatch(batch: List<LegacyVectorCandidate>) {
+        val embeddings = embeddingService.embedBatch(batch.map { it.content })
+        if (embeddings.size != batch.size) {
+            error("Legacy vector reindex count mismatch: expected ${batch.size}, received ${embeddings.size}")
+        }
+        val expectedDimension = embeddingService.getDimension()
+        if (embeddings.any { it.size != expectedDimension }) {
+            error("Legacy vector reindex returned an unexpected embedding dimension")
+        }
+        vectorStore.addBatch(
+            batch.mapIndexed { index, candidate ->
+                VectorStore.VectorEntry(candidate.targetId, embeddings[index], candidate.metadata)
+            },
+        )
+        // Remove old entries only after the replacement batch has been persisted.
+        batch.filter { it.legacyId != it.targetId }.forEach { candidate ->
+            vectorStore.delete(candidate.legacyId)
+        }
+    }
+
+    private data class LegacyCandidatePreparation(
+        val candidates: List<LegacyVectorCandidate>,
+        val skipped: Int,
+        val reused: Int,
+    )
+
+    private sealed interface LegacyCandidateDecision {
+        data object Skip : LegacyCandidateDecision
+        data object Reused : LegacyCandidateDecision
+        data class Reindex(val candidate: LegacyVectorCandidate) : LegacyCandidateDecision
     }
 
     data class LegacyReindexResult(
