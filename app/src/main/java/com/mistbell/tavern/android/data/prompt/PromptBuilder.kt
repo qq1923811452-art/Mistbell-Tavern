@@ -9,6 +9,7 @@ import com.mistbell.tavern.android.data.local.entity.MessageEntity
 import com.mistbell.tavern.android.data.local.entity.WorldBookEntryEntity
 import com.mistbell.tavern.android.data.repository.ChatSettingsResolver
 import com.mistbell.tavern.android.data.repository.LexicalMemoryService
+import com.mistbell.tavern.android.data.repository.WorldBookScanSettingsRepository
 import com.mistbell.tavern.android.data.vector.VectorStore
 import com.mistbell.tavern.android.util.MacroContext
 import com.mistbell.tavern.android.util.MacroEngine
@@ -19,8 +20,6 @@ import java.time.Instant
 object PromptBuilder {
     /** World Info 的会话内运行状态：sticky/cooldown/delay 只影响激活决策，不改变 Room 主数据。 */
     private object WorldInfoRuntime {
-        private const val DEFAULT_RECURSION_DEPTH = 3
-        private const val MAX_ALLOWED_RECURSION_DEPTH = 5
 
         private data class EntryState(var lastTurn: Int = -1, var sticky: Boolean = false)
 
@@ -51,14 +50,14 @@ object PromptBuilder {
             entries: List<WorldBookEntryEntity>,
             scanText: String,
             recursiveEnabled: Boolean = true,
-            maxDepth: Int = DEFAULT_RECURSION_DEPTH,
+            maxDepth: Int = WorldBookScanSettingsRepository.DEFAULT_RECURSION_DEPTH,
         ): Set<String> {
             val state = sessions.getOrPut(sessionId) { SessionState() }
             state.turn += 1
             val activated = linkedSetOf<String>()
             val selectedGroups = mutableSetOf<String>()
             var corpus = scanText
-            repeat(if (recursiveEnabled) maxDepth.coerceIn(1, MAX_ALLOWED_RECURSION_DEPTH) else 1) {
+            repeat(if (recursiveEnabled) maxDepth.coerceIn(WorldBookScanSettingsRepository.MIN_RECURSION_DEPTH, WorldBookScanSettingsRepository.MAX_RECURSION_DEPTH) else 1) {
                 val candidates =
                     entries
                         .asSequence()
@@ -509,8 +508,11 @@ object PromptBuilder {
                 maxDepth =
                     settingsDao.getValue("worldbook_recursive_scan_depth")
                         ?.toIntOrNull()
-                        ?.coerceIn(1, 5)
-                        ?: 3,
+                        ?.coerceIn(
+                            WorldBookScanSettingsRepository.MIN_RECURSION_DEPTH,
+                            WorldBookScanSettingsRepository.MAX_RECURSION_DEPTH,
+                        )
+                        ?: WorldBookScanSettingsRepository.DEFAULT_RECURSION_DEPTH,
             )
         val wbPlan = WorldBookPlacement.plan(worldBookEntries)
         // 缓存优化：只注入 constant 条目到历史之前，activated 条目稍后注入到历史之后
