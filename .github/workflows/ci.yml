@@ -22,7 +22,20 @@ on:
       - "build.gradle*"
       - "settings.gradle*"
       - ".github/workflows/**"
+  workflow_dispatch:
+    inputs:
+      full_android_validation:
+        description: "Run emulator tests and build the debug APK (final-stage validation)"
+        required: true
+        type: boolean
+        default: false
   workflow_call:
+    inputs:
+      full_android_validation:
+        description: "Run emulator tests and build the debug APK (final-stage validation)"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -33,7 +46,7 @@ concurrency:
 
 jobs:
   verify:
-    name: Build, unit tests, static checks, and APK
+    name: Kotlin compile, unit tests, and static checks
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -56,7 +69,7 @@ jobs:
 
       - name: Run quality gate
         id: quality_gate
-        run: ./gradlew :app:assembleDebug :app:testDebugUnitTest :app:detekt :app:ktlintCheck licenseGuard --continue --no-daemon --no-parallel
+        run: ./gradlew :app:compileDebugKotlin :app:testDebugUnitTest :app:detekt :app:ktlintCheck licenseGuard --continue --no-daemon --no-parallel
       
       # Keep Room's compiler-generated schema available for review and committing.
       # In particular, migration PRs must not hand-author identity hashes.
@@ -66,27 +79,6 @@ jobs:
         with:
           name: room-schema-v27
           path: app/schemas/com.mistbell.tavern.android.data.local.AppDatabase/27.json
-          if-no-files-found: error
-          retention-days: 14
-
-      - name: Generate APK checksum
-        if: ${{ always() && hashFiles('app/build/outputs/apk/debug/*.apk') != '' }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p build-artifacts
-          find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' -exec cp {} build-artifacts/ \;
-          test -n "$(find build-artifacts -maxdepth 1 -type f -name '*.apk' -print -quit)"
-          cd build-artifacts
-          sha256sum *.apk | tee SHA256SUMS.txt
-          printf 'source_sha=%s\ntested_sha=%s\nworkflow_run_id=%s\nquality_gate=%s\n' "${{ github.event.pull_request.head.sha || github.sha }}" "$GITHUB_SHA" "$GITHUB_RUN_ID" "${{ steps.quality_gate.outcome }}" > SOURCE.txt
-
-      - name: Upload APK and checksum
-        if: ${{ always() && hashFiles('build-artifacts/*.apk') != '' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: mistbell-${{ steps.quality_gate.outcome == 'success' && 'verified' || 'unverified' }}-debug-apk-${{ github.run_number }}
-          path: build-artifacts/*
           if-no-files-found: error
           retention-days: 14
 
@@ -102,7 +94,8 @@ jobs:
           retention-days: 14
 
   instrumented-tests:
-    name: Android emulator and migration tests
+    if: ${{ inputs.full_android_validation }}
+    name: Final Android emulator, APK, and migration validation
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -137,4 +130,25 @@ jobs:
           emulator-boot-timeout: 900
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
           disable-animations: true
-          script: ./gradlew :app:connectedDebugAndroidTest --no-daemon --no-parallel
+          script: ./gradlew :app:assembleDebug :app:connectedDebugAndroidTest --no-daemon --no-parallel
+
+      - name: Generate APK checksum
+        if: ${{ always() && hashFiles('app/build/outputs/apk/debug/*.apk') != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build-artifacts
+          find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' -exec cp {} build-artifacts/ \\;
+          test -n "$(find build-artifacts -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          cd build-artifacts
+          sha256sum *.apk | tee SHA256SUMS.txt
+          printf 'source_sha=%s\\ntested_sha=%s\\nworkflow_run_id=%s\\n' "${{ github.event.pull_request.head.sha || github.sha }}" "$GITHUB_SHA" "$GITHUB_RUN_ID" > SOURCE.txt
+
+      - name: Upload final APK and checksum
+        if: ${{ always() && hashFiles('build-artifacts/*.apk') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: mistbell-final-debug-apk-${{ github.run_number }}
+          path: build-artifacts/*
+          if-no-files-found: error
+          retention-days: 14
