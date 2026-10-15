@@ -18,8 +18,8 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
-import java.io.FileOutputStream
 import java.io.FileInputStream
+import java.io.FileOutputStream
 import java.io.IOException
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
@@ -42,7 +42,8 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
         private const val MODEL_DIR = "litert-models"
         private const val MODEL_FILE_NAME = "embeddinggemma-2-text-270m.litertlm"
         private const val MODEL_URL =
-            "https://huggingface.co/litert-community/embeddinggemma-2-text-270m-litert-lm/resolve/9be6e8b/embeddinggemma-2-text-270m.litertlm?download=true"
+            "https://huggingface.co/litert-community/embeddinggemma-2-text-270m-litert-lm/" +
+                "resolve/9be6e8b/embeddinggemma-2-text-270m.litertlm?download=true"
         private const val MIN_MODEL_BYTES = 100L * 1024L * 1024L
         private const val MAX_MODEL_BYTES = 250L * 1024L * 1024L
         private const val EXPECTED_DIMENSION = 768
