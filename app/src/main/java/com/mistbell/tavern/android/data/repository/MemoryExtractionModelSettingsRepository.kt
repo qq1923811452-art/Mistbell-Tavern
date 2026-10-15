@@ -1,5 +1,6 @@
 package com.mistbell.tavern.android.data.repository
 
+import androidx.room.withTransaction
 import com.mistbell.tavern.android.TavernApplication
 import com.mistbell.tavern.android.data.api.LlmConfig
 import com.mistbell.tavern.android.data.local.entity.SettingsEntity
@@ -36,22 +37,34 @@ data class MemoryExtractionModelSettings(
 }
 
 class MemoryExtractionModelSettingsRepository {
-    private val settingsDao get() = TavernApplication.instance.container.database.settingsDao()
+    private val database get() = TavernApplication.instance.container.database
+    private val settingsDao get() = database.settingsDao()
 
     suspend fun load(): MemoryExtractionModelSettings =
         withContext(Dispatchers.IO) {
+            val values =
+                database.withTransaction {
+                    Triple(
+                        settingsDao.getValue(KEY_BASE_URL).orEmpty(),
+                        settingsDao.getValue(KEY_API_KEY).orEmpty(),
+                        settingsDao.getValue(KEY_MODEL).orEmpty(),
+                    )
+                }
             MemoryExtractionModelSettings(
-                baseUrl = settingsDao.getValue(KEY_BASE_URL).orEmpty(),
-                apiKey = SecureStore.unwrap(settingsDao.getValue(KEY_API_KEY).orEmpty()),
-                model = settingsDao.getValue(KEY_MODEL).orEmpty(),
+                baseUrl = values.first,
+                apiKey = SecureStore.unwrap(values.second),
+                model = values.third,
             )
         }
 
     suspend fun save(settings: MemoryExtractionModelSettings) {
         withContext(Dispatchers.IO) {
-            settingsDao.upsert(SettingsEntity(KEY_BASE_URL, settings.baseUrl.trim()))
-            settingsDao.upsert(SettingsEntity(KEY_API_KEY, SecureStore.wrap(settings.apiKey.trim())))
-            settingsDao.upsert(SettingsEntity(KEY_MODEL, settings.model.trim()))
+            val encryptedApiKey = SecureStore.wrap(settings.apiKey.trim())
+            database.withTransaction {
+                settingsDao.upsert(SettingsEntity(KEY_BASE_URL, settings.baseUrl.trim()))
+                settingsDao.upsert(SettingsEntity(KEY_API_KEY, encryptedApiKey))
+                settingsDao.upsert(SettingsEntity(KEY_MODEL, settings.model.trim()))
+            }
         }
     }
 
