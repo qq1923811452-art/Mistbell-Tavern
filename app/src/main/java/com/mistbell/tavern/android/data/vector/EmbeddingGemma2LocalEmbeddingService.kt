@@ -191,6 +191,7 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
         private suspend fun ensureModelDownloaded(context: Context): File =
             modelDownloadMutex.withLock { ensureModelDownloadedLocked(context) }
 
+        @Suppress("NestedBlockDepth", "ThrowsCount")
         private suspend fun ensureModelDownloadedLocked(context: Context): File {
             val directory = File(context.filesDir, MODEL_DIR)
             if (!directory.exists() && !directory.mkdirs()) {
