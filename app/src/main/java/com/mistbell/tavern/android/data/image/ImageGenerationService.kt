@@ -76,8 +76,15 @@ class ImageGenerationService(
                 client.newCall(requestBuilder.build()).execute().use { httpResponse ->
                     val body = httpResponse.body?.string().orEmpty()
                     if (!httpResponse.isSuccessful) {
-                        val safeBody = body.take(MAX_ERROR_BODY_CHARS).replace(Regex("(?i)(api[_-]?key|authorization|bearer)\\s*[:=]?\\s*[^,\\s]+"), "$1=[redacted]")
-                        throw IOException("生图 API 返回 HTTP ${httpResponse.code}: ${safeBody.ifBlank { httpResponse.message }}")
+                        val safeBody =
+                            body.take(MAX_ERROR_BODY_CHARS)
+                                .replace(
+                                    Regex("(?i)(api[_-]?key|authorization|bearer)\\s*[:=]?\\s*[^,\\s]+"),
+                                    "$1=[redacted]",
+                                )
+                        throw IOException(
+                            "生图 API 返回 HTTP ${httpResponse.code}: ${safeBody.ifBlank { httpResponse.message }}",
+                        )
                     }
                     try {
                         Json { ignoreUnknownKeys = true }.parseToJsonElement(body).jsonObject
@@ -105,7 +112,7 @@ class ImageGenerationService(
                     }
                     outputFile.writeBytes(bytes)
                 }
-                !remoteUrl.isNullOrBlank() -> downloadImage(remoteUrl, config.apiKey, outputFile)
+                !remoteUrl.isNullOrBlank() -> downloadImage(remoteUrl, config.baseUrl, config.apiKey, outputFile)
                 else -> throw IOException("生图 API 响应既没有 url，也没有 b64_json")
             }
             GeneratedImage(
@@ -124,15 +131,16 @@ class ImageGenerationService(
 
     private fun downloadImage(
         url: String,
+        baseUrl: String,
         apiKey: String,
         outputFile: File,
     ) {
         val request =
             Request.Builder().url(url).get().apply {
                 // Signed image URLs normally need no authorization; only add it for same-host URLs.
-                val apiHost = runCatching { java.net.URL(url).host }.getOrNull()
-                val baseHost = runCatching { java.net.URL(url).host }.getOrNull()
-                if (apiKey.isNotBlank() && apiHost != null && apiHost == baseHost) {
+                val imageHost = runCatching { java.net.URL(url).host }.getOrNull()
+                val apiHost = runCatching { java.net.URL(baseUrl).host }.getOrNull()
+                if (apiKey.isNotBlank() && imageHost != null && imageHost == apiHost) {
                     header("Authorization", "Bearer ${apiKey.trim()}")
                 }
             }.build()
