@@ -25,7 +25,13 @@ class MemoryExtractionModelSettingsTest {
 
     @Test
     fun `invalid base URL stays disabled`() {
-        assertNull(MemoryExtractionModelSettings(baseUrl = "relay.example/v1", apiKey = "key", model = "qwen").toLlmConfigOrNull())
+        assertNull(
+            MemoryExtractionModelSettings(
+                baseUrl = "relay.example/v1",
+                apiKey = "key",
+                model = "qwen",
+            ).toLlmConfigOrNull(),
+        )
     }
 
     @Test
