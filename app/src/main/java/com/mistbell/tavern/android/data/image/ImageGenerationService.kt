@@ -1,6 +1,7 @@
 package com.mistbell.tavern.android.data.image
 
 import android.content.Context
+import com.mistbell.tavern.android.util.ApiEndpointPolicy
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerializationException
@@ -158,9 +159,8 @@ class ImageGenerationService(
 
     private fun endpoint(baseUrl: String): String {
         val base = baseUrl.trim().trimEnd('/')
-        require(base.startsWith("https://") || base.startsWith("http://")) {
-            "生图 API 地址必须以 http:// 或 https:// 开头"
-        }
+        val rejection = ApiEndpointPolicy.writeRejectionReason(base)
+        require(rejection == null) { rejection ?: "生图 API 地址无效" }
         return if (base.endsWith("/images/generations")) base else "$base/images/generations"
     }
 
