@@ -366,7 +366,10 @@ class VectorMemoryService(
         check(embeddingService !is MockEmbeddingService) {
             "Legacy vector reindex requires a real embedding service; mock vectors must never be persisted"
         }
-        val legacyEntries = vectorStore.getAllEntries().filter { it.metadata["embedding_model"] == null }
+        val legacyEntries =
+            vectorStore.getAllEntries().filter {
+                it.metadata["embedding_model"]?.toString().isNullOrBlank()
+            }
         var skipped = 0
         var reused = 0
         var reindexed = 0
