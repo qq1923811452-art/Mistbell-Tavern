@@ -117,12 +117,15 @@ jobs:
       - name: Install Android NDK and Bazelisk for Qualcomm dispatch
         run: |
           set -euo pipefail
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;28.1.13356709"
+          sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          "$sdkmanager" --licenses < <(yes)
+          "$sdkmanager" "ndk;28.1.13356709"
+          test -d "$ANDROID_HOME/ndk/28.1.13356709"
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.1.13356709" >> "$GITHUB_ENV"
           echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/28.1.13356709" >> "$GITHUB_ENV"
-          curl -fL --retry 3 https://github.com/bazelbuild/bazelisk/releases/latest/download/bazelisk-linux-amd64 -o /tmp/bazel
+          curl -fL --retry 3 https://github.com/bazelbuild/bazelisk/releases/download/v1.28.1/bazelisk-linux-amd64 -o /tmp/bazel
           chmod +x /tmp/bazel
+          /tmp/bazel --version
           sudo mv /tmp/bazel /usr/local/bin/bazel
 
       - name: Checkout LiteRT Qualcomm dispatch source pinned to LiteRT-LM 0.18.0
@@ -186,7 +189,7 @@ jobs:
           emulator-boot-timeout: 900
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
           disable-animations: true
-          script: ./gradlew :app:assembleDebug :app:connectedDebugAndroidTest --no-daemon --no-parallel
+          script: ./gradlew -PqualcommNpuRuntime :app:assembleDebug :app:connectedDebugAndroidTest --no-daemon --no-parallel
 
       - name: Generate APK checksum
         if: ${{ always() && hashFiles('app/build/outputs/apk/debug/*.apk') != '' }}
