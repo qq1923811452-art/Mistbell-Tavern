@@ -107,7 +107,7 @@ class OpenAIEmbeddingService(
 
         if (!response.isSuccessful) {
             val errorBody = response.body?.string() ?: "Unknown error"
-            error("OpenAI API error: ${response.code} - $errorBody")
+            throw EmbeddingHttpException(response.code, "OpenAI API error: ${response.code} - $errorBody")
         }
 
         val responseBody =
@@ -195,7 +195,7 @@ class OpenAIEmbeddingService(
 
         if (!response.isSuccessful) {
             val errorBody = response.body?.string() ?: "Unknown error"
-            error("OpenAI API error: ${response.code} - $errorBody")
+            throw EmbeddingHttpException(response.code, "OpenAI API error: ${response.code} - $errorBody")
         }
 
         val responseBody =
@@ -227,11 +227,13 @@ class OpenAIEmbeddingService(
         }
     }
 
-    private fun isRetryableHttpError(error: Exception): Boolean {
-        val message = error.message.orEmpty()
-        return message.contains("429") ||
-            Regex("OpenAI API error: 5\\d\\d").containsMatchIn(message)
-    }
+    private fun isRetryableHttpError(error: Exception): Boolean =
+        error is EmbeddingHttpException && isRetryableEmbeddingStatusCode(error.statusCode)
+
+    private class EmbeddingHttpException(
+        val statusCode: Int,
+        message: String,
+    ) : Exception(message)
 
     override fun getDimension(): Int = DIMENSION
 
@@ -277,3 +279,6 @@ internal fun validateEmbeddingResponseIndices(
         error("Embedding response contains invalid input indices: expected $expectedIndices, received ${indices.sorted()}")
     }
 }
+
+internal fun isRetryableEmbeddingStatusCode(statusCode: Int): Boolean =
+    statusCode == 429 || statusCode in 500..599
