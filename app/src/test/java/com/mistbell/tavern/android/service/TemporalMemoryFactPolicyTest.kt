@@ -101,6 +101,15 @@ class TemporalMemoryFactPolicyTest {
     }
 
     @Test
+    fun emptyStructuredDataDoesNotCreateLegacyRawMarker() {
+        val updated = TemporalMemoryFactPolicy.markHistorical("", "2026-10-15T12:00:00Z", 20L)
+        val decoded = Json.parseToJsonElement(updated).jsonObject
+
+        assertEquals("historical", decoded["status"]?.jsonPrimitive?.content)
+        assertFalse(decoded.containsKey("legacy_raw"))
+    }
+
+    @Test
     fun `malformed legacy structured data is preserved during temporal update`() {
         val updated = TemporalMemoryFactPolicy.markHistorical("not-json", "2026-10-15T12:00:00Z", 20L)
         val decoded = Json.parseToJsonElement(updated).jsonObject
