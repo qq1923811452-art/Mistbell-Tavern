@@ -121,6 +121,8 @@ fun ModernSettingsScreen(
 
             EmbeddingApiSettingsSection()
 
+            ImageGenerationSettingsSection()
+
             ConversationSettingsSection(viewModel)
 
             AppearanceSettingsSection(viewModel, onNavigateToThemeManager)
