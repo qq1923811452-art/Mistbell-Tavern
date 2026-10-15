@@ -27,7 +27,6 @@ import java.util.Locale
 object PromptBuilder {
     /** World Info 的会话内运行状态：sticky/cooldown/delay 只影响激活决策，不改变 Room 主数据。 */
     private object WorldInfoRuntime {
-
         private data class EntryState(var lastTurn: Int = -1, var sticky: Boolean = false)
 
         private data class SessionState(var turn: Int = 0, val entries: MutableMap<String, EntryState> = mutableMapOf())
