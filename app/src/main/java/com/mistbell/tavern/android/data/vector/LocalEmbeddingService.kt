@@ -27,6 +27,8 @@ class LocalEmbeddingService private constructor(
     private val session: OrtSession,
     private val tokenizer: BertWordPieceTokenizer,
 ) : EmbeddingService {
+    override val isSemantic: Boolean = true
+
     companion object {
         private const val MODEL_ASSET = "models/bge-small-zh-v1.5-q.onnx"
         private const val VOCAB_ASSET = "models/bge-small-zh-vocab.txt"
