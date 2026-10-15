@@ -2,6 +2,8 @@ package com.mistbell.tavern.android.data.vector
 
 import android.util.Log
 import android.util.LruCache
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -33,13 +35,15 @@ class CachedVectorStore(
         vector: FloatArray,
         metadata: Map<String, Any>,
     ) {
-        delegate.add(id, vector, metadata)
-        invalidateCache()
+        mutateAndInvalidate {
+            delegate.add(id, vector, metadata)
+        }
     }
 
     override suspend fun addBatch(entries: List<VectorStore.VectorEntry>) {
-        delegate.addBatch(entries)
-        invalidateCache()
+        mutateAndInvalidate {
+            delegate.addBatch(entries)
+        }
     }
 
     override suspend fun search(
@@ -86,29 +90,44 @@ class CachedVectorStore(
     override suspend fun getAllEntries(): List<VectorStore.VectorEntry> = delegate.getAllEntries()
 
     override suspend fun delete(id: String) {
-        delegate.delete(id)
-        invalidateCache()
+        mutateAndInvalidate {
+            delegate.delete(id)
+        }
     }
 
-    override suspend fun deleteByFilters(filters: Map<String, Any>): Int {
-        val count = delegate.deleteByFilters(filters)
-        if (count > 0) {
-            invalidateCache()
+    override suspend fun deleteByFilters(filters: Map<String, Any>): Int =
+        mutateAndInvalidate {
+            delegate.deleteByFilters(filters)
         }
-        return count
-    }
 
     override suspend fun count(): Int {
         return delegate.count()
     }
 
     override suspend fun clear() {
-        delegate.clear()
-        invalidateCache()
+        mutateAndInvalidate {
+            delegate.clear()
+        }
     }
 
     /** Public hook for provider/model reconfiguration. */
     suspend fun invalidateSearchCache() = invalidateCache()
+
+    /**
+     * Invalidate even when a delegate mutation throws: some stores can mutate in-memory state
+     * before persistence fails, so retaining old search results would hide the partial change.
+     */
+    private suspend fun <T> mutateAndInvalidate(mutation: suspend () -> T): T {
+        val result =
+            try {
+                mutation()
+            } catch (e: Exception) {
+                withContext(NonCancellable) { invalidateCache() }
+                throw e
+            }
+        withContext(NonCancellable) { invalidateCache() }
+        return result
+    }
 
     private suspend fun invalidateCache() {
         cacheMutex.withLock {
