@@ -136,6 +136,12 @@ class InMemoryVectorStore(
         }
     }
 
+    override suspend fun getAllEntries(): List<VectorStore.VectorEntry> =
+        mutex.withLock {
+            ensureLoaded()
+            vectors.values.toList()
+        }
+
     override suspend fun delete(id: String) {
         mutex.withLock {
             ensureLoaded()
