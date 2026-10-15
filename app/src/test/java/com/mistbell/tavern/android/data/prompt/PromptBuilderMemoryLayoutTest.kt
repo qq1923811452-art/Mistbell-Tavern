@@ -99,7 +99,7 @@ class PromptBuilderMemoryLayoutTest {
                 alreadyInjected = injected,
             )
         assertEquals(
-            "## Relevant Past Conversations\\n1. 昨晚课堂上张老师点名提问了三次\\n",
+            "## Relevant Past Conversations\n1. 昨晚课堂上张老师点名提问了三次\n",
             out,
         )
     }
