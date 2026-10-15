@@ -100,6 +100,8 @@ class CachedVectorStore(
         return delegate.get(id)
     }
 
+    override suspend fun getAllEntries(): List<VectorStore.VectorEntry> = delegate.getAllEntries()
+
     override suspend fun delete(id: String) {
         mutateStore {
             delegate.delete(id)
