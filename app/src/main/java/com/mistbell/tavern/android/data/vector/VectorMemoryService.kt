@@ -455,7 +455,10 @@ class VectorMemoryService(
             }
             val expectedDimension = embeddingService.getDimension()
             val actualDimensions = embeddings.map { it.size }.distinct()
-            check(actualDimensions.size <= 1 && (expectedDimension <= 0 || actualDimensions.singleOrNull() == expectedDimension)) {
+            check(
+                actualDimensions.size <= 1 &&
+                    (expectedDimension <= 0 || actualDimensions.singleOrNull() == expectedDimension),
+            ) {
                 "Legacy vector reindex returned unexpected dimensions: $actualDimensions (expected $expectedDimension)"
             }
             vectorStore.addBatch(
