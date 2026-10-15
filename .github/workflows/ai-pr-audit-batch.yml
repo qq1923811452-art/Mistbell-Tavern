@@ -18,7 +18,7 @@ concurrency:
 
 jobs:
   dispatch-audits:
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref_name == github.event.repository.default_branch)
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch))
     name: Queue audit for PR ${{ matrix.pr_number }}
     runs-on: ubuntu-latest
     timeout-minutes: 5

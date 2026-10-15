@@ -54,6 +54,7 @@ jobs:
           import json
           import os
           import re
+          import time
           import shlex
           import sys
           import urllib.error
@@ -96,12 +97,30 @@ jobs:
           if head_repo != repository:
               raise SystemExit("Refusing to send a fork PR diff to the external model, including workflow_dispatch runs.")
           head_sha = ((pr_metadata.get("head") or {}).get("sha") or "")
+          base_sha = ((pr_metadata.get("base") or {}).get("sha") or "")
           if not re.fullmatch(r"[0-9a-fA-F]{40}", head_sha):
               raise SystemExit("GitHub PR metadata did not contain a valid head SHA.")
-          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
-              output.write(f"pr_head_sha={head_sha}\n")
+          if not re.fullmatch(r"[0-9a-fA-F]{40}", base_sha):
+              raise SystemExit("GitHub PR metadata did not contain a valid base SHA.")
 
-          diff_url = metadata_url
+          # Resolve the merge base from the immutable PR snapshot, then fetch that exact diff.
+          compare_url = f"https://api.github.com/repos/{repository}/compare/{base_sha}...{head_sha}"
+          compare_request = urllib.request.Request(compare_url, headers=api_headers)
+          try:
+              with urllib.request.urlopen(compare_request, timeout=60) as response:
+                  compare_data = json.loads(response.read().decode("utf-8", errors="replace"))
+          except urllib.error.HTTPError as exc:
+              print(f"GitHub compare metadata request failed with HTTP {exc.code}")
+              raise SystemExit(1)
+          except Exception as exc:
+              print("GitHub compare metadata request failed:", type(exc).__name__)
+              raise SystemExit(1)
+
+          merge_base_sha = ((compare_data.get("merge_base_commit") or {}).get("sha") or "")
+          if not re.fullmatch(r"[0-9a-fA-F]{40}", merge_base_sha):
+              raise SystemExit("GitHub compare response did not contain a valid merge-base SHA.")
+
+          diff_url = f"https://api.github.com/repos/{repository}/compare/{merge_base_sha}...{head_sha}"
           diff_request = urllib.request.Request(
               diff_url,
               headers={
@@ -110,17 +129,39 @@ jobs:
               },
           )
           try:
-              with urllib.request.urlopen(diff_request, timeout=30) as response:
+              with urllib.request.urlopen(diff_request, timeout=60) as response:
                   diff = response.read().decode("utf-8", errors="replace")
           except urllib.error.HTTPError as exc:
-              print(f"GitHub diff request failed with HTTP {exc.code}")
+              print(f"GitHub pinned diff request failed with HTTP {exc.code}")
               raise SystemExit(1)
           except Exception as exc:
-              print("GitHub diff request failed:", type(exc).__name__)
+              print("GitHub pinned diff request failed:", type(exc).__name__)
               raise SystemExit(1)
 
           if not diff.strip():
-              raise SystemExit("The pull request diff is empty or unavailable.")
+              raise SystemExit("The pinned pull request diff is empty or unavailable.")
+          if not diff.lstrip().startswith("diff --git "):
+              raise SystemExit(
+                  "GitHub compare endpoint did not return a unified diff; refusing to audit non-diff content."
+              )
+
+          # Refuse to spend model tokens on a snapshot that changed during diff retrieval.
+          verify_request = urllib.request.Request(metadata_url, headers=api_headers)
+          try:
+              with urllib.request.urlopen(verify_request, timeout=30) as response:
+                  verified_metadata = json.loads(response.read().decode("utf-8", errors="replace"))
+          except Exception as exc:
+              print("Could not verify PR snapshot before audit:", type(exc).__name__)
+              raise SystemExit(1)
+          verified_head = ((verified_metadata.get("head") or {}).get("sha") or "")
+          verified_base = ((verified_metadata.get("base") or {}).get("sha") or "")
+          if verified_head != head_sha or verified_base != base_sha:
+              raise SystemExit("PR head or base changed while fetching the diff; rerun the audit.")
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"pr_head_sha={head_sha}\n")
+              output.write(f"pr_base_sha={base_sha}\n")
+              output.write(f"pr_merge_base_sha={merge_base_sha}\n")
 
           def redact_sensitive_text(value):
               text = str(value or "")
@@ -201,41 +242,67 @@ jobs:
               "temperature": 0.1,
               "stream": False,
           }
-          request = urllib.request.Request(
-              "https://api.odys.work/v1/chat/completions",
-              data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-              headers={
-                  "Authorization": "Bearer " + api_key,
-                  "Content-Type": "application/json",
-              },
-              method="POST",
-          )
-          try:
-              with urllib.request.urlopen(request, timeout=90) as response:
-                  response_body = response.read().decode("utf-8", errors="replace")
-          except urllib.error.HTTPError as exc:
-              # Bound and sanitize untrusted relay diagnostics; never print request headers.
-              try:
-                  err_body = exc.read().decode("utf-8", errors="replace")[:500]
-              except Exception:
-                  err_body = "<unreadable>"
-              err_body = err_body.replace(api_key, "[REDACTED API KEY]")
-              err_body = re.sub(
-                  r"(?i)(authorization\s*:\s*bearer\s+)[^\s\"'<>]+",
-                  r"\1[REDACTED]",
-                  err_body,
+          relay_data = None
+          for attempt in range(2):
+              request = urllib.request.Request(
+                  "https://api.odys.work/v1/chat/completions",
+                  data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+                  headers={
+                      "Authorization": "Bearer " + api_key,
+                      "Content-Type": "application/json",
+                  },
+                  method="POST",
               )
-              err_body = re.sub(r"[\x00-\x08\x0b-\x1f\x7f]", " ", err_body)
-              print(f"AI relay request failed with HTTP {exc.code}: {err_body}")
-              raise SystemExit(1)
-          except Exception as exc:
-              print("AI relay request failed:", type(exc).__name__)
-              raise SystemExit(1)
+              try:
+                  with urllib.request.urlopen(request, timeout=90) as response:
+                      response_body = response.read().decode("utf-8", errors="replace")
+              except urllib.error.HTTPError as exc:
+                  if attempt == 0 and exc.code in {429, 500, 502, 503, 504}:
+                      print(f"AI relay returned retryable HTTP {exc.code}; retrying once.")
+                      time.sleep(2)
+                      continue
+                  try:
+                      err_body = exc.read().decode("utf-8", errors="replace")[:500]
+                  except Exception:
+                      err_body = "<unreadable>"
+                  err_body = err_body.replace(api_key, "[REDACTED API KEY]")
+                  err_body = re.sub(
+                      r"(?i)(authorization\s*:\s*bearer\s+)[^\s\"'<>]+",
+                      r"\1[REDACTED]",
+                      err_body,
+                  )
+                  err_body = re.sub(r"[\x00-\x08\x0b-\x1f\x7f]", " ", err_body)
+                  print(f"AI relay request failed with HTTP {exc.code}: {err_body}")
+                  raise SystemExit(1)
+              except Exception as exc:
+                  if attempt == 0:
+                      print("AI relay request failed transiently:", type(exc).__name__, "; retrying once.")
+                      time.sleep(2)
+                      continue
+                  print("AI relay request failed after retry:", type(exc).__name__)
+                  raise SystemExit(1)
+
+              try:
+                  relay_data = json.loads(response_body)
+                  if not isinstance(relay_data, dict):
+                      raise ValueError("relay response is not a JSON object")
+                  break
+              except (json.JSONDecodeError, ValueError) as exc:
+                  if attempt == 0:
+                      print("AI relay returned an invalid JSON envelope; retrying once.")
+                      time.sleep(2)
+                      continue
+                  print("AI relay response remained invalid after retry:", type(exc).__name__)
+                  raise SystemExit(1)
 
           try:
-              relay_data = json.loads(response_body)
               if not isinstance(relay_data, dict):
                   raise ValueError("relay response is not a JSON object")
+              # Record the relay's self-reported model separately from the requested secret value.
+              # This is useful evidence, not cryptographic proof of the provider's actual backend.
+              returned_model = relay_data.get("model")
+              if not isinstance(returned_model, str) or not returned_model.strip():
+                  returned_model = "not reported by relay"
               choices = relay_data.get("choices")
               if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
                   raise ValueError("relay response has missing or empty choices")
@@ -249,7 +316,18 @@ jobs:
               if cleaned.startswith("```"):
                   cleaned = re.sub(r"^\`\`\`(?:json)?\s*", "", cleaned)
                   cleaned = re.sub(r"\s*\`\`\`$", "", cleaned)
-              report = json.loads(cleaned)
+              # Some compatible relays wrap valid JSON in a short preamble or trailing
+              # explanation. Decode the first complete JSON object without logging model text.
+              decoder = json.JSONDecoder()
+              object_start = cleaned.find("{")
+              if object_start < 0:
+                  raise ValueError("response contains no JSON object")
+              try:
+                  report, _object_end = decoder.raw_decode(cleaned[object_start:])
+              except json.JSONDecodeError as exc:
+                  raise ValueError(
+                      f"response JSON is malformed at line {exc.lineno}, column {exc.colno}"
+                  ) from None
               if not isinstance(report, dict):
                   raise ValueError("response is not a JSON object")
               if not isinstance(report.get("summary"), str):
@@ -375,8 +453,12 @@ jobs:
               "<!-- ai-pr-audit-report -->",
               "## AI Pull Request Audit",
               "",
+              f"- **PR base ref SHA:** `{base_sha}`",
+              f"- **Diff merge-base SHA:** `{merge_base_sha}`",
               f"- **Audited head SHA:** `{head_sha}`",
-              f"- **Model configured:** `{safe_markdown(model, 100)}`",
+              f"- **Model configured (request):** `{safe_markdown(model, 100)}`",
+              f"- **Model returned by relay:** `{safe_markdown(returned_model, 100)}`",
+              "- **Model identity note:** relay response metadata is self-reported and is not independent proof of the upstream backend.",
               f"- **Diff size:** {len(diff)} characters" + (" (truncated before analysis; manual review required)" if truncated else ""),
               "- **Important:** AI findings are untrusted advisory text. Verify them against source and CI.",
               "",
@@ -433,19 +515,24 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
           EXPECTED_HEAD_SHA: ${{ steps.audit.outputs.pr_head_sha }}
+          EXPECTED_BASE_SHA: ${{ steps.audit.outputs.pr_base_sha }}
+          EXPECTED_MERGE_BASE_SHA: ${{ steps.audit.outputs.pr_merge_base_sha }}
         shell: bash
         run: |
           set -euo pipefail
           [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]] || { echo "::error::PR_NUMBER must be a positive integer"; exit 1; }
           [[ "$EXPECTED_HEAD_SHA" =~ ^[0-9a-fA-F]{40}$ ]] || { echo "::error::Missing or invalid audited head SHA"; exit 1; }
-          CURRENT_HEAD_SHA="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.head.sha')"
-          if [[ "$CURRENT_HEAD_SHA" != "$EXPECTED_HEAD_SHA" ]]; then
-            echo "::warning::PR head changed while the audit was running; refusing to post a stale report."
+          [[ "$EXPECTED_BASE_SHA" =~ ^[0-9a-fA-F]{40}$ ]] || { echo "::error::Missing or invalid audited base SHA"; exit 1; }
+          [[ "$EXPECTED_MERGE_BASE_SHA" =~ ^[0-9a-fA-F]{40}$ ]] || { echo "::error::Missing or invalid audited merge-base SHA"; exit 1; }
+          CURRENT_SNAPSHOT="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '[.head.sha, .base.sha] | @tsv')"
+          EXPECTED_SNAPSHOT="$(printf '%s\t%s' "$EXPECTED_HEAD_SHA" "$EXPECTED_BASE_SHA")"
+          if [[ "$CURRENT_SNAPSHOT" != "$EXPECTED_SNAPSHOT" ]]; then
+            echo "::warning::PR head or base changed while the audit was running; refusing to post a stale report."
             exit 0
           fi
-          COMMENT_ID="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" --jq '.[] | select(.body | contains("<!-- ai-pr-audit-report -->")) | .id' | tail -n 1)"
+          COMMENT_ID="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | contains("<!-- ai-pr-audit-report -->"))) | .id' | tail -n 1)"
           if [[ -n "$COMMENT_ID" ]]; then
-            gh api --method PATCH "repos/${GITHUB_REPOSITORY}/issues/comments/${COMMENT_ID}" --field body="$(cat /tmp/ai-pr-audit-report.md)"
+            gh api --method PATCH "repos/${GITHUB_REPOSITORY}/issues/comments/${COMMENT_ID}" --raw-field body="$(cat /tmp/ai-pr-audit-report.md)"
           else
             gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file /tmp/ai-pr-audit-report.md
           fi
