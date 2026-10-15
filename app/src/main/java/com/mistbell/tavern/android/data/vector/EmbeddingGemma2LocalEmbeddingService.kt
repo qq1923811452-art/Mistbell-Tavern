@@ -72,36 +72,43 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
 
             val temporaryFile = File(directory, "$MODEL_FILE_NAME.part")
             temporaryFile.delete()
-            val request = Request.Builder().url(MODEL_URL).get().build()
+            val request =
+                Request.Builder()
+                    .url(MODEL_URL)
+                    .get()
+                    .build()
             try {
                 httpClient.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
-                    throw IOException("EmbeddingGemma model download failed: HTTP ${response.code}")
-                }
-                val body = response.body ?: throw IOException("Model download returned an empty body")
-                val advertisedLength = body.contentLength()
-                if (advertisedLength > MAX_MODEL_BYTES) {
-                    throw IOException("Model download exceeded the allowed size")
-                }
-                var copiedBytes = 0L
-                val coroutineContext = currentCoroutineContext()
-                body.byteStream().use { input ->
-                    FileOutputStream(temporaryFile).use { output ->
-                        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-                        while (true) {
-                            coroutineContext.ensureActive()
-                            val count = input.read(buffer)
-                            if (count < 0) break
-                            copiedBytes += count
-                            if (copiedBytes > MAX_MODEL_BYTES) {
-                                throw IOException("Model download exceeded the allowed size")
-                            }
-                            output.write(buffer, 0, count)
-                        }
-                        output.fd.sync()
+                    if (!response.isSuccessful) {
+                        throw IOException("EmbeddingGemma model download failed: HTTP ${response.code}")
                     }
-                }
-                    if (copiedBytes < MIN_MODEL_BYTES || (advertisedLength > 0 && copiedBytes != advertisedLength)) {
+                    val body = response.body ?: throw IOException("Model download returned an empty body")
+                    val advertisedLength = body.contentLength()
+                    if (advertisedLength > MAX_MODEL_BYTES) {
+                        throw IOException("Model download exceeded the allowed size")
+                    }
+                    var copiedBytes = 0L
+                    val coroutineContext = currentCoroutineContext()
+                    body.byteStream().use { input ->
+                        FileOutputStream(temporaryFile).use { output ->
+                            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                            while (true) {
+                                coroutineContext.ensureActive()
+                                val count = input.read(buffer)
+                                if (count < 0) break
+                                copiedBytes += count
+                                if (copiedBytes > MAX_MODEL_BYTES) {
+                                    throw IOException("Model download exceeded the allowed size")
+                                }
+                                output.write(buffer, 0, count)
+                            }
+                            output.fd.sync()
+                        }
+                    }
+                    if (
+                        copiedBytes < MIN_MODEL_BYTES ||
+                        (advertisedLength > 0 && copiedBytes != advertisedLength)
+                    ) {
                         throw IOException("Downloaded model size is invalid; partial file will not be activated")
                     }
                 }
@@ -119,7 +126,8 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
 
         private fun createEngine(modelPath: String): EmbeddingGemma2LocalEmbeddingService {
             var gpuFailure: Exception? = null
-            val gpuEngine = EmbeddingEngine(EmbeddingEngineConfig(modelPath = modelPath, backend = Backend.GPU()))
+            val gpuEngine =
+                EmbeddingEngine(EmbeddingEngineConfig(modelPath = modelPath, backend = Backend.GPU()))
             try {
                 gpuEngine.initialize()
                 Log.i(TAG, "EmbeddingGemma 2 initialized with GPU backend")
@@ -130,7 +138,8 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
                 Log.w(TAG, "GPU backend unavailable; retrying EmbeddingGemma 2 on CPU", e)
             }
 
-            val cpuEngine = EmbeddingEngine(EmbeddingEngineConfig(modelPath = modelPath, backend = Backend.CPU()))
+            val cpuEngine =
+                EmbeddingEngine(EmbeddingEngineConfig(modelPath = modelPath, backend = Backend.CPU()))
             try {
                 cpuEngine.initialize()
                 Log.i(TAG, "EmbeddingGemma 2 initialized with CPU backend")
@@ -158,10 +167,16 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
         withContext(Dispatchers.Default) {
             val traceId = ApiCallTrace.newId()
             val startedAt = System.currentTimeMillis()
-            ApiCallTrace.log(traceId, source, "START", "engine=LiteRT-LM model=EmbeddingGemma2 network=false")
+            ApiCallTrace.log(
+                traceId,
+                source,
+                "START",
+                "engine=LiteRT-LM model=EmbeddingGemma2 network=false",
+            )
             try {
                 val normalizedText = text.trim()
-                val input = InputData.Text(EmbeddingGemma2InputPolicy.format(normalizedText, source.contains("MEMORY_QUERY")))
+                val isQuery = source.contains("MEMORY_QUERY")
+                val input = InputData.Text(EmbeddingGemma2InputPolicy.format(normalizedText, isQuery))
                 val vector = inferenceMutex.withLock {
                     val embedding = engine.computeEmbedding(listOf(input)).embedding
                     FloatArray(embedding.size) { embedding[it].toFloat() }
