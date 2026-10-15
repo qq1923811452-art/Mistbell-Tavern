@@ -54,6 +54,7 @@ jobs:
           import json
           import os
           import re
+          import time
           import shlex
           import sys
           import urllib.error
@@ -241,39 +242,60 @@ jobs:
               "temperature": 0.1,
               "stream": False,
           }
-          request = urllib.request.Request(
-              "https://api.odys.work/v1/chat/completions",
-              data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-              headers={
-                  "Authorization": "Bearer " + api_key,
-                  "Content-Type": "application/json",
-              },
-              method="POST",
-          )
-          try:
-              with urllib.request.urlopen(request, timeout=90) as response:
-                  response_body = response.read().decode("utf-8", errors="replace")
-          except urllib.error.HTTPError as exc:
-              # Bound and sanitize untrusted relay diagnostics; never print request headers.
-              try:
-                  err_body = exc.read().decode("utf-8", errors="replace")[:500]
-              except Exception:
-                  err_body = "<unreadable>"
-              err_body = err_body.replace(api_key, "[REDACTED API KEY]")
-              err_body = re.sub(
-                  r"(?i)(authorization\s*:\s*bearer\s+)[^\s\"'<>]+",
-                  r"\1[REDACTED]",
-                  err_body,
+          relay_data = None
+          for attempt in range(2):
+              request = urllib.request.Request(
+                  "https://api.odys.work/v1/chat/completions",
+                  data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+                  headers={
+                      "Authorization": "Bearer " + api_key,
+                      "Content-Type": "application/json",
+                  },
+                  method="POST",
               )
-              err_body = re.sub(r"[\x00-\x08\x0b-\x1f\x7f]", " ", err_body)
-              print(f"AI relay request failed with HTTP {exc.code}: {err_body}")
-              raise SystemExit(1)
-          except Exception as exc:
-              print("AI relay request failed:", type(exc).__name__)
-              raise SystemExit(1)
+              try:
+                  with urllib.request.urlopen(request, timeout=90) as response:
+                      response_body = response.read().decode("utf-8", errors="replace")
+              except urllib.error.HTTPError as exc:
+                  if attempt == 0 and exc.code in {429, 500, 502, 503, 504}:
+                      print(f"AI relay returned retryable HTTP {exc.code}; retrying once.")
+                      time.sleep(2)
+                      continue
+                  try:
+                      err_body = exc.read().decode("utf-8", errors="replace")[:500]
+                  except Exception:
+                      err_body = "<unreadable>"
+                  err_body = err_body.replace(api_key, "[REDACTED API KEY]")
+                  err_body = re.sub(
+                      r"(?i)(authorization\s*:\s*bearer\s+)[^\s\"'<>]+",
+                      r"\1[REDACTED]",
+                      err_body,
+                  )
+                  err_body = re.sub(r"[\x00-\x08\x0b-\x1f\x7f]", " ", err_body)
+                  print(f"AI relay request failed with HTTP {exc.code}: {err_body}")
+                  raise SystemExit(1)
+              except Exception as exc:
+                  if attempt == 0:
+                      print("AI relay request failed transiently:", type(exc).__name__, "; retrying once.")
+                      time.sleep(2)
+                      continue
+                  print("AI relay request failed after retry:", type(exc).__name__)
+                  raise SystemExit(1)
+
+              try:
+                  relay_data = json.loads(response_body)
+                  if not isinstance(relay_data, dict):
+                      raise ValueError("relay response is not a JSON object")
+                  break
+              except (json.JSONDecodeError, ValueError) as exc:
+                  if attempt == 0:
+                      print("AI relay returned an invalid JSON envelope; retrying once.")
+                      time.sleep(2)
+                      continue
+                  print("AI relay response remained invalid after retry:", type(exc).__name__)
+                  raise SystemExit(1)
 
           try:
-              relay_data = json.loads(response_body)
               if not isinstance(relay_data, dict):
                   raise ValueError("relay response is not a JSON object")
               choices = relay_data.get("choices")
