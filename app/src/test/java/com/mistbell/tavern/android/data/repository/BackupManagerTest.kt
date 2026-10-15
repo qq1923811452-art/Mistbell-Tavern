@@ -79,8 +79,11 @@ class BackupManagerTest {
     @Test
     fun `恢复拒绝损坏的整表载荷但仍保留逐条抢救能力`() {
         val serializer = SettingsEntity.serializer()
-        fun decode(payload: String?, count: Int?) =
-            BackupManager.decodeBackupList(
+
+        fun decode(
+            payload: String?,
+            count: Int?,
+        ) = BackupManager.decodeBackupList(
                 files = payload?.let { mapOf("settings.json" to it) }.orEmpty(),
                 manifest =
                     BackupManager.BackupManifest(
