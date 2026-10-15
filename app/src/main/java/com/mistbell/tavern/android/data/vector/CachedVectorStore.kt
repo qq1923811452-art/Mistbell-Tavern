@@ -56,16 +56,19 @@ class CachedVectorStore(
             SearchCacheKey(
                 queryVector = QueryVectorKey(queryVector),
                 topK = topK,
-                // Preserve each value's equality semantics: the delegate compares metadataValue == value.
-                // Normalizing arrays/iterables can merge cache keys that the delegate considers unequal.
                 filters = filters.entries.sortedBy { it.key }.map { it.key to it.value },
             )
+        // Only immutable scalar values have stable equality/hash semantics across calls. For
+        // arrays and mutable collections, bypass result caching rather than risk a false hit.
+        val cacheable = filters.values.all(::isStableFilterValue)
 
         val generation =
             cacheMutex.withLock {
-                searchCache.get(cacheKey)?.let { cached ->
-                    Log.d(TAG, "Cache hit for search")
-                    return cached
+                if (cacheable) {
+                    searchCache.get(cacheKey)?.let { cached ->
+                        Log.d(TAG, "Cache hit for search")
+                        return cached
+                    }
                 }
                 cacheGeneration
             }
@@ -75,7 +78,7 @@ class CachedVectorStore(
 
         // Do not cache stale results if a write/delete occurred during the search.
         cacheMutex.withLock {
-            if (generation == cacheGeneration) {
+            if (cacheable && generation == cacheGeneration) {
                 searchCache.put(cacheKey, results)
             }
         }
@@ -117,6 +120,18 @@ class CachedVectorStore(
      * Invalidate even when a delegate mutation throws: some stores can mutate in-memory state
      * before persistence fails, so retaining old search results would hide the partial change.
      */
+    private fun isStableFilterValue(value: Any): Boolean =
+        value is String ||
+            value is Boolean ||
+            value is Byte ||
+            value is Short ||
+            value is Int ||
+            value is Long ||
+            value is Float ||
+            value is Double ||
+            value is Char ||
+            value is Enum<*>
+
     private suspend fun <T> mutateAndInvalidate(mutation: suspend () -> T): T {
         val result =
             try {
