@@ -1383,6 +1383,7 @@ class ChatRepository(private val context: Context) {
         val llmConfig = loadLlmConfig()
         return if (
             llmConfig.baseUrl.isNotBlank() &&
+            llmConfig.apiKey.isNotBlank() &&
             llmConfig.model.isNotBlank()
         ) {
             android.util.Log.i("ChatRepository", "Using active LLM config for memory extraction")
