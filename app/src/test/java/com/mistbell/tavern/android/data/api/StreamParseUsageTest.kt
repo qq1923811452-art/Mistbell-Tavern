@@ -49,6 +49,17 @@ class StreamParseUsageTest {
     }
 
     @Test
+    fun `openai prompt_tokens_details 缓存字段能计算命中率`() {
+        val data =
+            """{"choices":[],"usage":{"prompt_tokens":100,"completion_tokens":5,"total_tokens":105,
+                "prompt_tokens_details":{"cached_tokens":80}}}"""
+        val result = OpenAiChatProtocol.parseStreamData(data) as StreamParseResult.UsageUpdate
+        assertEquals(80, result.usage.reportedCacheHitTokens)
+        assertEquals(20, result.usage.reportedCacheMissTokens)
+        assertTrue(result.usage.cacheTelemetryAvailable)
+    }
+
+    @Test
     fun `openai 无 usage 的纯正文帧 usage 为空`() {
         val data = """{"choices":[{"delta":{"content":"片段"}}]}"""
         val result = OpenAiChatProtocol.parseStreamData(data) as StreamParseResult.Delta
@@ -68,6 +79,18 @@ class StreamParseUsageTest {
         assertEquals(28, delta.usage?.totalTokens)
         assertEquals(8, delta.usage?.promptTokens)
         assertEquals(20, delta.usage?.completionTokens)
+    }
+
+    @Test
+    fun `gemini cachedContentTokenCount 能映射为缓存命中`() {
+        val data =
+            """{"candidates":[{"content":{"parts":[{"text":""}],"role":"model"},"finishReason":"STOP"}],
+                "usageMetadata":{"promptTokenCount":100,"candidatesTokenCount":5,"totalTokenCount":105,
+                    "cachedContentTokenCount":80}}"""
+        val result = GeminiChatProtocol.parseStreamData(data) as StreamParseResult.UsageUpdate
+        assertEquals(80, result.usage.reportedCacheHitTokens)
+        assertEquals(20, result.usage.reportedCacheMissTokens)
+        assertTrue(result.usage.cacheTelemetryAvailable)
     }
 
     @Test
