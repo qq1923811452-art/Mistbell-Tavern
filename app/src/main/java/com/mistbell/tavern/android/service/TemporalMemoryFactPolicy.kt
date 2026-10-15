@@ -127,8 +127,9 @@ internal object TemporalMemoryFactPolicy {
      * payloads with an empty map and destroyed every non-string field during temporal updates.
      * Invalid/non-object legacy data is preserved verbatim under legacy_raw before adding metadata.
      */
-    private fun decode(structuredData: String): JsonObject =
-        runCatching {
+    private fun decode(structuredData: String): JsonObject {
+        if (structuredData.isBlank()) return JsonObject(emptyMap())
+        return runCatching {
             when (val element = Json.parseToJsonElement(structuredData)) {
                 is JsonObject -> element
                 else -> JsonObject(mapOf("legacy_raw" to JsonPrimitive(structuredData)))
@@ -136,6 +137,7 @@ internal object TemporalMemoryFactPolicy {
         }.getOrElse {
             JsonObject(mapOf("legacy_raw" to JsonPrimitive(structuredData)))
         }
+    }
 
     private fun JsonObject.stringValue(key: String): String? =
         (this[key] as? JsonPrimitive)?.contentOrNull
