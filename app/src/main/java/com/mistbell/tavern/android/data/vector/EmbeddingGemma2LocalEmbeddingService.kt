@@ -41,8 +41,6 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
         private const val MIN_MODEL_BYTES = 100L * 1024L * 1024L
         private const val MAX_MODEL_BYTES = 250L * 1024L * 1024L
         private const val EXPECTED_DIMENSION = 768
-        private const val QUERY_PREFIX = "task: search query | text: "
-        private const val DOCUMENT_PREFIX = "task: search result | text: "
 
         private val httpClient =
             OkHttpClient.Builder()
@@ -161,8 +159,7 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
             ApiCallTrace.log(traceId, source, "START", "engine=LiteRT-LM model=EmbeddingGemma2 network=false")
             try {
                 val normalizedText = text.trim()
-                val prefix = if (source.contains("MEMORY_QUERY")) QUERY_PREFIX else DOCUMENT_PREFIX
-                val input = InputData.Text(prefix + normalizedText)
+                val input = InputData.Text(EmbeddingGemma2InputPolicy.format(normalizedText, source.contains("MEMORY_QUERY")))
                 val vector = inferenceMutex.withLock {
                     val embedding = engine.computeEmbedding(listOf(input)).embedding
                     FloatArray(embedding.size) { embedding[it].toFloat() }
