@@ -88,7 +88,16 @@ class TemporalMemoryFactPolicyTest {
     @Test
     fun `temporal updates preserve non-string structured fields`() {
         val original =
-            """{"subject":"user","relation":"name","object":"Alice","confidence":0.95,"aliases":["A","Al"],"extra":{"source":"chat"}}"""
+            """
+            {
+              "subject": "user",
+              "relation": "name",
+              "object": "Alice",
+              "confidence": 0.95,
+              "aliases": ["A", "Al"],
+              "extra": {"source": "chat"}
+            }
+            """.trimIndent()
 
         val updated = TemporalMemoryFactPolicy.markHistorical(original, "2026-10-15T12:00:00Z", 20L)
         val decoded = Json.parseToJsonElement(updated).jsonObject
