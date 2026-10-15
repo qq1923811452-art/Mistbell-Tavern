@@ -3,9 +3,9 @@ package com.mistbell.tavern.android.data.vector
 import android.util.Log
 import android.util.LruCache
 import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 
 /**
  * 带缓存的向量存储装饰器
