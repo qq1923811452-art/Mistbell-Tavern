@@ -260,7 +260,7 @@ object CharxImporter {
             // 保存头像
             assets.avatar?.let { data ->
                 val file = File(baseDir, "avatar.png")
-                file.writeBytes(data)
+                AtomicWrite.bytes(file, data)
                 assetPaths["avatar"] = file.absolutePath
             }
 
@@ -271,7 +271,7 @@ object CharxImporter {
 
                 assets.expressions.forEach { (name, data) ->
                     val file = File(expressionsDir, "$name.png")
-                    file.writeBytes(data)
+                    AtomicWrite.bytes(file, data)
                     assetPaths["expression_$name"] = file.absolutePath
                 }
             }
@@ -279,7 +279,7 @@ object CharxImporter {
             // 保存背景图
             assets.background?.let { data ->
                 val file = File(baseDir, "background.png")
-                file.writeBytes(data)
+                AtomicWrite.bytes(file, data)
                 assetPaths["background"] = file.absolutePath
             }
 
@@ -290,7 +290,7 @@ object CharxImporter {
 
                 assets.audioFiles.forEach { (fileName, data) ->
                     val file = File(audioDir, fileName)
-                    file.writeBytes(data)
+                    AtomicWrite.bytes(file, data)
                     assetPaths["audio_$fileName"] = file.absolutePath
                 }
             }
