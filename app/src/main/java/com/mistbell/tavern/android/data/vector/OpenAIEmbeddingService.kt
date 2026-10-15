@@ -276,7 +276,9 @@ internal fun validateEmbeddingResponseIndices(
     }
     val expectedIndices = (0 until expectedCount).toList()
     if (indices.sorted() != expectedIndices) {
-        error("Embedding response contains invalid input indices: expected $expectedIndices, received ${indices.sorted()}")
+        error(
+            "Embedding response contains invalid input indices: expected $expectedIndices, received ${indices.sorted()}",
+        )
     }
 }
 
