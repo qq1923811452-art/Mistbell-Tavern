@@ -282,7 +282,6 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 }
         }
     }
-    }
 
     fun setMemoryRecallTopK(value: Int) {
         val normalized =
