@@ -70,27 +70,6 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      - name: Generate APK checksum
-        if: ${{ always() && hashFiles('app/build/outputs/apk/debug/*.apk') != '' }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p build-artifacts
-          find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' -exec cp {} build-artifacts/ \;
-          test -n "$(find build-artifacts -maxdepth 1 -type f -name '*.apk' -print -quit)"
-          cd build-artifacts
-          sha256sum *.apk | tee SHA256SUMS.txt
-          printf 'source_sha=%s\ntested_sha=%s\nworkflow_run_id=%s\nquality_gate=%s\n' "${{ github.event.pull_request.head.sha || github.sha }}" "$GITHUB_SHA" "$GITHUB_RUN_ID" "${{ steps.quality_gate.outcome }}" > SOURCE.txt
-
-      - name: Upload APK and checksum
-        if: ${{ always() && hashFiles('build-artifacts/*.apk') != '' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: mistbell-${{ steps.quality_gate.outcome == 'success' && 'verified' || 'unverified' }}-debug-apk-${{ github.run_number }}
-          path: build-artifacts/*
-          if-no-files-found: error
-          retention-days: 14
-
       - name: Upload reports on failure
         if: failure()
         uses: actions/upload-artifact@v4
