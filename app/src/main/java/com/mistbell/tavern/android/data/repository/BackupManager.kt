@@ -481,93 +481,25 @@ class BackupManager(private val context: Context) {
     private fun decodeTables(
         files: Map<String, String>,
         manifest: BackupManifest,
-    ): Tables =
-        Tables(
-            characters =
-                decodeBackupList(
-                    files,
-                    manifest,
-                    CHARACTERS,
-                    CharacterEntity.serializer(),
-                ),
-            sessions =
-                decodeBackupList(
-                    files,
-                    manifest,
-                    SESSIONS,
-                    SessionEntity.serializer(),
-                ),
-            messages =
-                decodeBackupList(
-                    files,
-                    manifest,
-                    MESSAGES,
-                    MessageEntity.serializer(),
-                ),
-            memories =
-                decodeBackupList(
-                    files,
-                    manifest,
-                    MEMORIES,
-                    MemoryEntity.serializer(),
-                ),
-            worldBooks =
-                decodeBackupList(
-                    files,
-                    manifest,
-                    WORLD_BOOKS,
-                    WorldBookEntity.serializer(),
-                ),
-            worldBookEntries =
-                decodeBackupList(
-                    files,
-                    manifest,
-                    WORLD_BOOK_ENTRIES,
-                    WorldBookEntryEntity.serializer(),
-                ),
-            settings =
-                decodeBackupList(
-                    files,
-                    manifest,
-                    SETTINGS,
-                    SettingsBackupEntry.serializer(),
-                ),
-            structuredMemories =
-                decodeBackupList(
-                    files,
-                    manifest,
-                    STRUCTURED_MEMORY,
-                    StructuredMemoryEntity.serializer(),
-                ),
-            vectorMemories =
-                decodeBackupList(
-                    files,
-                    manifest,
-                    VECTOR_MEMORY,
-                    VectorMemoryEntity.serializer(),
-                ),
-            themePacks =
-                decodeBackupList(
-                    files,
-                    manifest,
-                    THEME_PACKS,
-                    ThemePackEntity.serializer(),
-                ),
-            apiConfigs =
-                decodeBackupList(
-                    files,
-                    manifest,
-                    API_CONFIGS,
-                    ApiConfigBackupEntry.serializer(),
-                ),
-            customPrompts =
-                decodeBackupList(
-                    files,
-                    manifest,
-                    CUSTOM_PROMPTS,
-                    CustomPromptBackupEntry.serializer(),
-                ),
+    ): Tables {
+        fun <T> decode(entryName: String, serializer: KSerializer<T>): List<T> =
+            decodeBackupList(files, manifest, entryName, serializer)
+
+        return Tables(
+            characters = decode(CHARACTERS, CharacterEntity.serializer()),
+            sessions = decode(SESSIONS, SessionEntity.serializer()),
+            messages = decode(MESSAGES, MessageEntity.serializer()),
+            memories = decode(MEMORIES, MemoryEntity.serializer()),
+            worldBooks = decode(WORLD_BOOKS, WorldBookEntity.serializer()),
+            worldBookEntries = decode(WORLD_BOOK_ENTRIES, WorldBookEntryEntity.serializer()),
+            settings = decode(SETTINGS, SettingsBackupEntry.serializer()),
+            structuredMemories = decode(STRUCTURED_MEMORY, StructuredMemoryEntity.serializer()),
+            vectorMemories = decode(VECTOR_MEMORY, VectorMemoryEntity.serializer()),
+            themePacks = decode(THEME_PACKS, ThemePackEntity.serializer()),
+            apiConfigs = decode(API_CONFIGS, ApiConfigBackupEntry.serializer()),
+            customPrompts = decode(CUSTOM_PROMPTS, CustomPromptBackupEntry.serializer()),
         )
+    }
 
     /** 全部表在同一事务合并：要么全部成功，要么回到恢复前状态 */
     private suspend fun mergeTables(t: Tables): BackupSummary {
