@@ -68,16 +68,12 @@ class ApiConfigMigrationTest {
         assertEquals(false, entities[0].context1m)
     }
 
-    @Test(expected = IllegalStateException::class)
-    fun `迁移拒绝不符合平台策略的远程明文 HTTP 地址`() {
-        val providers =
-            ApiConfigMigration.parseProvidersJson(
-                """
-                [{"id":"legacy-http","name":"Legacy","endpoint":"http://api.example.com/v1",
-                  "apiKey":"k","selectedModel":"m"}]
-                """.trimIndent(),
-            )
-        ApiConfigMigration.toApiConfigEntities(providers, activeId = "legacy-http", now = 0L)
+    @Test
+    fun unsafeLegacyEndpointIsQuarantinedWithoutBlockingOtherProviders() {
+        assertEquals("", ApiConfigMigration.endpointForMigration("http://api.example.com/v1"))
+        assertEquals("", ApiConfigMigration.endpointForMigration("https://user:secret@example.com/v1"))
+        assertEquals("https://api.example.com/v1", ApiConfigMigration.endpointForMigration("https://api.example.com/v1"))
+        assertEquals("http://10.0.2.2:3000/", ApiConfigMigration.endpointForMigration("http://10.0.2.2:3000/"))
     }
 
     @Test
