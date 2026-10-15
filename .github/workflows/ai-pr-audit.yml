@@ -394,6 +394,7 @@ jobs:
               "<!-- ai-pr-audit-report -->",
               "## AI Pull Request Audit",
               "",
+              f"- **Audited base SHA:** `{base_sha}`",
               f"- **Audited head SHA:** `{head_sha}`",
               f"- **Model configured:** `{safe_markdown(model, 100)}`",
               f"- **Diff size:** {len(diff)} characters" + (" (truncated before analysis; manual review required)" if truncated else ""),
