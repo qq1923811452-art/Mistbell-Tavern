@@ -133,6 +133,7 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
                 }
             } catch (e: Exception) {
                 temporaryFile.delete()
+                coroutineContext.ensureActive()
                 throw e
             } finally {
                 cancellationHandle.dispose()
@@ -155,11 +156,11 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
                     digest.update(buffer, 0, count)
                 }
             }
-            return digest.digest().joinToString("") { byte -> "%02x".format(byte) }
+            return digest.digest().joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
         }
 
         private fun createEngine(modelPath: String): EmbeddingGemma2LocalEmbeddingService {
-            var gpuFailure: Exception? = null
+            var gpuFailure: Throwable? = null
             val gpuEngine =
                 EmbeddingEngine(EmbeddingEngineConfig(modelPath = modelPath, backend = Backend.GPU()))
             try {
@@ -170,6 +171,10 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
                 gpuFailure = e
                 runCatching { gpuEngine.close() }
                 Log.w(TAG, "GPU backend unavailable; retrying EmbeddingGemma 2 on CPU", e)
+            } catch (e: LinkageError) {
+                gpuFailure = e
+                runCatching { gpuEngine.close() }
+                Log.w(TAG, "GPU native backend unavailable; retrying EmbeddingGemma 2 on CPU", e)
             }
 
             val cpuEngine =
@@ -183,13 +188,18 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
                 throw IOException("EmbeddingGemma 2 could not initialize on GPU or CPU", e).also {
                     gpuFailure?.let(it::addSuppressed)
                 }
+            } catch (e: LinkageError) {
+                runCatching { cpuEngine.close() }
+                throw IOException("EmbeddingGemma 2 native runtime is unavailable", e).also {
+                    gpuFailure?.let(it::addSuppressed)
+                }
             }
         }
     }
 
     private val inferenceMutex = Mutex()
 
-    override fun modelId(): String = "local:embeddinggemma-2-text-270m-litertlm:$EXPECTED_DIMENSION"
+    override fun modelId(): String = "local:embeddinggemma-2-text-270m-litertlm:9be6e8b:$EXPECTED_DIMENSION"
 
     override fun supportsLegacyVectors(): Boolean = false
 
