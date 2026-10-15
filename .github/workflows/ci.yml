@@ -138,11 +138,11 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p build-artifacts
-          find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' -exec cp {} build-artifacts/ \\;
+          find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' -exec cp {} build-artifacts/ \;
           test -n "$(find build-artifacts -maxdepth 1 -type f -name '*.apk' -print -quit)"
           cd build-artifacts
           sha256sum *.apk | tee SHA256SUMS.txt
-          printf 'source_sha=%s\\ntested_sha=%s\\nworkflow_run_id=%s\\n' "${{ github.event.pull_request.head.sha || github.sha }}" "$GITHUB_SHA" "$GITHUB_RUN_ID" > SOURCE.txt
+          printf 'source_sha=%s\ntested_sha=%s\nworkflow_run_id=%s\n' "${{ github.event.pull_request.head.sha || github.sha }}" "$GITHUB_SHA" "$GITHUB_RUN_ID" > SOURCE.txt
 
       - name: Upload final APK and checksum
         if: ${{ always() && hashFiles('build-artifacts/*.apk') != '' }}
