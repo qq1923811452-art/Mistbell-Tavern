@@ -82,7 +82,7 @@ jobs:
           retention-days: 14
 
   instrumented-tests:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call'
     name: Final APK, Android emulator, and migration validation
     runs-on: ubuntu-latest
     timeout-minutes: 45
