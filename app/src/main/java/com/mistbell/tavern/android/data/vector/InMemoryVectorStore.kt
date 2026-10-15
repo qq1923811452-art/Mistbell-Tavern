@@ -183,10 +183,14 @@ class InMemoryVectorStore(
             val existingFiles = listOf(storageFile, backupFile).filter { it.exists() }
             if (existingFiles.isEmpty()) return@withLock false
 
+            val quarantineDirectory = File(context.filesDir, "vector_store_quarantine")
+            check(quarantineDirectory.isDirectory || quarantineDirectory.mkdirs()) {
+                "Unable to create vector-store quarantine directory"
+            }
             val recoveryId = UUID.randomUUID().toString()
             existingFiles.forEach { file ->
                 val suffix = if (file == backupFile) ".bak" else ".json"
-                val quarantine = File(context.filesDir, "vector_store.corrupt-$recoveryId$suffix")
+                val quarantine = File(quarantineDirectory, "vector_store.corrupt-$recoveryId$suffix")
                 check(file.renameTo(quarantine)) {
                     "Unable to preserve corrupt vector memory file at ${file.name}"
                 }
