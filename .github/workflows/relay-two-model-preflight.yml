@@ -1,0 +1,106 @@
+name: AI Relay Two-Model Preflight (Read-only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      prompt:
+        description: "Prompt used for a safe connectivity test"
+        required: true
+        type: string
+        default: "请只回复 OK，确认你能正常响应。"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: relay-two-model-preflight
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    name: Verify Model A and Model B independently
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Validate configuration
+        env:
+          ODYS_API_KEY: ${{ secrets.ODYS_API_KEY }}
+          ODYS_API_KEY_B: ${{ secrets.ODYS_API_KEY_B || secrets.ODYS_API_KEY }}
+          ODYS_MODEL: ${{ secrets.ODYS_MODEL }}
+          ODYS_MODEL_B: ${{ secrets.ODYS_MODEL_B }}
+          ODYS_API_BASE_URL: ${{ secrets.ODYS_API_BASE_URL || 'https://api.odys.work/v1' }}
+          ODYS_API_BASE_URL_B: ${{ secrets.ODYS_API_BASE_URL_B || secrets.ODYS_API_BASE_URL || 'https://api.odys.work/v1' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$ODYS_API_KEY" || { echo "::error::Missing ODYS_API_KEY"; exit 1; }
+          test -n "$ODYS_API_KEY_B" || { echo "::error::Missing ODYS_API_KEY_B and ODYS_API_KEY fallback"; exit 1; }
+          test -n "$ODYS_MODEL" || { echo "::error::Missing ODYS_MODEL"; exit 1; }
+          test -n "$ODYS_MODEL_B" || { echo "::error::Missing ODYS_MODEL_B"; exit 1; }
+          test "$ODYS_MODEL" != "$ODYS_MODEL_B" || { echo "::error::Model A and Model B must have different model identifiers"; exit 1; }
+          case "$ODYS_API_BASE_URL" in https://*) ;; *) echo "::error::Model A base URL must use HTTPS"; exit 1;; esac
+          case "$ODYS_API_BASE_URL_B" in https://*) ;; *) echo "::error::Model B base URL must use HTTPS"; exit 1;; esac
+          echo "Configuration valid: two distinct model identifiers and HTTPS endpoints are present."
+          echo "Model A identifier: $ODYS_MODEL"
+          echo "Model B identifier: $ODYS_MODEL_B"
+
+      - name: Call both models and verify response schemas
+        env:
+          ODYS_API_KEY: ${{ secrets.ODYS_API_KEY }}
+          ODYS_API_KEY_B: ${{ secrets.ODYS_API_KEY_B || secrets.ODYS_API_KEY }}
+          ODYS_MODEL: ${{ secrets.ODYS_MODEL }}
+          ODYS_MODEL_B: ${{ secrets.ODYS_MODEL_B }}
+          ODYS_API_BASE_URL: ${{ secrets.ODYS_API_BASE_URL || 'https://api.odys.work/v1' }}
+          ODYS_API_BASE_URL_B: ${{ secrets.ODYS_API_BASE_URL_B || secrets.ODYS_API_BASE_URL || 'https://api.odys.work/v1' }}
+          USER_PROMPT: ${{ inputs.prompt }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, urllib.error, urllib.request
+
+          def call(label, base, key, model):
+              base = base.strip().rstrip("/")
+              if not base.startswith("https://"):
+                  raise SystemExit(f"{label}: endpoint must use HTTPS.")
+              payload = {
+                  "model": model,
+                  "messages": [{"role": "user", "content": os.environ["USER_PROMPT"]}],
+                  "temperature": 0,
+                  "max_tokens": 64,
+                  "stream": False,
+              }
+              req = urllib.request.Request(
+                  base + "/chat/completions",
+                  data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+                  headers={
+                      "Authorization": "Bearer " + key,
+                      "Content-Type": "application/json",
+                  },
+                  method="POST",
+              )
+              try:
+                  with urllib.request.urlopen(req, timeout=90) as response:
+                      status = response.status
+                      data = json.loads(response.read().decode("utf-8", errors="replace"))
+              except urllib.error.HTTPError as exc:
+                  print(f"{label}: HTTP {exc.code}; response body suppressed.")
+                  raise SystemExit(1) from None
+              except Exception as exc:
+                  print(f"{label}: request failed ({type(exc).__name__}); response body suppressed.")
+                  raise SystemExit(1) from None
+              choices = data.get("choices") if isinstance(data, dict) else None
+              if not choices or not isinstance(choices[0].get("message", {}).get("content"), str):
+                  print(f"{label}: response schema invalid; response body suppressed.")
+                  raise SystemExit(1)
+              content = choices[0]["message"]["content"].strip()
+              if not content:
+                  print(f"{label}: empty model response.")
+                  raise SystemExit(1)
+              print(f"{label}: PASS — HTTP {status}; requested model={model}; response characters={len(content)}")
+              print(f"{label} sample: {content[:300].replace(chr(10), ' ')}")
+
+          call("Model A", os.environ["ODYS_API_BASE_URL"], os.environ["ODYS_API_KEY"], os.environ["ODYS_MODEL"])
+          call("Model B", os.environ["ODYS_API_BASE_URL_B"], os.environ["ODYS_API_KEY_B"], os.environ["ODYS_MODEL_B"])
+          print("RESULT: both models responded successfully. This is a connectivity test only; it does not run code review or CI auto-fix.")
+          PY
