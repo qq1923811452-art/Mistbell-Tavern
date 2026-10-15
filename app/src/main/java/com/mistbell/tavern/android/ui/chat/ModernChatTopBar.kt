@@ -15,7 +15,7 @@ import androidx.compose.ui.unit.dp
 import com.mistbell.tavern.android.data.api.model.Character
 import com.mistbell.tavern.android.data.vector.EmbeddingRuntimeStatus
 
-@Suppress("FunctionNaming", "LongParameterList", "LongMethod", "MaxLineLength", "MagicNumber")
+@Suppress("FunctionNaming", "LongParameterList", "LongMethod", "CyclomaticComplexMethod", "MaxLineLength", "MagicNumber")
 @Composable
 fun ModernChatTopBar(
     chatTitle: String,
