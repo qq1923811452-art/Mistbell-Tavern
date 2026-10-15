@@ -3,6 +3,7 @@ package com.mistbell.tavern.android.data.image
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
@@ -43,6 +44,7 @@ class ImageGenerationService(
     private val context: Context,
     private val client: OkHttpClient = defaultClient(),
 ) {
+    @Suppress("LongMethod")
     suspend fun generate(
         config: ImageGenerationConfig,
         prompt: String,
@@ -88,7 +90,7 @@ class ImageGenerationService(
                     }
                     try {
                         Json { ignoreUnknownKeys = true }.parseToJsonElement(body).jsonObject
-                    } catch (e: Exception) {
+                    } catch (e: SerializationException) {
                         throw IOException("生图 API 返回的不是有效 JSON", e)
                     }
                 }
@@ -129,6 +131,7 @@ class ImageGenerationService(
         return if (base.endsWith("/images/generations")) base else "$base/images/generations"
     }
 
+    @Suppress("CyclomaticComplexMethod", "NestedBlockDepth", "ThrowsCount")
     private fun downloadImage(
         url: String,
         baseUrl: String,
@@ -179,14 +182,18 @@ class ImageGenerationService(
         private const val MAX_IMAGE_BYTES = 30L * 1024L * 1024L
         private const val MAX_ERROR_BODY_CHARS = 1200
         private const val OUTPUT_DIRECTORY = "generated-images"
+        private const val CONNECT_TIMEOUT_SECONDS = 20L
+        private const val READ_TIMEOUT_SECONDS = 180L
+        private const val WRITE_TIMEOUT_SECONDS = 30L
+        private const val CALL_TIMEOUT_SECONDS = 210L
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
 
         private fun defaultClient(): OkHttpClient =
             OkHttpClient.Builder()
-                .connectTimeout(20, TimeUnit.SECONDS)
-                .readTimeout(180, TimeUnit.SECONDS)
-                .writeTimeout(30, TimeUnit.SECONDS)
-                .callTimeout(210, TimeUnit.SECONDS)
+                .connectTimeout(CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                .readTimeout(READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                .writeTimeout(WRITE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                .callTimeout(CALL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
                 .build()
     }
 }
