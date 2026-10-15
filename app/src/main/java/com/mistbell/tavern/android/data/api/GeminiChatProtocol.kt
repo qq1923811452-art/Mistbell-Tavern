@@ -67,6 +67,7 @@ internal object GeminiChatProtocol : ChatProtocol {
             @SerialName("promptTokenCount") val promptTokens: Int = 0,
             @SerialName("candidatesTokenCount") val candidatesTokens: Int = 0,
             @SerialName("totalTokenCount") val totalTokens: Int = 0,
+            @SerialName("cachedContentTokenCount") val cachedContentTokens: Int? = null,
         )
     }
 
@@ -136,6 +137,10 @@ internal object GeminiChatProtocol : ChatProtocol {
                     promptTokens = it.promptTokens,
                     completionTokens = it.candidatesTokens,
                     totalTokens = it.totalTokens,
+                    inputTokensDetails =
+                        it.cachedContentTokens?.let { cached ->
+                            UsageTokenDetails(cachedTokens = cached)
+                        },
                 )
             }
         return ProtocolContent(
@@ -168,6 +173,10 @@ internal object GeminiChatProtocol : ChatProtocol {
                     promptTokens = it.promptTokens,
                     completionTokens = it.candidatesTokens,
                     totalTokens = it.totalTokens,
+                    inputTokensDetails =
+                        it.cachedContentTokens?.let { cached ->
+                            UsageTokenDetails(cachedTokens = cached)
+                        },
                 )
             }
         val usageUpdate = usage?.let { StreamParseResult.UsageUpdate(it) }
