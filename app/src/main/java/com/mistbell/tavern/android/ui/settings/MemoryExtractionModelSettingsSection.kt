@@ -33,6 +33,7 @@ fun MemoryExtractionModelSettingsSection() {
     var baseUrl by remember { mutableStateOf("") }
     var apiKey by remember { mutableStateOf("") }
     var model by remember { mutableStateOf("") }
+    var keyNeedsReentry by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(true) }
     var saving by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf<String?>(null) }
@@ -43,6 +44,10 @@ fun MemoryExtractionModelSettingsSection() {
             baseUrl = settings.baseUrl
             apiKey = settings.apiKey
             model = settings.model
+            keyNeedsReentry = settings.keyNeedsReentry
+            if (keyNeedsReentry) {
+                status = "已保存的 API Key 无法解密，请重新输入并保存；保存前会回退到聊天 API"
+            }
         } catch (_: Exception) {
             status = "读取独立记忆模型配置失败"
         } finally {
@@ -58,8 +63,8 @@ fun MemoryExtractionModelSettingsSection() {
             Text(
                 text =
                     "可单独配置 Qwen 等模型整理长期记忆，不占用聊天模型的上下文。" +
-                        "完整填写基础地址和模型 ID 后优先用于后台记忆抽取；留空则沿用当前会话的 API 配置。" +
-                        "此设置不改变聊天提示词前缀或缓存布局。",
+                        "远程 API 需填写 Key；只有本机回环地址允许留空。" +
+                        "有效配置优先用于后台记忆抽取；否则沿用当前会话的 API 配置，不改变聊天提示词前缀或缓存布局。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -74,9 +79,9 @@ fun MemoryExtractionModelSettingsSection() {
             )
             OutlinedTextField(
                 value = apiKey,
-                onValueChange = { apiKey = it; status = null },
+                onValueChange = { apiKey = it; keyNeedsReentry = false; status = null },
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("独立记忆整理 API Key（可留空）") },
+                label = { Text("独立记忆整理 API Key（本机回环地址可留空）") },
                 visualTransformation = PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                 singleLine = true,
@@ -98,11 +103,17 @@ fun MemoryExtractionModelSettingsSection() {
                     scope.launch {
                         try {
                             repository.save(MemoryExtractionModelSettings(baseUrl, apiKey, model))
+                            keyNeedsReentry = false
                             val configured = repository.resolveLlmConfigOrNull() != null
                             status = if (configured) {
                                 "独立记忆模型配置已保存；后续后台抽取将优先使用它"
+                            } else if (baseUrl.isNotBlank() && model.isNotBlank() && apiKey.isBlank() &&
+                                !baseUrl.contains("127.0.0.1") && !baseUrl.contains("localhost") &&
+                                !baseUrl.contains("[::1]")
+                            ) {
+                                "配置已保存；远程 API 还需要 Key，当前将回退到聊天 API"
                             } else {
-                                "配置已保存；基础地址和模型 ID 完整有效后才会启用独立模型"
+                                "配置已保存；基础地址和模型 ID 有效后才会启用独立模型"
                             }
                         } catch (_: Exception) {
                             status = "保存失败，请检查输入后重试"
