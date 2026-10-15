@@ -13,6 +13,7 @@ import kotlinx.coroutines.sync.withLock
  * - LRU 缓存策略，避免内存过度占用
  * - 写操作自动清除相关缓存
  */
+@Suppress("TooManyFunctions")
 class CachedVectorStore(
     private val delegate: VectorStore,
     cacheSize: Int = 50,
@@ -49,7 +50,7 @@ class CachedVectorStore(
         // Exact vector contents avoid collisions from contentHashCode-only cache keys.
         val cacheKey =
             SearchCacheKey(
-                queryVector = queryVector.toList(),
+                queryVector = QueryVectorKey(queryVector),
                 topK = topK,
                 filters = filters.entries.sortedBy { it.key }.map { it.key to normalizeFilterValue(it.value) },
             )
@@ -108,9 +109,7 @@ class CachedVectorStore(
     private fun normalizeFilterValue(value: Any?): Any? =
         when (value) {
             null -> null
-            is Map<*, *> -> value.entries
-                .map { it.key.toString() to normalizeFilterValue(it.value) }
-                .sortedBy { it.first }
+            is Map<*, *> -> normalizeMap(value)
             is Set<*> -> value.map { normalizeFilterValue(it) }.sortedBy { it.toString() }
             is Iterable<*> -> value.map { normalizeFilterValue(it) }
             is Array<*> -> value.map { normalizeFilterValue(it) }
@@ -125,6 +124,11 @@ class CachedVectorStore(
             else -> value
         }
 
+    private fun normalizeMap(value: Map<*, *>): List<Pair<String, Any?>> =
+        value.entries
+            .map { it.key.toString() to normalizeFilterValue(it.value) }
+            .sortedBy { it.first }
+
     private suspend fun invalidateCache() {
         cacheMutex.withLock {
             cacheGeneration += 1
@@ -136,8 +140,18 @@ class CachedVectorStore(
     /**
      * 搜索缓存键
      */
+    private class QueryVectorKey(vector: FloatArray) {
+        private val values = vector.copyOf()
+        private val contentHash = values.contentHashCode()
+
+        override fun hashCode(): Int = contentHash
+
+        override fun equals(other: Any?): Boolean =
+            other is QueryVectorKey && values.contentEquals(other.values)
+    }
+
     private data class SearchCacheKey(
-        val queryVector: List<Float>,
+        val queryVector: QueryVectorKey,
         val topK: Int,
         val filters: List<Pair<String, Any?>>,
     )
