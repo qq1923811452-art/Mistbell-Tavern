@@ -85,7 +85,7 @@ class MemoryExtractionModelSettingsRepository {
             database.withTransaction {
                 val existingKey = settingsDao.getValue(KEY_API_KEY).orEmpty()
                 val unreadableCiphertext =
-                    existingKey.startsWith(SecureStore.PREFIX) && !SecureStore.isEncrypted(existingKey)
+                    SecureStore.hasCipherPrefix(existingKey) && !SecureStore.isEncrypted(existingKey)
                 check(!(apiKey.isBlank() && unreadableCiphertext)) {
                     "已保存的记忆模型 API Key 无法解密；请重新输入 API Key。原配置未修改。"
                 }
