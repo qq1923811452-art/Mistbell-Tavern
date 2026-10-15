@@ -1,9 +1,9 @@
 package com.mistbell.tavern.android.util
 
-import java.io.ByteArrayInputStream
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import java.io.ByteArrayInputStream
 
 class BoundedReadTest {
     @Test
