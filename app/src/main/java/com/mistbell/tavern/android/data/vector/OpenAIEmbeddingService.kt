@@ -79,7 +79,7 @@ class OpenAIEmbeddingService(
                 }
             }
 
-            throw lastException ?: Exception("Embedding request failed after $MAX_RETRIES retries")
+            throw lastException ?: IllegalStateException("Embedding request failed after $MAX_RETRIES retries")
         }
 
     private fun executeEmbedRequest(text: String): FloatArray {
@@ -107,22 +107,24 @@ class OpenAIEmbeddingService(
 
         if (!response.isSuccessful) {
             val errorBody = response.body?.string() ?: "Unknown error"
-            throw Exception("OpenAI API error: ${response.code} - $errorBody")
+            throw IllegalStateException("OpenAI API error: ${response.code} - $errorBody")
         }
 
         val responseBody =
             response.body?.string()
-                ?: throw Exception("Empty response body")
+                ?: throw IllegalStateException("Empty response body")
 
         val embeddingResponse = json.decodeFromString<EmbeddingResponse>(responseBody)
 
         if (embeddingResponse.data.isEmpty()) {
-            throw Exception("No embedding data returned")
+            throw IllegalStateException("No embedding data returned")
         }
 
         val embedding = embeddingResponse.data.first().embedding
         if (embedding.size != DIMENSION) {
-            throw Exception("Unexpected embedding dimension for model $model: ${embedding.size} (expected $DIMENSION)")
+            throw IllegalStateException(
+                "Unexpected embedding dimension for model $model: ${embedding.size} (expected $DIMENSION)",
+            )
         }
 
         Log.d(TAG, "Generated embedding: dimension=${embedding.size}")
@@ -165,7 +167,7 @@ class OpenAIEmbeddingService(
                 }
             }
 
-            throw lastException ?: Exception("Batch embedding request failed after $MAX_RETRIES retries")
+            throw lastException ?: IllegalStateException("Batch embedding request failed after $MAX_RETRIES retries")
         }
 
     private fun executeEmbedBatchRequest(texts: List<String>): List<FloatArray> {
@@ -193,31 +195,35 @@ class OpenAIEmbeddingService(
 
         if (!response.isSuccessful) {
             val errorBody = response.body?.string() ?: "Unknown error"
-            throw Exception("OpenAI API error: ${response.code} - $errorBody")
+            throw IllegalStateException("OpenAI API error: ${response.code} - $errorBody")
         }
 
         val responseBody =
             response.body?.string()
-                ?: throw Exception("Empty response body")
+                ?: throw IllegalStateException("Empty response body")
 
         val embeddingResponse = json.decodeFromString<EmbeddingResponse>(responseBody)
 
         if (embeddingResponse.data.isEmpty()) {
-            throw Exception("No embedding data returned")
+            throw IllegalStateException("No embedding data returned")
         }
 
         Log.d(TAG, "Generated ${embeddingResponse.data.size} embeddings in batch")
 
         val orderedData = embeddingResponse.data.sortedBy { it.index }
         if (orderedData.size != texts.size) {
-            throw Exception("Embedding response count mismatch: expected ${texts.size}, received ${orderedData.size}")
+            throw IllegalStateException(
+                "Embedding response count mismatch: expected ${texts.size}, received ${orderedData.size}",
+            )
         }
         if (orderedData.any { it.embedding.size != DIMENSION }) {
             val dimensions = orderedData.map { it.embedding.size }.distinct()
-            throw Exception("Unexpected embedding dimensions for model $model: $dimensions (expected $DIMENSION)")
+            throw IllegalStateException(
+                "Unexpected embedding dimensions for model $model: $dimensions (expected $DIMENSION)",
+            )
         }
         if (orderedData.map { it.index } != texts.indices.toList()) {
-            throw Exception("Embedding response contains missing or duplicate input indices")
+            throw IllegalStateException("Embedding response contains missing or duplicate input indices")
         }
 
         return orderedData.map { data ->
@@ -230,6 +236,7 @@ class OpenAIEmbeddingService(
         return message.contains("429") ||
             Regex("OpenAI API error: 5\\d\\d").containsMatchIn(message)
     }
+
     override fun getDimension(): Int = DIMENSION
 
     override fun getModelId(): String = "api:${baseUrl.trimEnd('/')}:$model"
