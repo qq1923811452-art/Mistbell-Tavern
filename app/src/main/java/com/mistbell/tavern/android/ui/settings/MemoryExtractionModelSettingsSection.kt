@@ -85,7 +85,13 @@ fun MemoryExtractionModelSettingsSection() {
             )
             OutlinedTextField(
                 value = apiKey,
-                onValueChange = { apiKey = it; keyNeedsReentry = false; clearKeyRequested = false; if (it.isNotBlank()) hasStoredKey = true; status = null },
+                onValueChange = {
+                    apiKey = it
+                    keyNeedsReentry = false
+                    clearKeyRequested = false
+                    if (it.isNotBlank()) hasStoredKey = true
+                    status = null
+                },
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text("独立记忆整理 API Key（本机回环地址可留空）") },
                 visualTransformation = PasswordVisualTransformation(),
