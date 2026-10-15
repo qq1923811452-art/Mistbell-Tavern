@@ -56,6 +56,29 @@ class MemoryExtractionModelSettingsTest {
     }
 
     @Test
+    fun `remote endpoint requires API key`() {
+        assertNull(
+            MemoryExtractionModelSettings(
+                baseUrl = "https://relay.example/v1",
+                apiKey = "",
+                model = "qwen-memory",
+            ).toLlmConfigOrNull(),
+        )
+    }
+
+    @Test
+    fun `unreadable stored key disables dedicated config until reentered`() {
+        assertNull(
+            MemoryExtractionModelSettings(
+                baseUrl = "https://relay.example/v1",
+                apiKey = "",
+                model = "qwen-memory",
+                keyNeedsReentry = true,
+            ).toLlmConfigOrNull(),
+        )
+    }
+
+    @Test
     fun `blank API key is allowed for local compatible endpoints`() {
         val config = MemoryExtractionModelSettings(
             baseUrl = "http://127.0.0.1:9379/v1",
