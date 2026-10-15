@@ -124,7 +124,7 @@ jobs:
               diff_url,
               headers={
                   **api_headers,
-                  "Accept": "application/vnd.github.diff",
+                  "Accept": "application/vnd.github.v3.diff",
               },
           )
           try:
@@ -139,6 +139,10 @@ jobs:
 
           if not diff.strip():
               raise SystemExit("The pinned pull request diff is empty or unavailable.")
+          if not diff.lstrip().startswith("diff --git "):
+              raise SystemExit(
+                  "GitHub compare endpoint did not return a unified diff; refusing to audit non-diff content."
+              )
 
           # Refuse to spend model tokens on a snapshot that changed during diff retrieval.
           verify_request = urllib.request.Request(metadata_url, headers=api_headers)
