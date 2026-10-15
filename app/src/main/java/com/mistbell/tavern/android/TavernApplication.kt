@@ -3,10 +3,6 @@ package com.mistbell.tavern.android
 import android.app.Application
 import android.content.Context
 import android.util.Log
-import com.mistbell.tavern.android.data.local.AppDatabase
-import com.mistbell.tavern.android.data.vector.EmbeddingService
-import com.mistbell.tavern.android.data.vector.VectorMemoryService
-import com.mistbell.tavern.android.data.vector.VectorStore
 import com.mistbell.tavern.android.di.AppContainer
 import com.mistbell.tavern.android.util.SecureStore
 
@@ -14,18 +10,16 @@ class TavernApplication : Application() {
     /**
      * 应用级 DI 容器：所有服务的唯一装配入口。
      *
-     * 新代码请经 `instance.container.xxx` 取服务；本类上的同名委托属性仅为兼容存量调用，
-     * 逐步迁移后移除。
+     * 取服务一律走 `instance.container.xxx`。
+     *
+     * 这里曾有一组同名的 `by lazy` 委托属性（database / vectorStore / embeddingService /
+     * vectorMemoryService）用于兼容旧调用。它们已随迁移完成而删除，原因有二：
+     * 1. 全仓（含 test/androidTest）已无任何引用；
+     * 2. `by lazy` 会**永久缓存第一次创建的实例**，而 AppContainer 在运行时切换
+     *    embedding 源时会发布新的一代（`@Volatile runtimeEmbeddingServices`）。
+     *    因此保留别名等于埋一个「切换后仍读到旧一代服务」的陷阱。
      */
     val container: AppContainer by lazy { AppContainer(this) }
-
-    val database: AppDatabase by lazy { container.database }
-
-    val vectorStore: VectorStore by lazy { container.vectorStore }
-
-    val embeddingService: EmbeddingService by lazy { container.embeddingService }
-
-    val vectorMemoryService: VectorMemoryService by lazy { container.vectorMemoryService }
 
     companion object {
         private const val TAG = "TavernApplication"
