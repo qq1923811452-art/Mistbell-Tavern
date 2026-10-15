@@ -44,7 +44,34 @@ class InMemoryVectorStore(
 
     companion object {
         private const val TAG = "InMemoryVectorStore"
+
+        /** Copy nested mutable metadata values so snapshots cannot mutate store-owned state. */
+        internal fun copyMetadata(metadata: Map<String, Any>): Map<String, Any> =
+            metadata.mapValues { (_, value) -> copyMetadataValue(value) }
+
+        private fun copyMetadataValue(value: Any): Any =
+            when (value) {
+                is ByteArray -> value.copyOf()
+                is ShortArray -> value.copyOf()
+                is IntArray -> value.copyOf()
+                is LongArray -> value.copyOf()
+                is FloatArray -> value.copyOf()
+                is DoubleArray -> value.copyOf()
+                is BooleanArray -> value.copyOf()
+                is CharArray -> value.copyOf()
+                is Array<*> -> value.map { it?.let(::copyMetadataValue) }.toTypedArray()
+                is List<*> -> value.map { it?.let(::copyMetadataValue) }
+                is Set<*> -> value.map { it?.let(::copyMetadataValue) }.toSet()
+                is Map<*, *> ->
+                    value.entries.associate { entry ->
+                        entry.key?.let(::copyMetadataValue) to entry.value?.let(::copyMetadataValue)
+                    }
+                else -> value
+            }
     }
+
+    private fun copyEntry(entry: VectorStore.VectorEntry): VectorStore.VectorEntry =
+        entry.copy(vector = entry.vector.copyOf(), metadata = copyMetadata(entry.metadata))
 
     init {
         // 延迟加载：只在需要时才从磁盘加载
@@ -67,7 +94,7 @@ class InMemoryVectorStore(
     ) {
         mutex.withLock {
             ensureLoaded()
-            vectors[id] = VectorStore.VectorEntry(id, vector, metadata)
+            vectors[id] = VectorStore.VectorEntry(id, vector.copyOf(), copyMetadata(metadata))
 
             // 内存限制：如果超过最大数量，移除最旧的条目
             while (vectors.size > capacity) {
@@ -85,7 +112,7 @@ class InMemoryVectorStore(
         mutex.withLock {
             ensureLoaded()
             entries.forEach { entry ->
-                vectors[entry.id] = entry
+                vectors[entry.id] = copyEntry(entry)
             }
 
             // 内存限制：保留最新的 maxVectorsInMemory 个
@@ -121,7 +148,7 @@ class InMemoryVectorStore(
                             id = entry.id,
                             score = score,
                             content = entry.metadata["content"] as? String ?: "",
-                            metadata = entry.metadata,
+                            metadata = copyMetadata(entry.metadata),
                         )
                     }
                     .sortedByDescending { it.score }
@@ -133,16 +160,14 @@ class InMemoryVectorStore(
     override suspend fun get(id: String): VectorStore.VectorEntry? {
         return mutex.withLock {
             ensureLoaded()
-            vectors[id]
+            vectors[id]?.let(::copyEntry)
         }
     }
 
     override suspend fun getAllEntries(): List<VectorStore.VectorEntry> =
         mutex.withLock {
             ensureLoaded()
-            vectors.values.map { entry ->
-                entry.copy(vector = entry.vector.copyOf(), metadata = entry.metadata.toMap())
-            }
+            vectors.values.map(::copyEntry)
         }
 
     override suspend fun delete(id: String) {
