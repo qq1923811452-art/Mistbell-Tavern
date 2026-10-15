@@ -76,13 +76,40 @@ data class ChatDelta(
  * prompt_cache_miss_tokens，用于观测前缀缓存命中率——忽略未知键的 Json 会保持默认值 0。
  */
 @Serializable
+data class UsageTokenDetails(
+    @SerialName("cached_tokens") val cachedTokens: Int? = null,
+)
+
+@Serializable
 data class Usage(
     @SerialName("prompt_tokens") val promptTokens: Int = 0,
     @SerialName("completion_tokens") val completionTokens: Int = 0,
     @SerialName("total_tokens") val totalTokens: Int = 0,
     @SerialName("prompt_cache_hit_tokens") val cacheHitTokens: Int = 0,
     @SerialName("prompt_cache_miss_tokens") val cacheMissTokens: Int = 0,
-)
+    // OpenAI-compatible providers commonly report cache usage under prompt_tokens_details.
+    @SerialName("prompt_tokens_details") val promptTokensDetails: UsageTokenDetails? = null,
+    @SerialName("input_tokens_details") val inputTokensDetails: UsageTokenDetails? = null,
+) {
+    private val nestedCachedTokens: Int?
+        get() = promptTokensDetails?.cachedTokens ?: inputTokensDetails?.cachedTokens
+
+    val cacheTelemetryAvailable: Boolean
+        get() = cacheHitTokens > 0 || cacheMissTokens > 0 || nestedCachedTokens != null
+
+    val reportedCacheHitTokens: Int?
+        get() = when {
+            cacheHitTokens > 0 || cacheMissTokens > 0 -> cacheHitTokens
+            else -> nestedCachedTokens
+        }
+
+    val reportedCacheMissTokens: Int?
+        get() = when {
+            cacheHitTokens > 0 || cacheMissTokens > 0 -> cacheMissTokens
+            nestedCachedTokens != null -> (promptTokens - nestedCachedTokens).coerceAtLeast(0)
+            else -> null
+        }
+}
 
 @Serializable
 data class ChatCompletionResponse(
@@ -210,6 +237,26 @@ object LlmClient {
                     totalTokens = maxOf(current.totalTokens, incoming.totalTokens),
                     cacheHitTokens = maxOf(current.cacheHitTokens, incoming.cacheHitTokens),
                     cacheMissTokens = maxOf(current.cacheMissTokens, incoming.cacheMissTokens),
+                    promptTokensDetails = mergeUsageTokenDetails(current.promptTokensDetails, incoming.promptTokensDetails),
+                    inputTokensDetails = mergeUsageTokenDetails(current.inputTokensDetails, incoming.inputTokensDetails),
+                )
+        }
+
+    private fun mergeUsageTokenDetails(
+        current: UsageTokenDetails?,
+        incoming: UsageTokenDetails?,
+    ): UsageTokenDetails? =
+        when {
+            current == null -> incoming
+            incoming == null -> current
+            else ->
+                UsageTokenDetails(
+                    cachedTokens =
+                        when {
+                            current.cachedTokens == null -> incoming.cachedTokens
+                            incoming.cachedTokens == null -> current.cachedTokens
+                            else -> maxOf(current.cachedTokens, incoming.cachedTokens)
+                        },
                 )
         }
 
@@ -228,9 +275,14 @@ object LlmClient {
             android.util.Log.i(LOG_TAG, "[$path] usage 未返回（网关不提供用量统计）model=$model")
             return
         }
-        val hit = usage.cacheHitTokens
-        val miss = usage.cacheMissTokens
-        val rate = if (hit + miss > 0) "${(hit * 100) / (hit + miss)}%" else "n/a"
+        val hit = usage.reportedCacheHitTokens ?: 0
+        val miss = usage.reportedCacheMissTokens ?: 0
+        val rate =
+            if (usage.cacheTelemetryAvailable && hit + miss > 0) {
+                "${(hit * 100) / (hit + miss)}%"
+            } else {
+                "n/a"
+            }
         android.util.Log.i(
             LOG_TAG,
             "[$path] prompt=${usage.promptTokens} 命中=$hit 未命中=$miss 命中率=$rate " +
