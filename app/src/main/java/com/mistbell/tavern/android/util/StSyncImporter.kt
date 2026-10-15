@@ -170,6 +170,15 @@ object StSyncImporter {
      */
     private const val MAX_SCAN_FILES = 5_000
 
+    /**
+     * 单次扫描**遍历过的节点**上限（含目录与不匹配扩展名的文件）。
+     *
+     * 与 [MAX_SCAN_FILES] 的区别很重要：后者只在发现 `.png`/`.json` 时递增，
+     * 因此一棵塞满其它扩展名文件或大量子目录的树，可以在「可导入文件数」远未到限的情况下
+     * 持续执行游标查询与递归 —— 遍历工作量必须单独设限。
+     */
+    private const val MAX_SCAN_NODES = 50_000
+
     /** 扫描期单文件记录（relPath 用于报告展示与同名排序，不含文件内容） */
     private data class ScannedFile(
         val uri: Uri,
@@ -373,6 +382,7 @@ object StSyncImporter {
         treeUri: Uri,
     ): List<ScannedFile> {
         val collected = mutableListOf<ScannedFile>()
+        var visitedNodes = 0
 
         fun walk(
             parentDocumentId: String,
@@ -394,6 +404,13 @@ object StSyncImporter {
                 null,
             )?.use { cursor ->
                 while (cursor.moveToNext()) {
+                    // 这里统计**遍历过的节点**（含目录与不匹配扩展名的文件），
+                    // 与 MAX_SCAN_FILES 区分开：后者只统计会真正被导入的文件。
+                    // 只限后者的话，一棵塞满非 .png/.json 的目录树仍可无界遍历。
+                    visitedNodes++
+                    require(visitedNodes <= MAX_SCAN_NODES) {
+                        "文档树节点数超过 $MAX_SCAN_NODES 个上限，已中止批量导入；请选择更小的目录"
+                    }
                     val documentId = cursor.getString(0) ?: continue
                     val displayName = cursor.getString(1) ?: continue
                     val mime = cursor.getString(2) ?: ""

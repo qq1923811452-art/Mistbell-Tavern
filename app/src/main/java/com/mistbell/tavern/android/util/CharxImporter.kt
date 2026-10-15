@@ -275,7 +275,12 @@ object CharxImporter {
         ) {
             runCatching { AtomicWrite.bytes(file, data) }
                 .onSuccess { assetPaths[label] = file.absolutePath }
-                .onFailure { failures += "$label（${it.message ?: it.javaClass.simpleName}）" }
+                .onFailure { cause ->
+                    // runCatching 捕获的是 Throwable：Error（OOM 等）不能被降级成「资材未写入」而吞掉，
+                    // 那会把严重故障伪装成普通的部分成功。只把 Exception 记为失败项。
+                    if (cause is Error) throw cause
+                    failures += "$label（${cause.message ?: cause.javaClass.simpleName}）"
+                }
         }
 
         // 创建目录

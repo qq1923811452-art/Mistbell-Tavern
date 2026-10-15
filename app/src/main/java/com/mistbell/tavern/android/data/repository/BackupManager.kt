@@ -97,8 +97,10 @@ class BackupManager(private val context: Context) {
     ) {
         fun toEntity(): ApiConfigEntity {
             // 恢复同样要过端点的写入判据：备份是外部输入，不能因为"能导入"就绕过明文策略。
+            // ⚠️ 消息里**不回显原始 apiUrl**：该地址来自备份文件，可能带 userinfo 或敏感查询参数，
+            // 而它正是因为不合规才被拒——回显等于把用户凭据写进异常消息（会进 UI 与日志）。
             check(ApiEndpointPolicy.writeRejectionReason(apiUrl) == null) {
-                "备份中的 API 配置 $id 使用了无效或未获平台放行的地址，已中止恢复：$apiUrl"
+                "备份中的 API 配置 $id 使用了无效或未获平台放行的地址，已中止恢复；请检查该配置的 API 地址"
             }
             val plainApiKey =
                 when {
