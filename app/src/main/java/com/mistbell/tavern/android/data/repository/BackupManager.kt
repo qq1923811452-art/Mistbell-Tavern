@@ -501,10 +501,10 @@ class BackupManager(private val context: Context) {
                 try {
                     writeAuxiliaryFiles(files, tables.themePacks)
                     emptyList()
+                } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                    throw cancelled
                 } catch (error: Exception) {
-                    // 取消恢复必须继续向上传播；不能把协程取消伪装成「部分资材未写入」。
-                    if (error is kotlinx.coroutines.CancellationException) throw error
-                    // 只将普通异常降级为附件 warning。Error（例如 OutOfMemoryError）不被捕获。
+                    // Only ordinary exceptions become an asset warning; fatal Error values propagate.
                     listOf("数据已恢复，但部分资材文件未写入（${error.message ?: error.javaClass.simpleName}）")
                 }
             summary.copy(warnings = tables.decodeWarnings + assetWarnings)
