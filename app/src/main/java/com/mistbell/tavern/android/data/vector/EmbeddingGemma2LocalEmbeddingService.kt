@@ -73,7 +73,8 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
             val temporaryFile = File(directory, "$MODEL_FILE_NAME.part")
             temporaryFile.delete()
             val request = Request.Builder().url(MODEL_URL).get().build()
-            httpClient.newCall(request).execute().use { response ->
+            try {
+                httpClient.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
                     throw IOException("EmbeddingGemma model download failed: HTTP ${response.code}")
                 }
@@ -100,8 +101,9 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
                         output.fd.sync()
                     }
                 }
-                if (copiedBytes < MIN_MODEL_BYTES || (advertisedLength > 0 && copiedBytes != advertisedLength)) {
-                    throw IOException("Downloaded model size is invalid; partial file will not be activated")
+                    if (copiedBytes < MIN_MODEL_BYTES || (advertisedLength > 0 && copiedBytes != advertisedLength)) {
+                        throw IOException("Downloaded model size is invalid; partial file will not be activated")
+                    }
                 }
             } catch (e: Exception) {
                 temporaryFile.delete()
