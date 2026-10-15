@@ -48,7 +48,7 @@ jobs:
           PY
           COMMENT_ID="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | contains("<!-- ai-pr-audit-skip -->"))) | .id' | tail -n 1)"
           if [[ -n "$COMMENT_ID" ]]; then
-            gh api --method PATCH "repos/${GITHUB_REPOSITORY}/issues/comments/${COMMENT_ID}" --raw-field body="$(cat /tmp/skip-notice.md)"
+            gh api --method PATCH "repos/${GITHUB_REPOSITORY}/issues/comments/${COMMENT_ID}" --field body=@/tmp/skip-notice.md
           else
             gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file /tmp/skip-notice.md
           fi
