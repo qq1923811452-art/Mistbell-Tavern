@@ -161,6 +161,15 @@ object StSyncImporter {
     /** 目录递归深度上限：防异常嵌套拖死遍历 */
     private const val MAX_SCAN_DEPTH = 15
 
+    /**
+     * 单次批量导入的文件数量上限。
+     *
+     * 只限深度挡不住「一个扁平目录里塞几十万个文件」——那会让遍历与后续逐文件读取
+     * 长时间占满 IO。超过上限时**中止**而不是静默只导入一部分：部分导入对用户是
+     * 「看起来成功、实际缺数据」，比明确失败更糟。调用方已用 try/catch 显示失败原因。
+     */
+    private const val MAX_SCAN_FILES = 5_000
+
     /** 扫描期单文件记录（relPath 用于报告展示与同名排序，不含文件内容） */
     private data class ScannedFile(
         val uri: Uri,
@@ -393,6 +402,9 @@ object StSyncImporter {
                     } else {
                         val lower = displayName.lowercase()
                         if (lower.endsWith(".png") || lower.endsWith(".json")) {
+                            require(collected.size < MAX_SCAN_FILES) {
+                                "文档树中可导入的文件超过 $MAX_SCAN_FILES 个上限，已中止批量导入；请选择更小的目录"
+                            }
                             collected +=
                                 ScannedFile(
                                     uri = DocumentsContract.buildDocumentUriUsingTree(treeUri, documentId),
