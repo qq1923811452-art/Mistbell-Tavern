@@ -56,7 +56,7 @@ class VectorMemoryServiceCancellationTest {
 
         override fun getDimension(): Int = 1
 
-        override fun getModelId(): String = "test:model"
+        override fun modelId(): String = "test:model"
     }
 
     private class TestVectorStore(
