@@ -3,6 +3,7 @@ package com.mistbell.tavern.android.service
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -96,14 +97,20 @@ class TemporalMemoryFactPolicyTest {
             )
 
         assertTrue(TemporalMemoryFactPolicy.isHistorical(historical))
-        assertTrue(!TemporalMemoryFactPolicy.isHistorical(null))
+        assertFalse(TemporalMemoryFactPolicy.isHistorical(null))
     }
 
     @Test
     fun `current fact stores start time and previous value metadata`() {
         val original = Json.encodeToString(mapOf("subject" to "user", "relation" to "name", "object" to "Bob"))
 
-        val updated = TemporalMemoryFactPolicy.markCurrent(original, "2026-10-15T12:00:00Z", listOf(12L), listOf("Alice"))
+        val updated =
+            TemporalMemoryFactPolicy.markCurrent(
+                original,
+                "2026-10-15T12:00:00Z",
+                listOf(12L),
+                listOf("Alice"),
+            )
         val decoded = Json.decodeFromString<Map<String, String>>(updated)
 
         assertEquals("current", decoded["status"])
