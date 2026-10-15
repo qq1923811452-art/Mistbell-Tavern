@@ -49,6 +49,11 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
         private const val EXPECTED_DIMENSION = 768
         private const val EXPECTED_MODEL_SHA256 = "2d079ee2f6f066b1f368e8d7c819f55214eaef1d0513b312321901f30ab286fb"
 
+        private val modelDownloadMutex = Mutex()
+
+        @Volatile
+        private var verifiedModelFingerprint: String? = null
+
         private val httpClient =
             OkHttpClient.Builder()
                 .followRedirects(true)
@@ -64,7 +69,10 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
                 createEngine(modelFile.absolutePath)
             }
 
-        private suspend fun ensureModelDownloaded(context: Context): File {
+        private suspend fun ensureModelDownloaded(context: Context): File =
+            modelDownloadMutex.withLock { ensureModelDownloadedLocked(context) }
+
+        private suspend fun ensureModelDownloadedLocked(context: Context): File {
             val directory = File(context.filesDir, MODEL_DIR)
             if (!directory.exists() && !directory.mkdirs()) {
                 throw IOException("Unable to create private model directory")
@@ -73,7 +81,7 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
             if (
                 modelFile.isFile &&
                 modelFile.length() in MIN_MODEL_BYTES..MAX_MODEL_BYTES &&
-                sha256(modelFile) == EXPECTED_MODEL_SHA256
+                isVerifiedModel(modelFile)
             ) {
                 return modelFile
             }
@@ -143,14 +151,26 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
                 temporaryFile.delete()
                 throw IOException("Unable to atomically activate downloaded EmbeddingGemma model")
             }
+            verifiedModelFingerprint = modelFingerprint(modelFile)
             return modelFile
         }
 
-        private fun sha256(file: File): String {
+        private suspend fun isVerifiedModel(file: File): Boolean {
+            if (verifiedModelFingerprint == modelFingerprint(file)) return true
+            if (sha256(file) != EXPECTED_MODEL_SHA256) return false
+            verifiedModelFingerprint = modelFingerprint(file)
+            return true
+        }
+
+        private fun modelFingerprint(file: File): String = "${file.length()}:${file.lastModified()}"
+
+        private suspend fun sha256(file: File): String {
+            val coroutineContext = currentCoroutineContext()
             val digest = MessageDigest.getInstance("SHA-256")
             FileInputStream(file).use { input ->
                 val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
                 while (true) {
+                    coroutineContext.ensureActive()
                     val count = input.read(buffer)
                     if (count < 0) break
                     digest.update(buffer, 0, count)
