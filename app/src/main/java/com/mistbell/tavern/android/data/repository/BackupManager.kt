@@ -2,6 +2,7 @@ package com.mistbell.tavern.android.data.repository
 
 import android.content.Context
 import android.net.Uri
+import android.util.AtomicFile
 import androidx.room.withTransaction
 import com.mistbell.tavern.android.TavernApplication
 import com.mistbell.tavern.android.data.local.entity.ApiConfigEntity
@@ -604,7 +605,7 @@ class BackupManager(private val context: Context) {
         val vectorStoreEntry = files[VECTOR_STORE_FILE] ?: return
         val target = File(context.filesDir, VECTOR_STORE_FILE)
         if (!target.exists()) {
-            target.writeBytes(vectorStoreEntry.toByteArray(Charsets.ISO_8859_1))
+            writeBytesAtomically(target, vectorStoreEntry.toByteArray(Charsets.ISO_8859_1))
         }
     }
 
@@ -712,7 +713,23 @@ private fun writeThemeAssetIfMissing(
     val fileName = name.substringAfterLast('/')
     if (fileName.isBlank()) return
     val target = File(dir, fileName)
-    if (!target.exists()) target.writeBytes(content.toByteArray(Charsets.ISO_8859_1))
+    if (!target.exists()) writeBytesAtomically(target, content.toByteArray(Charsets.ISO_8859_1))
+}
+
+private fun writeBytesAtomically(
+    target: File,
+    bytes: ByteArray,
+) {
+    val atomicFile = AtomicFile(target)
+    var output: java.io.FileOutputStream? = null
+    try {
+        output = atomicFile.startWrite()
+        output.write(bytes)
+        atomicFile.finishWrite(output)
+    } catch (e: Exception) {
+        output?.let { runCatching { atomicFile.failWrite(it) } }
+        throw e
+    }
 }
 
 private fun readBoundedEntry(
