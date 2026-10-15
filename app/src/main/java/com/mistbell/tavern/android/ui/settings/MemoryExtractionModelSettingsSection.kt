@@ -76,7 +76,10 @@ fun MemoryExtractionModelSettingsSection() {
             )
             OutlinedTextField(
                 value = baseUrl,
-                onValueChange = { baseUrl = it; status = null },
+                onValueChange = {
+                    baseUrl = it
+                    status = null
+                },
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text("记忆整理 API 基础地址") },
                 placeholder = { Text("https://api.example.com/v1") },
@@ -114,7 +117,10 @@ fun MemoryExtractionModelSettingsSection() {
             }
             OutlinedTextField(
                 value = model,
-                onValueChange = { model = it; status = null },
+                onValueChange = {
+                    model = it
+                    status = null
+                },
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text("记忆整理模型 ID") },
                 placeholder = { Text("由服务商提供，例如 Qwen 模型 ID") },
