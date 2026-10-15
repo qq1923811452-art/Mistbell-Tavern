@@ -492,9 +492,7 @@ class VectorMemoryServiceInstrumentedTest {
             delegate.add(id, vector, metadata)
         }
 
-        override suspend fun addBatch(
-            entries: List<VectorStore.VectorEntry>,
-        ) {
+        override suspend fun addBatch(entries: List<VectorStore.VectorEntry>) {
             delegate.addBatch(entries)
         }
 
