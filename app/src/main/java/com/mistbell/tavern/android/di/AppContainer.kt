@@ -117,6 +117,11 @@ class AppContainer(private val appContext: Context) {
      * Returns true only when a real local or remote embedding implementation is active.
      */
     suspend fun refreshEmbeddingSource(source: String): Boolean {
+        runtimeStatusJob?.cancel()
+        runtimeStatusJob = null
+        if (source == "local-gemma") {
+            _embeddingRuntimeStatus.value = EmbeddingRuntimeStatus(source = source)
+        }
         val service = assembleEmbeddingService(source)
         val memoryService = VectorMemoryService(vectorStore, service)
         // Publish the matching pair atomically so concurrent callers cannot observe mixed generations.
