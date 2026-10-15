@@ -1,8 +1,10 @@
 package com.mistbell.tavern.android.data.local
 
 import androidx.room.Room
+import androidx.room.testing.MigrationTestHelper
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -10,6 +12,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -596,6 +599,99 @@ class MigrationDataIntegrityTest {
             assertEquals("assistant", entries[0].depthRole)
             assertEquals(0.5, entries[0].probability, 0.0001)
         }
+
+    @get:Rule
+    val migrationTestHelper =
+        MigrationTestHelper(
+            InstrumentationRegistry.getInstrumentation(),
+            AppDatabase::class.java,
+        )
+
+    @Test
+    fun migrateV26ToV27_preservesEveryExistingApiConfigField() {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val v26DbName = "migration-v26-api-config-preservation.db"
+        context.deleteDatabase(v26DbName)
+
+        val expectedRows =
+            mapOf(
+                "cfg-primary" to
+                    listOf(
+                        "cfg-primary", "Primary Gemini", "https://gemini.example.invalid/v1",
+                        "fake-key-primary-123", "gemini-test-model", "1", "SUCCESS",
+                        "1723456789", "17", "gemini", "1", "0", "1", "1700000001", "1700000002",
+                    ),
+                "cfg-secondary" to
+                    listOf(
+                        "cfg-secondary", "Secondary OpenAI", "https://openai.example.invalid/v1",
+                        "fake-key-secondary-456", "openai-test-model", "0", "FAILED",
+                        "0", "42", "openai", "0", "1", "0", "1600000003", "1800000004",
+                    ),
+            )
+
+        // Create the database from the committed v26 Room schema, not a hand-written approximation.
+        migrationTestHelper.createDatabase(v26DbName, 26).apply {
+            execSQL(
+                """
+                INSERT INTO api_configs (
+                    id, name, apiUrl, apiKey, model, isDefault, lastTestStatus,
+                    lastTestTime, sortOrder, type, context1m, streamingEnabled,
+                    thinkingDisabled, createdAt, updatedAt
+                ) VALUES (
+                    'cfg-primary', 'Primary Gemini', 'https://gemini.example.invalid/v1',
+                    'fake-key-primary-123', 'gemini-test-model', 1, 'SUCCESS',
+                    1723456789, 17, 'gemini', 1, 0, 1, 1700000001, 1700000002
+                )
+                """.trimIndent(),
+            )
+            execSQL(
+                """
+                INSERT INTO api_configs (
+                    id, name, apiUrl, apiKey, model, isDefault, lastTestStatus,
+                    lastTestTime, sortOrder, type, context1m, streamingEnabled,
+                    thinkingDisabled, createdAt, updatedAt
+                ) VALUES (
+                    'cfg-secondary', 'Secondary OpenAI', 'https://openai.example.invalid/v1',
+                    'fake-key-secondary-456', 'openai-test-model', 0, 'FAILED',
+                    0, 42, 'openai', 0, 1, 0, 1600000003, 1800000004
+                )
+                """.trimIndent(),
+            )
+            close()
+        }
+
+        // Run the production migration and let Room validate the v27 schema on open.
+        val migratedDb =
+            Room.databaseBuilder(context, AppDatabase::class.java, v26DbName)
+                .addMigrations(AppDatabase.Companion.MIGRATION_26_27)
+                .allowMainThreadQueries()
+                .build()
+
+        try {
+            val raw = migratedDb.openHelper.writableDatabase
+            raw.query(
+                """
+                SELECT id, name, apiUrl, apiKey, model, isDefault, lastTestStatus,
+                    lastTestTime, sortOrder, type, context1m, streamingEnabled,
+                    thinkingDisabled, createdAt, updatedAt
+                FROM api_configs ORDER BY id
+                """.trimIndent(),
+            ).use { cursor ->
+                assertEquals("迁移前后的 API 配置数量必须一致", expectedRows.size, cursor.count)
+                val actualIds = mutableSetOf<String>()
+                while (cursor.moveToNext()) {
+                    val actual = (0 until cursor.columnCount).map(cursor::getString)
+                    val id = actual.first()
+                    actualIds += id
+                    assertEquals("配置 $id 的全部 15 个字段必须原样保留", expectedRows[id], actual)
+                }
+                assertEquals("迁移前后的 API 配置 ID 集合必须一致", expectedRows.keys, actualIds)
+            }
+        } finally {
+            migratedDb.close()
+            context.deleteDatabase(v26DbName)
+        }
+    }
 
     @Test
     fun migrateV11ToV27_preservesMessagesAndAppliesV26V27ColumnDefaults() =
