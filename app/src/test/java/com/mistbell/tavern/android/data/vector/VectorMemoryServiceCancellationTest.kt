@@ -82,6 +82,8 @@ class VectorMemoryServiceCancellationTest {
 
         override suspend fun get(id: String): VectorStore.VectorEntry? = null
 
+        override suspend fun getAllEntries(): List<VectorStore.VectorEntry> = emptyList()
+
         override suspend fun delete(id: String) = Unit
 
         override suspend fun deleteByFilters(filters: Map<String, Any>): Int {
