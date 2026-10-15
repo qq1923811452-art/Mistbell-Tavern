@@ -1,6 +1,5 @@
 package com.mistbell.tavern.android.data.vector
 
-import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class OpenAIEmbeddingResponseValidationTest {
