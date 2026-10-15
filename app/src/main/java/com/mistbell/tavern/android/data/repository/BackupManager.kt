@@ -722,19 +722,23 @@ private fun writeBytesAtomically(
 ) {
     val atomicFile = AtomicFile(target)
     var output: java.io.FileOutputStream? = null
-    try {
-        output = atomicFile.startWrite()
-        output.write(bytes)
-        atomicFile.finishWrite(output)
-    } catch (e: java.io.IOException) {
+    // 先记录失败原因，出 try 后再统一回滚并原样抛出，避免三处重复的 throw。
+    val failure =
+        try {
+            output = atomicFile.startWrite()
+            output.write(bytes)
+            atomicFile.finishWrite(output)
+            null
+        } catch (e: java.io.IOException) {
+            e
+        } catch (e: SecurityException) {
+            e
+        } catch (e: IllegalStateException) {
+            e
+        }
+    if (failure != null) {
         output?.let { runCatching { atomicFile.failWrite(it) } }
-        throw e
-    } catch (e: SecurityException) {
-        output?.let { runCatching { atomicFile.failWrite(it) } }
-        throw e
-    } catch (e: IllegalStateException) {
-        output?.let { runCatching { atomicFile.failWrite(it) } }
-        throw e
+        throw failure
     }
 }
 

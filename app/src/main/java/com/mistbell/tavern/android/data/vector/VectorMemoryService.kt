@@ -47,6 +47,7 @@ class VectorMemoryService(
         private const val EMBEDDING_CACHE_MAX_ENTRIES = 512
         private const val EMBEDDING_CACHE_STRIPE_COUNT = 32
         private const val VECTOR_WRITE_STRIPE_COUNT = 32
+
         // Keep explicit legacy reindex requests bounded to limit peak memory and API batch cost.
         private const val LEGACY_REINDEX_BATCH_SIZE = 32
         private const val HEX_BYTE_WIDTH = 2
@@ -160,7 +161,7 @@ class VectorMemoryService(
                     existing?.metadata?.get("content") == content &&
                     existing.metadata["embedding_model"] == embeddingModelId
                 ) {
-                    Log.d(TAG, "Reused persisted embedding for message: $messageId")
+                    runCatching { Log.d(TAG, "Reused persisted embedding for message: $messageId") }
                     return@withLock vectorId
                 }
 
@@ -181,14 +182,14 @@ class VectorMemoryService(
                 // Stable IDs plus a per-ID write stripe make repeated concurrent writes idempotent.
                 vectorStore.add(vectorId, embedding, metadata)
 
-                Log.d(TAG, "Stored message vector: $messageId -> $vectorId")
+                runCatching { Log.d(TAG, "Stored message vector: $messageId -> $vectorId") }
                 vectorId
             }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             recordVectorStorageFailure(_storageError, e)
-            Log.e(TAG, "Failed to store message vector (${e.javaClass.simpleName})")
+            runCatching { Log.e(TAG, "Failed to store message vector (${e.javaClass.simpleName})") }
             throw e
         }
     }
@@ -370,9 +371,7 @@ class VectorMemoryService(
      * This operation is explicit because remote reindexing may incur API cost. Replacements are
      * persisted before legacy entries are deleted; incomplete metadata is skipped, never guessed.
      */
-    suspend fun reindexLegacyVectors(
-        batchSize: Int = LEGACY_REINDEX_BATCH_SIZE,
-    ): LegacyReindexResult {
+    suspend fun reindexLegacyVectors(batchSize: Int = LEGACY_REINDEX_BATCH_SIZE): LegacyReindexResult {
         require(batchSize > 0) { "batchSize must be positive" }
         check(embeddingService !is MockEmbeddingService) {
             "Legacy vector reindex requires a real embedding service; mock vectors must never be persisted"
@@ -401,48 +400,17 @@ class VectorMemoryService(
         )
     }
 
-    @Suppress("CyclomaticComplexMethod", "ComplexCondition")
-    private suspend fun prepareLegacyCandidates(
-        entries: List<VectorStore.VectorEntry>,
-    ): LegacyCandidatePreparation {
+    @Suppress("CyclomaticComplexMethod")
+    private suspend fun prepareLegacyCandidates(entries: List<VectorStore.VectorEntry>): LegacyCandidatePreparation {
         var skipped = 0
         val candidates = mutableListOf<LegacyVectorCandidate>()
         for (entry in entries) {
-            val metadata = entry.metadata
-            val content = metadata["content"] as? String
-            val ownerId = metadata["owner_id"] as? String
-            val characterId = metadata["character_id"] as? String
-            val sessionId = metadata["session_id"] as? String
-            val messageId = metadata["message_id"] as? String
-            val contentType = metadata["content_type"] as? String
-            if (
-                content.isNullOrBlank() || ownerId.isNullOrBlank() || characterId.isNullOrBlank() ||
-                sessionId.isNullOrBlank() || messageId.isNullOrBlank() || contentType.isNullOrBlank()
-            ) {
+            val candidate = legacyCandidateOf(entry)
+            if (candidate == null) {
                 skipped++
-                continue
+            } else {
+                candidates += candidate
             }
-            val targetId =
-                generateVectorId(
-                    VectorIdentity(
-                        ownerId,
-                        characterId,
-                        sessionId,
-                        messageId,
-                        contentType,
-                        embeddingModelId,
-                    ),
-                )
-            candidates +=
-                LegacyVectorCandidate(
-                    legacyId = entry.id,
-                    targetId = targetId,
-                    content = content,
-                    metadata =
-                        metadata.toMutableMap().apply {
-                            put("embedding_model", embeddingModelId)
-                        },
-                )
         }
 
         // Multiple historical versions can share the same logical identity. Do not guess which
@@ -479,9 +447,45 @@ class VectorMemoryService(
         return LegacyCandidatePreparation(pending, skipped, reused)
     }
 
-    private suspend fun reindexLegacyBatch(
-        batch: List<LegacyVectorCandidate>,
-    ): LegacyBatchResult {
+    /** 提取单条历史向量的迁移候选；缺少必需身份元数据时返回 null，由调用方计入 skipped。 */
+    @Suppress("ComplexCondition")
+    private fun legacyCandidateOf(entry: VectorStore.VectorEntry): LegacyVectorCandidate? {
+        val metadata = entry.metadata
+        val content = metadata["content"] as? String
+        val ownerId = metadata["owner_id"] as? String
+        val characterId = metadata["character_id"] as? String
+        val sessionId = metadata["session_id"] as? String
+        val messageId = metadata["message_id"] as? String
+        val contentType = metadata["content_type"] as? String
+        if (
+            content.isNullOrBlank() || ownerId.isNullOrBlank() || characterId.isNullOrBlank() ||
+            sessionId.isNullOrBlank() || messageId.isNullOrBlank() || contentType.isNullOrBlank()
+        ) {
+            return null
+        }
+        val targetId =
+            generateVectorId(
+                VectorIdentity(
+                    ownerId,
+                    characterId,
+                    sessionId,
+                    messageId,
+                    contentType,
+                    embeddingModelId,
+                ),
+            )
+        return LegacyVectorCandidate(
+            legacyId = entry.id,
+            targetId = targetId,
+            content = content,
+            metadata =
+                metadata.toMutableMap().apply {
+                    put("embedding_model", embeddingModelId)
+                },
+        )
+    }
+
+    private suspend fun reindexLegacyBatch(batch: List<LegacyVectorCandidate>): LegacyBatchResult {
         // Reindexing shares stable IDs with normal writes. Hold the bounded stripe set across
         // recheck/embed/persist/delete so a newer message cannot be overwritten between steps.
         val acquiredLocks = mutableListOf<Mutex>()
@@ -496,9 +500,7 @@ class VectorMemoryService(
         }
     }
 
-    private suspend fun reindexLegacyBatchLocked(
-        batch: List<LegacyVectorCandidate>,
-    ): LegacyBatchResult {
+    private suspend fun reindexLegacyBatchLocked(batch: List<LegacyVectorCandidate>): LegacyBatchResult {
         // Recheck target IDs immediately before embedding. Another writer may have stored
         // a newer version after the initial snapshot; never overwrite that version blindly.
         val readyBatch = mutableListOf<LegacyVectorCandidate>()
@@ -526,10 +528,11 @@ class VectorMemoryService(
             return LegacyBatchResult(reindexed = 0, skipped = skipped, reused = reused)
         }
 
-        val embeddings = embeddingService.embedBatch(
-            readyBatch.map { it.content },
-            "EMBEDDING_LEGACY_REINDEX",
-        )
+        val embeddings =
+            embeddingService.embedBatch(
+                readyBatch.map { it.content },
+                "EMBEDDING_LEGACY_REINDEX",
+            )
         check(embeddings.size == readyBatch.size) {
             "Legacy vector reindex count mismatch: expected ${readyBatch.size}, received ${embeddings.size}"
         }
@@ -569,9 +572,10 @@ class VectorMemoryService(
         val digest =
             MessageDigest.getInstance("SHA-256")
                 .digest(encodedIdentity.toByteArray(StandardCharsets.UTF_8))
-        return "vec_" + digest.joinToString("") { byte ->
-            ("%0" + HEX_BYTE_WIDTH + "x").format(byte.toInt() and BYTE_MASK)
-        }
+        return "vec_" +
+            digest.joinToString("") { byte ->
+                ("%0" + HEX_BYTE_WIDTH + "x").format(byte.toInt() and BYTE_MASK)
+            }
     }
 
     private data class VectorIdentity(
