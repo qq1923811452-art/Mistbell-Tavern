@@ -181,7 +181,7 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
                     val embedding = engine.computeEmbedding(listOf(input)).embedding
                     FloatArray(embedding.size) { embedding[it].toFloat() }
                 }
-                require(vector.isNotEmpty() && vector.all(Float::isFinite)) {
+                require(vector.isNotEmpty() && vector.all { it.isFinite() }) {
                     "EmbeddingGemma 2 returned an empty or non-finite vector"
                 }
                 require(vector.size == EXPECTED_DIMENSION) {
