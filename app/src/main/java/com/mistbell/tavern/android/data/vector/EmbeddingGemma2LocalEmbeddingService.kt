@@ -49,6 +49,13 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
         private const val MAX_MODEL_BYTES = 240L * 1024L * 1024L
         private const val EXPECTED_DIMENSION = 768
         private const val EXPECTED_MODEL_SHA256 = "7dabcb17eed982d6de4435aaf29cc56147a627f6ab20a1e37aadd7af5399457b"
+        private const val COMPAT_MODEL_FILE_NAME = "embeddinggemma-2-text-270m.litertlm"
+        private const val COMPAT_MODEL_URL =
+            "https://huggingface.co/litert-community/embeddinggemma-2-text-270m-litert-lm/" +
+                "resolve/8c9f652/embeddinggemma-2-text-270m.litertlm?download=true"
+        private const val COMPAT_MIN_MODEL_BYTES = 150L * 1024L * 1024L
+        private const val COMPAT_MAX_MODEL_BYTES = 180L * 1024L * 1024L
+        private const val COMPAT_MODEL_SHA256 = "2d079ee2f6f066b1f368e8d7c819f55214eaef1d0513b312321901f30ab286fb"
 
         private val modelDownloadMutex = Mutex()
 
@@ -66,8 +73,92 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
 
         suspend fun create(context: Context): EmbeddingGemma2LocalEmbeddingService =
             withContext(Dispatchers.IO) {
-                val modelFile = ensureModelDownloaded(context)
-                createEngine(modelFile.absolutePath, context.applicationInfo.nativeLibraryDir)
+                try {
+                    val modelFile = ensureModelDownloaded(context)
+                    createEngine(modelFile.absolutePath, context.applicationInfo.nativeLibraryDir)
+                } catch (qualcommModelFailure: Exception) {
+                    Log.w(TAG, "SM8650-optimized model could not initialize on available backends; trying the generic 165 MB EmbeddingGemma 2 model", qualcommModelFailure)
+                    val compatibleModel = ensureCompatibleModelDownloaded(context)
+                    try {
+                        createEngine(compatibleModel.absolutePath, context.applicationInfo.nativeLibraryDir)
+                    } catch (compatibleModelFailure: Exception) {
+                        compatibleModelFailure.addSuppressed(qualcommModelFailure)
+                        throw compatibleModelFailure
+                    }
+                }
+            }
+
+        private suspend fun ensureCompatibleModelDownloaded(context: Context): File =
+            modelDownloadMutex.withLock {
+                val directory = File(context.filesDir, MODEL_DIR)
+                if (!directory.exists() && !directory.mkdirs()) {
+                    throw IOException("Unable to create private compatibility-model directory")
+                }
+                val modelFile = File(directory, COMPAT_MODEL_FILE_NAME)
+                if (modelFile.isFile &&
+                    modelFile.length() in COMPAT_MIN_MODEL_BYTES..COMPAT_MAX_MODEL_BYTES &&
+                    sha256(modelFile) == COMPAT_MODEL_SHA256
+                ) {
+                    return@withLock modelFile
+                }
+                if (modelFile.exists() && !modelFile.delete()) {
+                    throw IOException("Invalid compatibility model cannot be removed")
+                }
+                val temporaryFile = File(directory, "$COMPAT_MODEL_FILE_NAME.part")
+                temporaryFile.delete()
+                val call = httpClient.newCall(Request.Builder().url(COMPAT_MODEL_URL).get().build())
+                val coroutineContext = currentCoroutineContext()
+                val cancellationHandle = coroutineContext.job.invokeOnCompletion { cause ->
+                    if (cause is CancellationException) call.cancel()
+                }
+                try {
+                    call.execute().use { response ->
+                        if (!response.isSuccessful) {
+                            throw IOException("Compatibility model download failed: HTTP ${response.code}")
+                        }
+                        val body = response.body ?: throw IOException("Compatibility model download returned no body")
+                        val advertisedLength = body.contentLength()
+                        if (advertisedLength > COMPAT_MAX_MODEL_BYTES) {
+                            throw IOException("Compatibility model download exceeded size limit")
+                        }
+                        var copiedBytes = 0L
+                        body.byteStream().use { input ->
+                            FileOutputStream(temporaryFile).use { output ->
+                                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                                while (true) {
+                                    coroutineContext.ensureActive()
+                                    val count = input.read(buffer)
+                                    if (count < 0) break
+                                    copiedBytes += count
+                                    if (copiedBytes > COMPAT_MAX_MODEL_BYTES) {
+                                        throw IOException("Compatibility model download exceeded size limit")
+                                    }
+                                    output.write(buffer, 0, count)
+                                }
+                                output.fd.sync()
+                            }
+                        }
+                        if (copiedBytes !in COMPAT_MIN_MODEL_BYTES..COMPAT_MAX_MODEL_BYTES ||
+                            (advertisedLength > 0 && copiedBytes != advertisedLength)
+                        ) {
+                            throw IOException("Compatibility model download size is invalid")
+                        }
+                        if (sha256(temporaryFile) != COMPAT_MODEL_SHA256) {
+                            throw IOException("Compatibility model failed SHA-256 verification")
+                        }
+                    }
+                } catch (e: Exception) {
+                    temporaryFile.delete()
+                    coroutineContext.ensureActive()
+                    throw e
+                } finally {
+                    cancellationHandle.dispose()
+                }
+                if (!temporaryFile.renameTo(modelFile)) {
+                    temporaryFile.delete()
+                    throw IOException("Unable to atomically activate compatibility model")
+                }
+                modelFile
             }
 
         private suspend fun ensureModelDownloaded(context: Context): File =
@@ -257,7 +348,8 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
 
     private val inferenceMutex = Mutex()
 
-    override fun modelId(): String = "local:embeddinggemma-2-text-270m-qualcomm-sm8650-litertlm:e8ae632:$EXPECTED_DIMENSION"
+    override fun modelId(): String =
+        "local:embeddinggemma-2-text-270m-litertlm:auto-sm8650-then-generic-8c9f652:$EXPECTED_DIMENSION"
 
     override fun supportsLegacyVectors(): Boolean = false
 
