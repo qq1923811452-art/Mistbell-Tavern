@@ -55,46 +55,51 @@ class CachedVectorStore(
         queryVector: FloatArray,
         topK: Int,
         filters: Map<String, Any>,
-    ): List<VectorStore.SearchResult> =
-        if (topK <= 0) {
-            emptyList()
-        } else {
-            val cacheKey =
-                SearchCacheKey(
-                    queryVector = queryVector.toList(),
-                    topK = topK,
-                    filters = filters.toMap(),
-                )
-            val lookup =
-                cacheMutex.withLock {
-                    val cached = searchCache.get(cacheKey)
-                    if (cached == null) {
-                        cacheMissCount++
-                    } else {
-                        cacheHitCount++
-                    }
-                    publishCacheStatistics()
-                    cached to cacheGeneration
+    ): List<VectorStore.SearchResult> {
+        if (topK <= 0) return emptyList()
+
+        // Mutable containers and arrays do not have safe value equality for cache keys.
+        // Preserve delegate semantics by bypassing caching for those uncommon filter types.
+        if (!filters.values.all(::isStableFilterValue)) {
+            return delegate.search(queryVector, topK, filters)
+        }
+
+        val cacheKey =
+            SearchCacheKey(
+                queryVector = queryVector.toList(),
+                topK = topK,
+                filters = filters.toMap(),
+            )
+        val lookup =
+            cacheMutex.withLock {
+                val cached = searchCache.get(cacheKey)
+                if (cached == null) {
+                    cacheMissCount++
+                } else {
+                    cacheHitCount++
                 }
-            val cached = lookup.first
-            if (cached != null) {
-                Log.d(TAG, "Cache hit for search (dimension=" + queryVector.size + ")")
-                cached
-            } else {
-                Log.d(TAG, "Cache miss for search (dimension=" + queryVector.size + ")")
-                val results = delegate.search(queryVector, topK, filters)
-                cacheMutex.withLock {
-                    // If a write invalidated the cache while search was running, don't
-                    // reinsert results computed against the pre-write store state.
-                    if (lookup.second == cacheGeneration) {
-                        searchCache.put(cacheKey, results.toList())
-                        cacheWriteCount++
-                        publishCacheStatistics()
-                    }
-                }
-                results
+                publishCacheStatistics()
+                cached to cacheGeneration
+            }
+        val cached = lookup.first
+        if (cached != null) {
+            Log.d(TAG, "Cache hit for search (dimension=" + queryVector.size + ")")
+            return cached
+        }
+
+        Log.d(TAG, "Cache miss for search (dimension=" + queryVector.size + ")")
+        val results = delegate.search(queryVector, topK, filters)
+        cacheMutex.withLock {
+            // If a write invalidated the cache while search was running, don't
+            // reinsert results computed against the pre-write store state.
+            if (lookup.second == cacheGeneration) {
+                searchCache.put(cacheKey, results.toList())
+                cacheWriteCount++
+                publishCacheStatistics()
             }
         }
+        return results
+    }
 
     override suspend fun get(id: String): VectorStore.VectorEntry? {
         return delegate.get(id)
@@ -129,6 +134,18 @@ class CachedVectorStore(
             delegate.clear()
         }
     }
+
+    private fun isStableFilterValue(value: Any): Boolean =
+        value is String ||
+            value is Boolean ||
+            value is Byte ||
+            value is Short ||
+            value is Int ||
+            value is Long ||
+            value is Float ||
+            value is Double ||
+            value is Char ||
+            value is Enum<*>
 
     private fun publishCacheStatistics() {
         _cacheStatistics.value =
