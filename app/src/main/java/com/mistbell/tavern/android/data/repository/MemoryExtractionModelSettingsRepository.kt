@@ -5,9 +5,9 @@ import com.mistbell.tavern.android.TavernApplication
 import com.mistbell.tavern.android.data.api.LlmConfig
 import com.mistbell.tavern.android.data.local.entity.SettingsEntity
 import com.mistbell.tavern.android.util.SecureStore
-import java.net.URI
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.net.URI
 
 /** Independent provider settings for background memory extraction; stored in the existing KV table. */
 data class MemoryExtractionModelSettings(
