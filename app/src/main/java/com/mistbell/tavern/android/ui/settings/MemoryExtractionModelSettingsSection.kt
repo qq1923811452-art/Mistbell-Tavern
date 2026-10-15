@@ -20,11 +20,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import java.net.URI
 import com.mistbell.tavern.android.data.repository.MemoryExtractionModelSettings
 import com.mistbell.tavern.android.data.repository.MemoryExtractionModelSettingsRepository
 import com.mistbell.tavern.android.ui.common.ModernSettingsGroup
 import kotlinx.coroutines.launch
+import java.net.URI
 
 @Suppress("FunctionNaming", "LongMethod", "CyclomaticComplexMethod", "TooGenericExceptionCaught")
 @Composable
