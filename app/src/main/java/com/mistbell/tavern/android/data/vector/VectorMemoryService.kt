@@ -95,10 +95,11 @@ class VectorMemoryService(
      * A deterministic stripe lock covers cache lookup and generation for each key, preventing
      * duplicate same-text misses while allowing most unrelated texts to embed concurrently.
      */
-    private fun embeddingCacheKey(text: String): String {
+    private fun embeddingCacheKey(text: String, isQuery: Boolean): String {
+        val role = if (isQuery) "query" else "document"
         val digest =
             MessageDigest.getInstance("SHA-256")
-                .digest("$embeddingModelId\u0000$text".toByteArray(StandardCharsets.UTF_8))
+                .digest("$embeddingModelId\u0000$role\u0000$text".toByteArray(StandardCharsets.UTF_8))
         return digest.joinToString("") { byte -> ("%0" + HEX_BYTE_WIDTH + "x").format(byte.toInt() and BYTE_MASK) }
     }
 
@@ -107,7 +108,7 @@ class VectorMemoryService(
         source: String,
         isQuery: Boolean = false,
     ): FloatArray {
-        val key = embeddingCacheKey(text)
+        val key = embeddingCacheKey(text, isQuery)
         val mutex = embeddingCacheMutexes[Math.floorMod(key.hashCode(), embeddingCacheMutexes.size)]
         return mutex.withLock {
             val cached = synchronized(embeddingCache) { embeddingCache[key]?.copyOf() }
