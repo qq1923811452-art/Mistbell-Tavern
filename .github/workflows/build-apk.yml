@@ -20,7 +20,9 @@ concurrency:
 
 jobs:
   verify-and-build:
-    name: Reuse the CI quality gate
+    name: Reuse the CI quality gate and final validation
     uses: ./.github/workflows/ci.yml
+    with:
+      full_android_validation: true
     permissions:
       contents: read
