@@ -302,6 +302,7 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
             }
         }
 
+        @Suppress("ReturnCount")
         private fun createEngine(
             modelPath: String,
             nativeLibraryDir: String,
