@@ -36,25 +36,16 @@ internal object TemporalMemoryFactPolicy {
         )
     }
 
-    fun findConflicts(
+    fun findRelatedFacts(
         subject: String,
         relation: String,
         objectValue: String,
-        content: String,
         existingFacts: List<Fact>,
     ): List<Fact> {
         val normalizedSubject = normalize(subject)
         val normalizedRelation = normalize(relation)
         val normalizedObject = normalize(objectValue)
         if (normalizedSubject.isBlank() || normalizedRelation.isBlank() || normalizedObject.isBlank()) {
-            return emptyList()
-        }
-        val explicitlyUpdated =
-            content.contains("已改为") ||
-                content.contains("改成") ||
-                content.contains("changed to", ignoreCase = true) ||
-                content.contains("updated to", ignoreCase = true)
-        if (relation.trim().lowercase() !in singleValuedRelations && !explicitlyUpdated) {
             return emptyList()
         }
         return existingFacts.filter { existing ->
@@ -65,6 +56,28 @@ internal object TemporalMemoryFactPolicy {
                 normalize(existing.objectValue) != normalizedObject
         }
     }
+
+    fun shouldSupersede(relation: String, content: String): Boolean {
+        val explicitlyUpdated =
+            content.contains("已改为") ||
+                content.contains("改成") ||
+                content.contains("changed to", ignoreCase = true) ||
+                content.contains("updated to", ignoreCase = true)
+        return relation.trim().lowercase() in singleValuedRelations || explicitlyUpdated
+    }
+
+    fun findConflicts(
+        subject: String,
+        relation: String,
+        objectValue: String,
+        content: String,
+        existingFacts: List<Fact>,
+    ): List<Fact> =
+        if (shouldSupersede(relation, content)) {
+            findRelatedFacts(subject, relation, objectValue, existingFacts)
+        } else {
+            emptyList()
+        }
 
     fun markCurrent(
         structuredData: String,
