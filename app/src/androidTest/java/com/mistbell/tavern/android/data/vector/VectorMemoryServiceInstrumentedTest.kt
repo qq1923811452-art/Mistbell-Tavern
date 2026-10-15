@@ -484,8 +484,13 @@ class VectorMemoryServiceInstrumentedTest {
 
         val searchCalls = mutableListOf<SearchCall>()
 
-        override suspend fun add(id: String, vector: FloatArray, metadata: Map<String, Any>) =
+        override suspend fun add(
+            id: String,
+            vector: FloatArray,
+            metadata: Map<String, Any>,
+        ) {
             delegate.add(id, vector, metadata)
+        }
 
         override suspend fun addBatch(
             entries: List<VectorStore.VectorEntry>,
