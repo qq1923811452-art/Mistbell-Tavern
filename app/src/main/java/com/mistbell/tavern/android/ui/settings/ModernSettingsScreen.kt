@@ -119,6 +119,8 @@ fun ModernSettingsScreen(
                 apiConfigViewModel = apiConfigViewModel,
             )
 
+            ImageGenerationSettingsSection()
+
             ConversationSettingsSection(viewModel)
 
             AppearanceSettingsSection(viewModel, onNavigateToThemeManager)
