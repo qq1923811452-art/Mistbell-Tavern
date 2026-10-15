@@ -1,7 +1,8 @@
 package com.mistbell.tavern.android.data.vector
 
 import android.util.Log
-import java.util.UUID
+import kotlinx.coroutines.CancellationException
+import java.security.MessageDigest
 
 /**
  * 向量记忆服务
@@ -12,12 +13,14 @@ import java.util.UUID
  * 1. 存储消息到向量数据库
  * 2. 语义检索相关记忆
  */
+@Suppress("TooManyFunctions")
 class VectorMemoryService(
     private val vectorStore: VectorStore,
     private val embeddingService: EmbeddingService,
 ) {
     companion object {
         private const val TAG = "VectorMemoryService"
+        private const val LEGACY_REINDEX_BATCH_SIZE = 32
     }
 
     /**
@@ -53,10 +56,32 @@ class VectorMemoryService(
         contentType: String,
     ): String {
         try {
-            // 1. 生成向量
-            val embedding = embeddingService.embed(content)
+            val modelId = embeddingService.getModelId()
+            val vectorId =
+                generateVectorId(
+                    VectorIdentity(
+                        ownerId = ownerId,
+                        characterId = characterId,
+                        sessionId = sessionId,
+                        messageId = messageId,
+                        contentType = contentType,
+                        modelId = modelId,
+                    ),
+                )
 
-            // 2. 构建元数据
+            // Idempotent fast path: reuse a persisted vector when this exact message/model
+            // pair was already embedded. This survives process restarts and provider cache expiry.
+            val existing = vectorStore.get(vectorId)
+            if (
+                existing?.metadata?.get("content") == content &&
+                existing.metadata["embedding_model"] == modelId
+            ) {
+                Log.d(TAG, "Reused persisted embedding for message: $messageId")
+                return vectorId
+            }
+
+            // Generate a new embedding only for a new or changed message/model pair.
+            val embedding = embeddingService.embed(content)
             val metadata =
                 mapOf(
                     "owner_id" to ownerId,
@@ -64,19 +89,17 @@ class VectorMemoryService(
                     "session_id" to sessionId,
                     "message_id" to messageId,
                     "content_type" to contentType,
+                    "embedding_model" to modelId,
                     "content" to content,
                     "created_at" to System.currentTimeMillis().toString(),
                 )
 
-            // 3. 生成向量ID
-            val vectorId = generateVectorId()
-
-            // 4. 存储到向量数据库
+            // Stable IDs overwrite a changed version instead of accumulating duplicate vectors.
             vectorStore.add(vectorId, embedding, metadata)
-
             Log.d(TAG, "Stored message vector: $messageId -> $vectorId")
-
             return vectorId
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Failed to store message vector: ${e.message}", e)
             throw e
@@ -93,6 +116,7 @@ class VectorMemoryService(
      * @param topK 返回前K个结果
      * @return 搜索结果列表
      */
+    @Suppress("ReturnCount")
     suspend fun searchRelevantMemories(
         query: String,
         ownerId: String,
@@ -100,6 +124,8 @@ class VectorMemoryService(
         sessionId: String?,
         topK: Int = 5,
     ): List<VectorStore.SearchResult> {
+        if (topK <= 0) return emptyList()
+
         try {
             // 1. 查询向量化
             val queryEmbedding = embeddingService.embed(query)
@@ -109,6 +135,8 @@ class VectorMemoryService(
                 mutableMapOf<String, Any>(
                     "owner_id" to ownerId,
                     "character_id" to characterId,
+                    // Keep embeddings from different models in separate retrieval namespaces.
+                    "embedding_model" to embeddingService.getModelId(),
                 )
 
             // 如果指定了会话ID，则只检索当前会话
@@ -122,6 +150,8 @@ class VectorMemoryService(
             Log.d(TAG, "Search found ${results.size} relevant memories for queryLength=${query.length}")
 
             return results
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Failed to search relevant memories: ${e.message}", e)
             return emptyList()
@@ -148,6 +178,8 @@ class VectorMemoryService(
             Log.d(TAG, "Deleted $deleted vectors for session: $sessionId")
 
             return deleted
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Failed to delete session vectors: ${e.message}", e)
             return 0
@@ -172,6 +204,8 @@ class VectorMemoryService(
             Log.d(TAG, "Deleted $deleted vectors for character: $characterId")
 
             return deleted
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Failed to delete character vectors: ${e.message}", e)
             return 0
@@ -188,6 +222,8 @@ class VectorMemoryService(
             val deleted = vectorStore.deleteByFilters(mapOf("message_id" to messageId))
             Log.d(TAG, "Deleted $deleted vectors by messageId: $messageId")
             deleted
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Failed to delete vectors by messageId: ${e.message}", e)
             0
@@ -215,6 +251,8 @@ class VectorMemoryService(
             val deleted = vectorStore.deleteByFilters(filters)
             Log.d(TAG, "Deleted $deleted summary vectors (owner=$ownerId, character=$characterId, session=$sessionId)")
             deleted
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Failed to delete summary vectors: ${e.message}", e)
             0
@@ -231,6 +269,8 @@ class VectorMemoryService(
                 totalVectors = count,
                 dimension = embeddingService.getDimension(),
             )
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Failed to get statistics: ${e.message}", e)
             VectorStatistics(0, 0)
@@ -238,11 +278,154 @@ class VectorMemoryService(
     }
 
     /**
-     * 生成向量ID
+     * Explicitly re-embed legacy entries that have no model identity.
+     *
+     * This is intentionally opt-in: reindexing can incur provider cost. New vectors are written
+     * successfully before their legacy copies are removed, so a failed batch never destroys
+     * the only copy. Entries missing the identity/content metadata required for a safe rewrite
+     * are left untouched and reported as skipped.
      */
-    private fun generateVectorId(): String {
-        return "vec_${UUID.randomUUID().toString().replace("-", "")}"
+    suspend fun reindexLegacyVectors(batchSize: Int = LEGACY_REINDEX_BATCH_SIZE): LegacyReindexResult {
+        require(batchSize > 0) { "batchSize must be positive" }
+
+        val modelId = embeddingService.getModelId()
+        val legacyEntries = vectorStore.getAllEntries().filter { it.metadata["embedding_model"] == null }
+        val preparation = prepareLegacyCandidates(legacyEntries, modelId)
+        preparation.candidates.chunked(batchSize).forEach { batch -> reindexLegacyBatch(batch) }
+
+        return LegacyReindexResult(
+            scannedLegacy = legacyEntries.size,
+            migrated = preparation.reused + preparation.candidates.size,
+            skipped = preparation.skipped,
+            reused = preparation.reused,
+        )
     }
+
+    private suspend fun prepareLegacyCandidates(
+        entries: List<VectorStore.VectorEntry>,
+        modelId: String,
+    ): LegacyCandidatePreparation {
+        val candidates = mutableListOf<LegacyVectorCandidate>()
+        var skipped = 0
+        var reused = 0
+        for (entry in entries) {
+            when (val decision = prepareLegacyCandidate(entry, modelId)) {
+                LegacyCandidateDecision.Skip -> skipped++
+                LegacyCandidateDecision.Reused -> reused++
+                is LegacyCandidateDecision.Reindex -> candidates += decision.candidate
+            }
+        }
+        return LegacyCandidatePreparation(candidates, skipped, reused)
+    }
+
+    @Suppress("ComplexCondition", "ReturnCount")
+    private suspend fun prepareLegacyCandidate(
+        entry: VectorStore.VectorEntry,
+        modelId: String,
+    ): LegacyCandidateDecision {
+        val metadata = entry.metadata
+        val content = metadata["content"] as? String
+        val ownerId = metadata["owner_id"] as? String
+        val characterId = metadata["character_id"] as? String
+        val sessionId = metadata["session_id"] as? String
+        val messageId = metadata["message_id"] as? String
+        val contentType = metadata["content_type"] as? String
+        if (content.isNullOrBlank() || ownerId.isNullOrBlank() || characterId.isNullOrBlank() ||
+            sessionId == null || messageId.isNullOrBlank() || contentType.isNullOrBlank()
+        ) {
+            return LegacyCandidateDecision.Skip
+        }
+
+        val targetId = generateVectorId(
+            VectorIdentity(ownerId, characterId, sessionId, messageId, contentType, modelId),
+        )
+        val targetMetadata = metadata.toMutableMap().apply { put("embedding_model", modelId) }
+        val existingTarget = vectorStore.get(targetId)
+        val canReuseTarget = existingTarget != null &&
+            existingTarget.metadata["embedding_model"] == modelId &&
+            existingTarget.metadata["content"] == content
+        if (canReuseTarget) {
+            if (entry.id != targetId) vectorStore.delete(entry.id)
+            return LegacyCandidateDecision.Reused
+        }
+        return LegacyCandidateDecision.Reindex(
+            LegacyVectorCandidate(entry.id, targetId, content, targetMetadata),
+        )
+    }
+
+    private suspend fun reindexLegacyBatch(batch: List<LegacyVectorCandidate>) {
+        val embeddings = embeddingService.embedBatch(batch.map { it.content })
+        if (embeddings.size != batch.size) {
+            error("Legacy vector reindex count mismatch: expected ${batch.size}, received ${embeddings.size}")
+        }
+        val expectedDimension = embeddingService.getDimension()
+        if (embeddings.any { it.size != expectedDimension }) {
+            error("Legacy vector reindex returned an unexpected embedding dimension")
+        }
+        vectorStore.addBatch(
+            batch.mapIndexed { index, candidate ->
+                VectorStore.VectorEntry(candidate.targetId, embeddings[index], candidate.metadata)
+            },
+        )
+        // Remove old entries only after the replacement batch has been persisted.
+        batch.filter { it.legacyId != it.targetId }.forEach { candidate ->
+            vectorStore.delete(candidate.legacyId)
+        }
+    }
+
+    private data class LegacyCandidatePreparation(
+        val candidates: List<LegacyVectorCandidate>,
+        val skipped: Int,
+        val reused: Int,
+    )
+
+    private sealed interface LegacyCandidateDecision {
+        data object Skip : LegacyCandidateDecision
+        data object Reused : LegacyCandidateDecision
+        data class Reindex(val candidate: LegacyVectorCandidate) : LegacyCandidateDecision
+    }
+
+    data class LegacyReindexResult(
+        val scannedLegacy: Int,
+        val migrated: Int,
+        val skipped: Int,
+        val reused: Int,
+    )
+
+    private data class LegacyVectorCandidate(
+        val legacyId: String,
+        val targetId: String,
+        val content: String,
+        val metadata: Map<String, Any>,
+    )
+
+    /**
+     * Stable ID makes vector writes idempotent across retries and app restarts.
+     * Model identity is included so incompatible embedding spaces never overwrite each other.
+     */
+    private fun generateVectorId(identity: VectorIdentity): String {
+        val encodedIdentity =
+            listOf(
+                identity.ownerId,
+                identity.characterId,
+                identity.sessionId,
+                identity.messageId,
+                identity.contentType,
+                identity.modelId,
+            ).joinToString(separator = "\u0000")
+        val digest = MessageDigest.getInstance("SHA-256")
+            .digest(encodedIdentity.toByteArray(Charsets.UTF_8))
+        return "vec_" + digest.joinToString("") { byte -> "%02x".format(byte) }
+    }
+
+    private data class VectorIdentity(
+        val ownerId: String,
+        val characterId: String,
+        val sessionId: String,
+        val messageId: String,
+        val contentType: String,
+        val modelId: String,
+    )
 
     /**
      * 向量统计信息

@@ -214,19 +214,21 @@ class StructuredMemoryRepository(context: Context) {
      */
     private suspend fun syncToVectorIfNeeded(memory: StructuredMemory) {
         if (memory.importance < SYNC_THRESHOLD) {
+            deleteVectorCopy(memory.id)
             return
         }
 
         try {
-            val vectorContent = memory.buildVectorContent()
             val vectorMemoryService = TavernApplication.instance.container.vectorMemoryService
-
-            // 先清同 messageId 的旧副本再写入：编辑/重抽后不堆积重复向量
-            if (vectorMemoryService.available) {
-                vectorMemoryService.deleteByMessageId(vectorMessageId(memory.id))
+            // Preserve vectors from other real models if the current provider is unavailable.
+            // Stable vector IDs overwrite changed content for this model without deleting other model spaces.
+            if (!vectorMemoryService.available) {
+                Log.d(TAG, "Skip vector sync for memory ${memory.id}: embedding service unavailable")
+                return
             }
+
+            val vectorContent = memory.buildVectorContent()
             vectorMemoryService.storeMessage(
-                // VectorMemory.ContentType.SUMMARY
                 content = vectorContent,
                 ownerId = memory.ownerId,
                 characterId = memory.characterId ?: "unknown",
@@ -237,21 +239,19 @@ class StructuredMemoryRepository(context: Context) {
 
             Log.d(TAG, "Synced memory ${memory.id} to vector store (importance: ${memory.importance})")
         } catch (e: Exception) {
-            // 向量同步失败不应影响主流程
+            // Vector sync failure must not block the primary memory/chat flow.
             Log.e(TAG, "Failed to sync memory to vector: ${e.message}", e)
         }
     }
 
-    /** 结构化记忆同步到向量库时使用的 messageId（删除时按此精确清理） */
     private fun vectorMessageId(memoryId: Long): String = "structured_memory_$memoryId"
 
     /** 清理单条记忆在向量库中的摘要副本（重要性>=7 时同步过的那份） */
     private suspend fun deleteVectorCopy(memoryId: Long) {
         try {
             val vectorMemoryService = TavernApplication.instance.container.vectorMemoryService
-            if (vectorMemoryService.available) {
-                vectorMemoryService.deleteByMessageId(vectorMessageId(memoryId))
-            }
+            // Deletion only needs the vector store; it must work even if embedding is unavailable.
+            vectorMemoryService.deleteByMessageId(vectorMessageId(memoryId))
         } catch (e: Exception) {
             // 向量清理失败不应影响主流程
             Log.e(TAG, "Failed to delete vector copy: ${e.message}", e)
@@ -266,9 +266,8 @@ class StructuredMemoryRepository(context: Context) {
     ) {
         try {
             val vectorMemoryService = TavernApplication.instance.container.vectorMemoryService
-            if (vectorMemoryService.available) {
-                vectorMemoryService.deleteSummaryVectors(ownerId, characterId, sessionId)
-            }
+            // Deletion only needs the vector store; it must work even if embedding is unavailable.
+            vectorMemoryService.deleteSummaryVectors(ownerId, characterId, sessionId)
         } catch (e: Exception) {
             // 向量清理失败不应影响主流程
             Log.e(TAG, "Failed to delete summary vectors: ${e.message}", e)

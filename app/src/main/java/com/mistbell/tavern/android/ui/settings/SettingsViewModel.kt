@@ -276,6 +276,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             db.settingsDao().upsert(
                 com.mistbell.tavern.android.data.local.entity.SettingsEntity("embedding_source", source),
             )
+            runCatching { TavernApplication.instance.container.refreshEmbeddingServices() }
+                .onFailure { error ->
+                    _message.value = "Embedding 源已保存，但刷新服务失败：${error.message}"
+                }
         }
     }
 

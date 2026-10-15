@@ -54,6 +54,8 @@ class LocalEmbeddingService private constructor(
 
     override fun getDimension(): Int = DIM
 
+    override fun getModelId(): String = "local:bge-small-zh-v1.5-q"
+
     override suspend fun embed(text: String): FloatArray =
         withContext(Dispatchers.Default) {
             val ids = tokenizer.encode(text, MAX_SEQ_LEN)
