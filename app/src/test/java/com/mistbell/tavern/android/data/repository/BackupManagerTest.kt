@@ -316,4 +316,18 @@ class BackupManagerTest {
             assertFalse("$key is a numeric setting, not a credential", BackupManager.isSensitiveSettingKey(key))
         }
     }
+
+    @Test
+    fun `恢复拒绝 API 配置或自定义提示词表中的重复 ID`() {
+        assertEquals(
+            listOf("api-1", "api-2"),
+            requireUniqueBackupIds(listOf("api-1", "api-2"), "api_configs") { it },
+        )
+        try {
+            requireUniqueBackupIds(listOf("duplicate", "duplicate"), "custom_prompts") { it }
+            fail("重复主键应在恢复事务前被拒绝")
+        } catch (e: IllegalArgumentException) {
+            assertTrue(e.message!!.contains("重复 ID"))
+        }
+    }
 }
