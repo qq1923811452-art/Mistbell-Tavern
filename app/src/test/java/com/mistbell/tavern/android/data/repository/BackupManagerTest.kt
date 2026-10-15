@@ -76,6 +76,38 @@ class BackupManagerTest {
         assertTrue(BackupManager.decodeList("", SettingsEntity.serializer()).isEmpty())
     }
 
+    @Test
+    fun `恢复拒绝损坏的整表载荷但仍保留逐条抢救能力`() {
+        val serializer = SettingsEntity.serializer()
+
+        listOf("{", "{}", """[{"key":42}]""").forEach { payload ->
+            try {
+                BackupManager.decodeBackupList(payload, "settings.json", 1, serializer)
+                fail("损坏且没有可恢复记录的表应中止恢复")
+            } catch (e: IllegalArgumentException) {
+                assertTrue(e.message!!.contains("损坏"))
+            }
+        }
+
+        try {
+            BackupManager.decodeBackupList(null, "settings.json", 1, serializer)
+            fail("清单声明有数据但缺少表文件时应中止恢复")
+        } catch (e: IllegalArgumentException) {
+            assertTrue(e.message!!.contains("缺少"))
+        }
+
+        val partiallyRecovered =
+            BackupManager.decodeBackupList(
+                """[{"key":"a","value":"1"},{"key":42}]""",
+                "settings.json",
+                2,
+                serializer,
+            )
+        assertEquals(listOf(SettingsEntity("a", "1")), partiallyRecovered)
+
+        assertTrue(BackupManager.decodeBackupList(null, "new_table.json", null, serializer).isEmpty())
+    }
+
     // ---- settings 敏感条目 ----
 
     @Test
