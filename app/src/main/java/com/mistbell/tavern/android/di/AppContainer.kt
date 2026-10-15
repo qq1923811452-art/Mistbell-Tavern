@@ -45,14 +45,17 @@ class AppContainer(private val appContext: Context) {
      * - api：强制 API（无 key 则 Mock）；
      * - local：本地 ONNX（bge-small-zh）；初始化失败回退 Mock 并记日志。
      */
-    @Suppress("TooGenericExceptionCaught")
-    val embeddingService: EmbeddingService by lazy {
-        // runBlocking 限定在装配边界：lazy 首触发出自协程（PromptBuilder 等在 IO 线程），
-        // 且整个装配只在应用生命周期内执行一次
-        kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
-            assembleEmbeddingService()
+    private val embeddingLock = Any()
+    @Volatile private var currentEmbeddingService: EmbeddingService? = null
+    @Volatile private var currentVectorMemoryService: VectorMemoryService? = null
+
+    /** Resolve lazily, but permit settings changes to replace the active provider at runtime. */
+    val embeddingService: EmbeddingService
+        get() = currentEmbeddingService ?: synchronized(embeddingLock) {
+            currentEmbeddingService ?: kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
+                assembleEmbeddingService().also { currentEmbeddingService = it }
+            }
         }
-    }
 
     private suspend fun assembleEmbeddingService(): EmbeddingService {
         val source =
@@ -90,23 +93,27 @@ class AppContainer(private val appContext: Context) {
                 model = "text-embedding-3-small",
             )
         } else {
-            // 无 key：不用伪向量，注入 Mock 占位（available=false，调用方走词法回退）
             Log.d(TAG, "No embedding API key, vector memory unavailable (lexical fallback)")
             MockEmbeddingService()
         }
     }
 
-    val vectorMemoryService: VectorMemoryService by lazy {
-        try {
-            VectorMemoryService(
-                vectorStore = vectorStore,
-                embeddingService = embeddingService,
-            ).also {
+    val vectorMemoryService: VectorMemoryService
+        get() = currentVectorMemoryService ?: synchronized(embeddingLock) {
+            currentVectorMemoryService ?: VectorMemoryService(vectorStore, embeddingService).also {
+                currentVectorMemoryService = it
                 Log.d(TAG, "Vector memory service initialized (lazy)")
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to initialize vector memory service: ${e.message}", e)
-            VectorMemoryService(vectorStore, embeddingService)
+        }
+
+    /** Rebuild service wrappers after embedding settings change; stored vectors remain model-isolated. */
+    suspend fun refreshEmbeddingServices() {
+        val newEmbeddingService = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            assembleEmbeddingService()
+        }
+        synchronized(embeddingLock) {
+            currentEmbeddingService = newEmbeddingService
+            currentVectorMemoryService = VectorMemoryService(vectorStore, newEmbeddingService)
         }
     }
 
