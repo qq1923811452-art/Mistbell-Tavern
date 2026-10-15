@@ -48,7 +48,7 @@ Extraction must not delay the chat response. A future dedicated memory-LLM confi
 - Embedding model identity is part of vector metadata and the retrieval filter. Equal dimensions do not imply compatible semantic spaces.
 - Query vectors and stored vectors must have compatible dimensions. Incompatible historical vectors are skipped instead of crashing the entire search.
 - Switching the configured source refreshes the active service wrapper. The old model's vectors remain isolated and can be retrieved again when switching back to that same model identity.
-- Existing vectors written before model identity was added have no model namespace and are therefore not selected by the new filter. A deliberate re-embedding/reindex path is needed to migrate them; do not guess their original model.
+- Existing vectors written before model identity was added have no model namespace and are therefore not selected by the normal retrieval filter. The explicit legacy reindex operation re-embeds only entries with complete identity metadata, writes replacements before deleting old entries, and leaves incomplete or ambiguous entries untouched. It can incur provider cost and should be invoked deliberately.
 - Vector writes use a stable ID derived from message identity and embedding model; unchanged content reuses the persisted vector, while changed content overwrites that model's prior vector instead of adding a duplicate.
 - Mock embeddings are placeholders only. When the real embedding service is unavailable, use lexical fallback and do not write mock vectors.
 - Search-cache keys include the exact query vector, top-K, and normalized filters. Cache writes are rejected if a mutation invalidated the cache while a search was in flight.
