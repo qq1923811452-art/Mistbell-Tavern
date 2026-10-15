@@ -37,11 +37,14 @@ jobs:
     name: Compile, unit tests, and static checks
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    outputs:
+      quality_gate: ${{ steps.quality_gate.outcome }}
+      tested_sha: ${{ steps.source_sha.outputs.sha }}
     steps:
-      - name: Checkout
+      - name: Checkout exact source commit
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.head_ref || github.ref_name }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
 
       - name: Set up JDK 17
@@ -54,6 +57,11 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
       - name: Ensure Gradle wrapper is executable
         run: chmod +x ./gradlew
+
+      - name: Record exact source commit
+        id: source_sha
+        shell: bash
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Run quality gate
         id: quality_gate
@@ -82,13 +90,28 @@ jobs:
           retention-days: 14
 
   instrumented-tests:
-    if: github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call'
+    needs: verify
+    if: ${{ needs.verify.result == 'success' && needs.verify.outputs.quality_gate == 'success' && (github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call') }}
     name: Final APK, Android emulator, and migration validation
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - name: Checkout
+      - name: Checkout the exact verified commit
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.verify.outputs.tested_sha }}
+          fetch-depth: 0
+
+      - name: Confirm checked-out commit matches quality-gate commit
+        shell: bash
+        env:
+          VERIFIED_SHA: ${{ needs.verify.outputs.tested_sha }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          actual_sha="$(git rev-parse HEAD)"
+          test "$actual_sha" = "$VERIFIED_SHA"
+          test "$actual_sha" = "$SOURCE_SHA"
 
       - name: Set up JDK 17
         uses: actions/setup-java@v5
@@ -120,11 +143,31 @@ jobs:
           disable-animations: true
           script: ./gradlew :app:assembleDebug :app:connectedDebugAndroidTest --no-daemon --no-parallel
 
-      - name: Upload final debug APK
+      - name: Generate APK checksum and provenance
+        if: success()
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          VERIFIED_SHA: ${{ needs.verify.outputs.tested_sha }}
+          QUALITY_GATE: ${{ needs.verify.outputs.quality_gate }}
+        run: |
+          set -euo pipefail
+          tested_sha="$(git rev-parse HEAD)"
+          test "$tested_sha" = "$SOURCE_SHA"
+          test "$tested_sha" = "$VERIFIED_SHA"
+          test "$QUALITY_GATE" = "success"
+          mkdir -p build-artifacts
+          find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' -exec cp {} build-artifacts/ \;
+          test -n "$(find build-artifacts -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          cd build-artifacts
+          sha256sum *.apk | tee SHA256SUMS.txt
+          printf 'source_sha=%s\ntested_sha=%s\nworkflow_run_id=%s\nquality_gate=%s\n' "$SOURCE_SHA" "$tested_sha" "$GITHUB_RUN_ID" "$QUALITY_GATE" > SOURCE.txt
+
+      - name: Upload verified APK, checksum, and provenance
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: mistbell-final-debug-apk-${{ github.run_number }}
-          path: app/build/outputs/apk/debug/*.apk
+          name: mistbell-${{ needs.verify.outputs.quality_gate == 'success' && 'verified' || 'unverified' }}-debug-apk-${{ github.run_number }}
+          path: build-artifacts/*
           if-no-files-found: error
           retention-days: 14
