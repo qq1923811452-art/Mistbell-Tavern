@@ -434,6 +434,7 @@ jobs:
                       )
                       if current_file is not None:
                           diff_lines_by_file.setdefault(current_file, [])
+                          current_source_lines_by_file.setdefault(current_file, [])
                       continue
                   if raw_line.startswith("--- "):
                       try:
@@ -443,6 +444,7 @@ jobs:
                       if len(header_parts) == 2 and header_parts[1].startswith("a/"):
                           current_file = header_parts[1][2:]
                           diff_lines_by_file.setdefault(current_file, [])
+                          current_source_lines_by_file.setdefault(current_file, [])
                       # /dev/null means a new file; keep the old-path fallback unchanged.
                       continue
                   if raw_line.startswith("+++ "):
@@ -453,14 +455,17 @@ jobs:
                       if len(header_parts) == 2 and header_parts[1].startswith("b/"):
                           current_file = header_parts[1][2:]
                           diff_lines_by_file.setdefault(current_file, [])
+                          current_source_lines_by_file.setdefault(current_file, [])
                       # For deleted files, /dev/null leaves the old path in current_file.
                       continue
                   if raw_line.startswith(("index ", "@@")):
                       continue
-                  # Only additions and unchanged context represent current source lines; removed lines cannot prove a fix.
-                  if current_file is not None and raw_line[:1] in ("+", " "):
+                  if current_file is not None and raw_line[:1] in ("+", "-", " "):
                       diff_lines_by_file[current_file].append(raw_line[1:])
-              def evidence_matches(file_name, evidence):
+                  # Keep a second index of current-source lines for prior-finding status verification.
+                  if current_file is not None and raw_line[:1] in ("+", " "):
+                      current_source_lines_by_file[current_file].append(raw_line[1:])
+              def evidence_matches(file_name, evidence, current_only=False):
                   if not isinstance(file_name, str) or not file_name.strip():
                       return False
                   if not isinstance(evidence, str) or not evidence.strip():
@@ -468,7 +473,8 @@ jobs:
                   normalized_path = file_name.strip().strip("`")
                   if normalized_path.startswith(("./", "a/", "b/")):
                       normalized_path = normalized_path[2:] if normalized_path.startswith("./") else normalized_path[2:]
-                  file_lines = diff_lines_by_file.get(normalized_path, [])
+                  source_index = current_source_lines_by_file if current_only else diff_lines_by_file
+                  file_lines = source_index.get(normalized_path, [])
                   evidence_lines = evidence.strip().splitlines()
                   if not 1 <= len(evidence_lines) <= 3:
                       return False
@@ -514,7 +520,7 @@ jobs:
                           status = "uncertain"
                       prior_file = prior.get("file")
                       prior_evidence = prior.get("evidence")
-                      if status in {"fixed", "still_open"} and not evidence_matches(prior_file, prior_evidence):
+                      if status in {"fixed", "still_open"} and not evidence_matches(prior_file, prior_evidence, current_only=True):
                           status = "uncertain"
                           prior_evidence = None
                       verified_previous_findings.append({
