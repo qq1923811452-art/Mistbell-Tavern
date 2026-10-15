@@ -248,9 +248,6 @@ class BackupManager(private val context: Context) {
                 encodeDefaults = true
             }
 
-        internal fun endpointForRestore(endpoint: String): String =
-            if (ApiEndpointPolicy.writeRejectionReason(endpoint) == null) endpoint else ""
-
         // ---- 纯函数（JVM 可测）：清单校验与容错列表解码 ----
 
         /**
@@ -503,13 +500,23 @@ class BackupManager(private val context: Context) {
                     emptyList()
                 } catch (cancelled: kotlinx.coroutines.CancellationException) {
                     throw cancelled
-                } catch (error: Exception) {
-                    // Keep untrusted file paths/URLs from an imported backup out of UI messages and logs.
-                    android.util.Log.w("BackupManager", "Auxiliary restore failed (${error.javaClass.simpleName})")
-                    listOf("数据已恢复，但部分资材文件未写入；请检查附件是否完整。")
+                } catch (error: java.io.IOException) {
+                    auxiliaryRestoreWarning(error)
+                } catch (error: SecurityException) {
+                    auxiliaryRestoreWarning(error)
+                } catch (error: IllegalArgumentException) {
+                    auxiliaryRestoreWarning(error)
+                } catch (error: IllegalStateException) {
+                    auxiliaryRestoreWarning(error)
                 }
             summary.copy(warnings = tables.decodeWarnings + assetWarnings)
         }
+
+    private fun auxiliaryRestoreWarning(error: Exception): List<String> {
+        // Keep untrusted file paths/URLs out of UI messages and logs.
+        android.util.Log.w("BackupManager", "Auxiliary restore failed (${error.javaClass.simpleName})")
+        return listOf("数据已恢复，但部分资材文件未写入；请检查附件是否完整。")
+    }
 
     private fun decodeTables(
         files: Map<String, String>,
@@ -803,6 +810,10 @@ private fun storeEntry(
             String(bytes, Charsets.UTF_8)
         }
 }
+
+/** Quarantine unsafe API endpoints imported from an untrusted backup. */
+internal fun endpointForRestore(endpoint: String): String =
+    if (ApiEndpointPolicy.writeRejectionReason(endpoint) == null) endpoint else ""
 
 /** Add the config ID to Keystore failures so a failed restore is diagnosable. */
 internal fun wrapRestoredApiKey(
