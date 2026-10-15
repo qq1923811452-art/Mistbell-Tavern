@@ -38,37 +38,39 @@ class ApiConfigMigrationInstrumentedTest {
     }
 
     @Test
-    fun unreadableLegacyProvidersJsonAbortsAndPreservesOriginalValue() = runBlocking {
-        val unreadableCiphertext = "enc:v1:not-a-valid-envelope"
-        db.settingsDao().upsert(SettingsEntity("providers_json", unreadableCiphertext))
+    fun unreadableLegacyProvidersJsonAbortsAndPreservesOriginalValue() =
+        runBlocking {
+            val unreadableCiphertext = "enc:v1:not-a-valid-envelope"
+            db.settingsDao().upsert(SettingsEntity("providers_json", unreadableCiphertext))
 
-        var thrown: IllegalStateException? = null
-        try {
-            ApiConfigMigration.migrateIfNeeded(db)
-        } catch (error: IllegalStateException) {
-            thrown = error
+            var thrown: IllegalStateException? = null
+            try {
+                ApiConfigMigration.migrateIfNeeded(db)
+            } catch (error: IllegalStateException) {
+                thrown = error
+            }
+
+            assertNotNull("Migration must fail closed for unreadable legacy ciphertext", thrown)
+            assertEquals(
+                "The exact legacy value must survive the rolled-back transaction",
+                unreadableCiphertext,
+                db.settingsDao().getValue("providers_json"),
+            )
+            assertEquals(null, db.settingsDao().getValue(ApiConfigMigration.MIGRATED_FLAG_KEY))
+            assertEquals(0, db.apiConfigDao().getCount())
         }
 
-        assertNotNull("Migration must fail closed for unreadable legacy ciphertext", thrown)
-        assertEquals(
-            "The exact legacy value must survive the rolled-back transaction",
-            unreadableCiphertext,
-            db.settingsDao().getValue("providers_json"),
-        )
-        assertEquals(null, db.settingsDao().getValue(ApiConfigMigration.MIGRATED_FLAG_KEY))
-        assertEquals(0, db.apiConfigDao().getCount())
-    }
-
     @Test
-    fun unreadableLegacyProvidersJsonIsPreservedWhenNewConfigsAlreadyExist() = runBlocking {
-        val unreadableCiphertext = "enc:v1:not-a-valid-envelope"
-        db.settingsDao().upsert(SettingsEntity("providers_json", unreadableCiphertext))
-        db.settingsDao().upsert(SettingsEntity(ApiConfigMigration.MIGRATED_FLAG_KEY, "1"))
+    fun unreadableLegacyProvidersJsonIsPreservedWhenNewConfigsAlreadyExist() =
+        runBlocking {
+            val unreadableCiphertext = "enc:v1:not-a-valid-envelope"
+            db.settingsDao().upsert(SettingsEntity("providers_json", unreadableCiphertext))
+            db.settingsDao().upsert(SettingsEntity(ApiConfigMigration.MIGRATED_FLAG_KEY, "1"))
 
-        ApiConfigMigration.migrateIfNeeded(db)
+            ApiConfigMigration.migrateIfNeeded(db)
 
-        assertEquals(unreadableCiphertext, db.settingsDao().getValue("providers_json"))
-        assertEquals("1", db.settingsDao().getValue(ApiConfigMigration.MIGRATED_FLAG_KEY))
-        assertEquals(0, db.apiConfigDao().getCount())
-    }
+            assertEquals(unreadableCiphertext, db.settingsDao().getValue("providers_json"))
+            assertEquals("1", db.settingsDao().getValue(ApiConfigMigration.MIGRATED_FLAG_KEY))
+            assertEquals(0, db.apiConfigDao().getCount())
+        }
 }
