@@ -20,5 +20,6 @@ For ongoing work that continues the consolidated PR #29 line, use:
 4. PR #26 does not need to be merged into PR #29 merely to preserve history. Treat the PR #29 line as the current consolidated baseline for follow-up work.
 5. Preserve and revalidate the Room schema files (including `26.json` and `27.json`) from the PR #29 line. Do not replace them with versions from `feature` without verifying they match the actual database schema and CI artifacts.
 6. Before proposing completion, run the relevant CI and AI review workflows on the new working branch, and report the exact branch, commit SHA, and run results. Do not claim a review or CI passed unless the run confirms it.
+7. For AI review, use `.github/workflows/ai-pr-audit.yml`; select `re-review` after fixes so previous bot findings are compared with the latest pinned diff. Use `.github/workflows/ai-pr-audit-batch.yml` for multi-PR audits (up to 50 PRs, three concurrent audits). Batch dispatch must be run from the repository default branch. PR #30 is intentionally excluded from the default batch list until the owner asks otherwise.
 
 If a task explicitly asks to maintain the legacy `feature` line, follow that request; otherwise, use the PR #29 source branch above.
