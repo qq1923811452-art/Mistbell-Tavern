@@ -15,6 +15,7 @@ data class MemoryExtractionModelSettings(
     val apiKey: String = "",
     val model: String = "",
     val keyNeedsReentry: Boolean = false,
+    val clearApiKey: Boolean = false,
 ) {
     /** Return a safe, user-facing reason when this endpoint must not be used. */
     fun endpointRejectionReason(): String? {
@@ -100,14 +101,22 @@ class MemoryExtractionModelSettingsRepository {
     suspend fun save(settings: MemoryExtractionModelSettings) {
         withContext(Dispatchers.IO) {
             val apiKey = settings.apiKey.trim()
-            val encryptedApiKey = if (apiKey.isBlank()) "" else SecureStore.wrap(apiKey)
             database.withTransaction {
                 val existingKey = settingsDao.getValue(KEY_API_KEY).orEmpty()
                 val unreadableCiphertext =
                     SecureStore.hasCipherPrefix(existingKey) && !SecureStore.isEncrypted(existingKey)
-                check(!(apiKey.isBlank() && unreadableCiphertext)) {
-                    "已保存的记忆模型 API Key 无法解密；请重新输入 API Key。原配置未修改。"
+                check(!(apiKey.isBlank() && unreadableCiphertext && !settings.clearApiKey)) {
+                    "已保存的记忆模型 API Key 无法解密；请重新输入 API Key 或明确清除该 Key。原配置未修改。"
                 }
+                // A blank field means leave the existing key unchanged; clearing it requires an explicit action.
+                val encryptedApiKey =
+                    when {
+                        settings.clearApiKey -> ""
+                        apiKey.isNotBlank() -> SecureStore.wrap(apiKey)
+                        existingKey.isNotBlank() && SecureStore.hasCipherPrefix(existingKey) -> existingKey
+                        existingKey.isNotBlank() -> SecureStore.wrap(existingKey)
+                        else -> ""
+                    }
                 settingsDao.upsert(SettingsEntity(KEY_BASE_URL, settings.baseUrl.trim()))
                 settingsDao.upsert(SettingsEntity(KEY_API_KEY, encryptedApiKey))
                 settingsDao.upsert(SettingsEntity(KEY_MODEL, settings.model.trim()))
