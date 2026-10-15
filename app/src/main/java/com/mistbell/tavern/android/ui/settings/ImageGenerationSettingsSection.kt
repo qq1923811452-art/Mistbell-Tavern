@@ -47,6 +47,7 @@ private const val IMAGE_API_BASE_URL = "image_api_base_url"
 private const val IMAGE_API_KEY = "image_api_key"
 private const val IMAGE_API_MODEL = "image_api_model"
 private const val DEFAULT_IMAGE_DIMENSION = 1024
+private const val MAX_IMAGE_DIMENSION_DIGITS = 4
 private val IMAGE_SETTINGS_ROW_SPACING = 8.dp
 private const val IMAGE_SETTINGS_FIELD_WEIGHT = 1f
 
@@ -126,7 +127,7 @@ fun ImageGenerationSettingsSection() {
             Row(horizontalArrangement = Arrangement.spacedBy(IMAGE_SETTINGS_ROW_SPACING)) {
                 OutlinedTextField(
                     value = width,
-                    onValueChange = { width = it.filter(Char::isDigit).take(4) },
+                    onValueChange = { width = it.filter(Char::isDigit).take(MAX_IMAGE_DIMENSION_DIGITS) },
                     modifier = Modifier.weight(IMAGE_SETTINGS_FIELD_WEIGHT),
                     label = { Text("宽度") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -134,7 +135,7 @@ fun ImageGenerationSettingsSection() {
                 )
                 OutlinedTextField(
                     value = height,
-                    onValueChange = { height = it.filter(Char::isDigit).take(4) },
+                    onValueChange = { height = it.filter(Char::isDigit).take(MAX_IMAGE_DIMENSION_DIGITS) },
                     modifier = Modifier.weight(IMAGE_SETTINGS_FIELD_WEIGHT),
                     label = { Text("高度") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
