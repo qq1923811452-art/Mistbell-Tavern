@@ -13,7 +13,7 @@ permissions:
   pull-requests: write
 
 concurrency:
-  group: ai-pr-rereview-${{ inputs.pr_number }}
+  group: ai-pr-rereview-${{ github.repository }}-${{ inputs.pr_number }}
   cancel-in-progress: true
 
 jobs:
