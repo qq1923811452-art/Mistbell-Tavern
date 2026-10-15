@@ -79,7 +79,7 @@ class OpenAIEmbeddingService(
                 }
             }
 
-            throw lastException ?: IllegalStateException("Embedding request failed after $MAX_RETRIES retries")
+            lastException?.let { throw it } ?: error("Embedding request failed after $MAX_RETRIES retries")
         }
 
     private fun executeEmbedRequest(text: String): FloatArray {
@@ -167,7 +167,7 @@ class OpenAIEmbeddingService(
                 }
             }
 
-            throw lastException ?: IllegalStateException("Batch embedding request failed after $MAX_RETRIES retries")
+            lastException?.let { throw it } ?: error("Batch embedding request failed after $MAX_RETRIES retries")
         }
 
     private fun executeEmbedBatchRequest(texts: List<String>): List<FloatArray> {
