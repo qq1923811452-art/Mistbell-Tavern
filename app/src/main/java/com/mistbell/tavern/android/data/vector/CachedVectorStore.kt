@@ -113,6 +113,7 @@ class CachedVectorStore(
                 .sortedBy { it.first }
             is Set<*> -> value.map { normalizeFilterValue(it) }.sortedBy { it.toString() }
             is Iterable<*> -> value.map { normalizeFilterValue(it) }
+            is Array<*> -> value.map { normalizeFilterValue(it) }
             is IntArray -> value.toList()
             is LongArray -> value.toList()
             is FloatArray -> value.toList()
