@@ -127,7 +127,7 @@ class WorldBookEditorViewModel(application: Application) : AndroidViewModel(appl
         scanSettingsRepo.observeDepth()
             .stateIn(
                 viewModelScope,
-                SharingStarted.WhileSubscribed(5_000),
+                SharingStarted.WhileSubscribed(WorldBookScanSettingsRepository.SUBSCRIBE_TIMEOUT_MS),
                 WorldBookScanSettingsRepository.DEFAULT_RECURSION_DEPTH,
             )
 
