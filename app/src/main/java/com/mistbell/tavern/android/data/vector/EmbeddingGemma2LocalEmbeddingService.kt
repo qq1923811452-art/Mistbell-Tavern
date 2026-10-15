@@ -451,7 +451,9 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
 
     private val inferenceMutex = Mutex()
 
-    override fun modelId(): String = "local:embeddinggemma-2-text-270m-litertlm:$modelVariant:$EXPECTED_DIMENSION"
+    override fun modelId(): String =
+        "local:embeddinggemma-2-text-270m-litertlm:$modelVariant:$EXPECTED_DIMENSION:" +
+            EmbeddingGemma2InputPolicy.VERSION
 
     override fun supportsLegacyVectors(): Boolean = false
 
