@@ -281,7 +281,8 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     fun setEmbeddingSource(source: String) {
         viewModelScope.launch {
-            val normalized = source.lowercase().takeIf { it in setOf("auto", "api", "local", "local-gemma") } ?: "auto"
+            val allowedSources = setOf("auto", "api", "local", "local-gemma")
+            val normalized = source.lowercase().takeIf { it in allowedSources } ?: "auto"
             db.settingsDao().upsert(
                 com.mistbell.tavern.android.data.local.entity.SettingsEntity("embedding_source", normalized),
             )
@@ -299,9 +300,11 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                     normalized == "local" ->
                         "本地 ONNX 初始化失败，向量记忆暂不可用；未回退到远程 API。请检查本地模型文件。"
                     normalized == "local-gemma" && active ->
-                        "已启用本地 EmbeddingGemma 2。首次使用需下载约 165MB 模型；后续向量化可离线完成。已有旧模型向量会隔离，不会混用。"
+                        "已启用本地 EmbeddingGemma 2。首次使用需下载约 165MB 模型；" +
+                            "后续向量化可离线完成。已有旧模型向量会隔离，不会混用。"
                     normalized == "local-gemma" ->
-                        "EmbeddingGemma 2 未能初始化；向量记忆暂不可用，且不会回退到远程 API。请检查网络、存储空间或设备运行时支持。"
+                        "EmbeddingGemma 2 未能初始化；向量记忆暂不可用，且不会回退到远程 API。" +
+                            "请检查网络、存储空间或设备运行时支持。"
                     active ->
                         "记忆源已立即切换。已有记忆保留；不同维度的旧向量会被跳过。"
                     normalized == "api" ->
