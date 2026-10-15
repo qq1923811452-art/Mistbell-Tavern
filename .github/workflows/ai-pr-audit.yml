@@ -25,7 +25,8 @@ jobs:
     timeout-minutes: 15
     strategy:
       fail-fast: false
-      max-parallel: 4
+      # Limit concurrent calls to the shared relay to reduce 429/rate-limit failures.
+      max-parallel: 2
       matrix:
         model_slot: [A, B]
         audit_pass: [1, 2]
@@ -50,6 +51,7 @@ jobs:
           elif [[ "$MODEL_SLOT" == "B" ]]; then
             test -n "$ODYS_API_KEY_B" || test -n "$ODYS_API_KEY_A" || { echo "::error::Model B failed: set ODYS_API_KEY_B or ODYS_API_KEY"; exit 1; }
             test -n "$ODYS_MODEL_B" || { echo "::error::Model B failed: missing repository secret ODYS_MODEL_B; refusing to silently reuse Model A"; exit 1; }
+            [[ "${ODYS_MODEL_B,,}" != "${ODYS_MODEL_A,,}" ]] || { echo "::error::Model A and Model B must use different ODYS_MODEL values"; exit 1; }
           else
             echo "::error::Unknown model slot: $MODEL_SLOT"
             exit 1
