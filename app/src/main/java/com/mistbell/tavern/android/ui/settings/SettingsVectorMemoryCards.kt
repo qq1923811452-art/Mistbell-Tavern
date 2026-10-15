@@ -53,7 +53,7 @@ internal fun VectorMemorySettingsCard(viewModel: SettingsViewModel) {
             Text(
                 text =
                     "「本地 ONNX」（bge-small-zh，约 24MB 模型随应用内置）无需 API Key 即可使用语义记忆；" +
-                        "切换源会立即刷新服务。不同 Embedding 模型的向量会隔离检索，旧模型的历史向量需切回原模型，或后续重建索引。",
+                        "切换源会立即刷新服务，不同模型的向量会隔离。旧版本中没有模型标识的向量不会被混用，需要后续重建索引。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
