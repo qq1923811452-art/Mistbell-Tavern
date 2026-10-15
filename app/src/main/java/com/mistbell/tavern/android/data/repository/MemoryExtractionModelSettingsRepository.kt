@@ -6,6 +6,7 @@ import com.mistbell.tavern.android.data.local.entity.SettingsEntity
 import com.mistbell.tavern.android.util.SecureStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.net.URI
 
 /** Independent provider settings for background memory extraction; stored in the existing KV table. */
 data class MemoryExtractionModelSettings(
@@ -17,8 +18,11 @@ data class MemoryExtractionModelSettings(
     fun toLlmConfigOrNull(): LlmConfig? {
         val normalizedBaseUrl = baseUrl.trim().trimEnd('/')
         val normalizedModel = model.trim()
+        val endpoint = runCatching { URI(normalizedBaseUrl) }.getOrNull()
         val validEndpoint =
-            normalizedBaseUrl.startsWith("https://") || normalizedBaseUrl.startsWith("http://")
+            endpoint != null &&
+                endpoint.scheme in setOf("http", "https") &&
+                !endpoint.host.isNullOrBlank()
         return if (normalizedBaseUrl.isNotBlank() && normalizedModel.isNotBlank() && validEndpoint) {
             LlmConfig(
                 baseUrl = normalizedBaseUrl,
