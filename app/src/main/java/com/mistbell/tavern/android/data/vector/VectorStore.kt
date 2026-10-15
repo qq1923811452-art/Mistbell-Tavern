@@ -44,6 +44,9 @@ interface VectorStore {
      */
     suspend fun get(id: String): VectorEntry?
 
+    /** Snapshot of stored entries for explicit, safe maintenance operations such as legacy reindexing. */
+    suspend fun getAllEntries(): List<VectorEntry>
+
     /**
      * 根据 ID 删除向量
      */
