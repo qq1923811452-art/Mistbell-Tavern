@@ -716,6 +716,7 @@ private fun writeThemeAssetIfMissing(
     if (!target.exists()) writeBytesAtomically(target, content.toByteArray(Charsets.ISO_8859_1))
 }
 
+@Suppress("ThrowsCount")
 private fun writeBytesAtomically(
     target: File,
     bytes: ByteArray,
