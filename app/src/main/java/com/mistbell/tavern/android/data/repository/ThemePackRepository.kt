@@ -7,6 +7,7 @@ import com.mistbell.tavern.android.data.local.entity.SettingsEntity
 import com.mistbell.tavern.android.data.local.entity.ThemePackEntity
 import com.mistbell.tavern.android.data.theme.ThemeSupport
 import com.mistbell.tavern.android.data.theme.ThemeTokens
+import com.mistbell.tavern.android.util.AtomicWrite
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
@@ -144,7 +145,7 @@ class ThemePackRepository(private val context: Context) {
             var storedBackground: String? = null
             if (backgroundName != null) {
                 val bg = backgroundBytes.first()
-                File(packDir, bg.first).writeBytes(bg.second)
+                AtomicWrite.bytes(File(packDir, bg.first), bg.second)
                 storedBackground = bg.first
             }
 
