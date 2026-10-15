@@ -30,7 +30,7 @@ import java.util.UUID
 class ChatRepository(private val context: Context) {
     private val db get() = TavernApplication.instance.container.database
     private val api get() = ApiClient.getApi(context)
-    private val settingsRepo = SettingsRepository(context)
+    private val settingsRepo = SettingsRepository()
     private val structuredMemoryRepo = StructuredMemoryRepository(context)
     private val memoryExtractionService = MemoryExtractionService(context, structuredMemoryRepo)
     private val backgroundScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)

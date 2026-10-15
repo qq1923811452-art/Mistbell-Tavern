@@ -38,7 +38,7 @@ import kotlinx.coroutines.launch
 class ChatSettingsViewModel(application: Application) : AndroidViewModel(application) {
     private val worldBookRepo = WorldBookRepository(application)
     private val themeRepo = ThemePackRepository(application)
-    private val settingsRepo = SettingsRepository(application)
+    private val settingsRepo = SettingsRepository()
     private val db = TavernApplication.instance.container.database
 
     // 全局默认值（用于「全局默认：X」提示行）
