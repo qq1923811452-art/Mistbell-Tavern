@@ -398,16 +398,19 @@ object CharacterImporter {
             val charxResult = CharxImporter.importFromCharx(context, uri) ?: return null
 
             // 保存 CHARX 资源到本地
-            val assetPaths =
+            val assetResult =
                 CharxImporter.saveAssets(
                     context,
                     charxResult.character.id,
                     charxResult.assets,
                 )
 
-            // 添加资源信息到警告
+            // 添加资源信息到警告（失败项必须如实上报：旧实现只报「已保存 N 个」，用户无从得知缺了哪些）
             val warnings = charxResult.warnings.toMutableList()
-            warnings.add("CHARX 格式：已保存 ${assetPaths.size} 个资源文件")
+            warnings.add("CHARX 格式：已保存 ${assetResult.paths.size} 个资源文件")
+            if (assetResult.failures.isNotEmpty()) {
+                warnings.add("有 ${assetResult.failures.size} 个资源文件未写入：${assetResult.failures.joinToString("；")}")
+            }
 
             // CHARX 暂不支持内嵌世界书
             CharacterImportResult(
