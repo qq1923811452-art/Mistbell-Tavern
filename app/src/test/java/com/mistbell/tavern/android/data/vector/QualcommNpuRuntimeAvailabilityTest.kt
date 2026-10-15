@@ -1,10 +1,10 @@
 package com.mistbell.tavern.android.data.vector
 
-import java.io.File
-import java.nio.file.Files
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
+import java.nio.file.Files
 
 class QualcommNpuRuntimeAvailabilityTest {
     @Test
