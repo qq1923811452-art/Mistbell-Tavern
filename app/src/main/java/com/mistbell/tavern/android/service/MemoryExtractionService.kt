@@ -106,7 +106,10 @@ class MemoryExtractionService(
                     }
                 }
 
-                Log.d(TAG, "Extraction complete: ${candidates.size} candidates, ${validated.size} valid, $savedCount saved")
+                Log.d(
+                    TAG,
+                    "Extraction complete: ${candidates.size} candidates, ${validated.size} valid, $savedCount saved",
+                )
                 savedCount
             } catch (cancelled: CancellationException) {
                 throw cancelled
