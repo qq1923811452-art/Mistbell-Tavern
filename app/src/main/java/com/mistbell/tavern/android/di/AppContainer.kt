@@ -5,6 +5,7 @@ import android.util.Log
 import com.mistbell.tavern.android.data.local.AppDatabase
 import com.mistbell.tavern.android.data.vector.CachedVectorStore
 import com.mistbell.tavern.android.data.vector.EmbeddingService
+import com.mistbell.tavern.android.data.vector.EmbeddingGemma2LocalEmbeddingService
 import com.mistbell.tavern.android.data.vector.InMemoryVectorStore
 import com.mistbell.tavern.android.data.vector.LocalEmbeddingService
 import com.mistbell.tavern.android.data.vector.MockEmbeddingService
@@ -69,7 +70,7 @@ class AppContainer(private val appContext: Context) {
      *
      * - auto（默认）：有 embedding API key → OpenAI；无 key → Mock（词法回退）——兼容历史行为；
      * - api：强制 API（无 key 则 Mock）；
-     * - local：本地 ONNX（bge-small-zh）；初始化失败回退 Mock 并记日志。
+     * - local：本地 ONNX（bge-small-zh）；local-gemma：LiteRT-LM EmbeddingGemma 2；本地初始化失败时均回退 Mock，不调用远程 API。
      */
     private data class RuntimeEmbeddingServices(
         val embeddingService: EmbeddingService,
@@ -100,7 +101,8 @@ class AppContainer(private val appContext: Context) {
         // Publish the matching pair atomically so concurrent callers cannot observe mixed generations.
         runtimeEmbeddingServices = RuntimeEmbeddingServices(service, memoryService)
         Log.i(TAG, "Embedding source switched: requested=$source, active=${service::class.java.simpleName}")
-        return service is OpenAIEmbeddingService || service is LocalEmbeddingService
+        return service is OpenAIEmbeddingService || service is LocalEmbeddingService ||
+            service is EmbeddingGemma2LocalEmbeddingService
     }
 
     @Suppress("TooGenericExceptionCaught")
@@ -116,7 +118,16 @@ class AppContainer(private val appContext: Context) {
                     try {
                         LocalEmbeddingService.create(appContext)
                     } catch (e: Exception) {
-                        Log.e(TAG, "Local embedding init failed; remote fallback is disabled", e)
+                        Log.e(TAG, "Local ONNX embedding init failed; remote fallback is disabled", e)
+                        MockEmbeddingService()
+                    }
+                }
+                "local-gemma" -> {
+                    Log.d(TAG, "Embedding source=local-gemma: loading EmbeddingGemma 2 with LiteRT-LM")
+                    try {
+                        EmbeddingGemma2LocalEmbeddingService.create(appContext)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Local EmbeddingGemma 2 init failed; remote fallback is disabled", e)
                         MockEmbeddingService()
                     }
                 }
