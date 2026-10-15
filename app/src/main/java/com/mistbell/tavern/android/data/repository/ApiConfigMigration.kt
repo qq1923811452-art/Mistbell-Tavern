@@ -122,7 +122,7 @@ object ApiConfigMigration {
             val value = settingsDao.getValue(key).orEmpty()
             if (value.isBlank()) return@forEach
             val encrypted = SecureStore.isEncrypted(value)
-            val unreadableCiphertext = value.startsWith("enc:v1:") && !encrypted
+            val unreadableCiphertext = value.startsWith(SecureStore.PREFIX) && !encrypted
             if (unreadableCiphertext && key == "providers_json" && alreadyMigrated) return@forEach
             check(!unreadableCiphertext) {
                 "设置 $key 的加密数据不可读取，迁移已中止以保留原始数据"
@@ -137,7 +137,7 @@ object ApiConfigMigration {
     ) {
         val storedProvidersJson = settingsDao.getValue("providers_json").orEmpty()
         val decodedProvidersJson = SecureStore.unwrap(storedProvidersJson)
-        check(!storedProvidersJson.startsWith("enc:v1:") || decodedProvidersJson.isNotEmpty()) {
+        check(!storedProvidersJson.startsWith(SecureStore.PREFIX) || decodedProvidersJson.isNotEmpty()) {
             "无法解密旧版 API 配置，迁移已中止以保留原始数据"
         }
         val providers = parseProvidersJson(decodedProvidersJson)
@@ -169,7 +169,7 @@ object ApiConfigMigration {
         db.apiConfigDao().getAll().forEach { entity ->
             if (entity.apiKey.isNotBlank()) {
                 val encrypted = SecureStore.isEncrypted(entity.apiKey)
-                check(!entity.apiKey.startsWith("enc:v1:") || encrypted) {
+                check(!entity.apiKey.startsWith(SecureStore.PREFIX) || encrypted) {
                     "API 配置 ${entity.id} 的加密数据不可读取，迁移已中止以保留原始数据"
                 }
                 if (!encrypted) {
