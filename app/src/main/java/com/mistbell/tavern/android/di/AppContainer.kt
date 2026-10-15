@@ -70,7 +70,8 @@ class AppContainer(private val appContext: Context) {
      *
      * - auto（默认）：有 embedding API key → OpenAI；无 key → Mock（词法回退）——兼容历史行为；
      * - api：强制 API（无 key 则 Mock）；
-     * - local：本地 ONNX（bge-small-zh）；local-gemma：LiteRT-LM EmbeddingGemma 2；本地初始化失败时均回退 Mock，不调用远程 API。
+     * - local：本地 ONNX（bge-small-zh）；local-gemma：LiteRT-LM EmbeddingGemma 2。
+     *   本地初始化失败时均回退 Mock，不调用远程 API。
      */
     private data class RuntimeEmbeddingServices(
         val embeddingService: EmbeddingService,
@@ -126,7 +127,11 @@ class AppContainer(private val appContext: Context) {
                     try {
                         EmbeddingGemma2LocalEmbeddingService.create(appContext)
                     } catch (e: LinkageError) {
-                        Log.e(TAG, "LiteRT-LM native runtime is unavailable on this device; remote fallback is disabled", e)
+                        Log.e(
+                            TAG,
+                            "LiteRT-LM native runtime is unavailable; remote fallback is disabled",
+                            e,
+                        )
                         MockEmbeddingService()
                     } catch (e: Exception) {
                         Log.e(TAG, "Local EmbeddingGemma 2 init failed; remote fallback is disabled", e)
