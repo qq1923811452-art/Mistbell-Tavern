@@ -47,6 +47,7 @@ private const val IMAGE_API_BASE_URL = "image_api_base_url"
 private const val IMAGE_API_KEY = "image_api_key"
 private const val IMAGE_API_MODEL = "image_api_model"
 private const val DEFAULT_IMAGE_DIMENSION = 1024
+private val IMAGE_SETTINGS_ROW_SPACING = 8.dp
 
 @Suppress("LongMethod", "CyclomaticComplexMethod", "FunctionNaming", "TooGenericExceptionCaught")
 @Composable
