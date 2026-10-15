@@ -16,7 +16,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.PasswordVisualTransformation
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -31,6 +30,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.mistbell.tavern.android.TavernApplication
 import com.mistbell.tavern.android.data.image.ImageGenerationConfig
@@ -46,7 +46,9 @@ import java.io.File
 private const val IMAGE_API_BASE_URL = "image_api_base_url"
 private const val IMAGE_API_KEY = "image_api_key"
 private const val IMAGE_API_MODEL = "image_api_model"
+private const val DEFAULT_IMAGE_DIMENSION = 1024
 
+@Suppress("LongMethod", "CyclomaticComplexMethod", "FunctionNaming", "TooGenericExceptionCaught")
 @Composable
 fun ImageGenerationSettingsSection() {
     val context = LocalContext.current
@@ -56,8 +58,8 @@ fun ImageGenerationSettingsSection() {
     var apiKey by remember { mutableStateOf("") }
     var model by remember { mutableStateOf("") }
     var prompt by remember { mutableStateOf("") }
-    var width by remember { mutableStateOf("1024") }
-    var height by remember { mutableStateOf("1024") }
+    var width by remember { mutableStateOf(DEFAULT_IMAGE_DIMENSION.toString()) }
+    var height by remember { mutableStateOf(DEFAULT_IMAGE_DIMENSION.toString()) }
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf<String?>(null) }
     var generatedPath by remember { mutableStateOf<String?>(null) }
@@ -171,8 +173,8 @@ fun ImageGenerationSettingsSection() {
                                             baseUrl = baseUrl,
                                             apiKey = apiKey,
                                             model = model,
-                                            width = width.toIntOrNull() ?: 1024,
-                                            height = height.toIntOrNull() ?: 1024,
+                                            width = width.toIntOrNull() ?: DEFAULT_IMAGE_DIMENSION,
+                                            height = height.toIntOrNull() ?: DEFAULT_IMAGE_DIMENSION,
                                         ),
                                         prompt,
                                     )
