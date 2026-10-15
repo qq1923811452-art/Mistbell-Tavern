@@ -39,7 +39,7 @@ concurrency:
 
 jobs:
   audit:
-    name: DeepSeek diff audit
+    name: Two-model diff audit and cross-review
     runs-on: ubuntu-latest
     timeout-minutes: 15
     # Fork PRs do not receive repository secrets. Do not run a secret-dependent
