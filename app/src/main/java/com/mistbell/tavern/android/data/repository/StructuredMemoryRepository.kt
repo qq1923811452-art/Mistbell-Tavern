@@ -214,6 +214,7 @@ class StructuredMemoryRepository(context: Context) {
      */
     private suspend fun syncToVectorIfNeeded(memory: StructuredMemory) {
         if (memory.importance < SYNC_THRESHOLD) {
+            deleteVectorCopy(memory.id)
             return
         }
 
@@ -249,9 +250,8 @@ class StructuredMemoryRepository(context: Context) {
     private suspend fun deleteVectorCopy(memoryId: Long) {
         try {
             val vectorMemoryService = TavernApplication.instance.container.vectorMemoryService
-            if (vectorMemoryService.available) {
-                vectorMemoryService.deleteByMessageId(vectorMessageId(memoryId))
-            }
+            // Deletion only needs the vector store; it must work even if embedding is unavailable.
+            vectorMemoryService.deleteByMessageId(vectorMessageId(memoryId))
         } catch (e: Exception) {
             // 向量清理失败不应影响主流程
             Log.e(TAG, "Failed to delete vector copy: ${e.message}", e)
@@ -266,9 +266,8 @@ class StructuredMemoryRepository(context: Context) {
     ) {
         try {
             val vectorMemoryService = TavernApplication.instance.container.vectorMemoryService
-            if (vectorMemoryService.available) {
-                vectorMemoryService.deleteSummaryVectors(ownerId, characterId, sessionId)
-            }
+            // Deletion only needs the vector store; it must work even if embedding is unavailable.
+            vectorMemoryService.deleteSummaryVectors(ownerId, characterId, sessionId)
         } catch (e: Exception) {
             // 向量清理失败不应影响主流程
             Log.e(TAG, "Failed to delete summary vectors: ${e.message}", e)
