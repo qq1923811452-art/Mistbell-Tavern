@@ -8,9 +8,11 @@ import org.junit.Test
 
 class VectorMemoryServiceCancellationTest {
     @Test
-    fun `search propagates coroutine cancellation`() = runBlocking {
+    fun `search propagates coroutine cancellation`() =
+        runBlocking {
         val cancellation = CancellationException("search cancelled")
-        val service = VectorMemoryService(TestVectorStore("search", cancellation), TestEmbeddingService())
+        val service =
+            VectorMemoryService(TestVectorStore("search", cancellation), TestEmbeddingService())
 
         assertCancellation(cancellation) {
             service.searchRelevantMemories("query", "owner", "character", null)
@@ -20,7 +22,8 @@ class VectorMemoryServiceCancellationTest {
     @Test
     fun `delete propagates coroutine cancellation`() = runBlocking {
         val cancellation = CancellationException("delete cancelled")
-        val service = VectorMemoryService(TestVectorStore("deleteByFilters", cancellation), TestEmbeddingService())
+        val service =
+            VectorMemoryService(TestVectorStore("deleteByFilters", cancellation), TestEmbeddingService())
 
         assertCancellation(cancellation) {
             service.deleteSessionVectors("owner", "character", "session")
@@ -30,7 +33,8 @@ class VectorMemoryServiceCancellationTest {
     @Test
     fun `statistics propagates coroutine cancellation`() = runBlocking {
         val cancellation = CancellationException("count cancelled")
-        val service = VectorMemoryService(TestVectorStore("count", cancellation), TestEmbeddingService())
+        val service =
+            VectorMemoryService(TestVectorStore("count", cancellation), TestEmbeddingService())
 
         assertCancellation(cancellation) {
             service.getStatistics()
