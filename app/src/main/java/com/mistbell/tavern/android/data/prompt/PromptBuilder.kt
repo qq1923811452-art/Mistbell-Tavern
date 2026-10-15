@@ -9,6 +9,7 @@ import com.mistbell.tavern.android.data.local.entity.MessageEntity
 import com.mistbell.tavern.android.data.local.entity.WorldBookEntryEntity
 import com.mistbell.tavern.android.data.repository.ChatSettingsResolver
 import com.mistbell.tavern.android.data.repository.LexicalMemoryService
+import com.mistbell.tavern.android.data.repository.WorldBookScanSettingsRepository
 import com.mistbell.tavern.android.data.vector.VectorStore
 import com.mistbell.tavern.android.util.MacroContext
 import com.mistbell.tavern.android.util.MacroEngine
@@ -19,7 +20,6 @@ import java.time.Instant
 object PromptBuilder {
     /** World Info 的会话内运行状态：sticky/cooldown/delay 只影响激活决策，不改变 Room 主数据。 */
     private object WorldInfoRuntime {
-        private const val MAX_RECURSION_DEPTH = 3
 
         private data class EntryState(var lastTurn: Int = -1, var sticky: Boolean = false)
 
@@ -37,8 +37,9 @@ object PromptBuilder {
         private val sessions = mutableMapOf<String, SessionState>()
 
         /**
-         * Activates World Info for one prompt.  Matching is recursive: content activated in
-         * an earlier pass becomes scan material for the next pass, bounded to three passes.
+         * Activates World Info for one prompt. Matching is recursive when enabled: content activated
+         * in an earlier pass becomes scan material for the next pass, bounded by the configured depth.
+         * Disabling recursion still allows the initial keyword-matching pass.
          * Secondary keys are an AND gate (every non-empty secondary key must match).  Entries
          * sharing a non-empty group compete by score and only the highest scoring entry wins.
          */
@@ -48,13 +49,15 @@ object PromptBuilder {
             sessionId: String,
             entries: List<WorldBookEntryEntity>,
             scanText: String,
+            recursiveEnabled: Boolean = true,
+            maxDepth: Int = WorldBookScanSettingsRepository.DEFAULT_RECURSION_DEPTH,
         ): Set<String> {
             val state = sessions.getOrPut(sessionId) { SessionState() }
             state.turn += 1
             val activated = linkedSetOf<String>()
             val selectedGroups = mutableSetOf<String>()
             var corpus = scanText
-            repeat(MAX_RECURSION_DEPTH) {
+            repeat(if (recursiveEnabled) maxDepth.coerceIn(WorldBookScanSettingsRepository.MIN_RECURSION_DEPTH, WorldBookScanSettingsRepository.MAX_RECURSION_DEPTH) else 1) {
                 val candidates =
                     entries
                         .asSequence()
@@ -497,7 +500,20 @@ object PromptBuilder {
         // 关键词激活判定（与位置规划正交）：非常驻、启用、概率掷骰通过、命中当前用户消息任一关键词；
         // probability=1（缺省）跳过掷骰快速路径，constant 常驻条目不参与本判定（恒注入）
         val activatedEntryIds =
-            WorldInfoRuntime.activate(sessionId, worldBookEntries, worldInfoScanText)
+            WorldInfoRuntime.activate(
+                sessionId = sessionId,
+                entries = worldBookEntries,
+                scanText = worldInfoScanText,
+                recursiveEnabled = settingsDao.getValue("worldbook_recursive_scan_enabled") != "0",
+                maxDepth =
+                    settingsDao.getValue("worldbook_recursive_scan_depth")
+                        ?.toIntOrNull()
+                        ?.coerceIn(
+                            WorldBookScanSettingsRepository.MIN_RECURSION_DEPTH,
+                            WorldBookScanSettingsRepository.MAX_RECURSION_DEPTH,
+                        )
+                        ?: WorldBookScanSettingsRepository.DEFAULT_RECURSION_DEPTH,
+            )
         val wbPlan = WorldBookPlacement.plan(worldBookEntries)
         // 缓存优化：只注入 constant 条目到历史之前，activated 条目稍后注入到历史之后
         worldInfoBlock(wbPlan.afterPrompt, activatedEntryIds, mctx, constantOnly = true)?.let {

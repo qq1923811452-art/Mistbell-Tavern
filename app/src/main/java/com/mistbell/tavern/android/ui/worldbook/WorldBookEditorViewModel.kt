@@ -7,6 +7,7 @@ import com.mistbell.tavern.android.data.api.model.WorldBook
 import com.mistbell.tavern.android.data.api.model.WorldBookEntry
 import com.mistbell.tavern.android.data.prompt.WorldBookPlacement
 import com.mistbell.tavern.android.data.repository.WorldBookRepository
+import com.mistbell.tavern.android.data.repository.WorldBookScanSettingsRepository
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
@@ -112,6 +113,31 @@ const val MAX_PROBABILITY = 1.0
 
 class WorldBookEditorViewModel(application: Application) : AndroidViewModel(application) {
     private val repo = WorldBookRepository(application)
+    private val scanSettingsRepo = WorldBookScanSettingsRepository()
+
+    val recursiveScanEnabled: StateFlow<Boolean> =
+        scanSettingsRepo.observeEnabled()
+            .stateIn(
+                viewModelScope,
+                SharingStarted.WhileSubscribed(WorldBookScanSettingsRepository.SUBSCRIBE_TIMEOUT_MS),
+                true,
+            )
+
+    val recursiveScanDepth: StateFlow<Int> =
+        scanSettingsRepo.observeDepth()
+            .stateIn(
+                viewModelScope,
+                SharingStarted.WhileSubscribed(WorldBookScanSettingsRepository.SUBSCRIBE_TIMEOUT_MS),
+                WorldBookScanSettingsRepository.DEFAULT_RECURSION_DEPTH,
+            )
+
+    fun setRecursiveScanEnabled(enabled: Boolean) {
+        viewModelScope.launch { scanSettingsRepo.setEnabled(enabled) }
+    }
+
+    fun setRecursiveScanDepth(depth: Int) {
+        viewModelScope.launch { scanSettingsRepo.setDepth(depth) }
+    }
 
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery
