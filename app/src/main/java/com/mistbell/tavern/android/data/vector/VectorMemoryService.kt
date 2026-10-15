@@ -1,7 +1,7 @@
 package com.mistbell.tavern.android.data.vector
 
 import android.util.Log
-import java.util.UUID
+import java.security.MessageDigest
 
 /**
  * 向量记忆服务
@@ -53,31 +53,44 @@ class VectorMemoryService(
         contentType: String,
     ): String {
         try {
-            // 1. 生成向量
-            val embedding = embeddingService.embed(content)
+            val modelId = embeddingService.getModelId()
+            val vectorId = generateVectorId(
+                ownerId = ownerId,
+                characterId = characterId,
+                sessionId = sessionId,
+                messageId = messageId,
+                contentType = contentType,
+                modelId = modelId,
+            )
 
-            // 2. 构建元数据
+            // Idempotent fast path: reuse a persisted vector when this exact message/model
+            // pair was already embedded. This survives process restarts and provider cache expiry.
+            val existing = vectorStore.get(vectorId)
+            if (
+                existing?.metadata?.get("content") == content &&
+                existing.metadata["embedding_model"] == modelId
+            ) {
+                Log.d(TAG, "Reused persisted embedding for message: $messageId")
+                return vectorId
+            }
+
+            // Generate a new embedding only for a new or changed message/model pair.
+            val embedding = embeddingService.embed(content)
             val metadata =
                 mapOf(
                     "owner_id" to ownerId,
                     "character_id" to characterId,
-                    // Keep embeddings from different models in separate retrieval namespaces.
                     "session_id" to sessionId,
                     "message_id" to messageId,
                     "content_type" to contentType,
-                    "embedding_model" to embeddingService.getModelId(),
+                    "embedding_model" to modelId,
                     "content" to content,
                     "created_at" to System.currentTimeMillis().toString(),
                 )
 
-            // 3. 生成向量ID
-            val vectorId = generateVectorId()
-
-            // 4. 存储到向量数据库
+            // Stable IDs overwrite a changed version instead of accumulating duplicate vectors.
             vectorStore.add(vectorId, embedding, metadata)
-
             Log.d(TAG, "Stored message vector: $messageId -> $vectorId")
-
             return vectorId
         } catch (e: Exception) {
             Log.e(TAG, "Failed to store message vector: ${e.message}", e)
@@ -242,10 +255,22 @@ class VectorMemoryService(
     }
 
     /**
-     * 生成向量ID
+     * Stable ID makes vector writes idempotent across retries and app restarts.
+     * Model identity is included so incompatible embedding spaces never overwrite each other.
      */
-    private fun generateVectorId(): String {
-        return "vec_${UUID.randomUUID().toString().replace("-", "")}"
+    private fun generateVectorId(
+        ownerId: String,
+        characterId: String,
+        sessionId: String,
+        messageId: String,
+        contentType: String,
+        modelId: String,
+    ): String {
+        val identity = listOf(ownerId, characterId, sessionId, messageId, contentType, modelId)
+            .joinToString(separator = "\u0000")
+        val digest = MessageDigest.getInstance("SHA-256")
+            .digest(identity.toByteArray(Charsets.UTF_8))
+        return "vec_" + digest.joinToString("") { byte -> "%02x".format(byte) }
     }
 
     /**
