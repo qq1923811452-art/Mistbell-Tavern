@@ -5,6 +5,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -75,38 +76,7 @@ class ImageGenerationService(
                 requestBuilder.header("Authorization", "Bearer ${config.apiKey.trim()}")
             }
 
-            val response =
-                client.newCall(requestBuilder.build()).execute().use { httpResponse ->
-                    val responseBody = httpResponse.body
-                    if (responseBody != null && responseBody.contentLength() > MAX_RESPONSE_JSON_BYTES) {
-                        throw IOException("生图 API 响应超过大小限制")
-                    }
-                    val body =
-                        responseBody?.byteStream()?.use { input ->
-                            val output = java.io.ByteArrayOutputStream()
-                            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-                            var total = 0L
-                            while (true) {
-                                val count = input.read(buffer)
-                                if (count < 0) break
-                                total += count
-                                if (total > MAX_RESPONSE_JSON_BYTES) {
-                                    throw IOException("生图 API 响应超过大小限制")
-                                }
-                                output.write(buffer, 0, count)
-                            }
-                            String(output.toByteArray(), Charsets.UTF_8)
-                        }.orEmpty()
-                    if (!httpResponse.isSuccessful) {
-                        // Do not surface arbitrary provider error bodies: some gateways echo request data.
-                        throw IOException("生图 API 返回 HTTP ${httpResponse.code}: ${httpResponse.message}")
-                    }
-                    try {
-                        Json { ignoreUnknownKeys = true }.parseToJsonElement(body).jsonObject
-                    } catch (e: SerializationException) {
-                        throw IOException("生图 API 返回的不是有效 JSON", e)
-                    }
-                }
+            val response = executeGenerationRequest(requestBuilder.build())
 
             val first = response["data"]?.jsonArray?.firstOrNull()?.jsonObject
                 ?: throw IOException("生图 API 响应中没有 data[0]")
@@ -151,6 +121,41 @@ class ImageGenerationService(
             }
         }
 
+    private fun executeGenerationRequest(request: Request): JsonObject =
+        client.newCall(request).execute().use { response ->
+            val responseBody = response.body
+            if (responseBody != null && responseBody.contentLength() > MAX_RESPONSE_JSON_BYTES) {
+                throw IOException("生图 API 响应超过大小限制")
+            }
+            val body = responseBody?.let(::readLimitedResponseBody).orEmpty()
+            if (!response.isSuccessful) {
+                // Do not surface arbitrary provider error bodies: some gateways echo request data.
+                throw IOException("生图 API 返回 HTTP ${response.code}: ${response.message}")
+            }
+            try {
+                JSON.parseToJsonElement(body).jsonObject
+            } catch (e: SerializationException) {
+                throw IOException("生图 API 返回的不是有效 JSON", e)
+            }
+        }
+
+    private fun readLimitedResponseBody(body: okhttp3.ResponseBody): String =
+        body.byteStream().use { input ->
+            val output = java.io.ByteArrayOutputStream()
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            var total = 0L
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                total += count
+                if (total > MAX_RESPONSE_JSON_BYTES) {
+                    throw IOException("生图 API 响应超过大小限制")
+                }
+                output.write(buffer, 0, count)
+            }
+            String(output.toByteArray(), Charsets.UTF_8)
+        }
+
     private fun endpoint(baseUrl: String): String {
         val base = baseUrl.trim().trimEnd('/')
         require(base.startsWith("https://") || base.startsWith("http://")) {
@@ -189,7 +194,7 @@ class ImageGenerationService(
                     }
                 }.build()
             redirectSafeClient.newCall(request).execute().use { response ->
-                if (response.code in 300..399) {
+                if (response.code in REDIRECT_STATUS_MIN..REDIRECT_STATUS_MAX) {
                     if (redirectCount == MAX_REDIRECTS) {
                         throw IOException("图片下载重定向次数超过限制")
                     }
@@ -241,12 +246,15 @@ class ImageGenerationService(
         private const val MAX_BASE64_CHARS = 4L * ((MAX_IMAGE_BYTES + 2L) / 3L)
         private const val MAX_RESPONSE_JSON_BYTES = MAX_BASE64_CHARS + 1_048_576L
         private const val MAX_REDIRECTS = 5
+        private const val REDIRECT_STATUS_MIN = 300
+        private const val REDIRECT_STATUS_MAX = 399
         private const val OUTPUT_DIRECTORY = "generated-images"
         private const val CONNECT_TIMEOUT_SECONDS = 20L
         private const val READ_TIMEOUT_SECONDS = 180L
         private const val WRITE_TIMEOUT_SECONDS = 30L
         private const val CALL_TIMEOUT_SECONDS = 210L
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
+        private val JSON = Json { ignoreUnknownKeys = true }
 
         internal fun isEncodedImageLengthAllowed(encodedLength: Long): Boolean =
             encodedLength in 1L..MAX_BASE64_CHARS
