@@ -166,7 +166,9 @@ fun ModernChatTopBar(
                             "${status.backend} 推理失败 · NPU 未启用"
                         status.backend != null && status.lastInferenceSucceeded == true ->
                             "${status.backend} 推理成功 · NPU 未启用"
-                        else -> "EmbeddingGemma 初始化中…"
+                        !status.initialized -> "EmbeddingGemma 初始化中…"
+                        status.backend == null -> "EmbeddingGemma 状态待确认"
+                        else -> "EmbeddingGemma 已就绪"
                     }
                 AssistChip(
                     onClick = onSettingsClick,
