@@ -454,12 +454,18 @@ class MemoryExtractionService(
             tags = candidate.tags.take(8),
             keywords = candidate.keywords.take(8),
             structuredData =
-                Json.encodeToString(
-                    mapOf(
-                        "subject" to candidate.subject,
-                        "relation" to candidate.relation,
-                        "object" to candidate.objValue,
-                    ),
+                TemporalMemoryFactPolicy.markCurrent(
+                    structuredData =
+                        Json.encodeToString(
+                            mapOf(
+                                "subject" to candidate.subject,
+                                "relation" to candidate.relation,
+                                "object" to candidate.objValue,
+                            ),
+                        ),
+                    validFrom = now,
+                    supersededIds = candidate.supersededMemoryIds,
+                    previousValues = candidate.previousValues,
                 ),
             createdAt = now,
             updatedAt = now,
