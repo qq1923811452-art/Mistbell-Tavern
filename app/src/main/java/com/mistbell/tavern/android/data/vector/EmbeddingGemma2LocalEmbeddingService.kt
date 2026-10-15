@@ -11,6 +11,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.job
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -18,7 +19,9 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
 import java.io.FileOutputStream
+import java.io.FileInputStream
 import java.io.IOException
+import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 import kotlin.math.sqrt
 
@@ -32,6 +35,8 @@ import kotlin.math.sqrt
 class EmbeddingGemma2LocalEmbeddingService private constructor(
     private val engine: EmbeddingEngine,
 ) : EmbeddingService, AutoCloseable {
+    override val isSemantic: Boolean = true
+
     companion object {
         private const val TAG = "EmbeddingGemma2Local"
         private const val MODEL_DIR = "litert-models"
@@ -41,6 +46,7 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
         private const val MIN_MODEL_BYTES = 100L * 1024L * 1024L
         private const val MAX_MODEL_BYTES = 250L * 1024L * 1024L
         private const val EXPECTED_DIMENSION = 768
+        private const val EXPECTED_MODEL_SHA256 = "2d079ee2f6f066b1f368e8d7c819f55214eaef1d0513b312321901f30ab286fb"
 
         private val httpClient =
             OkHttpClient.Builder()
@@ -63,7 +69,11 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
                 throw IOException("Unable to create private model directory")
             }
             val modelFile = File(directory, MODEL_FILE_NAME)
-            if (modelFile.isFile && modelFile.length() in MIN_MODEL_BYTES..MAX_MODEL_BYTES) {
+            if (
+                modelFile.isFile &&
+                modelFile.length() in MIN_MODEL_BYTES..MAX_MODEL_BYTES &&
+                sha256(modelFile) == EXPECTED_MODEL_SHA256
+            ) {
                 return modelFile
             }
             if (modelFile.exists() && !modelFile.delete()) {
@@ -77,8 +87,14 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
                     .url(MODEL_URL)
                     .get()
                     .build()
+            val call = httpClient.newCall(request)
+            val coroutineContext = currentCoroutineContext()
+            val cancellationHandle =
+                coroutineContext.job.invokeOnCompletion { cause ->
+                    if (cause is CancellationException) call.cancel()
+                }
             try {
-                httpClient.newCall(request).execute().use { response ->
+                call.execute().use { response ->
                     if (!response.isSuccessful) {
                         throw IOException("EmbeddingGemma model download failed: HTTP ${response.code}")
                     }
@@ -88,7 +104,6 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
                         throw IOException("Model download exceeded the allowed size")
                     }
                     var copiedBytes = 0L
-                    val coroutineContext = currentCoroutineContext()
                     body.byteStream().use { input ->
                         FileOutputStream(temporaryFile).use { output ->
                             val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
@@ -111,10 +126,15 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
                     ) {
                         throw IOException("Downloaded model size is invalid; partial file will not be activated")
                     }
+                    if (sha256(temporaryFile) != EXPECTED_MODEL_SHA256) {
+                        throw IOException("Downloaded EmbeddingGemma model failed SHA-256 verification")
+                    }
                 }
             } catch (e: Exception) {
                 temporaryFile.delete()
                 throw e
+            } finally {
+                cancellationHandle.dispose()
             }
 
             if (!temporaryFile.renameTo(modelFile)) {
@@ -122,6 +142,19 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
                 throw IOException("Unable to atomically activate downloaded EmbeddingGemma model")
             }
             return modelFile
+        }
+
+        private fun sha256(file: File): String {
+            val digest = MessageDigest.getInstance("SHA-256")
+            FileInputStream(file).use { input ->
+                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                while (true) {
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    digest.update(buffer, 0, count)
+                }
+            }
+            return digest.digest().joinToString("") { byte -> "%02x".format(byte) }
         }
 
         private fun createEngine(modelPath: String): EmbeddingGemma2LocalEmbeddingService {
@@ -161,9 +194,23 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
 
     override fun getDimension(): Int = EXPECTED_DIMENSION
 
-    override suspend fun embed(text: String): FloatArray = embed(text, "LOCAL_GEMMA_UNSPECIFIED")
+    override suspend fun embed(text: String): FloatArray =
+        embedDocument(text, "LOCAL_GEMMA_UNSPECIFIED")
 
     override suspend fun embed(text: String, source: String): FloatArray =
+        embedDocument(text, source)
+
+    override suspend fun embedDocument(text: String, source: String): FloatArray =
+        embedWithRole(text, source, isQuery = false)
+
+    override suspend fun embedQuery(text: String, source: String): FloatArray =
+        embedWithRole(text, source, isQuery = true)
+
+    private suspend fun embedWithRole(
+        text: String,
+        source: String,
+        isQuery: Boolean,
+    ): FloatArray =
         withContext(Dispatchers.Default) {
             val traceId = ApiCallTrace.newId()
             val startedAt = System.currentTimeMillis()
@@ -175,7 +222,6 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
             )
             try {
                 val normalizedText = text.trim()
-                val isQuery = source.contains("MEMORY_QUERY")
                 val input = InputData.Text(EmbeddingGemma2InputPolicy.format(normalizedText, isQuery))
                 val vector = inferenceMutex.withLock {
                     val embedding = engine.computeEmbedding(listOf(input)).embedding
@@ -211,10 +257,10 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
         }
 
     override suspend fun embedBatch(texts: List<String>): List<FloatArray> =
-        texts.map { embed(it, "LOCAL_GEMMA_BATCH") }
+        embedBatch(texts, "LOCAL_GEMMA_BATCH")
 
     override suspend fun embedBatch(texts: List<String>, source: String): List<FloatArray> =
-        texts.map { embed(it, source) }
+        texts.map { embedDocument(it, source) }
 
     override fun close() {
         engine.close()
