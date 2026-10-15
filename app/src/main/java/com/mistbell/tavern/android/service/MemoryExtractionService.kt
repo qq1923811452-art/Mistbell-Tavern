@@ -430,8 +430,31 @@ class MemoryExtractionService(
                     existingFacts = existingFacts,
                 )
             val ignoredDuplicateIds = relatedFacts.map { it.id }.toSet()
-            if (isDuplicate(enhanced, existingMemories, ignoredDuplicateIds)) return@forEach
-
+            val stagedConflicts =
+                validated.filter { staged ->
+                    TemporalMemoryFactPolicy.conflictsWithStagedFact(
+                        subject = enhanced.subject,
+                        relation = enhanced.relation,
+                        objectValue = enhanced.objValue,
+                        content = enhanced.content,
+                        stagedFact =
+                            TemporalMemoryFactPolicy.Fact(
+                                id = -1L,
+                                subject = staged.subject,
+                                relation = staged.relation,
+                                objectValue = staged.objValue,
+                            ),
+                    )
+                }
+            val duplicateInBatch = validated.any { normalizeForCompare(it.content) == normalizeForCompare(enhanced.content) }
+            if (duplicateInBatch || isDuplicate(enhanced, existingMemories, ignoredDuplicateIds)) {
+                // The current database fact wins over an earlier conflicting candidate from this same batch.
+                validated.removeAll(stagedConflicts.toSet())
+                return@forEach
+            }
+            // Keep only the latest conflicting candidate in LLM output order; staged candidates have not
+            // been persisted yet, so only conflicts against existing database facts need history links.
+            validated.removeAll(stagedConflicts.toSet())
             validated +=
                 enhanced.copy(
                     supersededMemoryIds = supersededFacts.map { it.id },
