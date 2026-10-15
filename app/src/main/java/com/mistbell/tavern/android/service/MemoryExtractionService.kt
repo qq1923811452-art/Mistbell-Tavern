@@ -35,6 +35,7 @@ class MemoryExtractionService(
         private const val MIN_MEMORY_CONTENT_LENGTH = 10
         private const val MIN_IMPORTANCE_SCORE = 0.5 // 降低阈值，让更多内容有机会被保存
         private const val SIMILARITY_THRESHOLD = 0.85
+        private const val MAX_HISTORICAL_MEMORY_IMPORTANCE = 7
 
         /** 空正文重试时追加：部分模型会把输出预算全花在思考过程上，导致 JSON 正文为空 */
         private const val NO_REASONING_SUFFIX =
@@ -103,7 +104,10 @@ class MemoryExtractionService(
                     }
                 }
 
-                Log.d(TAG, "Extraction complete: ${candidates.size} candidates, ${validated.size} valid, $savedCount saved")
+                Log.d(
+                    TAG,
+                    "Extraction complete: ${candidates.size} candidates, ${validated.size} valid, $savedCount saved",
+                )
                 savedCount
             } catch (e: CancellationException) {
                 throw e
@@ -128,24 +132,35 @@ class MemoryExtractionService(
                 sessionId = sessionId,
                 messageIds = messageIds,
             )
-        // Keep temporal history when a newer extracted fact changes an existing value.
-        val existing = structuredMemoryRepository.getMemoriesByCharacter(ownerId, characterId).first()
-        val superseded =
-            MemoryConflictResolver.findSuperseded(
-                subject = candidate.subject,
-                relation = candidate.relation,
-                value = candidate.objValue,
-                existing = existing,
-            )
-        // Persist the replacement first. If insertion fails, the currently active fact remains intact.
-        structuredMemoryRepository.createMemory(memory)
-        superseded.forEach { previous ->
-            structuredMemoryRepository.updateMemory(
-                MemoryConflictResolver.markSuperseded(previous, memory.content),
-                preserveUpdatedAt = true,
-            )
-        }
+        structuredMemoryRepository.createMemoryWithSupersession(
+            memory = memory,
+            supersededIds = candidate.supersededMemoryIds,
+            transformSuperseded = ::markSupersededMemoryAsHistorical,
+        )
     }
+
+    private fun markSupersededMemoryAsHistorical(
+        oldMemory: StructuredMemory,
+        newMemoryId: Long,
+        validTo: String,
+    ): StructuredMemory =
+        oldMemory.copy(
+            content =
+                if (oldMemory.content.startsWith("【历史事实】")) {
+                    oldMemory.content
+                } else {
+                    "【历史事实】${oldMemory.content}"
+                },
+            structuredData =
+                TemporalMemoryFactPolicy.markHistorical(
+                    oldMemory.structuredData,
+                    validTo,
+                    newMemoryId,
+                ),
+            tags = (listOf("历史事实") + oldMemory.tags).distinct().take(8),
+            keywords = (listOf("历史事实") + oldMemory.keywords).distinct().take(8),
+            importance = min(oldMemory.importance, MAX_HISTORICAL_MEMORY_IMPORTANCE),
+        )
 
     // 多轮拼接：轮间空行分隔；无用户消息的轮次（群聊"让TA继续"）省略 User 行
     private fun buildDialogueText(turns: List<DialogueTurn>): String {
@@ -401,26 +416,85 @@ class MemoryExtractionService(
             structuredMemoryRepository
                 .getMemoriesByCharacter(ownerId, characterId)
                 .first()
-
-        return candidates
-            .mapNotNull { candidate ->
-                val normalized =
-                    candidate.copy(
-                        content = sanitizeMemoryContent(candidate.content),
-                        memoryType = normalizeMemoryType(candidate.memoryType),
-                    )
-                if (!isUsableMemoryContent(normalized.content)) return@mapNotNull null
-
-                val enhanced =
-                    enhanceImportance(normalized)
-                        .copy(keywords = enrichKeywords(normalized).distinct().take(8))
-
-                if (enhanced.importance < MIN_IMPORTANCE_SCORE) return@mapNotNull null
-                if (isDuplicate(enhanced, existingMemories)) return@mapNotNull null
-                enhanced
+        val existingFacts =
+            existingMemories.mapNotNull { memory ->
+                TemporalMemoryFactPolicy.parseFact(memory.id, memory.structuredData)
             }
-            .distinctBy { normalizeForCompare(it.content) }
+        val validated = mutableListOf<MemoryCandidate>()
+
+        candidates.forEach { candidate ->
+            val normalized =
+                candidate.copy(
+                    content = sanitizeMemoryContent(candidate.content),
+                    memoryType = normalizeMemoryType(candidate.memoryType),
+                )
+            if (!isUsableMemoryContent(normalized.content)) return@forEach
+
+            val enhanced =
+                enhanceImportance(normalized)
+                    .copy(keywords = enrichKeywords(normalized).distinct().take(8))
+            if (enhanced.importance < MIN_IMPORTANCE_SCORE) return@forEach
+
+            val relatedFacts =
+                TemporalMemoryFactPolicy.findRelatedFacts(
+                    subject = enhanced.subject,
+                    relation = enhanced.relation,
+                    objectValue = enhanced.objValue,
+                    existingFacts = existingFacts,
+                )
+            val supersededFacts =
+                TemporalMemoryFactPolicy.findConflicts(
+                    subject = enhanced.subject,
+                    relation = enhanced.relation,
+                    objectValue = enhanced.objValue,
+                    content = enhanced.content,
+                    existingFacts = existingFacts,
+                )
+            val ignoredDuplicateIds = relatedFacts.map { it.id }.toSet()
+            val stagedConflicts = findStagedConflicts(enhanced, validated)
+            val duplicateInBatch = hasDuplicateInBatch(enhanced, validated)
+            if (duplicateInBatch || isDuplicate(enhanced, existingMemories, ignoredDuplicateIds)) {
+                // The current database fact wins over an earlier conflicting candidate from this same batch.
+                validated.removeAll(stagedConflicts.toSet())
+                return@forEach
+            }
+            // Keep only the latest conflicting candidate in LLM output order; staged candidates have not
+            // been persisted yet, so only conflicts against existing database facts need history links.
+            validated.removeAll(stagedConflicts.toSet())
+            validated +=
+                enhanced.copy(
+                    supersededMemoryIds = supersededFacts.map { it.id },
+                    previousValues = supersededFacts.map { it.objectValue },
+                )
+        }
+        return validated.distinctBy { normalizeForCompare(it.content) }
     }
+
+    private fun findStagedConflicts(
+        candidate: MemoryCandidate,
+        validated: List<MemoryCandidate>,
+    ): List<MemoryCandidate> =
+        validated.filter { staged ->
+            TemporalMemoryFactPolicy.conflictsWithStagedFact(
+                subject = candidate.subject,
+                relation = candidate.relation,
+                objectValue = candidate.objValue,
+                content = candidate.content,
+                stagedFact =
+                    TemporalMemoryFactPolicy.Fact(
+                        id = -1L,
+                        subject = staged.subject,
+                        relation = staged.relation,
+                        objectValue = staged.objValue,
+                    ),
+            )
+        }
+
+    private fun hasDuplicateInBatch(
+        candidate: MemoryCandidate,
+        validated: List<MemoryCandidate>,
+    ): Boolean =
+        validated.any { normalizeForCompare(it.content) == normalizeForCompare(candidate.content) }
 
     private fun convertToMemoryDomain(
         candidate: MemoryCandidate,
@@ -449,12 +523,18 @@ class MemoryExtractionService(
             tags = candidate.tags.take(8),
             keywords = candidate.keywords.take(8),
             structuredData =
-                Json.encodeToString(
-                    mapOf(
-                        "subject" to candidate.subject,
-                        "relation" to candidate.relation,
-                        "object" to candidate.objValue,
-                    ),
+                TemporalMemoryFactPolicy.markCurrent(
+                    structuredData =
+                        Json.encodeToString(
+                            mapOf(
+                                "subject" to candidate.subject,
+                                "relation" to candidate.relation,
+                                "object" to candidate.objValue,
+                            ),
+                        ),
+                    validFrom = now,
+                    supersededIds = candidate.supersededMemoryIds,
+                    previousValues = candidate.previousValues,
                 ),
             createdAt = now,
             updatedAt = now,
@@ -516,11 +596,15 @@ class MemoryExtractionService(
     private fun isDuplicate(
         candidate: MemoryCandidate,
         existing: List<StructuredMemory>,
+        ignoredMemoryIds: Set<Long> = emptySet(),
     ): Boolean {
         val candidateContent = normalizeForCompare(candidate.content)
         if (candidateContent.isBlank()) return true
 
         return existing.any { memory ->
+            if (memory.id in ignoredMemoryIds || TemporalMemoryFactPolicy.isHistorical(memory.structuredData)) {
+                return@any false
+            }
             // A different value for the same structured fact is an update, not a duplicate.
             if (
                 MemoryConflictResolver.conflictsWith(
@@ -678,6 +762,8 @@ class MemoryExtractionService(
         val importance: Double,
         val tags: List<String>,
         val keywords: List<String>,
+        val supersededMemoryIds: List<Long> = emptyList(),
+        val previousValues: List<String> = emptyList(),
     )
 }
 
