@@ -647,7 +647,7 @@ jobs:
               f"- **Diff merge-base SHA:** `{merge_base_sha}`",
               f"- **Audited head SHA:** `{head_sha}`",
               f"- **Model A:** `{safe_markdown(model, 100)}`",
-              f"- **Model B cross-review:** `{safe_markdown(model_b, 100)}`,
+              f"- **Model B cross-review:** `{safe_markdown(model_b, 100)}`",
               f"- **Diff size:** {len(diff)} characters" + (" (truncated before analysis; manual review required)" if truncated else ""),
               "- **Important:** AI findings are untrusted advisory text. Verify them against source and CI.",
               "",
