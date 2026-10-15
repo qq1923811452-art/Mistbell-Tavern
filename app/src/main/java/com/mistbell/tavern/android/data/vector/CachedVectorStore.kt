@@ -132,6 +132,8 @@ class CachedVectorStore(
             value is Char ||
             value is Enum<*>
 
+    // Any delegate exception may follow a partial in-memory mutation; invalidate for all Exception types.
+    @Suppress("TooGenericExceptionCaught")
     private suspend fun <T> mutateAndInvalidate(mutation: suspend () -> T): T {
         val result =
             try {
