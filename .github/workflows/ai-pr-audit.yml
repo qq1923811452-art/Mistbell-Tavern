@@ -397,6 +397,8 @@ jobs:
               if any(not isinstance(item, dict) for item in findings):
                   raise ValueError("every finding must be an object")
               previous_findings = report.get("previous_findings", [])
+              if review_mode == "re-review" and "previous_findings" not in report:
+                  raise ValueError("re-review response must include previous_findings")
               if review_mode == "re-review" and not isinstance(previous_findings, list):
                   raise ValueError("previous_findings must be a list during re-review")
               if any(not isinstance(item, dict) for item in previous_findings):
@@ -442,7 +444,8 @@ jobs:
                       continue
                   if raw_line.startswith(("index ", "@@")):
                       continue
-                  if current_file is not None and raw_line[:1] in ("+", "-", " "):
+                  # Only additions and unchanged context represent current source lines; removed lines cannot prove a fix.
+                  if current_file is not None and raw_line[:1] in ("+", " "):
                       diff_lines_by_file[current_file].append(raw_line[1:])
               def evidence_matches(file_name, evidence):
                   if not isinstance(file_name, str) or not file_name.strip():
