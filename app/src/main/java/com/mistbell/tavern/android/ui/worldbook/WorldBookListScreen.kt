@@ -217,8 +217,9 @@ fun WorldBookListScreen(
                                     value = pendingDepth,
                                     onValueChange = { pendingDepth = it },
                                     valueRange = minDepth..maxDepth,
-                                    steps = WorldBookScanSettingsRepository.MAX_RECURSION_DEPTH -
-                                        WorldBookScanSettingsRepository.MIN_RECURSION_DEPTH - 1,
+                                    steps =
+                                        WorldBookScanSettingsRepository.MAX_RECURSION_DEPTH -
+                                            WorldBookScanSettingsRepository.MIN_RECURSION_DEPTH - 1,
                                     onValueChangeFinished = {
                                         viewModel.setRecursiveScanDepth(
                                             pendingDepth.toInt().coerceIn(
