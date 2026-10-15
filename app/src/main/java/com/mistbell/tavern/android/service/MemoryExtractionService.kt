@@ -8,6 +8,7 @@ import com.mistbell.tavern.android.data.api.LlmClient
 import com.mistbell.tavern.android.data.api.LlmConfig
 import com.mistbell.tavern.android.data.api.model.StructuredMemory
 import com.mistbell.tavern.android.data.repository.StructuredMemoryRepository
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
@@ -118,12 +119,16 @@ class MemoryExtractionService(
                                         )
                                     structuredMemoryRepository.updateMemory(historicalMemory)
                                 }
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
                             } catch (e: Exception) {
                                 Log.e(TAG, "Failed to mark superseded memory as historical: ${e.message}", e)
                             }
                         }
                         savedCount++
                         Log.d(TAG, "Saved memory candidate #$savedCount")
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
                     } catch (e: Exception) {
                         Log.e(TAG, "Failed to save memory: ${e.message}", e)
                     }
@@ -131,6 +136,8 @@ class MemoryExtractionService(
 
                 Log.d(TAG, "Extraction complete: ${candidates.size} candidates, ${validated.size} valid, $savedCount saved")
                 savedCount
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (e: Exception) {
                 Log.e(TAG, "Memory extraction failed: ${e.message}", e)
                 0
