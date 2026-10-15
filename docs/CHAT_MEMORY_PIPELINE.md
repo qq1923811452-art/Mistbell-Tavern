@@ -48,7 +48,7 @@ Extraction must not delay the chat response. The settings screen now supports an
 - Temporal metadata is stored in the existing `structured_data` JSON, without a Room schema migration: `status`, `valid_from`, `valid_to`, `supersedes_ids`, `previous_values`, and `superseded_by`.
 - Single-valued relations (`name`, `role_is`, `located_at`, `title_is`) can supersede an older current fact when the value changes. Multi-valued relations such as `likes` remain additive unless the extracted content explicitly says the fact changed.
 - Superseded memories remain searchable as historical facts, are labeled in content/tags, and have their recall priority reduced. Historical records are excluded from current-fact deduplication so a user can later return to an earlier value.
-- The replacement fact is written before its predecessor is marked historical. This favors preserving a current fact if the process stops between operations; the two writes are not yet one database transaction.
+- The replacement fact is inserted and its predecessor is marked historical in the same Room database transaction. Vector-index synchronization runs after commit and is best-effort, so a vector failure must not be treated as a rollback of the authoritative database state.
 
 ## Embedding and index invariants
 
