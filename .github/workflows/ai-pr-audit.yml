@@ -226,8 +226,7 @@ jobs:
           previous_report_context = ""
           if review_mode == "re-review":
               comments_url = f"https://api.github.com/repos/{repository}/issues/{pr_number}/comments?per_page=100&sort=created&direction=desc"
-              previous_report = None
-              # Walk newest-first comment pages until the latest bot audit report is found.
+              all_comments = []
               for _ in range(10):
                   comments_request = urllib.request.Request(comments_url, headers=api_headers)
                   try:
@@ -239,19 +238,22 @@ jobs:
                       raise SystemExit(1)
                   if not isinstance(comments, list):
                       raise SystemExit("GitHub issue comments response was not a list.")
-                  prior_reports = [
-                      item for item in comments
-                      if isinstance(item, dict)
-                      and ((item.get("user") or {}).get("login") == "github-actions[bot]")
-                      and any(marker in str(item.get("body") or "") for marker in ("<!-- ai-pr-audit-report -->", "<!-- ai-pr-audit-rereview-report -->"))
-                  ]
-                  if prior_reports:
-                      previous_report = prior_reports[0]
-                      break
+                  all_comments.extend(comments)
                   next_link = re.search(r'<([^>]+)>;\s*rel="next"', link_header)
                   if not next_link:
                       break
                   comments_url = next_link.group(1)
+              prior_reports = [
+                  item for item in all_comments
+                  if isinstance(item, dict)
+                  and ((item.get("user") or {}).get("login") == "github-actions[bot]")
+                  and any(marker in str(item.get("body") or "") for marker in ("<!-- ai-pr-audit-report -->", "<!-- ai-pr-audit-rereview-report -->"))
+              ]
+              previous_report = max(
+                  prior_reports,
+                  key=lambda item: (str(item.get("created_at") or ""), int(item.get("id") or 0)),
+                  default=None,
+              )
               if previous_report is None:
                   raise SystemExit("Re-review requested, but no previous AI audit or re-review report by github-actions[bot] was found.")
               prior_body = str(previous_report.get("body") or "")
@@ -419,6 +421,12 @@ jobs:
                   raise ValueError("every finding must be an object")
 
               # Independent adversarial cross-review: model B reviews model A's report against the same pinned diff.
+              model_a_report_json = json.dumps(report, ensure_ascii=False)
+              if len(model_a_report_json) > 18000:
+                  raise SystemExit(
+                      "Model A report exceeds the safe cross-review context limit (18000 characters); "
+                      "refusing to send a silently truncated report to model B."
+                  )
               cross_review_prompt = f"""
               You are the independent second reviewer (model B). Adversarially review model A's report against the exact same pinned diff.
               Identify false positives, important missed defects, invalid/weak evidence, and unsafe recommendations.
@@ -429,7 +437,7 @@ jobs:
               Repository: {repository}
               PR: #{pr_number}
               Model A report:
-              {json.dumps(report, ensure_ascii=False)[:18000]}
+              {model_a_report_json}
               Pinned diff:
               {diff_for_model}
               """
