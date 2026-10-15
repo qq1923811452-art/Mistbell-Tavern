@@ -182,7 +182,8 @@ fun ImageGenerationSettingsSection() {
                                         prompt,
                                     )
                                 generatedPath = result.file.absolutePath
-                                status = result.revisedPrompt?.let { "生成成功；服务商修订提示词：$it" } ?: "生成成功"
+                                // Treat provider-returned revised prompts as untrusted and potentially sensitive.
+                                status = "生成成功"
                             } catch (e: Exception) {
                                 status = "生成失败：${e.message ?: e.javaClass.simpleName}"
                             } finally {
