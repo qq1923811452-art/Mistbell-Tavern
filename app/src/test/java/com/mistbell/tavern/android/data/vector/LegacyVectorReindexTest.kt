@@ -99,7 +99,7 @@ class LegacyVectorReindexTest {
 
         override fun getDimension(): Int = 2
 
-        override fun getModelId(): String = "test:model:v2"
+        override fun modelId(): String = "test:model:v2"
     }
 
     private class FakeVectorStore(
