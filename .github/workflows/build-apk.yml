@@ -1,0 +1,28 @@
+name: Build Verified Debug APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_variant:
+        description: "Android build variant"
+        required: true
+        type: choice
+        options:
+          - debug
+        default: debug
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-verified-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify-and-build:
+    name: Reuse the CI quality gate and final validation
+    uses: ./.github/workflows/ci.yml
+    with:
+      full_android_validation: true
+    permissions:
+      contents: read
