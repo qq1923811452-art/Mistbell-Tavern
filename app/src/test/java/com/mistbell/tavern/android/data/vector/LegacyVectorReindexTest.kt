@@ -2,7 +2,6 @@ package com.mistbell.tavern.android.data.vector
 
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -48,7 +47,7 @@ class LegacyVectorReindexTest {
         assertEquals(0, result.migrated)
         assertEquals(1, result.skipped)
         assertNotNull(store.get("legacy-incomplete"))
-        assertEquals(0, store.entries.size - 1)
+        assertEquals(1, store.entries.size)
     }
 
     @Test
