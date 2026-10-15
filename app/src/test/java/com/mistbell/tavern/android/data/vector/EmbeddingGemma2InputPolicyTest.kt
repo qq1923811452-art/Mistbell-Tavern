@@ -7,7 +7,7 @@ class EmbeddingGemma2InputPolicyTest {
     @Test
     fun queryUsesSearchQueryInstructionAndTrimsWhitespace() {
         assertEquals(
-            "task: search query | text: Who did Mira meet?",
+            "task: search result | query: Who did Mira meet?",
             EmbeddingGemma2InputPolicy.format("  Who did Mira meet?  ", isQuery = true),
         )
     }
@@ -15,7 +15,7 @@ class EmbeddingGemma2InputPolicyTest {
     @Test
     fun indexedMemoryUsesSearchResultInstructionAndTrimsWhitespace() {
         assertEquals(
-            "task: search result | text: Mira met Rowan at the station.",
+            "title: none | text: Mira met Rowan at the station.",
             EmbeddingGemma2InputPolicy.format(" Mira met Rowan at the station. ", isQuery = false),
         )
     }
