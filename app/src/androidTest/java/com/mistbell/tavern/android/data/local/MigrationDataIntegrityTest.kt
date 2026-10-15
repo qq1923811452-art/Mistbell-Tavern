@@ -361,7 +361,7 @@ class MigrationDataIntegrityTest {
             // 验证消息
             val messages =
                 db.messageDao()
-                    .getBySession("sess-1", "local-user", "char-1")
+                    .getBySession("sess-1", "local-user")
                     .first()
             assertEquals("消息应全部保留", 3, messages.size)
             assertEquals("你好", messages[0].content)
@@ -416,7 +416,7 @@ class MigrationDataIntegrityTest {
             )
             val messages =
                 db.messageDao()
-                    .getBySession("sess-1", "local-user", "char-1")
+                    .getBySession("sess-1", "local-user")
                     .first()
             assertEquals("迁移后写入的新消息应在查询中", 4, messages.size)
         }
