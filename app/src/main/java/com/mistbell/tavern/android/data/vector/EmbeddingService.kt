@@ -7,6 +7,10 @@ package com.mistbell.tavern.android.data.vector
  * 移植自后端 EmbeddingService.java
  */
 interface EmbeddingService {
+    /** True only when this service produces real semantic embeddings, not placeholders. */
+    val isSemantic: Boolean
+        get() = false
+
     /**
      * Stable identity for the vector space produced by this implementation.
      * Include model and endpoint identity when a provider can be configured.
@@ -29,6 +33,11 @@ interface EmbeddingService {
         text: String,
         source: String,
     ): FloatArray = embed(text)
+
+    /** Explicit role hooks; asymmetric embedding models can apply the correct task instruction. */
+    suspend fun embedQuery(text: String, source: String): FloatArray = embed(text, source)
+
+    suspend fun embedDocument(text: String, source: String): FloatArray = embed(text, source)
 
     /**
      * 批量转换文本为向量
