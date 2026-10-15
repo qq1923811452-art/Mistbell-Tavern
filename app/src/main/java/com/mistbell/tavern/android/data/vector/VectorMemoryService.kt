@@ -369,6 +369,7 @@ class VectorMemoryService(
         val legacyEntries = vectorStore.getAllEntries().filter { it.metadata["embedding_model"] == null }
         var skipped = 0
         var reused = 0
+        var reindexed = 0
         val candidates = mutableListOf<LegacyVectorCandidate>()
 
         for (entry in legacyEntries) {
@@ -459,13 +460,14 @@ class VectorMemoryService(
                     VectorStore.VectorEntry(candidate.targetId, embeddings[index], candidate.metadata)
                 },
             )
+            reindexed += readyBatch.size
             // Delete only after the replacement batch has been persisted.
             readyBatch.filter { it.legacyId != it.targetId }.forEach { vectorStore.delete(it.legacyId) }
         }
 
         return LegacyReindexResult(
             scannedLegacy = legacyEntries.size,
-            migrated = reused + candidates.size,
+            migrated = reused + reindexed,
             skipped = skipped,
             reused = reused,
         )
