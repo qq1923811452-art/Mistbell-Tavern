@@ -100,7 +100,8 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
                 } catch (qualcommModelFailure: Exception) {
                     Log.w(
                         TAG,
-                        "SM8650-optimized model could not initialize on available backends; trying the generic 165 MB EmbeddingGemma 2 model",
+                        "SM8650-optimized model could not initialize on available backends; " +
+                            "trying the generic 165 MB EmbeddingGemma 2 model",
                         qualcommModelFailure,
                     )
                     val compatibleModel = ensureCompatibleModelDownloaded(context)
