@@ -50,6 +50,15 @@ class TemporalMemoryFactPolicyTest {
         )
         assertEquals(
             listOf(13L),
+            TemporalMemoryFactPolicy.findRelatedFacts(
+                subject = "user",
+                relation = "likes",
+                objectValue = "coffee",
+                existingFacts = listOf(existing),
+            ).map { it.id },
+        )
+        assertEquals(
+            listOf(13L),
             TemporalMemoryFactPolicy.findConflicts(
                 subject = "user",
                 relation = "likes",
