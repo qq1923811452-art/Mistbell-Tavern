@@ -128,6 +128,44 @@ class TemporalMemoryFactPolicyTest {
     }
 
     @Test
+    fun stagedSingleValueConflictIsDetectedButSameValueIsNotAConflict() {
+        val staged = TemporalMemoryFactPolicy.Fact(
+            id = 1L,
+            subject = "user",
+            relation = "name",
+            objectValue = "Alice",
+        )
+
+        assertTrue(
+            TemporalMemoryFactPolicy.conflictsWithStagedFact(
+                subject = "user",
+                relation = "name",
+                objectValue = "Bob",
+                content = "user name Bob",
+                stagedFact = staged,
+            ),
+        )
+        assertFalse(
+            TemporalMemoryFactPolicy.conflictsWithStagedFact(
+                subject = "user",
+                relation = "name",
+                objectValue = "Alice",
+                content = "user name Alice",
+                stagedFact = staged,
+            ),
+        )
+        assertFalse(
+            TemporalMemoryFactPolicy.conflictsWithStagedFact(
+                subject = "user",
+                relation = "age",
+                objectValue = "Bob",
+                content = "user age Bob",
+                stagedFact = staged,
+            ),
+        )
+    }
+
+    @Test
     fun `historical facts are excluded from current-fact deduplication policy`() {
         val historical =
             Json.encodeToString(
