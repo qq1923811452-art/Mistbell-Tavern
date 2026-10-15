@@ -49,4 +49,37 @@ class CachedVectorStoreFilterCacheInstrumentedTest {
             assertEquals(0, nonMatching.size)
         }
     }
+    @Test
+    fun mutationFailureStillInvalidatesSearchCacheWhenDelegateAlreadyChanged() {
+        runBlocking {
+            val failingDelegate =
+                object : VectorStore by delegate {
+                    override suspend fun add(
+                        id: String,
+                        vector: FloatArray,
+                        metadata: Map<String, Any>,
+                    ) {
+                        delegate.add(id, vector, metadata)
+                        throw IllegalStateException("simulated failure after delegate mutation")
+                    }
+                }
+            val store = CachedVectorStore(failingDelegate)
+            val query = floatArrayOf(1f, 0f)
+
+            assertEquals(0, store.search(query, 5, emptyMap()).size)
+            try {
+                store.add(
+                    id = "partially-written-vector",
+                    vector = query,
+                    metadata = mapOf("content" to "visible after partial mutation"),
+                )
+                throw AssertionError("Expected simulated mutation failure")
+            } catch (expected: IllegalStateException) {
+                assertEquals("simulated failure after delegate mutation", expected.message)
+            }
+
+            assertEquals(1, store.search(query, 5, emptyMap()).size)
+        }
+    }
+
 }
