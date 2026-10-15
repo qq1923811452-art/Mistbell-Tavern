@@ -236,8 +236,16 @@ object LlmClient {
                     totalTokens = maxOf(current.totalTokens, incoming.totalTokens),
                     cacheHitTokens = maxOf(current.cacheHitTokens, incoming.cacheHitTokens),
                     cacheMissTokens = maxOf(current.cacheMissTokens, incoming.cacheMissTokens),
-                    promptTokensDetails = mergeUsageTokenDetails(current.promptTokensDetails, incoming.promptTokensDetails),
-                    inputTokensDetails = mergeUsageTokenDetails(current.inputTokensDetails, incoming.inputTokensDetails),
+                    promptTokensDetails =
+                        mergeUsageTokenDetails(
+                            current.promptTokensDetails,
+                            incoming.promptTokensDetails,
+                        ),
+                    inputTokensDetails =
+                        mergeUsageTokenDetails(
+                            current.inputTokensDetails,
+                            incoming.inputTokensDetails,
+                        ),
                 )
         }
 
