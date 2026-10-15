@@ -194,7 +194,7 @@ class VectorMemoryService(
             throw e
         } catch (e: Exception) {
             recordVectorStorageFailure(_storageError, e)
-            Log.e(TAG, "Failed to store message vector (${e.javaClass.simpleName})")
+            runCatching { Log.e(TAG, "Failed to store message vector (${e.javaClass.simpleName})") }
             throw e
         }
     }
