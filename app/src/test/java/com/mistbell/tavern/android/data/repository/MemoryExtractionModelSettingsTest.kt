@@ -7,8 +7,20 @@ import org.junit.Test
 class MemoryExtractionModelSettingsTest {
     @Test
     fun `incomplete dedicated configuration stays disabled`() {
-        assertNull(MemoryExtractionModelSettings(baseUrl = "", apiKey = "key", model = "qwen").toLlmConfigOrNull())
-        assertNull(MemoryExtractionModelSettings(baseUrl = "https://relay.example/v1", apiKey = "key", model = "").toLlmConfigOrNull())
+        assertNull(
+            MemoryExtractionModelSettings(
+                baseUrl = "",
+                apiKey = "key",
+                model = "qwen",
+            ).toLlmConfigOrNull(),
+        )
+        assertNull(
+            MemoryExtractionModelSettings(
+                baseUrl = "https://relay.example/v1",
+                apiKey = "key",
+                model = "",
+            ).toLlmConfigOrNull(),
+        )
     }
 
     @Test
