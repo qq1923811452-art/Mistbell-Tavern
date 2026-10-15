@@ -128,7 +128,10 @@ class AppContainer(private val appContext: Context) {
                     }
                 }
                 "local-gemma" -> {
-                    Log.d(TAG, "Embedding source=local-gemma: loading EmbeddingGemma 2 with LiteRT-LM")
+                    Log.d(
+                        TAG,
+                        "Embedding source=local-gemma: loading EmbeddingGemma 2 with LiteRT-LM",
+                    )
                     try {
                         EmbeddingGemma2LocalEmbeddingService.create(appContext)
                     } catch (e: LinkageError) {
