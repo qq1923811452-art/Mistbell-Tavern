@@ -190,5 +190,10 @@ class ImageGenerationService(
     }
 }
 
-private fun kotlinx.serialization.json.JsonPrimitive.contentOrNull(): String? =
-    if (isString || toString() != "null") content else null
+private fun kotlinx.serialization.json.JsonPrimitive.contentOrNull(): String? {
+    return if (isString || toString() != "null") {
+        content
+    } else {
+        null
+    }
+}
