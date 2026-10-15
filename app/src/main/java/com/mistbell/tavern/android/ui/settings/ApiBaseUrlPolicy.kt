@@ -1,33 +1,17 @@
 package com.mistbell.tavern.android.ui.settings
 
-import java.net.URI
-import java.util.Locale
+import com.mistbell.tavern.android.util.ApiEndpointPolicy
 
 /**
- * URL rules for configurable API endpoints.
+ * UI 侧对 [ApiEndpointPolicy] 的转发入口，保留原有调用点与测试不变。
  *
- * Android's network security config only opts loopback/emulator hosts into cleartext HTTP.
- * Keep that platform policy strict and explain other HTTP endpoints in the settings UI.
+ * 判据本体已下沉到 `util`，以便数据层（备份恢复等）复用同一份规则；
+ * 新增代码请直接使用 [ApiEndpointPolicy]。
  */
 internal object ApiBaseUrlPolicy {
-    private val cleartextAllowedHosts = setOf("localhost", "127.0.0.1", "10.0.2.2")
+    fun isValid(rawUrl: String): Boolean = ApiEndpointPolicy.isValid(rawUrl)
 
-    fun isValid(rawUrl: String): Boolean = validateUri(rawUrl.trim())
+    fun requiresCleartextWarning(rawUrl: String): Boolean = ApiEndpointPolicy.requiresCleartextWarning(rawUrl)
 
-    fun requiresCleartextWarning(rawUrl: String): Boolean =
-        parseUri(rawUrl.trim())?.let { uri ->
-            uri.scheme.equals("http", ignoreCase = true) &&
-                uri.host?.lowercase(Locale.ROOT)?.let { host -> host !in cleartextAllowedHosts } == true
-        } ?: false
-
-    private fun validateUri(value: String): Boolean =
-        value.isNotEmpty() &&
-            parseUri(value)?.let { uri ->
-                uri.scheme?.lowercase(Locale.ROOT) in setOf("http", "https") &&
-                    !uri.host.isNullOrBlank() &&
-                    uri.rawUserInfo == null &&
-                    uri.rawFragment == null
-            } == true
-
-    private fun parseUri(value: String): URI? = runCatching { URI(value) }.getOrNull()
+    fun writeRejectionReason(rawUrl: String): String? = ApiEndpointPolicy.writeRejectionReason(rawUrl)
 }

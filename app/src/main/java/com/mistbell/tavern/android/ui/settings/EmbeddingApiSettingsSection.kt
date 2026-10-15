@@ -218,7 +218,19 @@ private fun saveEmbeddingApiSettings(
     val apiKey = values.apiKey
     val normalizedUrl =
         values.baseUrl.trim().trimEnd('/').ifBlank { "https://api.openai.com/v1" }
-    val validationError = embeddingApiUrlValidationError(normalizedUrl)
+    // 已存储的密钥若无法解密（AndroidKeyStore 密钥被重置/丢失，或密文损坏），
+    // 输入框会呈现为空——但"看起来是空"不等于"原值不存在"。
+    // 此时若把空串写回去，原密文就被永久覆盖，因此与 URL 校验合并为一次拒绝判定
+    // （同时也让本函数保持在 detekt 的 ReturnCount 上限内）。
+    val storedKeyUnreadable =
+        prefs.getString("embedding_api_key", "")?.takeIf(String::isNotEmpty)?.let {
+            SecureStore.unwrapOrNull(it) == null
+        } == true
+
+    val validationError =
+        embeddingApiUrlValidationError(normalizedUrl)
+            ?: "保存失败：已存储的密钥无法解密（系统安全密钥库可能已重置）。请重新输入 API Key；本次未修改任何配置。"
+                .takeIf { storedKeyUnreadable && apiKey.trim().isEmpty() }
     if (validationError != null) {
         callbacks.onStatusChanged(validationError)
         return

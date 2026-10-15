@@ -131,6 +131,11 @@ class ApiConfigViewModel(application: Application) : AndroidViewModel(applicatio
     ) {
         viewModelScope.launch {
             try {
+                // 写入层强制校验：对话框的按钮禁用只是体验优化，不能作为安全边界。
+                ApiBaseUrlPolicy.writeRejectionReason(apiUrl)?.let { reason ->
+                    _message.value = reason
+                    return@launch
+                }
                 val newConfig =
                     ApiConfigEntity(
                         id = UUID.randomUUID().toString(),
@@ -162,6 +167,11 @@ class ApiConfigViewModel(application: Application) : AndroidViewModel(applicatio
     fun updateApiConfig(apiConfig: ApiConfig) {
         viewModelScope.launch {
             try {
+                // 同上：更新路径也必须过同一判据，否则任何新调用方都能绕过 UI 限制。
+                ApiBaseUrlPolicy.writeRejectionReason(apiConfig.apiUrl)?.let { reason ->
+                    _message.value = reason
+                    return@launch
+                }
                 val entity = apiConfig.toEntity()
                 apiConfigDao.update(entity.copy(updatedAt = System.currentTimeMillis()))
                 _message.value = "已更新 API 配置"
