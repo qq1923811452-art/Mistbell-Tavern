@@ -101,7 +101,7 @@ class ImageGenerationService(
                         val encoded = base64.substringAfter("base64,", base64)
                         // Bound the encoded text before Base64.getDecoder().decode allocates the decoded array.
                         // A post-decode size check alone still allows an oversized response to exhaust memory.
-                        if (encoded.length.toLong() > MAX_BASE64_CHARS) {
+                        if (!isEncodedImageLengthAllowed(encoded.length.toLong())) {
                             throw IOException("生成图片超过 30 MB 限制")
                         }
                         val bytes =
@@ -227,6 +227,9 @@ class ImageGenerationService(
         private const val WRITE_TIMEOUT_SECONDS = 30L
         private const val CALL_TIMEOUT_SECONDS = 210L
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
+
+        internal fun isEncodedImageLengthAllowed(encodedLength: Long): Boolean =
+            encodedLength in 1L..MAX_BASE64_CHARS
 
         private fun defaultClient(): OkHttpClient =
             OkHttpClient.Builder()
