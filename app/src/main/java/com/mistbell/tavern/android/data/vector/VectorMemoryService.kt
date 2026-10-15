@@ -62,7 +62,6 @@ class VectorMemoryService(
                     "owner_id" to ownerId,
                     "character_id" to characterId,
                     // Keep embeddings from different models in separate retrieval namespaces.
-                    "embedding_model" to embeddingService.getModelId(),
                     "session_id" to sessionId,
                     "message_id" to messageId,
                     "content_type" to contentType,
@@ -112,6 +111,8 @@ class VectorMemoryService(
                 mutableMapOf<String, Any>(
                     "owner_id" to ownerId,
                     "character_id" to characterId,
+                    // Keep embeddings from different models in separate retrieval namespaces.
+                    "embedding_model" to embeddingService.getModelId(),
                 )
 
             // 如果指定了会话ID，则只检索当前会话
