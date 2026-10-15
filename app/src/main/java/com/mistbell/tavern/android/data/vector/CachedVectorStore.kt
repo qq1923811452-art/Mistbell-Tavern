@@ -51,6 +51,7 @@ class CachedVectorStore(
         }
     }
 
+    @Suppress("ReturnCount")
     override suspend fun search(
         queryVector: FloatArray,
         topK: Int,
