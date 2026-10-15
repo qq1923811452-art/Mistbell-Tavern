@@ -98,13 +98,15 @@ data class Usage(
         get() = cacheHitTokens > 0 || cacheMissTokens > 0 || nestedCachedTokens != null
 
     val reportedCacheHitTokens: Int?
-        get() = when {
+        get() =
+            when {
             cacheHitTokens > 0 || cacheMissTokens > 0 -> cacheHitTokens
             else -> nestedCachedTokens
         }
 
     val reportedCacheMissTokens: Int?
-        get() = when {
+        get() =
+            when {
             cacheHitTokens > 0 || cacheMissTokens > 0 -> cacheMissTokens
             else -> nestedCachedTokens?.let { cached -> (promptTokens - cached).coerceAtLeast(0) }
         }
