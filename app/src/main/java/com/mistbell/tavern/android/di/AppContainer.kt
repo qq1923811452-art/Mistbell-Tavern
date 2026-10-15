@@ -49,7 +49,68 @@ class AppContainer(private val appContext: Context) {
 
     private data class EmbeddingRuntime(
         val embeddingService: EmbeddingService,
-        val vectorMemoryService: VectorMemoryService
+        val vectorMemoryService: VectorMemoryService,
+    )
+
+    @Volatile private var currentEmbeddingRuntime: EmbeddingRuntime? = null
+
+    /** Resolve lazily and publish the embedding/vector service pair atomically. */
+    private fun getOrCreateEmbeddingRuntime(): EmbeddingRuntime =
+        currentEmbeddingRuntime ?: synchronized(embeddingLock) {
+            currentEmbeddingRuntime ?: kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
+                val service = assembleEmbeddingService()
+                EmbeddingRuntime(
+                    embeddingService = service,
+                    vectorMemoryService = VectorMemoryService(vectorStore, service),
+                ).also { currentEmbeddingRuntime = it }
+            }
+        }
+
+    val embeddingService: EmbeddingService
+        get() = getOrCreateEmbeddingRuntime().embeddingService
+
+    private suspend fun assembleEmbeddingService(): EmbeddingService {
+        val source =
+            runCatching { database.settingsDao().getValue("embedding_source") }.getOrNull()
+        return try {
+            when (source) {
+                "local" -> {
+                    Log.d(TAG, "Embedding source=local: loading bge-small-zh (ONNX, lazy)")
+                    runCatching { LocalEmbeddingService.create(appContext) }
+                        .onFailure { Log.e(TAG, "Local embedding init failed, fallback to mock", it) }
+                        .getOrElse { MockEmbeddingService() }
+                }
+                "api" -> openAiEmbeddingOrMock()
+                else ->
+                    if (getEmbeddingApiKey().isNotBlank()) {
+                        openAiEmbeddingOrMock()
+                    } else {
+                        MockEmbeddingService()
+                    }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to initialize embedding service: ${e.message}", e)
+            MockEmbeddingService()
+        }
+    }
+
+    private fun openAiEmbeddingOrMock(): EmbeddingService {
+        val apiKey = getEmbeddingApiKey()
+        val baseUrl = getEmbeddingBaseUrl()
+        return if (apiKey.isNotBlank()) {
+            Log.d(TAG, "Using OpenAI Embedding Service (lazy)")
+            OpenAIEmbeddingService(
+                apiKey = apiKey,
+                baseUrl = baseUrl,
+                model = "text-embedding-3-small",
+            )
+        } else {
+            Log.d(TAG, "No embedding API key, vector memory unavailable (lexical fallback)")
+            MockEmbeddingService()
+        }
+    }
+
+    val vectorMemoryService: VectorMemoryService
         get() = getOrCreateEmbeddingRuntime().vectorMemoryService
 
     /** Refresh both services as one atomic runtime after embedding settings change. */
