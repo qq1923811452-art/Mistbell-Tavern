@@ -52,6 +52,7 @@ class BackupManager(private val context: Context) {
     data class BackupSummary(
         val added: Map<String, Int> = emptyMap(),
         val skipped: Map<String, Int> = emptyMap(),
+        val warnings: List<String> = emptyList(),
     ) {
         val totalAdded: Int get() = added.values.sum()
         val totalSkipped: Int get() = skipped.values.sum()
@@ -210,6 +211,7 @@ class BackupManager(private val context: Context) {
         val themePacks: List<ThemePackEntity> = emptyList(),
         val apiConfigs: List<ApiConfigBackupEntry> = emptyList(),
         val customPrompts: List<CustomPromptBackupEntry> = emptyList(),
+        val decodeWarnings: List<String> = emptyList(),
     )
 
     companion object {
@@ -297,6 +299,7 @@ class BackupManager(private val context: Context) {
             manifest: BackupManifest,
             entryName: String,
             serializer: KSerializer<T>,
+            warnings: MutableList<String>? = null,
         ): List<T> {
             val text = files[entryName]
             val expectedCount = manifest.counts[entryName]
@@ -306,12 +309,20 @@ class BackupManager(private val context: Context) {
                 }
                 return emptyList()
             }
-            try {
-                require(json.parseToJsonElement(text) is JsonArray) { "不是 JSON 数组" }
-            } catch (e: IllegalArgumentException) {
-                throw IllegalArgumentException("备份文件损坏：$entryName 无法解析为 JSON 数组", e)
-            }
+            val array =
+                try {
+                    json.parseToJsonElement(text) as? JsonArray
+                        ?: throw IllegalArgumentException("不是 JSON 数组")
+                } catch (e: IllegalArgumentException) {
+                    throw IllegalArgumentException("备份文件损坏：$entryName 无法解析为 JSON 数组", e)
+                }
             val decoded = decodeList(text, serializer)
+            if (decoded.size < array.size) {
+                warnings?.add("备份表 $entryName 有 ${array.size - decoded.size} 条记录无法解析，已跳过")
+            }
+            if (expectedCount != null && expectedCount != array.size) {
+                warnings?.add("备份清单中 $entryName 声明 $expectedCount 条，文件实际包含 ${array.size} 条")
+            }
             require(expectedCount == null || expectedCount == 0 || decoded.isNotEmpty()) {
                 "备份文件损坏：清单声明 $entryName 有 $expectedCount 条数据，但没有任何可恢复记录"
             }
@@ -475,17 +486,18 @@ class BackupManager(private val context: Context) {
             // 文件写入在事务提交之后（文件系统不可回滚，不参与原子性）：
             // 主题包资产仅在目录缺失时铺入；向量库仅当本地不存在时铺入（避免覆盖更健康的本地索引）
             writeAuxiliaryFiles(files, tables.themePacks)
-            summary
+            summary.copy(warnings = tables.decodeWarnings)
         }
 
     private fun decodeTables(
         files: Map<String, String>,
         manifest: BackupManifest,
     ): Tables {
+        val decodeWarnings = mutableListOf<String>()
         fun <T> decode(
             entryName: String,
             serializer: KSerializer<T>,
-        ): List<T> = decodeBackupList(files, manifest, entryName, serializer)
+        ): List<T> = decodeBackupList(files, manifest, entryName, serializer, decodeWarnings)
 
         return Tables(
             characters = decode(CHARACTERS, CharacterEntity.serializer()),
@@ -508,6 +520,7 @@ class BackupManager(private val context: Context) {
                     decode(CUSTOM_PROMPTS, CustomPromptBackupEntry.serializer()),
                     CUSTOM_PROMPTS,
                 ) { it.id },
+            decodeWarnings = decodeWarnings,
         )
     }
 
