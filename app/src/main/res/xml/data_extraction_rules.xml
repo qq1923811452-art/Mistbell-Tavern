@@ -18,5 +18,7 @@
         <exclude domain="database" path="tavern.db-wal" />
         <exclude domain="database" path="tavern.db-shm" />
         <exclude domain="file" path="vector_store.json" />
+        <exclude domain="file" path="vector_store.json.bak" />
+        <exclude domain="file" path="vector_store_quarantine/" />
     </device-transfer>
 </data-extraction-rules>
