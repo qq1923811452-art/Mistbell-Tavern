@@ -363,47 +363,47 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
                 }
             }
         }
-    }
-
-    private fun createCompatibleEngine(modelPath: String): EmbeddingGemma2LocalEmbeddingService {
-        var gpuFailure: Throwable? = null
-        var gpuEngine: EmbeddingEngine? = null
-        try {
-            val candidate =
-                EmbeddingEngine(EmbeddingEngineConfig(modelPath = modelPath, backend = Backend.GPU()))
-            gpuEngine = candidate
-            candidate.initialize()
-            Log.i(TAG, "Generic EmbeddingGemma 2 initialized with GPU backend (NPU intentionally skipped)")
-            return EmbeddingGemma2LocalEmbeddingService(candidate, "GPU", "generic-8c9f652")
-        } catch (e: Exception) {
-            gpuFailure = e
-            gpuEngine?.let { runCatching { it.close() } }
-            Log.w(TAG, "Generic EmbeddingGemma 2 GPU unavailable; retrying on CPU", e)
-        } catch (e: LinkageError) {
-            gpuFailure = e
-            gpuEngine?.let { runCatching { it.close() } }
-            Log.w(TAG, "Generic EmbeddingGemma 2 GPU native runtime unavailable; retrying on CPU", e)
-        }
-
-        var cpuEngine: EmbeddingEngine? = null
-        try {
-            val candidate =
-                EmbeddingEngine(EmbeddingEngineConfig(modelPath = modelPath, backend = Backend.CPU()))
-            cpuEngine = candidate
-            candidate.initialize()
-            Log.i(TAG, "Generic EmbeddingGemma 2 initialized with CPU backend")
-            return EmbeddingGemma2LocalEmbeddingService(candidate, "CPU", "generic-8c9f652")
-        } catch (e: Exception) {
-            cpuEngine?.let { runCatching { it.close() } }
-            throw IOException("Generic EmbeddingGemma 2 could not initialize on GPU or CPU", e).also {
-                gpuFailure?.let(it::addSuppressed)
+        private fun createCompatibleEngine(modelPath: String): EmbeddingGemma2LocalEmbeddingService {
+            var gpuFailure: Throwable? = null
+            var gpuEngine: EmbeddingEngine? = null
+            try {
+                val candidate =
+                    EmbeddingEngine(EmbeddingEngineConfig(modelPath = modelPath, backend = Backend.GPU()))
+                gpuEngine = candidate
+                candidate.initialize()
+                Log.i(TAG, "Generic EmbeddingGemma 2 initialized with GPU backend (NPU intentionally skipped)")
+                return EmbeddingGemma2LocalEmbeddingService(candidate, "GPU", "generic-8c9f652")
+            } catch (e: Exception) {
+                gpuFailure = e
+                gpuEngine?.let { runCatching { it.close() } }
+                Log.w(TAG, "Generic EmbeddingGemma 2 GPU unavailable; retrying on CPU", e)
+            } catch (e: LinkageError) {
+                gpuFailure = e
+                gpuEngine?.let { runCatching { it.close() } }
+                Log.w(TAG, "Generic EmbeddingGemma 2 GPU native runtime unavailable; retrying on CPU", e)
             }
-        } catch (e: LinkageError) {
-            cpuEngine?.let { runCatching { it.close() } }
-            throw IOException("Generic EmbeddingGemma 2 native runtime is unavailable", e).also {
-                gpuFailure?.let(it::addSuppressed)
+    
+            var cpuEngine: EmbeddingEngine? = null
+            try {
+                val candidate =
+                    EmbeddingEngine(EmbeddingEngineConfig(modelPath = modelPath, backend = Backend.CPU()))
+                cpuEngine = candidate
+                candidate.initialize()
+                Log.i(TAG, "Generic EmbeddingGemma 2 initialized with CPU backend")
+                return EmbeddingGemma2LocalEmbeddingService(candidate, "CPU", "generic-8c9f652")
+            } catch (e: Exception) {
+                cpuEngine?.let { runCatching { it.close() } }
+                throw IOException("Generic EmbeddingGemma 2 could not initialize on GPU or CPU", e).also {
+                    gpuFailure?.let(it::addSuppressed)
+                }
+            } catch (e: LinkageError) {
+                cpuEngine?.let { runCatching { it.close() } }
+                throw IOException("Generic EmbeddingGemma 2 native runtime is unavailable", e).also {
+                    gpuFailure?.let(it::addSuppressed)
+                }
             }
         }
+    
     }
 
     private val inferenceMutex = Mutex()
