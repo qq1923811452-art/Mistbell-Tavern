@@ -221,22 +221,35 @@ jobs:
           previous_report_context = ""
           if review_mode == "re-review":
               comments_url = f"https://api.github.com/repos/{repository}/issues/{pr_number}/comments?per_page=100&sort=created&direction=desc"
-              comments_request = urllib.request.Request(comments_url, headers=api_headers)
-              try:
-                  with urllib.request.urlopen(comments_request, timeout=30) as response:
-                      comments = json.loads(response.read().decode("utf-8", errors="replace"))
-              except Exception as exc:
-                  print("Could not load previous AI audit report:", type(exc).__name__)
-                  raise SystemExit(1)
-              prior_reports = [
-                  item for item in comments
-                  if isinstance(item, dict)
-                  and ((item.get("user") or {}).get("login") == "github-actions[bot]")
-                  and "<!-- ai-pr-audit-report -->" in str(item.get("body") or "")
-              ]
-              if not prior_reports:
+              previous_report = None
+              # Walk newest-first comment pages until the latest bot audit report is found.
+              for _ in range(10):
+                  comments_request = urllib.request.Request(comments_url, headers=api_headers)
+                  try:
+                      with urllib.request.urlopen(comments_request, timeout=30) as response:
+                          comments = json.loads(response.read().decode("utf-8", errors="replace"))
+                          link_header = response.headers.get("Link", "")
+                  except Exception as exc:
+                      print("Could not load previous AI audit report:", type(exc).__name__)
+                      raise SystemExit(1)
+                  if not isinstance(comments, list):
+                      raise SystemExit("GitHub issue comments response was not a list.")
+                  prior_reports = [
+                      item for item in comments
+                      if isinstance(item, dict)
+                      and ((item.get("user") or {}).get("login") == "github-actions[bot]")
+                      and "<!-- ai-pr-audit-report -->" in str(item.get("body") or "")
+                  ]
+                  if prior_reports:
+                      previous_report = prior_reports[0]
+                      break
+                  next_link = re.search(r'<([^>]+)>;\\s*rel="next"', link_header)
+                  if not next_link:
+                      break
+                  comments_url = next_link.group(1)
+              if previous_report is None:
                   raise SystemExit("Re-review requested, but no previous AI audit report by github-actions[bot] was found.")
-              previous_report_context = redact_sensitive_text(str(prior_reports[0].get("body") or ""))[:16000]
+              previous_report_context = redact_sensitive_text(str(previous_report.get("body") or ""))[:16000]
               try:
                   with urllib.request.urlopen(metadata_url, timeout=30) as response:
                       final_metadata = json.loads(response.read().decode("utf-8", errors="replace"))
