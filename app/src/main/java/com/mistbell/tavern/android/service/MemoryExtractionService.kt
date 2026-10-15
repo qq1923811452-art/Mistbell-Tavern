@@ -93,7 +93,29 @@ class MemoryExtractionService(
                                 sessionId = sessionId,
                                 messageIds = messageIds,
                             )
-                        structuredMemoryRepository.createMemory(memory)
+                        val newMemoryId = structuredMemoryRepository.createMemory(memory)
+                        candidate.supersededMemoryIds.forEach { oldMemoryId ->
+                            try {
+                                val oldMemory = structuredMemoryRepository.getMemoryById(oldMemoryId)
+                                if (oldMemory != null) {
+                                    val historicalMemory =
+                                        oldMemory.copy(
+                                            structuredData =
+                                                TemporalMemoryFactPolicy.markHistorical(
+                                                    oldMemory.structuredData,
+                                                    Instant.now().toString(),
+                                                    newMemoryId,
+                                                ),
+                                            tags = (oldMemory.tags + "历史事实").distinct().take(8),
+                                            keywords = (oldMemory.keywords + "历史事实").distinct().take(8),
+                                            importance = min(oldMemory.importance, 6),
+                                        )
+                                    structuredMemoryRepository.updateMemory(historicalMemory)
+                                }
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Failed to mark superseded memory as historical: ${e.message}", e)
+                            }
+                        }
                         savedCount++
                         Log.d(TAG, "Saved memory candidate #$savedCount")
                     } catch (e: Exception) {
