@@ -123,18 +123,18 @@ class BackupManagerTest {
         val warnings = mutableListOf<String>()
         val partial =
             BackupManager.decodeBackupList(
-            files = mapOf("settings.json" to """[{"key":"a","value":"1"},{"key":42}]"""),
-            manifest =
-                BackupManager.BackupManifest(
-                format = 1,
-                appVersion = "test",
-                createdAt = "test",
-                counts = mapOf("settings.json" to 2),
-            ),
-            entryName = "settings.json",
-            serializer = serializer,
-            warnings = warnings,
-        )
+                files = mapOf("settings.json" to """[{"key":"a","value":"1"},{"key":42}]"""),
+                manifest =
+                    BackupManager.BackupManifest(
+                        format = 1,
+                        appVersion = "test",
+                        createdAt = "test",
+                        counts = mapOf("settings.json" to 2),
+                    ),
+                entryName = "settings.json",
+                serializer = serializer,
+                warnings = warnings,
+            )
 
         assertEquals(listOf(SettingsEntity("a", "1")), partial)
         assertTrue(warnings.any { it.contains("1 条记录无法解析") })
@@ -142,17 +142,17 @@ class BackupManagerTest {
         val optionalWarnings = mutableListOf<String>()
         val noRecords =
             BackupManager.decodeBackupList(
-            files = mapOf("settings.json" to """[{"key":42}]"""),
-            manifest =
-                BackupManager.BackupManifest(
-                format = 1,
-                appVersion = "legacy",
-                createdAt = "test",
-            ),
-            entryName = "settings.json",
-            serializer = serializer,
-            warnings = optionalWarnings,
-        )
+                files = mapOf("settings.json" to """[{"key":42}]"""),
+                manifest =
+                    BackupManager.BackupManifest(
+                        format = 1,
+                        appVersion = "legacy",
+                        createdAt = "test",
+                    ),
+                entryName = "settings.json",
+                serializer = serializer,
+                warnings = optionalWarnings,
+            )
 
         assertTrue(noRecords.isEmpty())
         assertTrue(optionalWarnings.any { it.contains("1 条记录无法解析") })
