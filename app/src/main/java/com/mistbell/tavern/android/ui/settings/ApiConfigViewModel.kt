@@ -90,7 +90,9 @@ class ApiConfigViewModel(application: Application) : AndroidViewModel(applicatio
                 apiConfigDao.getAll().count { ApiBaseUrlPolicy.writeRejectionReason(it.apiUrl) != null }
             if (configurationsRequiringUrlRepair > 0) {
                 _message.value =
-                    "配置迁移已完成，但有 $configurationsRequiringUrlRepair 个旧 API 地址不符合当前网络安全策略，已暂时清空地址以防止不安全请求。请在 API 配置中重新填写 HTTPS 或受支持的本机地址；原旧版配置数据仍保留。"
+                    "配置迁移已完成，但有 $configurationsRequiringUrlRepair 个旧 API 地址不符合当前网络安全策略，" +
+                    "已暂时清空地址以防止不安全请求。请在 API 配置中重新填写 HTTPS 或受支持的本机地址；" +
+                    "原旧版配置数据仍保留。"
             }
             val defaultConfig = apiConfigDao.getDefault()
             if (defaultConfig != null) {
