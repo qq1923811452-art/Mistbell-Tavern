@@ -28,6 +28,7 @@ import com.mistbell.tavern.android.TavernApplication
 import com.mistbell.tavern.android.ui.common.ModernTopBar
 import com.mistbell.tavern.android.ui.components.*
 import com.mistbell.tavern.android.ui.utils.clearFocusOnTap
+import com.mistbell.tavern.android.util.BoundedRead
 import com.mistbell.tavern.android.util.WorldBookParser
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -73,7 +74,7 @@ fun WorldBookListScreen(
                             try {
                                 val jsonString =
                                     context.contentResolver.openInputStream(uri)
-                                        ?.bufferedReader()?.use { it.readText() }
+                                        ?.use { BoundedRead.text(it, label = "世界书 JSON ") }
                                 if (jsonString != null) {
                                     // 兜底书名：取文件显示名去后缀，取不到用固定文案
                                     val fallbackName =
