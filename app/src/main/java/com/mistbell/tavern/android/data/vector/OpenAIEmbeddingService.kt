@@ -43,19 +43,6 @@ internal fun validateEmbeddingResponseOrder(
 }
 
 /**
- * Whether a provider response is worth retrying. Client errors other than rate limits are final.
- */
-internal fun isRetryableEmbeddingStatusCode(statusCode: Int): Boolean =
-    statusCode == HTTP_TOO_MANY_REQUESTS || statusCode in HTTP_SERVER_ERROR_MIN..HTTP_SERVER_ERROR_MAX
-
-private const val HTTP_TOO_MANY_REQUESTS = 429
-private const val HTTP_SERVER_ERROR_MIN = 500
-private const val HTTP_SERVER_ERROR_MAX = 599
-
-private class EmbeddingHttpException(val statusCode: Int) :
-    Exception("Embedding API returned HTTP $statusCode")
-
-/**
  * OpenAI Embedding 服务实现
  *
  * 移植自后端 OpenAIEmbeddingService.java
@@ -204,16 +191,12 @@ class OpenAIEmbeddingService(
                         )
                         delay(delayMs)
                     }
-                } catch (e: EmbeddingHttpException) {
-                    if (isRetryableEmbeddingStatusCode(e.statusCode)) {
+                } catch (e: Exception) {
+                    if (e.message?.contains("429") == true) {
                         lastException = e
                         if (attempt < MAX_RETRIES - 1) {
-                            val delayMultiplier = if (e.statusCode == HTTP_TOO_MANY_REQUESTS) 2 else 1
-                            val delayMs = INITIAL_RETRY_DELAY_MS * (1 shl attempt) * delayMultiplier
-                            Log.w(
-                                TAG,
-                                "Embedding HTTP ${e.statusCode}, retry ${attempt + 1}/$MAX_RETRIES after ${delayMs}ms",
-                            )
+                            val delayMs = INITIAL_RETRY_DELAY_MS * (1 shl attempt) * 2
+                            Log.w(TAG, "Rate limit hit, retry ${attempt + 1}/$MAX_RETRIES after ${delayMs}ms")
                             delay(delayMs)
                         }
                     } else {
@@ -252,7 +235,7 @@ class OpenAIEmbeddingService(
             val statusCode = response.code
             response.close()
             // Do not log untrusted gateway error bodies: some relays echo request headers or credentials.
-            throw EmbeddingHttpException(statusCode)
+            error("Embedding API returned HTTP $statusCode")
         }
 
         val responseBody =
@@ -269,10 +252,6 @@ class OpenAIEmbeddingService(
         }
 
         val embedding = embeddingResponse.data.first().embedding
-        val expectedDimension = lastKnownDimension
-        check(expectedDimension <= 0 || embedding.size == expectedDimension) {
-            "Embedding dimension mismatch: expected $expectedDimension, received ${embedding.size}"
-        }
 
         Log.d(TAG, "Generated embedding: dimension=${embedding.size}")
 
@@ -385,16 +364,11 @@ class OpenAIEmbeddingService(
                         delay(delayMs)
                     }
                 } catch (e: Exception) {
-                    if (e is EmbeddingHttpException && isRetryableEmbeddingStatusCode(e.statusCode)) {
+                    if (e.message?.contains("429") == true) {
                         lastException = e
                         if (attempt < MAX_RETRIES - 1) {
-                            val delayMultiplier = if (e.statusCode == HTTP_TOO_MANY_REQUESTS) 2 else 1
-                            val delayMs = INITIAL_RETRY_DELAY_MS * (1 shl attempt) * delayMultiplier
-                            Log.w(
-                                TAG,
-                                "Batch embedding HTTP ${e.statusCode}, retry ${attempt + 1}/$MAX_RETRIES " +
-                                    "after ${delayMs}ms",
-                            )
+                            val delayMs = INITIAL_RETRY_DELAY_MS * (1 shl attempt) * 2
+                            Log.w(TAG, "Rate limit hit, retry ${attempt + 1}/$MAX_RETRIES after ${delayMs}ms")
                             delay(delayMs)
                         }
                     } else {
@@ -433,7 +407,7 @@ class OpenAIEmbeddingService(
             val statusCode = response.code
             response.close()
             // Do not log untrusted gateway error bodies: some relays echo request headers or credentials.
-            throw EmbeddingHttpException(statusCode)
+            error("Embedding API returned HTTP $statusCode")
         }
 
         val responseBody =
@@ -451,21 +425,11 @@ class OpenAIEmbeddingService(
 
         Log.d(TAG, "Generated ${embeddingResponse.data.size} embeddings in batch")
 
-        val orderedIndexes =
-            validateEmbeddingResponseOrder(embeddingResponse.data.map { it.index }, texts.size)
-        val embeddings = orderedIndexes.map { index ->
+        val orderedIndexes = validateEmbeddingResponseOrder(embeddingResponse.data.map { it.index }, texts.size)
+        return orderedIndexes.map { index ->
             val embedding = embeddingResponse.data[index].embedding
             FloatArray(embedding.size) { i -> embedding[i].toFloat() }
         }
-        val dimensions = embeddings.map { it.size }.distinct()
-        val expectedDimension = lastKnownDimension
-        check(
-            dimensions.size <= 1 &&
-                (expectedDimension <= 0 || dimensions.singleOrNull() == expectedDimension),
-        ) {
-            "Embedding batch dimension mismatch: expected $expectedDimension, received $dimensions"
-        }
-        return embeddings
     }
 
     override fun modelId(): String {
