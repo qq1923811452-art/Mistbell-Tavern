@@ -164,9 +164,8 @@ internal object AnthropicChatProtocol : ChatProtocol {
                 (event.message?.usage ?: event.usage)?.let {
                     StreamParseResult.UsageUpdate(normalizeUsage(it))
                 } ?: StreamParseResult.Ignore
-            // message_delta 只带累计 output_tokens，input_tokens 缺省为 0。
-            // 这里把 totalTokens 也置 0（=本帧未提供），交给 LlmClient 用量合并器：
-            // prompt 保留 message_start 的真实值，total 取 prompt+completion —— 不再覆盖成 0（修 P2-1）
+            // 官方 message_delta 通常只带累计 output_tokens；兼容网关也可能回传缓存用量。
+            // normalizeUsage 会把缺省输入字段置 0，合并器按字段取最大值以保留 message_start 真值。
             "message_delta" ->
                 event.usage?.let {
                     // Keep any cache counters supplied by compatible gateways. Missing input
