@@ -381,25 +381,50 @@ class MemoryExtractionService(
             structuredMemoryRepository
                 .getMemoriesByCharacter(ownerId, characterId)
                 .first()
-
-        return candidates
-            .mapNotNull { candidate ->
-                val normalized =
-                    candidate.copy(
-                        content = sanitizeMemoryContent(candidate.content),
-                        memoryType = normalizeMemoryType(candidate.memoryType),
-                    )
-                if (!isUsableMemoryContent(normalized.content)) return@mapNotNull null
-
-                val enhanced =
-                    enhanceImportance(normalized)
-                        .copy(keywords = enrichKeywords(normalized).distinct().take(8))
-
-                if (enhanced.importance < MIN_IMPORTANCE_SCORE) return@mapNotNull null
-                if (isDuplicate(enhanced, existingMemories)) return@mapNotNull null
-                enhanced
+        val existingFacts =
+            existingMemories.mapNotNull { memory ->
+                TemporalMemoryFactPolicy.parseFact(memory.id, memory.structuredData)
             }
-            .distinctBy { normalizeForCompare(it.content) }
+        val validated = mutableListOf<MemoryCandidate>()
+
+        candidates.forEach { candidate ->
+            val normalized =
+                candidate.copy(
+                    content = sanitizeMemoryContent(candidate.content),
+                    memoryType = normalizeMemoryType(candidate.memoryType),
+                )
+            if (!isUsableMemoryContent(normalized.content)) return@forEach
+
+            val enhanced =
+                enhanceImportance(normalized)
+                    .copy(keywords = enrichKeywords(normalized).distinct().take(8))
+            if (enhanced.importance < MIN_IMPORTANCE_SCORE) return@forEach
+
+            val relatedFacts =
+                TemporalMemoryFactPolicy.findRelatedFacts(
+                    subject = enhanced.subject,
+                    relation = enhanced.relation,
+                    objectValue = enhanced.objValue,
+                    existingFacts = existingFacts,
+                )
+            val supersededFacts =
+                TemporalMemoryFactPolicy.findConflicts(
+                    subject = enhanced.subject,
+                    relation = enhanced.relation,
+                    objectValue = enhanced.objValue,
+                    content = enhanced.content,
+                    existingFacts = existingFacts,
+                )
+            val ignoredDuplicateIds = relatedFacts.map { it.id }.toSet()
+            if (isDuplicate(enhanced, existingMemories, ignoredDuplicateIds)) return@forEach
+
+            validated +=
+                enhanced.copy(
+                    supersededMemoryIds = supersededFacts.map { it.id },
+                    previousValues = supersededFacts.map { it.objectValue },
+                )
+        }
+        return validated.distinctBy { normalizeForCompare(it.content) }
     }
 
     private fun convertToMemoryDomain(
