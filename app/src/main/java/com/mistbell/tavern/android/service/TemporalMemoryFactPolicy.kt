@@ -75,6 +75,19 @@ internal object TemporalMemoryFactPolicy {
         return relation.trim().lowercase() in singleValuedRelations || explicitlyUpdated
     }
 
+    /** Whether a later candidate in the same extraction batch supersedes a staged current fact. */
+    fun conflictsWithStagedFact(
+        subject: String,
+        relation: String,
+        objectValue: String,
+        content: String,
+        stagedFact: Fact,
+    ): Boolean =
+        shouldSupersede(relation, content) &&
+            normalize(subject) == normalize(stagedFact.subject) &&
+            normalize(relation) == normalize(stagedFact.relation) &&
+            normalize(objectValue) != normalize(stagedFact.objectValue)
+
     fun findConflicts(
         subject: String,
         relation: String,
