@@ -487,7 +487,11 @@ class VectorMemoryServiceInstrumentedTest {
         override suspend fun add(id: String, vector: FloatArray, metadata: Map<String, Any>) =
             delegate.add(id, vector, metadata)
 
-        override suspend fun addBatch(entries: List<VectorStore.VectorEntry>) = delegate.addBatch(entries)
+        override suspend fun addBatch(
+            entries: List<VectorStore.VectorEntry>,
+        ) {
+            delegate.addBatch(entries)
+        }
 
         override suspend fun search(
             queryVector: FloatArray,
