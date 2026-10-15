@@ -113,6 +113,11 @@ class CachedVectorStore(
             is Set<*> -> value.map { normalizeFilterValue(it) }.sortedBy { it.toString() }
             is Iterable<*> -> value.map { normalizeFilterValue(it) }
             is Array<*> -> value.map { normalizeFilterValue(it) }
+            else -> normalizePrimitiveArray(value) ?: value
+        }
+
+    private fun normalizePrimitiveArray(value: Any): List<*>? =
+        when (value) {
             is IntArray -> value.toList()
             is LongArray -> value.toList()
             is FloatArray -> value.toList()
@@ -121,7 +126,7 @@ class CachedVectorStore(
             is ByteArray -> value.toList()
             is ShortArray -> value.toList()
             is CharArray -> value.toList()
-            else -> value
+            else -> null
         }
 
     private fun normalizeMap(value: Map<*, *>): List<Pair<String, Any?>> =
