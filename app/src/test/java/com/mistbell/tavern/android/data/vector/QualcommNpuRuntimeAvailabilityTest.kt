@@ -13,7 +13,7 @@ class QualcommNpuRuntimeAvailabilityTest {
         try {
             QualcommNpuRuntimeAvailability.requiredLibraries
                 .filterNot { it == QualcommNpuRuntimeAvailability.DISPATCH_LIBRARY }
-                .forEach { File(directory, it).createNewFile() }
+                .forEach { File(directory, it).writeBytes(byteArrayOf(1)) }
 
             assertTrue(
                 QualcommNpuRuntimeAvailability
@@ -26,11 +26,30 @@ class QualcommNpuRuntimeAvailabilityTest {
     }
 
     @Test
-    fun `complete matching runtime permits NPU initialization attempt`() {
+    fun `empty native library blocks unsafe NPU initialization`() {
+        val directory = Files.createTempDirectory("qnn-runtime-empty-").toFile()
+        try {
+            QualcommNpuRuntimeAvailability.requiredLibraries.forEach {
+                File(directory, it).writeBytes(byteArrayOf(1))
+            }
+            File(directory, "libQnnHtp.so").writeBytes(byteArrayOf())
+
+            assertTrue(
+                QualcommNpuRuntimeAvailability
+                    .missingLibraries(directory)
+                    .contains("libQnnHtp.so"),
+            )
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `complete nonempty runtime permits NPU initialization attempt`() {
         val directory = Files.createTempDirectory("qnn-runtime-ready-").toFile()
         try {
             QualcommNpuRuntimeAvailability.requiredLibraries.forEach {
-                File(directory, it).createNewFile()
+                File(directory, it).writeBytes(byteArrayOf(1))
             }
 
             assertEquals(emptyList<String>(), QualcommNpuRuntimeAvailability.missingLibraries(directory))
