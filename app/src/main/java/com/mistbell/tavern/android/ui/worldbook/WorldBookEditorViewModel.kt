@@ -117,7 +117,11 @@ class WorldBookEditorViewModel(application: Application) : AndroidViewModel(appl
 
     val recursiveScanEnabled: StateFlow<Boolean> =
         scanSettingsRepo.observeEnabled()
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(WorldBookScanSettingsRepository.SUBSCRIBE_TIMEOUT_MS), true)
+            .stateIn(
+                viewModelScope,
+                SharingStarted.WhileSubscribed(WorldBookScanSettingsRepository.SUBSCRIBE_TIMEOUT_MS),
+                true,
+            )
 
     val recursiveScanDepth: StateFlow<Int> =
         scanSettingsRepo.observeDepth()
