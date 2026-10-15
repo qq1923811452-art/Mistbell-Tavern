@@ -45,7 +45,13 @@ internal object TemporalMemoryFactPolicy {
         val normalizedSubject = normalize(subject)
         val normalizedRelation = normalize(relation)
         val normalizedObject = normalize(objectValue)
-        if (normalizedSubject.isBlank() || normalizedRelation.isBlank() || normalizedObject.isBlank()) {
+        if (
+            normalizedSubject.isBlank() ||
+            normalizedRelation.isBlank() ||
+            normalizedObject.isBlank() ||
+            normalizedRelation == "other" ||
+            normalizedRelation == "unknown"
+        ) {
             return emptyList()
         }
         return existingFacts.filter { existing ->
