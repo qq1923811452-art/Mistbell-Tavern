@@ -67,6 +67,14 @@ android {
         jvmTarget = "17"
     }
 
+    // Room MigrationTestHelper loads versioned schemas from androidTest assets.
+    // Reuse the compiler-exported schemas instead of copying or hand-authoring JSON files.
+    sourceSets {
+        androidTest {
+            assets.srcDirs += files("$projectDir/schemas")
+        }
+    }
+
     // Room schema 导出目录（exportSchema=true 时 KSP 输出到这里，迁移测试消费）
     ksp {
         arg("room.schemaLocation", "$projectDir/schemas")
