@@ -122,7 +122,7 @@ fun ImageGenerationSettingsSection() {
                 minLines = 3,
                 maxLines = 6,
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(IMAGE_SETTINGS_ROW_SPACING)) {
                 OutlinedTextField(
                     value = width,
                     onValueChange = { width = it.filter(Char::isDigit).take(4) },
