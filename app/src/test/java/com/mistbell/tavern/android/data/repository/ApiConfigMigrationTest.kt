@@ -72,7 +72,10 @@ class ApiConfigMigrationTest {
     fun `迁移拒绝不符合平台策略的远程明文 HTTP 地址`() {
         val providers =
             ApiConfigMigration.parseProvidersJson(
-                """[{"id":"legacy-http","name":"Legacy","endpoint":"http://api.example.com/v1","apiKey":"k","selectedModel":"m"}]""",
+                """
+                [{"id":"legacy-http","name":"Legacy","endpoint":"http://api.example.com/v1",
+                  "apiKey":"k","selectedModel":"m"}]
+                """.trimIndent(),
             )
         ApiConfigMigration.toApiConfigEntities(providers, activeId = "legacy-http", now = 0L)
     }
