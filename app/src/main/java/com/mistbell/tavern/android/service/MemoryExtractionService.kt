@@ -533,7 +533,9 @@ class MemoryExtractionService(
         if (candidateContent.isBlank()) return true
 
         return existing.any { memory ->
-            if (memory.id in ignoredMemoryIds) return@any false
+            if (memory.id in ignoredMemoryIds || TemporalMemoryFactPolicy.isHistorical(memory.structuredData)) {
+                return@any false
+            }
             val existingContent = normalizeForCompare(memory.content)
             if (existingContent.isBlank()) return@any false
             if (
