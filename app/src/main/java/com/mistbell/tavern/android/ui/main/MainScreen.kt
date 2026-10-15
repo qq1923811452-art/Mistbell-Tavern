@@ -99,7 +99,7 @@ fun MainScreen(
                         scope.launch {
                             val latestSession =
                                 withContext(Dispatchers.IO) {
-                                    (app as TavernApplication).database.sessionDao()
+                                    (app as TavernApplication).container.database.sessionDao()
                                         .getLatestByCharacter("local-user", character.id)
                                 }
 
