@@ -121,6 +121,9 @@ class OpenAIEmbeddingService(
         }
 
         val embedding = embeddingResponse.data.first().embedding
+        if (embedding.size != DIMENSION) {
+            throw Exception("Unexpected embedding dimension for model $model: ${embedding.size} (expected $DIMENSION)")
+        }
 
         Log.d(TAG, "Generated embedding: dimension=${embedding.size}")
 
