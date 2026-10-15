@@ -63,10 +63,7 @@ class VectorMemoryService(
      *
      * available=false 时调用方应跳过向量写入/检索，改走词法回退（LexicalMemoryService）。
      */
-    val available: Boolean =
-        embeddingService is OpenAIEmbeddingService ||
-            embeddingService is LocalEmbeddingService ||
-            embeddingService is EmbeddingGemma2LocalEmbeddingService
+    val available: Boolean = embeddingService.isSemantic
 
     private val embeddingModelId = embeddingService.modelId()
     private val legacyVectorsCompatible = embeddingService.supportsLegacyVectors()
@@ -108,6 +105,7 @@ class VectorMemoryService(
     private suspend fun embedCached(
         text: String,
         source: String,
+        isQuery: Boolean = false,
     ): FloatArray {
         val key = embeddingCacheKey(text)
         val mutex = embeddingCacheMutexes[Math.floorMod(key.hashCode(), embeddingCacheMutexes.size)]
@@ -122,7 +120,12 @@ class VectorMemoryService(
                 )
                 return@withLock cached
             }
-            val generated = embeddingService.embed(text, source)
+            val generated =
+                if (isQuery) {
+                    embeddingService.embedQuery(text, source)
+                } else {
+                    embeddingService.embedDocument(text, source)
+                }
             synchronized(embeddingCache) {
                 embeddingCache[key] = generated.copyOf()
                 while (embeddingCache.size > EMBEDDING_CACHE_MAX_ENTRIES) {
@@ -216,7 +219,7 @@ class VectorMemoryService(
         if (topK <= 0) return emptyList()
         try {
             // 1. 查询向量化
-            val queryEmbedding = embedCached(query, "EMBEDDING_MEMORY_QUERY")
+            val queryEmbedding = embedCached(query, "EMBEDDING_MEMORY_QUERY", isQuery = true)
 
             // 2. Filter by scope and embedding model in the store first. This avoids
             // materializing and sorting vectors from unrelated embedding spaces on the common path.
