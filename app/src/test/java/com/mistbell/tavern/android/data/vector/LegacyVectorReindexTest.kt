@@ -12,88 +12,91 @@ class LegacyVectorReindexTest {
     @Test
     fun `reindexes legacy entry and removes it only after replacement is stored`() =
         runBlocking {
-        val store = FakeVectorStore(
-            VectorStore.VectorEntry(
-                id = "legacy-vector",
-                vector = floatArrayOf(0.2f, 0.3f),
-                metadata = legacyMetadata(),
-            ),
-        )
-        val embedding = TestEmbeddingService()
-        val result = VectorMemoryService(store, embedding).reindexLegacyVectors()
+            val store = FakeVectorStore(
+                VectorStore.VectorEntry(
+                    id = "legacy-vector",
+                    vector = floatArrayOf(0.2f, 0.3f),
+                    metadata = legacyMetadata(),
+                ),
+            )
+            val embedding = TestEmbeddingService()
+            val result = VectorMemoryService(store, embedding).reindexLegacyVectors()
 
-        assertEquals(1, result.scannedLegacy)
-        assertEquals(1, result.migrated)
-        assertEquals(0, result.skipped)
-        assertEquals(1, embedding.batchCalls)
-        assertNull(store.get("legacy-vector"))
-        val replacement = store.getAllEntries().single()
-        assertEquals("test:model:v2", replacement.metadata["embedding_model"])
-        assertEquals("remember this detail", replacement.metadata["content"])
-        assertEquals(2, replacement.vector.size)
-    }
-
-    @Test
-    fun `keeps legacy entry when required identity metadata is missing`() = runBlocking {
-        val store = FakeVectorStore(
-            VectorStore.VectorEntry(
-                id = "legacy-incomplete",
-                vector = floatArrayOf(0.2f, 0.3f),
-                metadata = mapOf("content" to "orphaned content"),
-            ),
-        )
-
-        val result = VectorMemoryService(store, TestEmbeddingService()).reindexLegacyVectors()
-
-        assertEquals(1, result.scannedLegacy)
-        assertEquals(0, result.migrated)
-        assertEquals(1, result.skipped)
-        assertNotNull(store.get("legacy-incomplete"))
-        assertEquals(1, store.entries.size)
-    }
-
-    @Test
-    fun `keeps legacy entry when embedding batch fails`() = runBlocking {
-        val store = FakeVectorStore(
-            VectorStore.VectorEntry(
-                id = "legacy-vector",
-                vector = floatArrayOf(0.2f, 0.3f),
-                metadata = legacyMetadata(),
-            ),
-        )
-        val embedding = TestEmbeddingService(failBatch = true)
-
-        try {
-            VectorMemoryService(store, embedding).reindexLegacyVectors()
-            throw AssertionError("Expected embedding failure")
-        } catch (expected: IllegalStateException) {
-            assertTrue(expected.message.orEmpty().contains("embedding failed"))
+            assertEquals(1, result.scannedLegacy)
+            assertEquals(1, result.migrated)
+            assertEquals(0, result.skipped)
+            assertEquals(1, embedding.batchCalls)
+            assertNull(store.get("legacy-vector"))
+            val replacement = store.getAllEntries().single()
+            assertEquals("test:model:v2", replacement.metadata["embedding_model"])
+            assertEquals("remember this detail", replacement.metadata["content"])
+            assertEquals(2, replacement.vector.size)
         }
 
-        assertNotNull(store.get("legacy-vector"))
-        assertEquals(1, store.entries.size)
-    }
-
     @Test
-    fun `mock embeddings cannot be persisted by legacy reindex`() = runBlocking {
-        val store = FakeVectorStore(
-            VectorStore.VectorEntry(
-                id = "legacy-vector",
-                vector = floatArrayOf(0.2f, 0.3f),
-                metadata = legacyMetadata(),
-            ),
-        )
+    fun `keeps legacy entry when required identity metadata is missing`() =
+        runBlocking {
+            val store = FakeVectorStore(
+                VectorStore.VectorEntry(
+                    id = "legacy-incomplete",
+                    vector = floatArrayOf(0.2f, 0.3f),
+                    metadata = mapOf("content" to "orphaned content"),
+                ),
+            )
 
-        try {
-            VectorMemoryService(store, MockEmbeddingService()).reindexLegacyVectors()
-            fail("Expected mock embedding reindex to be rejected")
-        } catch (expected: IllegalStateException) {
-            assertTrue(expected.message.orEmpty().contains("mock vectors must never be persisted"))
+            val result = VectorMemoryService(store, TestEmbeddingService()).reindexLegacyVectors()
+
+            assertEquals(1, result.scannedLegacy)
+            assertEquals(0, result.migrated)
+            assertEquals(1, result.skipped)
+            assertNotNull(store.get("legacy-incomplete"))
+            assertEquals(1, store.entries.size)
         }
 
-        assertNotNull(store.get("legacy-vector"))
-        assertEquals(1, store.entries.size)
-    }
+    @Test
+    fun `keeps legacy entry when embedding batch fails`() =
+        runBlocking {
+            val store = FakeVectorStore(
+                VectorStore.VectorEntry(
+                    id = "legacy-vector",
+                    vector = floatArrayOf(0.2f, 0.3f),
+                    metadata = legacyMetadata(),
+                ),
+            )
+            val embedding = TestEmbeddingService(failBatch = true)
+
+            try {
+                VectorMemoryService(store, embedding).reindexLegacyVectors()
+                throw AssertionError("Expected embedding failure")
+            } catch (expected: IllegalStateException) {
+                assertTrue(expected.message.orEmpty().contains("embedding failed"))
+            }
+
+            assertNotNull(store.get("legacy-vector"))
+            assertEquals(1, store.entries.size)
+        }
+
+    @Test
+    fun `mock embeddings cannot be persisted by legacy reindex`() =
+        runBlocking {
+            val store = FakeVectorStore(
+                VectorStore.VectorEntry(
+                    id = "legacy-vector",
+                    vector = floatArrayOf(0.2f, 0.3f),
+                    metadata = legacyMetadata(),
+                ),
+            )
+
+            try {
+                VectorMemoryService(store, MockEmbeddingService()).reindexLegacyVectors()
+                fail("Expected mock embedding reindex to be rejected")
+            } catch (expected: IllegalStateException) {
+                assertTrue(expected.message.orEmpty().contains("mock vectors must never be persisted"))
+            }
+
+            assertNotNull(store.get("legacy-vector"))
+            assertEquals(1, store.entries.size)
+        }
 
     private fun legacyMetadata(): Map<String, Any> =
         mapOf(
