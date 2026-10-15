@@ -10,7 +10,6 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
-import java.util.UUID
 
 private fun recordVectorStorageFailure(
     storageError: MutableStateFlow<String?>,
@@ -36,6 +35,7 @@ private fun recordVectorStorageFailure(
  * 1. 存储消息到向量数据库
  * 2. 语义检索相关记忆
  */
+@Suppress("TooManyFunctions")
 class VectorMemoryService(
     private val vectorStore: VectorStore,
     private val embeddingService: EmbeddingService,
@@ -46,6 +46,8 @@ class VectorMemoryService(
         private const val EMBEDDING_CACHE_LOAD_FACTOR = 0.75f
         private const val EMBEDDING_CACHE_MAX_ENTRIES = 512
         private const val EMBEDDING_CACHE_STRIPE_COUNT = 32
+        // Keep explicit legacy reindex requests bounded to limit peak memory and API batch cost.
+        private const val LEGACY_REINDEX_BATCH_SIZE = 32
         private const val HEX_BYTE_WIDTH = 2
         private const val BYTE_MASK = 0xff
     }
@@ -145,10 +147,19 @@ class VectorMemoryService(
         contentType: String,
     ): String {
         try {
-            // 1. 生成向量
-            val embedding = embedCached(content, "EMBEDDING_STORE_${contentType.uppercase()}")
+            val identity = VectorIdentity(ownerId, characterId, sessionId, messageId, contentType, embeddingModelId)
+            val vectorId = generateVectorId(identity)
+            val existing = vectorStore.get(vectorId)
+            if (
+                existing?.metadata?.get("content") == content &&
+                existing.metadata["embedding_model"] == embeddingModelId
+            ) {
+                Log.d(TAG, "Reused persisted embedding for message: $messageId")
+                return vectorId
+            }
 
-            // 2. 构建元数据
+            // Generate only when this exact message/model version is not already persisted.
+            val embedding = embedCached(content, "EMBEDDING_STORE_${contentType.uppercase()}")
             val metadata =
                 mapOf(
                     "owner_id" to ownerId,
@@ -161,10 +172,7 @@ class VectorMemoryService(
                     "created_at" to System.currentTimeMillis().toString(),
                 )
 
-            // 3. 生成向量ID
-            val vectorId = generateVectorId()
-
-            // 4. 存储到向量数据库
+            // Stable IDs make repeated writes idempotent instead of accumulating duplicates.
             vectorStore.add(vectorId, embedding, metadata)
 
             Log.d(TAG, "Stored message vector: $messageId -> $vectorId")
@@ -351,6 +359,234 @@ class VectorMemoryService(
     }
 
     /**
+     * Re-embed legacy vectors that have no embedding-model identity.
+     *
+     * This operation is explicit because remote reindexing may incur API cost. Replacements are
+     * persisted before legacy entries are deleted; incomplete metadata is skipped, never guessed.
+     */
+    suspend fun reindexLegacyVectors(
+        batchSize: Int = LEGACY_REINDEX_BATCH_SIZE,
+    ): LegacyReindexResult {
+        require(batchSize > 0) { "batchSize must be positive" }
+        check(embeddingService !is MockEmbeddingService) {
+            "Legacy vector reindex requires a real embedding service; mock vectors must never be persisted"
+        }
+        val legacyEntries =
+            vectorStore.getAllEntries().filter {
+                it.metadata["embedding_model"]?.toString().isNullOrBlank()
+            }
+        val preparation = prepareLegacyCandidates(legacyEntries)
+        var skipped = preparation.skipped
+        var reused = preparation.reused
+        var reindexed = 0
+
+        preparation.candidates.chunked(batchSize).forEach { batch ->
+            val result = reindexLegacyBatch(batch)
+            skipped += result.skipped
+            reused += result.reused
+            reindexed += result.reindexed
+        }
+
+        return LegacyReindexResult(
+            scannedLegacy = legacyEntries.size,
+            migrated = reused + reindexed,
+            skipped = skipped,
+            reused = reused,
+        )
+    }
+
+    @Suppress("CyclomaticComplexMethod", "ComplexCondition")
+    private suspend fun prepareLegacyCandidates(
+        entries: List<VectorStore.VectorEntry>,
+    ): LegacyCandidatePreparation {
+        var skipped = 0
+        val candidates = mutableListOf<LegacyVectorCandidate>()
+        for (entry in entries) {
+            val metadata = entry.metadata
+            val content = metadata["content"] as? String
+            val ownerId = metadata["owner_id"] as? String
+            val characterId = metadata["character_id"] as? String
+            val sessionId = metadata["session_id"] as? String
+            val messageId = metadata["message_id"] as? String
+            val contentType = metadata["content_type"] as? String
+            if (
+                content.isNullOrBlank() || ownerId.isNullOrBlank() || characterId.isNullOrBlank() ||
+                sessionId.isNullOrBlank() || messageId.isNullOrBlank() || contentType.isNullOrBlank()
+            ) {
+                skipped++
+                continue
+            }
+            val targetId =
+                generateVectorId(
+                    VectorIdentity(
+                        ownerId,
+                        characterId,
+                        sessionId,
+                        messageId,
+                        contentType,
+                        embeddingModelId,
+                    ),
+                )
+            candidates +=
+                LegacyVectorCandidate(
+                    legacyId = entry.id,
+                    targetId = targetId,
+                    content = content,
+                    metadata =
+                        metadata.toMutableMap().apply {
+                            put("embedding_model", embeddingModelId)
+                        },
+                )
+        }
+
+        // Multiple historical versions can share the same logical identity. Do not guess which
+        // content is authoritative: leave every ambiguous legacy copy untouched for manual review.
+        val ambiguousTargetIds =
+            candidates.groupingBy { it.targetId }
+                .eachCount()
+                .filterValues { it > 1 }
+                .keys
+        if (ambiguousTargetIds.isNotEmpty()) {
+            val ambiguousCount = candidates.count { it.targetId in ambiguousTargetIds }
+            candidates.removeAll { it.targetId in ambiguousTargetIds }
+            skipped += ambiguousCount
+            Log.w(TAG, "Skipped $ambiguousCount legacy vectors with ambiguous logical identities")
+        }
+
+        var reused = 0
+        val pending = mutableListOf<LegacyVectorCandidate>()
+        for (candidate in candidates) {
+            val existingTarget = vectorStore.get(candidate.targetId)
+            if (
+                existingTarget != null &&
+                existingTarget.metadata["embedding_model"] == embeddingModelId &&
+                existingTarget.metadata["content"] == candidate.content
+            ) {
+                if (candidate.legacyId != candidate.targetId) {
+                    vectorStore.delete(candidate.legacyId)
+                }
+                reused++
+            } else {
+                pending += candidate
+            }
+        }
+        return LegacyCandidatePreparation(pending, skipped, reused)
+    }
+
+    private suspend fun reindexLegacyBatch(
+        batch: List<LegacyVectorCandidate>,
+    ): LegacyBatchResult {
+        // Recheck target IDs immediately before embedding. Another writer may have stored
+        // a newer version after the initial snapshot; never overwrite that version blindly.
+        val readyBatch = mutableListOf<LegacyVectorCandidate>()
+        var skipped = 0
+        var reused = 0
+        for (candidate in batch) {
+            val existingTarget = vectorStore.get(candidate.targetId)
+            if (
+                existingTarget == null ||
+                (existingTarget.id == candidate.legacyId && existingTarget.metadata["embedding_model"] == null)
+            ) {
+                readyBatch += candidate
+            } else if (
+                existingTarget.metadata["embedding_model"] == embeddingModelId &&
+                existingTarget.metadata["content"] == candidate.content
+            ) {
+                if (candidate.legacyId != candidate.targetId) vectorStore.delete(candidate.legacyId)
+                reused++
+            } else {
+                skipped++
+                Log.w(TAG, "Skipped legacy vector because its target ID now contains different content")
+            }
+        }
+        if (readyBatch.isEmpty()) {
+            return LegacyBatchResult(reindexed = 0, skipped = skipped, reused = reused)
+        }
+
+        val embeddings = embeddingService.embedBatch(
+            readyBatch.map { it.content },
+            "EMBEDDING_LEGACY_REINDEX",
+        )
+        check(embeddings.size == readyBatch.size) {
+            "Legacy vector reindex count mismatch: expected ${readyBatch.size}, received ${embeddings.size}"
+        }
+        val expectedDimension = embeddingService.getDimension()
+        val actualDimensions = embeddings.map { it.size }.distinct()
+        check(
+            actualDimensions.size <= 1 &&
+                (expectedDimension <= 0 || actualDimensions.singleOrNull() == expectedDimension),
+        ) {
+            "Legacy vector reindex returned unexpected dimensions: $actualDimensions (expected $expectedDimension)"
+        }
+        vectorStore.addBatch(
+            readyBatch.mapIndexed { index, candidate ->
+                VectorStore.VectorEntry(candidate.targetId, embeddings[index], candidate.metadata)
+            },
+        )
+        // Delete only after the replacement batch has been persisted.
+        readyBatch.filter { it.legacyId != it.targetId }
+            .forEach { vectorStore.delete(it.legacyId) }
+        return LegacyBatchResult(
+            reindexed = readyBatch.size,
+            skipped = skipped,
+            reused = reused,
+        )
+    }
+
+    private fun generateVectorId(identity: VectorIdentity): String {
+        val encodedIdentity =
+            listOf(
+                identity.ownerId,
+                identity.characterId,
+                identity.sessionId,
+                identity.messageId,
+                identity.contentType,
+                identity.modelId,
+            ).joinToString(separator = "\u0000")
+        val digest =
+            MessageDigest.getInstance("SHA-256")
+                .digest(encodedIdentity.toByteArray(StandardCharsets.UTF_8))
+        return "vec_" + digest.joinToString("") { byte ->
+            ("%0" + HEX_BYTE_WIDTH + "x").format(byte.toInt() and BYTE_MASK)
+        }
+    }
+
+    private data class VectorIdentity(
+        val ownerId: String,
+        val characterId: String,
+        val sessionId: String,
+        val messageId: String,
+        val contentType: String,
+        val modelId: String,
+    )
+
+    private data class LegacyVectorCandidate(
+        val legacyId: String,
+        val targetId: String,
+        val content: String,
+        val metadata: Map<String, Any>,
+    )
+
+    private data class LegacyCandidatePreparation(
+        val candidates: List<LegacyVectorCandidate>,
+        val skipped: Int,
+        val reused: Int,
+    )
+
+    private data class LegacyBatchResult(
+        val reindexed: Int,
+        val skipped: Int,
+        val reused: Int,
+    )
+
+    data class LegacyReindexResult(
+        val scannedLegacy: Int,
+        val migrated: Int,
+        val skipped: Int,
+        val reused: Int,
+    )
+
+    /**
      * 获取向量存储统计信息
      */
     suspend fun getStatistics(): VectorStatistics {
@@ -367,13 +603,6 @@ class VectorMemoryService(
             Log.e(TAG, "Failed to get statistics (${e.javaClass.simpleName})")
             VectorStatistics(0, 0)
         }
-    }
-
-    /**
-     * 生成向量ID
-     */
-    private fun generateVectorId(): String {
-        return "vec_${UUID.randomUUID().toString().replace("-", "")}"
     }
 
     /**
