@@ -204,8 +204,8 @@ class OpenAIEmbeddingService(
                         )
                         delay(delayMs)
                     }
-                } catch (e: Exception) {
-                    if (e is EmbeddingHttpException && isRetryableEmbeddingStatusCode(e.statusCode)) {
+                } catch (e: EmbeddingHttpException) {
+                    if (isRetryableEmbeddingStatusCode(e.statusCode)) {
                         lastException = e
                         if (attempt < MAX_RETRIES - 1) {
                             val delayMultiplier = if (e.statusCode == HTTP_TOO_MANY_REQUESTS) 2 else 1
@@ -451,14 +451,18 @@ class OpenAIEmbeddingService(
 
         Log.d(TAG, "Generated ${embeddingResponse.data.size} embeddings in batch")
 
-        val orderedIndexes = validateEmbeddingResponseOrder(embeddingResponse.data.map { it.index }, texts.size)
+        val orderedIndexes =
+            validateEmbeddingResponseOrder(embeddingResponse.data.map { it.index }, texts.size)
         val embeddings = orderedIndexes.map { index ->
             val embedding = embeddingResponse.data[index].embedding
             FloatArray(embedding.size) { i -> embedding[i].toFloat() }
         }
         val dimensions = embeddings.map { it.size }.distinct()
         val expectedDimension = lastKnownDimension
-        check(dimensions.size <= 1 && (expectedDimension <= 0 || dimensions.singleOrNull() == expectedDimension)) {
+        check(
+            dimensions.size <= 1 &&
+                (expectedDimension <= 0 || dimensions.singleOrNull() == expectedDimension),
+        ) {
             "Embedding batch dimension mismatch: expected $expectedDimension, received $dimensions"
         }
         return embeddings
