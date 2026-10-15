@@ -5,26 +5,30 @@ import com.mistbell.tavern.android.TavernApplication
 import com.mistbell.tavern.android.data.api.LlmConfig
 import com.mistbell.tavern.android.data.local.entity.SettingsEntity
 import com.mistbell.tavern.android.util.SecureStore
+import java.net.URI
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.net.URI
 
 /** Independent provider settings for background memory extraction; stored in the existing KV table. */
 data class MemoryExtractionModelSettings(
     val baseUrl: String = "",
     val apiKey: String = "",
     val model: String = "",
+    val keyNeedsReentry: Boolean = false,
 ) {
-    /** A dedicated model is active only when its endpoint and model are explicitly configured. */
+    /** Remote endpoints require a key; a blank key is accepted only for loopback endpoints. */
     fun toLlmConfigOrNull(): LlmConfig? {
         val normalizedBaseUrl = baseUrl.trim().trimEnd('/')
         val normalizedModel = model.trim()
         val endpoint = runCatching { URI(normalizedBaseUrl) }.getOrNull()
+        val host = endpoint?.host?.lowercase()
         val validEndpoint =
             endpoint != null &&
                 endpoint.scheme in setOf("http", "https") &&
-                !endpoint.host.isNullOrBlank()
-        return if (normalizedBaseUrl.isNotBlank() && normalizedModel.isNotBlank() && validEndpoint) {
+                !host.isNullOrBlank()
+        val loopbackEndpoint = host in setOf("localhost", "127.0.0.1", "::1", "[::1]")
+        val validKey = !keyNeedsReentry && (apiKey.isNotBlank() || loopbackEndpoint)
+        return if (normalizedBaseUrl.isNotBlank() && normalizedModel.isNotBlank() && validEndpoint && validKey) {
             LlmConfig(
                 baseUrl = normalizedBaseUrl,
                 apiKey = apiKey.trim(),
@@ -42,6 +46,7 @@ class MemoryExtractionModelSettingsRepository {
 
     suspend fun load(): MemoryExtractionModelSettings =
         withContext(Dispatchers.IO) {
+            // Read the three values from one Room snapshot so a concurrent save cannot mix versions.
             val values =
                 database.withTransaction {
                     Triple(
@@ -50,16 +55,34 @@ class MemoryExtractionModelSettingsRepository {
                         settingsDao.getValue(KEY_MODEL).orEmpty(),
                     )
                 }
+            val storedApiKey = values.second
+            val decryptedApiKey =
+                if (storedApiKey.isBlank()) {
+                    ""
+                } else {
+                    try {
+                        SecureStore.unwrap(storedApiKey)
+                    } catch (_: Exception) {
+                        android.util.Log.w(
+                            TAG,
+                            "Stored independent memory API key could not be decrypted; re-entry is required",
+                        )
+                        ""
+                    }
+                }
+            val keyNeedsReentry = storedApiKey.isNotBlank() && decryptedApiKey.isBlank()
             MemoryExtractionModelSettings(
                 baseUrl = values.first,
-                apiKey = SecureStore.unwrap(values.second),
+                apiKey = decryptedApiKey,
                 model = values.third,
+                keyNeedsReentry = keyNeedsReentry,
             )
         }
 
     suspend fun save(settings: MemoryExtractionModelSettings) {
         withContext(Dispatchers.IO) {
-            val encryptedApiKey = SecureStore.wrap(settings.apiKey.trim())
+            val apiKey = settings.apiKey.trim()
+            val encryptedApiKey = if (apiKey.isBlank()) "" else SecureStore.wrap(apiKey)
             database.withTransaction {
                 settingsDao.upsert(SettingsEntity(KEY_BASE_URL, settings.baseUrl.trim()))
                 settingsDao.upsert(SettingsEntity(KEY_API_KEY, encryptedApiKey))
@@ -71,6 +94,7 @@ class MemoryExtractionModelSettingsRepository {
     suspend fun resolveLlmConfigOrNull(): LlmConfig? = load().toLlmConfigOrNull()
 
     companion object {
+        private const val TAG = "MemoryModelSettings"
         const val KEY_BASE_URL = "memory_llm_base_url"
         const val KEY_API_KEY = "memory_llm_api_key"
         const val KEY_MODEL = "memory_llm_model"
