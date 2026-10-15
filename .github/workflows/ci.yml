@@ -25,14 +25,14 @@ on:
   workflow_dispatch:
     inputs:
       full_android_validation:
-        description: "Build the final APK and run Android emulator/migration tests"
+        description: "Build and upload the final verified debug APK artifact (emulator tests run automatically)"
         required: false
         type: boolean
         default: false
   workflow_call:
     inputs:
       full_android_validation:
-        description: "Build the final APK and run Android emulator/migration tests"
+        description: "Build and upload the final verified debug APK artifact (emulator tests run automatically)"
         required: false
         type: boolean
         default: false
@@ -78,7 +78,7 @@ jobs:
       - name: Run quality gate
         id: quality_gate
         run: ./gradlew :app:compileDebugKotlin :app:testDebugUnitTest :app:detekt :app:ktlintCheck licenseGuard --continue --no-daemon --no-parallel
-      
+
       # Keep Room's compiler-generated schema available for review and committing.
       # In particular, migration PRs must not hand-author identity hashes.
       - name: Upload generated Room schema
@@ -101,12 +101,15 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
+  # Emulator/instrumentation tests are a normal CI gate, not an opt-in release step.
+  # Gradle builds the debug/test APKs required to execute tests, but no APK is
+  # copied or published as a release artifact during routine verification.
   instrumented-tests:
     needs: verify
-    if: ${{ needs.verify.result == 'success' && needs.verify.outputs.quality_gate == 'success' && inputs.full_android_validation == true }}
-    name: Final APK, Android emulator, and migration validation
+    if: ${{ needs.verify.result == 'success' && needs.verify.outputs.quality_gate == 'success' }}
+    name: Android emulator and migration validation
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 55
     steps:
       - name: Checkout the exact verified commit
         uses: actions/checkout@v4
@@ -139,7 +142,7 @@ jobs:
 
       - name: Enable KVM for Android emulator
         run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=/dev/kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
@@ -153,10 +156,60 @@ jobs:
           emulator-boot-timeout: 900
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
           disable-animations: true
-          script: ./gradlew :app:assembleDebug :app:connectedDebugAndroidTest --no-daemon --no-parallel
+          script: ./gradlew :app:connectedDebugAndroidTest --no-daemon --no-parallel
+
+      - name: Upload Android instrumentation reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-instrumented-test-reports-${{ github.run_number }}
+          path: |
+            app/build/reports/androidTests/connected/**
+            app/build/outputs/androidTest-results/connected/**
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # Only explicit final-validation runs publish a downloadable APK artifact.
+  verified-apk:
+    needs: [verify, instrumented-tests]
+    if: ${{ inputs.full_android_validation == true && needs.verify.result == 'success' && needs.instrumented-tests.result == 'success' }}
+    name: Build and publish verified debug APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout the exact tested commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.verify.outputs.tested_sha }}
+          fetch-depth: 0
+
+      - name: Confirm checked-out commit matches tested source
+        shell: bash
+        env:
+          VERIFIED_SHA: ${{ needs.verify.outputs.tested_sha }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          actual_sha="$(git rev-parse HEAD)"
+          test "$actual_sha" = "$VERIFIED_SHA"
+          test "$actual_sha" = "$SOURCE_SHA"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Ensure Gradle wrapper is executable
+        run: chmod +x ./gradlew
+
+      - name: Build final debug APK
+        run: ./gradlew :app:assembleDebug --no-daemon --no-parallel
 
       - name: Generate APK checksum and provenance
-        if: success()
         shell: bash
         env:
           SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -176,10 +229,9 @@ jobs:
           printf 'source_sha=%s\ntested_sha=%s\nworkflow_run_id=%s\nquality_gate=%s\n' "$SOURCE_SHA" "$tested_sha" "$GITHUB_RUN_ID" "$QUALITY_GATE" > SOURCE.txt
 
       - name: Upload verified APK, checksum, and provenance
-        if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: mistbell-${{ needs.verify.outputs.quality_gate == 'success' && 'verified' || 'unverified' }}-debug-apk-${{ github.run_number }}
+          name: mistbell-verified-debug-apk-${{ github.run_number }}
           path: build-artifacts/*
           if-no-files-found: error
           retention-days: 14
