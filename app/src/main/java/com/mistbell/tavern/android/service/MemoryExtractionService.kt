@@ -521,11 +521,13 @@ class MemoryExtractionService(
     private fun isDuplicate(
         candidate: MemoryCandidate,
         existing: List<StructuredMemory>,
+        ignoredMemoryIds: Set<Long> = emptySet(),
     ): Boolean {
         val candidateContent = normalizeForCompare(candidate.content)
         if (candidateContent.isBlank()) return true
 
         return existing.any { memory ->
+            if (memory.id in ignoredMemoryIds) return@any false
             val existingContent = normalizeForCompare(memory.content)
             if (existingContent.isBlank()) return@any false
             if (
