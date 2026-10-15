@@ -100,6 +100,18 @@ class StreamParseUsageTest {
     }
 
     @Test
+    fun `anthropic message_delta 保留网关提供的缓存用量`() {
+        val data =
+            """{"type":"message_delta","usage":{"output_tokens":12,"cache_creation_input_tokens":2,"cache_read_input_tokens":5}}"""
+        val usage = (AnthropicChatProtocol.parseStreamData(data) as StreamParseResult.UsageUpdate).usage
+        assertEquals(7, usage.promptTokens)
+        assertEquals(12, usage.completionTokens)
+        assertEquals(19, usage.totalTokens)
+        assertEquals(5, usage.cacheHitTokens)
+        assertEquals(2, usage.cacheMissTokens)
+    }
+
+    @Test
     fun `anthropic 流式正文增量不带 usage`() {
         val data = """{"type":"content_block_delta","delta":{"type":"text_delta","text":"片段"}}"""
         val result = AnthropicChatProtocol.parseStreamData(data)
