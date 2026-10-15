@@ -306,7 +306,7 @@ class BackupManager(private val context: Context) {
             }
             try {
                 require(json.parseToJsonElement(text) is JsonArray) { "不是 JSON 数组" }
-            } catch (e: Exception) {
+            } catch (e: IllegalArgumentException) {
                 throw IllegalArgumentException("备份文件损坏：$entryName 无法解析为 JSON 数组", e)
             }
             val decoded = decodeList(text, serializer)
