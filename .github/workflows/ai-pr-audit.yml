@@ -249,7 +249,10 @@ jobs:
                   comments_url = next_link.group(1)
               if previous_report is None:
                   raise SystemExit("Re-review requested, but no previous AI audit report by github-actions[bot] was found.")
-              previous_report_context = redact_sensitive_text(str(previous_report.get("body") or ""))[:16000]
+              prior_body = str(previous_report.get("body") or "")
+              if len(prior_body) > 16000:
+                  raise SystemExit("Previous AI audit report exceeds the safe re-review context limit (16000 characters); refusing a partial re-review that could silently omit findings.")
+              previous_report_context = redact_sensitive_text(prior_body)
               try:
                   with urllib.request.urlopen(metadata_url, timeout=30) as response:
                       final_metadata = json.loads(response.read().decode("utf-8", errors="replace"))
