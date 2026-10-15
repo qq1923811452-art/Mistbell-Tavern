@@ -145,7 +145,7 @@ class StructuredMemoryRepository(context: Context) {
     suspend fun createMemoryWithSupersession(
         memory: StructuredMemory,
         supersededIds: List<Long>,
-        transformSuperseded: (StructuredMemory, Long) -> StructuredMemory,
+        transformSuperseded: (StructuredMemory, Long, String) -> StructuredMemory,
     ): Long =
         withContext(Dispatchers.IO) {
             val now = Instant.now().toString()
@@ -157,7 +157,7 @@ class StructuredMemoryRepository(context: Context) {
                         supersededIds.distinct().mapNotNull { oldId ->
                             val oldMemory = memoryDao.getById(oldId)?.toDomain() ?: return@mapNotNull null
                             val transformed =
-                                transformSuperseded(oldMemory, newId).copy(updatedAt = Instant.now().toString())
+                                transformSuperseded(oldMemory, newId, now).copy(updatedAt = now)
                             memoryDao.update(StructuredMemoryEntity.fromDomain(transformed))
                             transformed
                         }
