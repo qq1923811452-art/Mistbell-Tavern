@@ -1,6 +1,7 @@
 package com.mistbell.tavern.android.data.repository
 
 import android.content.Context
+import androidx.room.withTransaction
 import android.util.Log
 import com.mistbell.tavern.android.TavernApplication
 import com.mistbell.tavern.android.data.api.model.StructuredMemory
@@ -137,6 +138,46 @@ class StructuredMemoryRepository(context: Context) {
             memoryId
         }
     }
+
+    /**
+     * Insert a new fact and mark its superseded facts historical in one Room transaction.
+     * Vector synchronization happens after commit so a slow embedding operation never holds
+     * the database transaction open. The transform must be a pure in-memory update.
+     */
+    suspend fun createMemoryWithSupersession(
+        memory: StructuredMemory,
+        supersededIds: List<Long>,
+        transformSuperseded: (StructuredMemory, Long, String) -> StructuredMemory,
+    ): Long =
+        withContext(Dispatchers.IO) {
+            val now = Instant.now().toString()
+            val preparedMemory = memory.copy(createdAt = now, updatedAt = now)
+            val (memoryId, updatedMemories) =
+                db.withTransaction {
+                    val newId = memoryDao.insert(StructuredMemoryEntity.fromDomain(preparedMemory))
+                    val updated =
+                        supersededIds.distinct().mapNotNull { oldId ->
+                            val oldMemory = memoryDao.getById(oldId)?.toDomain() ?: return@mapNotNull null
+                            val transformed = transformSuperseded(oldMemory, newId, now).copy(updatedAt = now)
+                            memoryDao.update(StructuredMemoryEntity.fromDomain(transformed))
+                            transformed
+                        }
+                    newId to updated
+                }
+
+            val createdMemory = preparedMemory.copy(id = memoryId)
+            if (createdMemory.shouldSyncToVector()) {
+                syncToVectorIfNeeded(createdMemory)
+            }
+            updatedMemories.forEach { historicalMemory ->
+                if (historicalMemory.shouldSyncToVector()) {
+                    syncToVectorIfNeeded(historicalMemory)
+                } else {
+                    deleteVectorCopy(historicalMemory.id)
+                }
+            }
+            memoryId
+        }
 
     // 更新记忆
     suspend fun updateMemory(
