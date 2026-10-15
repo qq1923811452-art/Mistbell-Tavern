@@ -234,7 +234,10 @@ fun WorldBookListScreen(
                         }
                         if (recursiveScanEnabled) {
                             Spacer(modifier = Modifier.height(8.dp))
-                            Text("最大扫描深度：$recursiveScanDepth", style = MaterialTheme.typography.bodySmall)
+                            Text(
+                                "最大扫描深度：$recursiveScanDepth",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
                             var pendingDepth by remember(recursiveScanDepth) {
                                 mutableStateOf(recursiveScanDepth.toFloat())
                             }
