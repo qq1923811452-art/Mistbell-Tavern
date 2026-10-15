@@ -224,17 +224,19 @@ class StructuredMemoryRepository(context: Context) {
      */
     private suspend fun syncToVectorIfNeeded(memory: StructuredMemory) {
         if (memory.importance < SYNC_THRESHOLD) {
+            deleteVectorCopy(memory.id)
             return
         }
 
         try {
-            val vectorContent = memory.buildVectorContent()
             val vectorMemoryService = TavernApplication.instance.container.vectorMemoryService
-
-            // 先清同 messageId 的旧副本再写入：编辑/重抽后不堆积重复向量
-            if (vectorMemoryService.available) {
-                vectorMemoryService.deleteByMessageId(vectorMessageId(memory.id))
+            // Never persist mock vectors. Stable model-scoped IDs replace this model's old content
+            // without deleting a different provider/model's stored vector for the same memory.
+            if (!vectorMemoryService.available) {
+                Log.d(TAG, "Skip vector sync for memory ${memory.id}: embedding service unavailable")
+                return
             }
+            val vectorContent = memory.buildVectorContent()
             vectorMemoryService.storeMessage(
                 // VectorMemory.ContentType.SUMMARY
                 content = vectorContent,
@@ -261,9 +263,8 @@ class StructuredMemoryRepository(context: Context) {
     private suspend fun deleteVectorCopy(memoryId: Long) {
         try {
             val vectorMemoryService = TavernApplication.instance.container.vectorMemoryService
-            if (vectorMemoryService.available) {
-                vectorMemoryService.deleteByMessageId(vectorMessageId(memoryId))
-            }
+            // Deletion only needs the vector store; it must work even when embeddings are unavailable.
+            vectorMemoryService.deleteByMessageId(vectorMessageId(memoryId))
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -280,9 +281,8 @@ class StructuredMemoryRepository(context: Context) {
     ) {
         try {
             val vectorMemoryService = TavernApplication.instance.container.vectorMemoryService
-            if (vectorMemoryService.available) {
-                vectorMemoryService.deleteSummaryVectors(ownerId, characterId, sessionId)
-            }
+            // Deletion only needs the vector store; it must work even when embeddings are unavailable.
+            vectorMemoryService.deleteSummaryVectors(ownerId, characterId, sessionId)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
