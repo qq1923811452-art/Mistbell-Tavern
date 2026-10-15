@@ -22,8 +22,20 @@ on:
       - "build.gradle*"
       - "settings.gradle*"
       - ".github/workflows/**"
-  workflow_call:
   workflow_dispatch:
+    inputs:
+      full_android_validation:
+        description: "Build the final APK and run Android emulator/migration tests"
+        required: false
+        type: boolean
+        default: false
+  workflow_call:
+    inputs:
+      full_android_validation:
+        description: "Build the final APK and run Android emulator/migration tests"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -91,7 +103,7 @@ jobs:
 
   instrumented-tests:
     needs: verify
-    if: ${{ needs.verify.result == 'success' && needs.verify.outputs.quality_gate == 'success' && (github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call') }}
+    if: ${{ needs.verify.result == 'success' && needs.verify.outputs.quality_gate == 'success' && inputs.full_android_validation == true }}
     name: Final APK, Android emulator, and migration validation
     runs-on: ubuntu-latest
     timeout-minutes: 45
