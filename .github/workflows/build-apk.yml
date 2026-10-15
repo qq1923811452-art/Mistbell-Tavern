@@ -137,8 +137,7 @@ jobs:
           test -n "$(find build-artifacts -maxdepth 1 -type f -name '*.apk' -print -quit)"
           cd build-artifacts
           sha256sum *.apk | tee SHA256SUMS.txt
-          printf 'source_sha=%s\ntested_sha=%s\nworkflow_run_id=%s\nquality_gate=%s\n' \\
-            "$SOURCE_SHA" "$tested_sha" "$GITHUB_RUN_ID" "$QUALITY_GATE" > SOURCE.txt
+          printf 'source_sha=%s\ntested_sha=%s\nworkflow_run_id=%s\nquality_gate=%s\n' "$SOURCE_SHA" "$tested_sha" "$GITHUB_RUN_ID" "$QUALITY_GATE" > SOURCE.txt
 
       - name: Upload verified APK, checksum, and provenance
         if: success()
