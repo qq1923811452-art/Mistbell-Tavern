@@ -398,16 +398,19 @@ object CharacterImporter {
             val charxResult = CharxImporter.importFromCharx(context, uri) ?: return null
 
             // 保存 CHARX 资源到本地
-            val assetPaths =
+            val assetResult =
                 CharxImporter.saveAssets(
                     context,
                     charxResult.character.id,
                     charxResult.assets,
                 )
 
-            // 添加资源信息到警告
+            // 添加资源信息到警告（失败项必须如实上报：旧实现只报「已保存 N 个」，用户无从得知缺了哪些）
             val warnings = charxResult.warnings.toMutableList()
-            warnings.add("CHARX 格式：已保存 ${assetPaths.size} 个资源文件")
+            warnings.add("CHARX 格式：已保存 ${assetResult.paths.size} 个资源文件")
+            if (assetResult.failures.isNotEmpty()) {
+                warnings.add("有 ${assetResult.failures.size} 个资源文件未写入：${assetResult.failures.joinToString("；")}")
+            }
 
             // CHARX 暂不支持内嵌世界书
             CharacterImportResult(
@@ -434,7 +437,7 @@ object CharacterImporter {
     ): CharacterImportResult? {
         return try {
             val inputStream: InputStream? = context.contentResolver.openInputStream(uri)
-            val jsonString = inputStream?.bufferedReader()?.use { it.readText() } ?: return null
+            val jsonString = inputStream?.use { BoundedRead.text(it, label = "角色卡 JSON ") } ?: return null
             CardParser.parse(jsonString)
         } catch (e: Exception) {
             android.util.Log.e("CharacterImporter", "读取 JSON 文件失败", e)
@@ -455,7 +458,7 @@ object CharacterImporter {
     ): CharacterImportResult? {
         return try {
             val bytes =
-                context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                context.contentResolver.openInputStream(uri)?.use { BoundedRead.bytes(it, label = "角色卡 PNG ") }
                     ?: return null
             val chunkText = PngCard.readTextChunk(bytes) ?: return null
             // v1 卡兜底：chunk 值不是 base64 但以 { 开头时按裸 JSON 处理

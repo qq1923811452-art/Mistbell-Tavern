@@ -1,6 +1,5 @@
 package com.mistbell.tavern.android.service
 
-import android.content.Context
 import com.mistbell.tavern.android.data.api.LlmClient
 import com.mistbell.tavern.android.data.api.LlmConfig
 import com.mistbell.tavern.android.data.repository.SettingsRepository
@@ -14,8 +13,8 @@ import kotlinx.coroutines.flow.flow
  * 负责调用远程 LLM API（OpenAI、Anthropic、Google 等）
  * 适配 LlmClient 进行实际的网络请求
  */
-class LocalProviderService(private val context: Context) {
-    private val settingsRepo = SettingsRepository(context)
+class LocalProviderService {
+    private val settingsRepo = SettingsRepository()
 
     /**
      * 聊天完成（流式）

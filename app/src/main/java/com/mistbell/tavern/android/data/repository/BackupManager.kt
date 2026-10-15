@@ -17,6 +17,7 @@ import com.mistbell.tavern.android.data.local.entity.ThemePackEntity
 import com.mistbell.tavern.android.data.local.entity.VectorMemoryEntity
 import com.mistbell.tavern.android.data.local.entity.WorldBookEntity
 import com.mistbell.tavern.android.data.local.entity.WorldBookEntryEntity
+import com.mistbell.tavern.android.util.ApiEndpointPolicy
 import com.mistbell.tavern.android.util.SecureStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -95,10 +96,13 @@ class BackupManager(private val context: Context) {
         val updatedAt: Long,
     ) {
         fun toEntity(): ApiConfigEntity {
+            // Backup endpoints are untrusted. Quarantine unsafe values as blank rather than aborting
+            // the whole restore; decodeTables adds a warning so the user can reconfigure this entry.
+            val safeApiUrl = endpointForRestore(apiUrl)
             val plainApiKey =
                 when {
                     apiKey.isEmpty() -> ""
-                    apiKey.startsWith("enc:v1:") -> {
+                    apiKey.startsWith(SecureStore.PREFIX) -> {
                         check(SecureStore.isEncrypted(apiKey)) {
                             "备份中的 API 配置 $id 使用不可解密的密钥，已中止恢复；请重新输入 API Key"
                         }
@@ -113,7 +117,7 @@ class BackupManager(private val context: Context) {
             return ApiConfigEntity(
                 id = id,
                 name = name,
-                apiUrl = apiUrl,
+                apiUrl = safeApiUrl,
                 apiKey = wrapRestoredApiKey(id, plainApiKey, SecureStore::wrap),
                 model = model,
                 isDefault = isDefault,
@@ -132,7 +136,7 @@ class BackupManager(private val context: Context) {
         companion object {
             fun fromEntity(entity: ApiConfigEntity): ApiConfigBackupEntry {
                 val encrypted = SecureStore.isEncrypted(entity.apiKey)
-                check(!entity.apiKey.startsWith("enc:v1:") || encrypted) {
+                check(!entity.apiKey.startsWith(SecureStore.PREFIX) || encrypted) {
                     "API 配置 ${entity.id} 的加密格式损坏，已中止备份以避免丢失敏感数据"
                 }
                 val plainKey = if (encrypted) SecureStore.unwrap(entity.apiKey) else entity.apiKey
@@ -333,7 +337,7 @@ class BackupManager(private val context: Context) {
         /** settings 导出条目：密文解为明文并标记 sensitive（明文原样直通） */
         fun toBackupEntry(entity: SettingsEntity): SettingsBackupEntry {
             val encrypted = SecureStore.isEncrypted(entity.value)
-            check(!entity.value.startsWith("enc:v1:") || encrypted) {
+            check(!entity.value.startsWith(SecureStore.PREFIX) || encrypted) {
                 "设置 ${entity.key} 的加密格式损坏，已中止备份以避免丢失敏感数据"
             }
             val sensitive = encrypted || isSensitiveSettingKey(entity.key)
@@ -485,9 +489,27 @@ class BackupManager(private val context: Context) {
             val summary = mergeTables(tables)
 
             // 文件写入在事务提交之后（文件系统不可回滚，不参与原子性）：
-            // 主题包资产仅在目录缺失时铺入；向量库仅当本地不存在时铺入（避免覆盖更健康的本地索引）
-            writeAuxiliaryFiles(files, tables.themePacks)
-            summary.copy(warnings = tables.decodeWarnings)
+            // 主题包资产仅在目录缺失时铺入；向量库仅当本地不存在时铺入（避免覆盖更健康的本地索引）。
+            //
+            // ⚠️ 走到这里数据库**已经提交**，所以资材写入失败**不能**当作整次恢复失败：
+            // 那会让调用方报「恢复失败」，而实际上数据已完整合并进库——用户会以为白恢复了。
+            // 因此降级为 warning，让 UI 如实呈现「数据已恢复，但部分资材未写入」。
+            val assetWarnings =
+                try {
+                    writeAuxiliaryFiles(files, tables.themePacks)
+                    emptyList()
+                } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                    throw cancelled
+                } catch (error: java.io.IOException) {
+                    auxiliaryRestoreWarning(error)
+                } catch (error: SecurityException) {
+                    auxiliaryRestoreWarning(error)
+                } catch (error: IllegalArgumentException) {
+                    auxiliaryRestoreWarning(error)
+                } catch (error: IllegalStateException) {
+                    auxiliaryRestoreWarning(error)
+                }
+            summary.copy(warnings = tables.decodeWarnings + assetWarnings)
         }
 
     private fun decodeTables(
@@ -501,6 +523,20 @@ class BackupManager(private val context: Context) {
             serializer: KSerializer<T>,
         ): List<T> = decodeBackupList(files, manifest, entryName, serializer, decodeWarnings)
 
+        val decodedApiConfigs =
+            requireUniqueBackupIds(
+                decode(API_CONFIGS, ApiConfigBackupEntry.serializer()),
+                API_CONFIGS,
+            ) { it.id }
+        val quarantinedApiConfigCount =
+            decodedApiConfigs.count { ApiEndpointPolicy.writeRejectionReason(it.apiUrl) != null }
+        if (quarantinedApiConfigCount > 0) {
+            decodeWarnings.add(
+                "备份中有 $quarantinedApiConfigCount 个 API 地址不符合当前网络安全策略；" +
+                    "导入这些配置时将清空地址以防止不安全请求，请在 API 配置中重新填写。",
+            )
+        }
+
         return Tables(
             characters = decode(CHARACTERS, CharacterEntity.serializer()),
             sessions = decode(SESSIONS, SessionEntity.serializer()),
@@ -512,11 +548,7 @@ class BackupManager(private val context: Context) {
             structuredMemories = decode(STRUCTURED_MEMORY, StructuredMemoryEntity.serializer()),
             vectorMemories = decode(VECTOR_MEMORY, VectorMemoryEntity.serializer()),
             themePacks = decode(THEME_PACKS, ThemePackEntity.serializer()),
-            apiConfigs =
-                requireUniqueBackupIds(
-                    decode(API_CONFIGS, ApiConfigBackupEntry.serializer()),
-                    API_CONFIGS,
-                ) { it.id },
+            apiConfigs = decodedApiConfigs,
             customPrompts =
                 requireUniqueBackupIds(
                     decode(CUSTOM_PROMPTS, CustomPromptBackupEntry.serializer()),
@@ -773,17 +805,11 @@ private fun storeEntry(
         }
 }
 
-/** Add the config ID to Keystore failures so a failed restore is diagnosable. */
-internal fun wrapRestoredApiKey(
-    id: String,
-    plainApiKey: String,
-    wrap: (String) -> String,
-): String =
-    try {
-        wrap(plainApiKey)
-    } catch (e: IllegalStateException) {
-        throw IllegalStateException("无法加密备份中 API 配置 $id 的密钥，已中止恢复", e)
-    }
+/** Keep untrusted imported asset paths and URLs out of restore messages and logs. */
+private fun auxiliaryRestoreWarning(error: Exception): List<String> {
+    android.util.Log.w("BackupManager", "Auxiliary restore failed (${error.javaClass.simpleName})")
+    return listOf("数据已恢复，但部分资材文件未写入；请检查附件是否完整。")
+}
 
 /** Reject ambiguous duplicate primary keys in imported tables before the merge transaction. */
 internal fun <T> requireUniqueBackupIds(

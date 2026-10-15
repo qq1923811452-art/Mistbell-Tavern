@@ -1,9 +1,11 @@
 package com.mistbell.tavern.android.data.repository
 
+import android.util.Log
 import androidx.room.withTransaction
 import com.mistbell.tavern.android.data.local.AppDatabase
 import com.mistbell.tavern.android.data.local.entity.ApiConfigEntity
 import com.mistbell.tavern.android.data.local.entity.SettingsEntity
+import com.mistbell.tavern.android.util.ApiEndpointPolicy
 import com.mistbell.tavern.android.util.SecureStore
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -51,6 +53,7 @@ internal data class ProviderConfig(
  * - 激活提供商的高级采样参数继续平铺写入 llm_* 覆盖键（getLlmConfig 后半段机制不变）。
  */
 object ApiConfigMigration {
+    private const val TAG = "ApiConfigMigration"
     const val MIGRATED_FLAG_KEY = "providers_migrated_v1"
 
     /** 纯函数：解密后的 providers_json → ProviderConfig 列表；空串合法，非空坏 JSON 必须失败。 */
@@ -81,6 +84,14 @@ object ApiConfigMigration {
                 updatedAt = now,
             )
         }
+
+    /**
+     * Legacy endpoints are sanitized rather than aborting the whole migration. Invalid endpoints
+     * become blank (and therefore unusable) until the user reconfigures them; the encrypted
+     * providers_json source is retained so the original value is not destroyed.
+     */
+    internal fun endpointForMigration(endpoint: String): String =
+        if (ApiEndpointPolicy.writeRejectionReason(endpoint) == null) endpoint else ""
 
     /** 纯函数：激活提供商的高级采样参数 → llm_* 平铺覆盖键（null = 空串清除覆盖） */
     internal fun activeProviderOverrides(active: ProviderConfig): List<Pair<String, String>> =
@@ -122,7 +133,7 @@ object ApiConfigMigration {
             val value = settingsDao.getValue(key).orEmpty()
             if (value.isBlank()) return@forEach
             val encrypted = SecureStore.isEncrypted(value)
-            val unreadableCiphertext = value.startsWith("enc:v1:") && !encrypted
+            val unreadableCiphertext = value.startsWith(SecureStore.PREFIX) && !encrypted
             if (unreadableCiphertext && key == "providers_json" && alreadyMigrated) return@forEach
             check(!unreadableCiphertext) {
                 "设置 $key 的加密数据不可读取，迁移已中止以保留原始数据"
@@ -137,7 +148,7 @@ object ApiConfigMigration {
     ) {
         val storedProvidersJson = settingsDao.getValue("providers_json").orEmpty()
         val decodedProvidersJson = SecureStore.unwrap(storedProvidersJson)
-        check(!storedProvidersJson.startsWith("enc:v1:") || decodedProvidersJson.isNotEmpty()) {
+        check(!storedProvidersJson.startsWith(SecureStore.PREFIX) || decodedProvidersJson.isNotEmpty()) {
             "无法解密旧版 API 配置，迁移已中止以保留原始数据"
         }
         val providers = parseProvidersJson(decodedProvidersJson)
@@ -150,7 +161,14 @@ object ApiConfigMigration {
         val now = System.currentTimeMillis()
         val entities =
             toApiConfigEntities(providers, activeId, now).map { entity ->
-                entity.copy(apiKey = SecureStore.wrap(entity.apiKey))
+                val safeEndpoint = endpointForMigration(entity.apiUrl)
+                if (safeEndpoint.isEmpty()) {
+                    // Do not abort migration of every provider because one legacy endpoint is unsafe.
+                    // The original providers_json remains encrypted for recovery; the migrated entry
+                    // is left unconfigured so it cannot make a request until the user fixes its URL.
+                    Log.w(TAG, "Legacy API config ${entity.id} requires endpoint reconfiguration after migration")
+                }
+                entity.copy(apiUrl = safeEndpoint, apiKey = SecureStore.wrap(entity.apiKey))
             }
         db.apiConfigDao().insertAll(entities)
 
@@ -169,7 +187,7 @@ object ApiConfigMigration {
         db.apiConfigDao().getAll().forEach { entity ->
             if (entity.apiKey.isNotBlank()) {
                 val encrypted = SecureStore.isEncrypted(entity.apiKey)
-                check(!entity.apiKey.startsWith("enc:v1:") || encrypted) {
+                check(!entity.apiKey.startsWith(SecureStore.PREFIX) || encrypted) {
                     "API 配置 ${entity.id} 的加密数据不可读取，迁移已中止以保留原始数据"
                 }
                 if (!encrypted) {

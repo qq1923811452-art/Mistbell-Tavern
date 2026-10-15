@@ -26,7 +26,7 @@ internal const val MAX_SELECTABLE_CHARACTERS = 4
 
 class ChatSetupViewModel(application: Application) : AndroidViewModel(application) {
     private val db = TavernApplication.instance.container.database
-    private val settingsRepo = SettingsRepository(application)
+    private val settingsRepo = SettingsRepository()
     private val worldBookRepo = WorldBookRepository(application)
 
     // 所有角色

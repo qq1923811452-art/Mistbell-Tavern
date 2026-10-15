@@ -4,7 +4,6 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.mistbell.tavern.android.TavernApplication
-import com.mistbell.tavern.android.data.api.ApiClient
 import com.mistbell.tavern.android.data.api.LlmConfig
 import com.mistbell.tavern.android.data.repository.BackupManager
 import com.mistbell.tavern.android.data.repository.ChatSettingsResolver
@@ -22,7 +21,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         private const val SUBSCRIBE_TIMEOUT_MS = 5000L
     }
 
-    private val repo = SettingsRepository(application)
+    private val repo = SettingsRepository()
     private val db get() = TavernApplication.instance.container.database
 
     private val _llmConfig = MutableStateFlow(LlmConfig())
@@ -257,7 +256,6 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch {
             _isLoading.value = true
             try {
-                repo.loadAndCacheSettings()
                 _settings.value = repo.observeSettings().first() as? JsonObject
             } catch (e: Exception) {
                 _message.value = "加载设置失败: ${e.message}"
@@ -516,19 +514,9 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     val isLoadingChangelog: StateFlow<Boolean> = _isLoadingChangelog.asStateFlow()
 
     fun loadChangelog() {
-        viewModelScope.launch {
-            _isLoadingChangelog.value = true
-            try {
-                val api = ApiClient.getApi(getApplication())
-                val response = api.getChangelog()
-                _changelog.value = response.versions
-            } catch (e: Exception) {
-                // 降级到默认数据
-                _changelog.value = getDefaultChangelog()
-            } finally {
-                _isLoadingChangelog.value = false
-            }
-        }
+        // 更新日志改为纯本地：原先会向硬编码的明文地址 GET /api/changelog（历史服务端架构遗留），
+        // 真机上必然失败并降级到内置数据，结果等同于本地数据，但会先产生一次明文请求。
+        _changelog.value = getDefaultChangelog()
     }
 
     private fun getDefaultChangelog(): List<com.mistbell.tavern.android.data.model.VersionInfo> {

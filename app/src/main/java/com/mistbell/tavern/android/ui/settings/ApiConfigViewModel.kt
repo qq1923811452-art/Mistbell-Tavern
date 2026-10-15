@@ -86,6 +86,14 @@ class ApiConfigViewModel(application: Application) : AndroidViewModel(applicatio
             if (apiConfigDao.getCount() == 0) {
                 createDefaultApiConfig()
             }
+            val configurationsRequiringUrlRepair =
+                apiConfigDao.getAll().count { ApiBaseUrlPolicy.writeRejectionReason(it.apiUrl) != null }
+            if (configurationsRequiringUrlRepair > 0) {
+                _message.value =
+                    "配置迁移已完成，但有 $configurationsRequiringUrlRepair 个旧 API 地址不符合当前网络安全策略，" +
+                    "已暂时清空地址以防止不安全请求。请在 API 配置中重新填写 HTTPS 或受支持的本机地址；" +
+                    "原旧版配置数据仍保留。"
+            }
             val defaultConfig = apiConfigDao.getDefault()
             if (defaultConfig != null) {
                 val configs = apiConfigDao.getAll()
@@ -131,6 +139,11 @@ class ApiConfigViewModel(application: Application) : AndroidViewModel(applicatio
     ) {
         viewModelScope.launch {
             try {
+                // 写入层强制校验：对话框的按钮禁用只是体验优化，不能作为安全边界。
+                ApiBaseUrlPolicy.writeRejectionReason(apiUrl)?.let { reason ->
+                    _message.value = reason
+                    return@launch
+                }
                 val newConfig =
                     ApiConfigEntity(
                         id = UUID.randomUUID().toString(),
@@ -162,6 +175,11 @@ class ApiConfigViewModel(application: Application) : AndroidViewModel(applicatio
     fun updateApiConfig(apiConfig: ApiConfig) {
         viewModelScope.launch {
             try {
+                // 同上：更新路径也必须过同一判据，否则任何新调用方都能绕过 UI 限制。
+                ApiBaseUrlPolicy.writeRejectionReason(apiConfig.apiUrl)?.let { reason ->
+                    _message.value = reason
+                    return@launch
+                }
                 val entity = apiConfig.toEntity()
                 apiConfigDao.update(entity.copy(updatedAt = System.currentTimeMillis()))
                 _message.value = "已更新 API 配置"

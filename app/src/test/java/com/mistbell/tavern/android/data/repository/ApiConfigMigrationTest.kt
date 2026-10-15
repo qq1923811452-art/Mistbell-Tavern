@@ -43,8 +43,8 @@ class ApiConfigMigrationTest {
         val providers =
             ApiConfigMigration.parseProvidersJson(
                 """[
-                  {"id":"p1","name":"A","endpoint":"u1","apiKey":"k1","selectedModel":"m1"},
-                  {"id":"p2","name":"B","endpoint":"u2","apiKey":"k2","selectedModel":"m2"}
+                  {"id":"p1","name":"A","endpoint":"https://u1.example.com","apiKey":"k1","selectedModel":"m1"},
+                  {"id":"p2","name":"B","endpoint":"https://u2.example.com","apiKey":"k2","selectedModel":"m2"}
                 ]""",
             )
         val entities = ApiConfigMigration.toApiConfigEntities(providers, activeId = "p2", now = 1000L)
@@ -57,7 +57,7 @@ class ApiConfigMigrationTest {
         assertEquals(false, entities[0].isDefault)
         assertEquals(true, entities[1].isDefault)
         // 字段映射
-        assertEquals("u2", entities[1].apiUrl)
+        assertEquals("https://u2.example.com", entities[1].apiUrl)
         assertEquals("k2", entities[1].apiKey)
         assertEquals("m2", entities[1].model)
         // sortOrder 按列表顺序
@@ -69,12 +69,26 @@ class ApiConfigMigrationTest {
     }
 
     @Test
+    fun unsafeLegacyEndpointIsQuarantinedWithoutBlockingOtherProviders() {
+        assertEquals("", ApiConfigMigration.endpointForMigration("http://api.example.com/v1"))
+        assertEquals("", ApiConfigMigration.endpointForMigration("https://user:secret@example.com/v1"))
+        assertEquals(
+            "https://api.example.com/v1",
+            ApiConfigMigration.endpointForMigration("https://api.example.com/v1"),
+        )
+        assertEquals(
+            "http://10.0.2.2:3000/",
+            ApiConfigMigration.endpointForMigration("http://10.0.2.2:3000/"),
+        )
+    }
+
+    @Test
     fun `迁移保留旧提供商的 type 与 1M 上下文标记`() {
         val providers =
             ApiConfigMigration.parseProvidersJson(
                 """[
-              {"id":"p1","name":"A","endpoint":"u","apiKey":"k","selectedModel":"m","type":"custom","context1M":true},
-              {"id":"p2","name":"B","endpoint":"u","apiKey":"k","selectedModel":"m","type":""}
+              {"id":"p1","name":"A","endpoint":"https://u.example.com","apiKey":"k","selectedModel":"m","type":"custom","context1M":true},
+              {"id":"p2","name":"B","endpoint":"https://u.example.com","apiKey":"k","selectedModel":"m","type":""}
             ]""",
             )
         val entities = ApiConfigMigration.toApiConfigEntities(providers, activeId = "", now = 0L)
@@ -89,7 +103,7 @@ class ApiConfigMigrationTest {
     fun `无 activeId 时第一个提供商为默认`() {
         val providers =
             ApiConfigMigration.parseProvidersJson(
-                """[{"id":"p1","name":"A","endpoint":"u","apiKey":"k","selectedModel":"m"}]""",
+                """[{"id":"p1","name":"A","endpoint":"https://u.example.com","apiKey":"k","selectedModel":"m"}]""",
             )
         val entities = ApiConfigMigration.toApiConfigEntities(providers, activeId = "", now = 0L)
         assertEquals(true, entities.single().isDefault)
@@ -101,7 +115,7 @@ class ApiConfigMigrationTest {
     fun `高级参数映射到 llm 覆盖键且 null 为空串`() {
         val providers =
             ApiConfigMigration.parseProvidersJson(
-                """[{"id":"p1","name":"A","endpoint":"u","apiKey":"k","selectedModel":"m",
+                """[{"id":"p1","name":"A","endpoint":"https://u.example.com","apiKey":"k","selectedModel":"m",
                      "temperature":0.7,"top_p":0.9,"top_k":40,"frequency_penalty":0.1,"max_tokens":2048}]""",
             )
         val overrides = ApiConfigMigration.activeProviderOverrides(providers.single()).toMap()
@@ -117,7 +131,7 @@ class ApiConfigMigrationTest {
     fun `高级参数全缺省映射为空串`() {
         val providers =
             ApiConfigMigration.parseProvidersJson(
-                """[{"id":"p1","name":"A","endpoint":"u","apiKey":"k","selectedModel":"m"}]""",
+                """[{"id":"p1","name":"A","endpoint":"https://u.example.com","apiKey":"k","selectedModel":"m"}]""",
             )
         val overrides = ApiConfigMigration.activeProviderOverrides(providers.single())
         assertEquals(5, overrides.size)

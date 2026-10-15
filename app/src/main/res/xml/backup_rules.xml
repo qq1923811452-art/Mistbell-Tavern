@@ -10,4 +10,6 @@
     <exclude domain="file" path="vector_store.json" />
     <exclude domain="file" path="vector_store.json.bak" />
     <exclude domain="file" path="vector_store_quarantine/" />
+    <!-- logs/ 含崩溃与运行日志（可能带用户内容片段），不进云备份 -->
+    <exclude domain="file" path="logs/" />
 </full-backup-content>

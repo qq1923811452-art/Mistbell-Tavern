@@ -161,6 +161,24 @@ object StSyncImporter {
     /** 目录递归深度上限：防异常嵌套拖死遍历 */
     private const val MAX_SCAN_DEPTH = 15
 
+    /**
+     * 单次批量导入的文件数量上限。
+     *
+     * 只限深度挡不住「一个扁平目录里塞几十万个文件」——那会让遍历与后续逐文件读取
+     * 长时间占满 IO。超过上限时**中止**而不是静默只导入一部分：部分导入对用户是
+     * 「看起来成功、实际缺数据」，比明确失败更糟。调用方已用 try/catch 显示失败原因。
+     */
+    private const val MAX_SCAN_FILES = 5_000
+
+    /**
+     * 单次扫描**遍历过的节点**上限（含目录与不匹配扩展名的文件）。
+     *
+     * 与 [MAX_SCAN_FILES] 的区别很重要：后者只在发现 `.png`/`.json` 时递增，
+     * 因此一棵塞满其它扩展名文件或大量子目录的树，可以在「可导入文件数」远未到限的情况下
+     * 持续执行游标查询与递归 —— 遍历工作量必须单独设限。
+     */
+    private const val MAX_SCAN_NODES = 50_000
+
     /** 扫描期单文件记录（relPath 用于报告展示与同名排序，不含文件内容） */
     private data class ScannedFile(
         val uri: Uri,
@@ -346,13 +364,14 @@ object StSyncImporter {
         return report
     }
 
-    /** 读文档树文件为 UTF-8 文本（去 BOM）；打不开返回 null（坏字节成 U+FFFD 由解析失败兜住，不致命） */
+    /** 读文档树文件为 UTF-8 文本（去 BOM）；打不开或超过大小上限返回 null（由解析失败兜住，不致命） */
     private fun readText(
         context: Context,
         uri: Uri,
     ): String? =
         context.contentResolver.openInputStream(uri)?.use { stream ->
-            String(stream.readBytes(), Charsets.UTF_8)
+            // Let size-limit/read failures reach the per-file catch so SyncReport explains the failure.
+            BoundedRead.text(stream, label = "文档树文件 ")
         }?.removePrefix("\uFEFF")
 
     /**
@@ -364,6 +383,7 @@ object StSyncImporter {
         treeUri: Uri,
     ): List<ScannedFile> {
         val collected = mutableListOf<ScannedFile>()
+        var visitedNodes = 0
 
         fun walk(
             parentDocumentId: String,
@@ -385,6 +405,13 @@ object StSyncImporter {
                 null,
             )?.use { cursor ->
                 while (cursor.moveToNext()) {
+                    // 这里统计**遍历过的节点**（含目录与不匹配扩展名的文件），
+                    // 与 MAX_SCAN_FILES 区分开：后者只统计会真正被导入的文件。
+                    // 只限后者的话，一棵塞满非 .png/.json 的目录树仍可无界遍历。
+                    visitedNodes++
+                    require(visitedNodes <= MAX_SCAN_NODES) {
+                        "文档树节点数超过 $MAX_SCAN_NODES 个上限，已中止批量导入；请选择更小的目录"
+                    }
                     val documentId = cursor.getString(0) ?: continue
                     val displayName = cursor.getString(1) ?: continue
                     val mime = cursor.getString(2) ?: ""
@@ -393,6 +420,9 @@ object StSyncImporter {
                     } else {
                         val lower = displayName.lowercase()
                         if (lower.endsWith(".png") || lower.endsWith(".json")) {
+                            require(collected.size < MAX_SCAN_FILES) {
+                                "文档树中可导入的文件超过 $MAX_SCAN_FILES 个上限，已中止批量导入；请选择更小的目录"
+                            }
                             collected +=
                                 ScannedFile(
                                     uri = DocumentsContract.buildDocumentUriUsingTree(treeUri, documentId),
