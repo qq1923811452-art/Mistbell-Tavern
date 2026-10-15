@@ -16,18 +16,37 @@ data class MemoryExtractionModelSettings(
     val model: String = "",
     val keyNeedsReentry: Boolean = false,
 ) {
+    /** Return a safe, user-facing reason when this endpoint must not be used. */
+    fun endpointRejectionReason(): String? {
+        val normalizedBaseUrl = baseUrl.trim().trimEnd('/')
+        if (normalizedBaseUrl.isBlank()) return "API 基础地址不能为空"
+        val endpoint = runCatching { URI(normalizedBaseUrl) }.getOrNull()
+            ?: return "API 基础地址格式无效"
+        val scheme = endpoint.scheme?.lowercase()
+        val host = endpoint.host?.lowercase()
+        if (scheme !in setOf("http", "https") || host.isNullOrBlank()) {
+            return "API 基础地址必须是有效的 HTTP 或 HTTPS URL"
+        }
+        if (!endpoint.rawUserInfo.isNullOrBlank()) {
+            return "API 基础地址不能包含用户名或密码"
+        }
+        val loopback = host in setOf("localhost", "127.0.0.1", "::1", "[::1]")
+        if (scheme == "http" && !loopback) {
+            return "远程 API 必须使用 HTTPS；HTTP 仅允许本机回环地址"
+        }
+        return null
+    }
+
     /** Remote endpoints require a key; a blank key is accepted only for loopback endpoints. */
     fun toLlmConfigOrNull(): LlmConfig? {
         val normalizedBaseUrl = baseUrl.trim().trimEnd('/')
         val normalizedModel = model.trim()
         val endpoint = runCatching { URI(normalizedBaseUrl) }.getOrNull()
         val host = endpoint?.host?.lowercase()
-        val validEndpoint =
-            endpoint?.let { it.scheme in setOf("http", "https") && !it.host.isNullOrBlank() } == true
         val loopbackEndpoint = host in setOf("localhost", "127.0.0.1", "::1", "[::1]")
         val validKey = !keyNeedsReentry && (apiKey.isNotBlank() || loopbackEndpoint)
         val validModelTarget = normalizedBaseUrl.isNotBlank() && normalizedModel.isNotBlank()
-        return if (validModelTarget && validEndpoint && validKey) {
+        return if (endpointRejectionReason() == null && validModelTarget && validKey) {
             LlmConfig(
                 baseUrl = normalizedBaseUrl,
                 apiKey = apiKey.trim(),
