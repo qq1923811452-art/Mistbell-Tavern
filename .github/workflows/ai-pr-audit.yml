@@ -298,6 +298,11 @@ jobs:
           try:
               if not isinstance(relay_data, dict):
                   raise ValueError("relay response is not a JSON object")
+              # Record the relay's self-reported model separately from the requested secret value.
+              # This is useful evidence, not cryptographic proof of the provider's actual backend.
+              returned_model = relay_data.get("model")
+              if not isinstance(returned_model, str) or not returned_model.strip():
+                  returned_model = "not reported by relay"
               choices = relay_data.get("choices")
               if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
                   raise ValueError("relay response has missing or empty choices")
@@ -451,7 +456,9 @@ jobs:
               f"- **PR base ref SHA:** `{base_sha}`",
               f"- **Diff merge-base SHA:** `{merge_base_sha}`",
               f"- **Audited head SHA:** `{head_sha}`",
-              f"- **Model configured:** `{safe_markdown(model, 100)}`",
+              f"- **Model configured (request):** `{safe_markdown(model, 100)}`",
+              f"- **Model returned by relay:** `{safe_markdown(returned_model, 100)}`",
+              "- **Model identity note:** relay response metadata is self-reported and is not independent proof of the upstream backend.",
               f"- **Diff size:** {len(diff)} characters" + (" (truncated before analysis; manual review required)" if truncated else ""),
               "- **Important:** AI findings are untrusted advisory text. Verify them against source and CI.",
               "",
