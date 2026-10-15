@@ -9,6 +9,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -35,6 +36,8 @@ fun MemoryExtractionModelSettingsSection() {
     var apiKey by remember { mutableStateOf("") }
     var model by remember { mutableStateOf("") }
     var keyNeedsReentry by remember { mutableStateOf(false) }
+    var hasStoredKey by remember { mutableStateOf(false) }
+    var clearKeyRequested by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(true) }
     var saving by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf<String?>(null) }
@@ -46,6 +49,8 @@ fun MemoryExtractionModelSettingsSection() {
             apiKey = settings.apiKey
             model = settings.model
             keyNeedsReentry = settings.keyNeedsReentry
+            hasStoredKey = settings.apiKey.isNotBlank() || settings.keyNeedsReentry
+            clearKeyRequested = false
             if (keyNeedsReentry) {
                 status = "已保存的 API Key 无法解密，请重新输入并保存；保存前会回退到聊天 API"
             }
@@ -80,7 +85,7 @@ fun MemoryExtractionModelSettingsSection() {
             )
             OutlinedTextField(
                 value = apiKey,
-                onValueChange = { apiKey = it; keyNeedsReentry = false; status = null },
+                onValueChange = { apiKey = it; keyNeedsReentry = false; clearKeyRequested = false; if (it.isNotBlank()) hasStoredKey = true; status = null },
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text("独立记忆整理 API Key（本机回环地址可留空）") },
                 visualTransformation = PasswordVisualTransformation(),
@@ -88,6 +93,19 @@ fun MemoryExtractionModelSettingsSection() {
                 singleLine = true,
                 enabled = !loading && !saving,
             )
+            if (hasStoredKey || apiKey.isNotBlank() || keyNeedsReentry) {
+                TextButton(
+                    onClick = {
+                        apiKey = ""
+                        keyNeedsReentry = false
+                        clearKeyRequested = true
+                        status = "保存时将清除已保存的 API Key"
+                    },
+                    enabled = !loading && !saving,
+                ) {
+                    Text("清除已保存 Key")
+                }
+            }
             OutlinedTextField(
                 value = model,
                 onValueChange = { model = it; status = null },
@@ -103,9 +121,21 @@ fun MemoryExtractionModelSettingsSection() {
                     status = null
                     scope.launch {
                         try {
-                            repository.save(MemoryExtractionModelSettings(baseUrl, apiKey, model))
-                            keyNeedsReentry = false
-                            val configured = repository.resolveLlmConfigOrNull() != null
+                            repository.save(
+                                MemoryExtractionModelSettings(
+                                    baseUrl = baseUrl,
+                                    apiKey = apiKey,
+                                    model = model,
+                                    keyNeedsReentry = keyNeedsReentry,
+                                    clearApiKey = clearKeyRequested,
+                                ),
+                            )
+                            val savedSettings = repository.load()
+                            apiKey = savedSettings.apiKey
+                            keyNeedsReentry = savedSettings.keyNeedsReentry
+                            hasStoredKey = savedSettings.apiKey.isNotBlank() || savedSettings.keyNeedsReentry
+                            clearKeyRequested = false
+                            val configured = savedSettings.toLlmConfigOrNull() != null
                             val endpointError =
                                 MemoryExtractionModelSettings(baseUrl, apiKey, model).endpointRejectionReason()
                             status = if (configured) {
