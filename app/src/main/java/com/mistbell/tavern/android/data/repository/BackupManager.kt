@@ -531,8 +531,8 @@ class BackupManager(private val context: Context) {
             decodedApiConfigs.count { ApiEndpointPolicy.writeRejectionReason(it.apiUrl) != null }
         if (quarantinedApiConfigCount > 0) {
             decodeWarnings.add(
-                "备份中有 $quarantinedApiConfigCount 个 API 地址不符合当前网络安全策略，" +
-                    "恢复时已清空地址以防止不安全请求；请在 API 配置中重新填写。",
+                "备份中有 $quarantinedApiConfigCount 个 API 地址不符合当前网络安全策略；" +
+                    "导入这些配置时将清空地址以防止不安全请求，请在 API 配置中重新填写。",
             )
         }
 
