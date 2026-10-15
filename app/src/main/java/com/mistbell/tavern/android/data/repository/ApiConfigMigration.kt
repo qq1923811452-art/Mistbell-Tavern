@@ -1,5 +1,6 @@
 package com.mistbell.tavern.android.data.repository
 
+import android.util.Log
 import androidx.room.withTransaction
 import com.mistbell.tavern.android.data.local.AppDatabase
 import com.mistbell.tavern.android.data.local.entity.ApiConfigEntity
@@ -52,6 +53,7 @@ internal data class ProviderConfig(
  * - 激活提供商的高级采样参数继续平铺写入 llm_* 覆盖键（getLlmConfig 后半段机制不变）。
  */
 object ApiConfigMigration {
+    private const val TAG = "ApiConfigMigration"
     const val MIGRATED_FLAG_KEY = "providers_migrated_v1"
 
     /** 纯函数：解密后的 providers_json → ProviderConfig 列表；空串合法，非空坏 JSON 必须失败。 */
@@ -67,11 +69,6 @@ object ApiConfigMigration {
         now: Long,
     ): List<ApiConfigEntity> =
         providers.mapIndexed { index, provider ->
-            // 旧版 providers_json 是外部/历史输入；迁移落库前也必须执行统一端点策略。
-            // 失败时整个迁移事务回滚，旧配置仍保留，且错误不回显原始 URL。
-            check(ApiEndpointPolicy.writeRejectionReason(provider.endpoint) == null) {
-                "旧版 API 配置 ${provider.id.ifBlank { "(无 ID)" }} 的地址不符合当前网络安全策略，迁移已中止；请检查该配置的 API 地址"
-            }
             ApiConfigEntity(
                 id = provider.id.ifBlank { UUID.randomUUID().toString() },
                 name = provider.name,
@@ -87,6 +84,14 @@ object ApiConfigMigration {
                 updatedAt = now,
             )
         }
+
+    /**
+     * Legacy endpoints are sanitized rather than aborting the whole migration. Invalid endpoints
+     * become blank (and therefore unusable) until the user reconfigures them; the encrypted
+     * providers_json source is retained so the original value is not destroyed.
+     */
+    internal fun endpointForMigration(endpoint: String): String =
+        if (ApiEndpointPolicy.writeRejectionReason(endpoint) == null) endpoint else ""
 
     /** 纯函数：激活提供商的高级采样参数 → llm_* 平铺覆盖键（null = 空串清除覆盖） */
     internal fun activeProviderOverrides(active: ProviderConfig): List<Pair<String, String>> =
@@ -156,7 +161,14 @@ object ApiConfigMigration {
         val now = System.currentTimeMillis()
         val entities =
             toApiConfigEntities(providers, activeId, now).map { entity ->
-                entity.copy(apiKey = SecureStore.wrap(entity.apiKey))
+                val safeEndpoint = endpointForMigration(entity.apiUrl)
+                if (safeEndpoint.isEmpty()) {
+                    // Do not abort migration of every provider because one legacy endpoint is unsafe.
+                    // The original providers_json remains encrypted for recovery; the migrated entry
+                    // is left unconfigured so it cannot make a request until the user fixes its URL.
+                    Log.w(TAG, "Legacy API config ${entity.id} requires endpoint reconfiguration after migration")
+                }
+                entity.copy(apiUrl = safeEndpoint, apiKey = SecureStore.wrap(entity.apiKey))
             }
         db.apiConfigDao().insertAll(entities)
 
