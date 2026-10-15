@@ -3,16 +3,16 @@ package com.mistbell.tavern.android
 import android.app.Application
 import android.content.Context
 import android.util.Log
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.launch
 import com.mistbell.tavern.android.data.local.AppDatabase
 import com.mistbell.tavern.android.data.vector.EmbeddingService
 import com.mistbell.tavern.android.data.vector.VectorMemoryService
 import com.mistbell.tavern.android.data.vector.VectorStore
 import com.mistbell.tavern.android.di.AppContainer
 import com.mistbell.tavern.android.util.SecureStore
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 class TavernApplication : Application() {
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -53,7 +53,11 @@ class TavernApplication : Application() {
             try {
                 container.initializeConfiguredEmbeddingSource()
             } catch (e: Exception) {
-                Log.e(TAG, "Configured embedding service initialization failed; lexical fallback remains available", e)
+                Log.e(
+                    TAG,
+                    "Configured embedding service initialization failed; lexical fallback remains available",
+                    e,
+                )
             }
         }
         Log.d(TAG, "TavernApplication created (embedding service initialization is asynchronous)")
