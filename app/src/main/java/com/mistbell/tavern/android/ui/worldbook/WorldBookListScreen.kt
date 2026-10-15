@@ -235,14 +235,25 @@ fun WorldBookListScreen(
                         if (recursiveScanEnabled) {
                             Spacer(modifier = Modifier.height(8.dp))
                             Text("最大扫描深度：$recursiveScanDepth", style = MaterialTheme.typography.bodySmall)
-                            var pendingDepth by remember(recursiveScanDepth) { mutableStateOf(recursiveScanDepth.toFloat()) }
+                            var pendingDepth by remember(recursiveScanDepth) {
+                                mutableStateOf(recursiveScanDepth.toFloat())
+                            }
                             Slider(
                                 value = pendingDepth,
                                 onValueChange = { pendingDepth = it },
-                                valueRange = WorldBookScanSettingsRepository.MIN_RECURSION_DEPTH.toFloat()..WorldBookScanSettingsRepository.MAX_RECURSION_DEPTH.toFloat(),
-                                steps = WorldBookScanSettingsRepository.MAX_RECURSION_DEPTH - WorldBookScanSettingsRepository.MIN_RECURSION_DEPTH - 1,
+                                valueRange =
+                                    WorldBookScanSettingsRepository.MIN_RECURSION_DEPTH.toFloat()..
+                                        WorldBookScanSettingsRepository.MAX_RECURSION_DEPTH.toFloat(),
+                                steps =
+                                    WorldBookScanSettingsRepository.MAX_RECURSION_DEPTH -
+                                        WorldBookScanSettingsRepository.MIN_RECURSION_DEPTH - 1,
                                 onValueChangeFinished = {
-                                    viewModel.setRecursiveScanDepth(pendingDepth.toInt().coerceIn(WorldBookScanSettingsRepository.MIN_RECURSION_DEPTH, WorldBookScanSettingsRepository.MAX_RECURSION_DEPTH))
+                                    viewModel.setRecursiveScanDepth(
+                                        pendingDepth.toInt().coerceIn(
+                                            WorldBookScanSettingsRepository.MIN_RECURSION_DEPTH,
+                                            WorldBookScanSettingsRepository.MAX_RECURSION_DEPTH,
+                                        ),
+                                    )
                                 },
                             )
                             Text(
