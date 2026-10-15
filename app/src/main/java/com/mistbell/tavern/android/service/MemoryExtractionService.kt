@@ -112,8 +112,8 @@ class MemoryExtractionService(
                                                     Instant.now().toString(),
                                                     newMemoryId,
                                                 ),
-                                            tags = (oldMemory.tags + "历史事实").distinct().take(8),
-                                            keywords = (oldMemory.keywords + "历史事实").distinct().take(8),
+                                            tags = (listOf("历史事实") + oldMemory.tags).distinct().take(8),
+                                            keywords = (listOf("历史事实") + oldMemory.keywords).distinct().take(8),
                                             importance = min(oldMemory.importance, 7),
                                         )
                                     structuredMemoryRepository.updateMemory(historicalMemory)
