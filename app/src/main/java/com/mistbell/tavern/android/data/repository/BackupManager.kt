@@ -726,7 +726,10 @@ private fun writeBytesAtomically(
         output = atomicFile.startWrite()
         output.write(bytes)
         atomicFile.finishWrite(output)
-    } catch (e: Exception) {
+    } catch (e: java.io.IOException) {
+        output?.let { runCatching { atomicFile.failWrite(it) } }
+        throw e
+    } catch (e: RuntimeException) {
         output?.let { runCatching { atomicFile.failWrite(it) } }
         throw e
     }
