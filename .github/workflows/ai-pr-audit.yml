@@ -154,9 +154,9 @@ jobs:
               raise SystemExit("PR head or base changed while fetching the diff; rerun the audit.")
 
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
-              output.write(f"pr_head_sha={head_sha}\\n")
-              output.write(f"pr_base_sha={base_sha}\\n")
-              output.write(f"pr_merge_base_sha={merge_base_sha}\\n")
+              output.write(f"pr_head_sha={head_sha}\n")
+              output.write(f"pr_base_sha={base_sha}\n")
+              output.write(f"pr_merge_base_sha={merge_base_sha}\n")
 
           def redact_sensitive_text(value):
               text = str(value or "")
