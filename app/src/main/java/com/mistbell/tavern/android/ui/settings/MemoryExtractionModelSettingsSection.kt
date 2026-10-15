@@ -25,7 +25,7 @@ import com.mistbell.tavern.android.data.repository.MemoryExtractionModelSettings
 import com.mistbell.tavern.android.ui.common.ModernSettingsGroup
 import kotlinx.coroutines.launch
 
-@Suppress("FunctionNaming", "LongMethod", "TooGenericExceptionCaught")
+@Suppress("FunctionNaming", "LongMethod", "CyclomaticComplexMethod", "TooGenericExceptionCaught")
 @Composable
 fun MemoryExtractionModelSettingsSection() {
     val repository = remember { MemoryExtractionModelSettingsRepository() }
@@ -107,10 +107,7 @@ fun MemoryExtractionModelSettingsSection() {
                             val configured = repository.resolveLlmConfigOrNull() != null
                             status = if (configured) {
                                 "独立记忆模型配置已保存；后续后台抽取将优先使用它"
-                            } else if (baseUrl.isNotBlank() && model.isNotBlank() && apiKey.isBlank() &&
-                                !baseUrl.contains("127.0.0.1") && !baseUrl.contains("localhost") &&
-                                !baseUrl.contains("[::1]")
-                            ) {
+                            } else if (isRemoteApiMissingKey(baseUrl, apiKey, model)) {
                                 "配置已保存；远程 API 还需要 Key，当前将回退到聊天 API"
                             } else {
                                 "配置已保存；基础地址和模型 ID 有效后才会启用独立模型"
@@ -135,4 +132,12 @@ fun MemoryExtractionModelSettingsSection() {
             }
         }
     }
+}
+
+private fun isRemoteApiMissingKey(baseUrl: String, apiKey: String, model: String): Boolean {
+    val host = runCatching { URI(baseUrl.trim()).host?.lowercase() }.getOrNull()
+    val hasEndpointAndModel = baseUrl.isNotBlank() && model.isNotBlank()
+    val missingKey = apiKey.isBlank()
+    val isLoopback = host in setOf("localhost", "127.0.0.1", "::1", "[::1]")
+    return hasEndpointAndModel && missingKey && !isLoopback
 }
