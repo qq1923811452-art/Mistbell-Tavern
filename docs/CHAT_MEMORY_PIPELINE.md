@@ -89,3 +89,44 @@ Extraction must not delay the chat response. A future dedicated memory-LLM confi
 ## Current scope of this branch
 
 This branch hardens vector-cache correctness, model isolation, atomic runtime source refresh, mock-vector avoidance, idempotent vector writes, and batch embedding response validation. It does not yet implement a dedicated memory-LLM settings screen, persistent extraction queue/watermark, or legacy-vector reindex UI. Those should be added as explicit follow-up work rather than hidden behind the current Embedding settings.
+
+## Personal profile: Snapdragon 8 Gen 3 / Mistbell-Tavern
+
+This configuration intentionally targets the owner's Snapdragon 8 Gen 3 (SM8650) phone and this app only. Do not add compatibility branches for other phone processors unless a later request explicitly asks for them.
+
+### Embedding defaults and recall policy
+
+- Start with the SM8650-specific text-only EmbeddingGemma 2 model. It is for text memory retrieval, not for generating chat replies or summarizing memories.
+- Keep the native 768-dimensional output for the initial quality baseline. The model's supported Matryoshka dimensions are 768, 512, 256 and 128; 3072 is not a valid output dimension for this local model. Only switch to 256 after the personal retrieval evaluation shows no meaningful recall regression; use 128 for candidate shortlisting only if a second-stage ranker is actually implemented.
+- Use separate query and document formatting, and pin that policy with tests. The model-card retrieval pair is `task: search result | query: {current user turn}` for queries and `title: none | text: {stored memory}` for untitled memory documents. If the exported LiteRT-LM package's verified reference implementation specifies a different pair, test both on the same personal fixture set before changing it.
+- Do not embed the entire chat transcript, character card, or all worldbook text every turn. Embed durable memory facts, concise event summaries, character/profile facts, and worldbook entries when they are created or changed. Re-embed only changed text or when the embedding model/dimension changes.
+- Retrieval should be hybrid: exact keywords/names/negation/time expressions plus semantic vector search. Filter by character, session, memory type and model identity before ranking. Merge duplicates while preserving contradictory facts and their timestamps.
+- Prefer a small set of high-value facts under a token budget over a fixed large Top-K. Keep complete fact/event units; never truncate a fact mid-sentence. Keep the stable system/character prefix byte-identical where possible and place per-turn recall and activated worldbook entries after that prefix.
+- Keep structured memory as the source of truth. Vector embeddings are an index, not the only copy of a memory. Local embedding avoids a separate embedding API charge; it does not itself reduce chat prompt tokens. Prompt-token savings come from better retrieval, deduplication, concise memory wording and bounded injection.
+- Log only counts, timing, backend, dimension, model variant, retrieval scores and provider-reported token/cache usage. Never log prompt text, secrets or private memory contents.
+
+### Personal character-card writing rules
+
+1. Put stable identity, voice, boundaries, motivations and relationship dynamics in the main character description. Avoid repeating the same facts in the system prompt, personality, scenario and example dialogues.
+2. Separate permanent canon from current scene state. Permanent canon belongs in the card or a small always-on worldbook entry; temporary location, mood, injuries, current goal and recent events belong in session memory and should be retrieved when relevant.
+3. Express facts in short, atomic, unambiguous sentences. Prefer “Mira trusts Rowan after the bridge rescue” over vague fragments such as “trust / bridge / Rowan”. Keep names, aliases and relationships explicit so lexical and semantic retrieval both work.
+4. Mark time and status when facts can change: “As of the last scene, ...”, “Formerly ...”, “Currently ...”. When a fact changes, update or supersede the old one instead of leaving both as timeless truths.
+5. Keep examples representative and short. Do not include a large example transcript just to demonstrate tone; a few distinct examples are better than repeating the same voice traits several times.
+
+### Personal worldbook writing rules
+
+- **Constant / always-on:** only compact, truly global rules needed in nearly every turn. Keep this section very short because it sits in the stable prompt prefix and costs tokens every turn.
+- **Keyword-activated entries:** use a small set of distinctive names, aliases, places, objects and event terms. Avoid generic triggers such as “look”, “feel”, “person” or “day” that match frequently.
+- **Secondary keys:** use them as a meaningful AND condition, e.g. a character name plus a specific location or event. Do not add many broad secondary terms that prevent valid recall.
+- **One entry, one subject:** separate a location, faction, character relationship and historical event into different entries. This makes activation and token budgeting more precise.
+- **Entry body:** write the minimum complete context needed for the chat model to respond correctly: canonical fact, relevant constraint, and any important exception. Avoid meta commentary, duplicated character-card text and long prose the model can infer.
+- **Recursion / links:** if one entry refers to another, include the exact target name as a trigger in the referenced entry. Keep chains short so recursive activation does not flood the prompt.
+- **Do not hide critical safety or core personality rules in a rarely triggered entry.** Put those in the stable character/system prompt or a compact constant entry.
+- The app's existing worldbook placement and activation rules still apply. These are writing conventions for this project, not a promise that arbitrary third-party Tavern card metadata is supported.
+
+### Device-specific validation gate
+
+- Record the exact device model/SM8650 identifier, Android version, app build SHA, model file SHA-256, selected backend, first-inference result, cold/warm latency, peak memory and thermal behavior.
+- “NPU initialized” is not enough: show NPU as successfully used only after a real embedding inference returns a valid finite 768-dimensional vector. If the NPU path fails, show the actual fallback backend (GPU or CPU) and its reason.
+- Compare retrieval quality using a small fixed personal set of questions and expected memories, including names/aliases, old events, negation, changed facts and irrelevant queries. Measure Recall@K / MRR and prompt tokens before and after; do not declare a token-saving percentage without those measurements.
+- Routine CI runs compile, unit tests, Detekt, KtLint and license checks only. APK packaging and emulator/device validation run at the final verification stage.
