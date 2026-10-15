@@ -79,6 +79,12 @@ internal object TemporalMemoryFactPolicy {
             emptyList()
         }
 
+    fun isHistorical(structuredData: String?): Boolean {
+        if (structuredData.isNullOrBlank()) return false
+        val data = decode(structuredData)
+        return data["status"] == HISTORICAL || data["valid_to"].orEmpty().isNotBlank()
+    }
+
     fun markCurrent(
         structuredData: String,
         validFrom: String,
