@@ -114,6 +114,7 @@ class VectorMemoryService(
      * @param topK 返回前K个结果
      * @return 搜索结果列表
      */
+    @Suppress("ReturnCount")
     suspend fun searchRelevantMemories(
         query: String,
         ownerId: String,
