@@ -13,6 +13,7 @@ import java.security.MessageDigest
  * 1. 存储消息到向量数据库
  * 2. 语义检索相关记忆
  */
+@Suppress("TooManyFunctions")
 class VectorMemoryService(
     private val vectorStore: VectorStore,
     private val embeddingService: EmbeddingService,
@@ -317,6 +318,7 @@ class VectorMemoryService(
         return LegacyCandidatePreparation(candidates, skipped, reused)
     }
 
+    @Suppress("ComplexCondition", "ReturnCount")
     private suspend fun prepareLegacyCandidate(
         entry: VectorStore.VectorEntry,
         modelId: String,
