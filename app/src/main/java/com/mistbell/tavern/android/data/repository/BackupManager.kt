@@ -494,6 +494,7 @@ class BackupManager(private val context: Context) {
         manifest: BackupManifest,
     ): Tables {
         val decodeWarnings = mutableListOf<String>()
+
         fun <T> decode(
             entryName: String,
             serializer: KSerializer<T>,
