@@ -94,7 +94,7 @@ jobs:
           retention-days: 14
 
   instrumented-tests:
-    if: ${{ inputs.full_android_validation }}
+    if: ${{ inputs.full_android_validation == true }}
     name: Final Android emulator, APK, and migration validation
     runs-on: ubuntu-latest
     timeout-minutes: 90
