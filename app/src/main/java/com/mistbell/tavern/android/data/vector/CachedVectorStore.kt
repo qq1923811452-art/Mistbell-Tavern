@@ -51,7 +51,7 @@ class CachedVectorStore(
             SearchCacheKey(
                 queryVector = queryVector.toList(),
                 topK = topK,
-                filters = filters.toSortedMap(),
+                filters = filters.entries.sortedBy { it.key }.map { it.key to normalizeFilterValue(it.value) },
             )
 
         val generation =
@@ -102,6 +102,28 @@ class CachedVectorStore(
         invalidateCache()
     }
 
+    /** Public hook for provider/model reconfiguration. */
+    suspend fun invalidateSearchCache() = invalidateCache()
+
+    private fun normalizeFilterValue(value: Any?): Any? =
+        when (value) {
+            null -> null
+            is Map<*, *> -> value.entries
+                .map { it.key.toString() to normalizeFilterValue(it.value) }
+                .sortedBy { it.first }
+            is Set<*> -> value.map { normalizeFilterValue(it) }.sortedBy { it.toString() }
+            is Iterable<*> -> value.map { normalizeFilterValue(it) }
+            is IntArray -> value.toList()
+            is LongArray -> value.toList()
+            is FloatArray -> value.toList()
+            is DoubleArray -> value.toList()
+            is BooleanArray -> value.toList()
+            is ByteArray -> value.toList()
+            is ShortArray -> value.toList()
+            is CharArray -> value.toList()
+            else -> value
+        }
+
     private suspend fun invalidateCache() {
         cacheMutex.withLock {
             cacheGeneration += 1
@@ -116,6 +138,6 @@ class CachedVectorStore(
     private data class SearchCacheKey(
         val queryVector: List<Float>,
         val topK: Int,
-        val filters: Map<String, Any>,
+        val filters: List<Pair<String, Any?>>,
     )
 }
