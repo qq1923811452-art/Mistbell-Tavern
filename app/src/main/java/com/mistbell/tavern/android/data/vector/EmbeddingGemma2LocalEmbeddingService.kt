@@ -92,6 +92,18 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
 
         suspend fun create(context: Context): EmbeddingGemma2LocalEmbeddingService =
             withContext(Dispatchers.IO) {
+                val nativeLibraryDir = File(context.applicationInfo.nativeLibraryDir)
+                val missingNpuLibraries = QualcommNpuRuntimeAvailability.missingLibraries(nativeLibraryDir)
+                if (missingNpuLibraries.isNotEmpty()) {
+                    Log.i(
+                        TAG,
+                        "Compatible Qualcomm NPU runtime is absent; skipping the 208 MB SM8650 model " +
+                            "and using the 165 MB portable model. Missing: ${missingNpuLibraries.joinToString()}",
+                    )
+                    val compatibleModel = ensureCompatibleModelDownloaded(context)
+                    return@withContext createCompatibleEngine(compatibleModel.absolutePath)
+                }
+
                 try {
                     val modelFile = ensureModelDownloaded(context)
                     createEngine(modelFile.absolutePath, context.applicationInfo.nativeLibraryDir)
@@ -100,8 +112,7 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
                 } catch (qualcommModelFailure: Exception) {
                     Log.w(
                         TAG,
-                        "SM8650-optimized model could not initialize on available backends; " +
-                            "trying the generic 165 MB EmbeddingGemma 2 model",
+                        "SM8650-optimized model could not initialize; trying the generic 165 MB EmbeddingGemma 2 model",
                         qualcommModelFailure,
                     )
                     val compatibleModel = ensureCompatibleModelDownloaded(context)
