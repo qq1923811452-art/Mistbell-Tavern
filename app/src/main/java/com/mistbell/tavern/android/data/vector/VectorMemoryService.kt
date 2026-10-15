@@ -363,6 +363,9 @@ class VectorMemoryService(
      */
     suspend fun reindexLegacyVectors(batchSize: Int = LEGACY_REINDEX_BATCH_SIZE): LegacyReindexResult {
         require(batchSize > 0) { "batchSize must be positive" }
+        check(embeddingService !is MockEmbeddingService) {
+            "Legacy vector reindex requires a real embedding service; mock vectors must never be persisted"
+        }
         val legacyEntries = vectorStore.getAllEntries().filter { it.metadata["embedding_model"] == null }
         var skipped = 0
         var reused = 0
