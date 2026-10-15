@@ -289,7 +289,18 @@ jobs:
               if cleaned.startswith("```"):
                   cleaned = re.sub(r"^\`\`\`(?:json)?\s*", "", cleaned)
                   cleaned = re.sub(r"\s*\`\`\`$", "", cleaned)
-              report = json.loads(cleaned)
+              # Some compatible relays wrap valid JSON in a short preamble or trailing
+              # explanation. Decode the first complete JSON object without logging model text.
+              decoder = json.JSONDecoder()
+              object_start = cleaned.find("{")
+              if object_start < 0:
+                  raise ValueError("response contains no JSON object")
+              try:
+                  report, _object_end = decoder.raw_decode(cleaned[object_start:])
+              except json.JSONDecodeError as exc:
+                  raise ValueError(
+                      f"response JSON is malformed at line {exc.lineno}, column {exc.colno}"
+                  ) from None
               if not isinstance(report, dict):
                   raise ValueError("response is not a JSON object")
               if not isinstance(report.get("summary"), str):
