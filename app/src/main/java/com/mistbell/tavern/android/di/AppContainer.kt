@@ -111,6 +111,13 @@ class AppContainer(private val appContext: Context) {
         val newEmbeddingService = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             assembleEmbeddingService()
         }
+        // Clear cached retrieval results whenever the active provider is replaced.
+        (vectorStore as? CachedVectorStore)?.invalidateSearchCache()
+        synchronized(embeddingLock) {
+            currentEmbeddingService = newEmbeddingService
+            currentVectorMemoryService = VectorMemoryService(vectorStore, newEmbeddingService)
+        }
+    }
         synchronized(embeddingLock) {
             currentEmbeddingService = newEmbeddingService
             currentVectorMemoryService = VectorMemoryService(vectorStore, newEmbeddingService)
