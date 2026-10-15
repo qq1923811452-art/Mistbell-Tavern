@@ -16,8 +16,28 @@ class VectorMemoryServiceWriteConcurrencyTest {
         val embedding = CountingEmbeddingService()
         val service = VectorMemoryService(store, embedding)
 
-        val first = async { service.storeMessage("same content", "owner", "character", "session", "message", "summary") }
-        val second = async { service.storeMessage("same content", "owner", "character", "session", "message", "summary") }
+        val first =
+            async {
+                service.storeMessage(
+                    "same content",
+                    "owner",
+                    "character",
+                    "session",
+                    "message",
+                    "summary",
+                )
+            }
+        val second =
+            async {
+                service.storeMessage(
+                    "same content",
+                    "owner",
+                    "character",
+                    "session",
+                    "message",
+                    "summary",
+                )
+            }
 
         assertEquals(first.await(), second.await())
         assertEquals(1, store.addCalls.get())
