@@ -1,8 +1,8 @@
 package com.mistbell.tavern.android.data.repository
 
 import android.content.Context
-import androidx.room.withTransaction
 import android.util.Log
+import androidx.room.withTransaction
 import com.mistbell.tavern.android.TavernApplication
 import com.mistbell.tavern.android.data.api.model.StructuredMemory
 import com.mistbell.tavern.android.data.local.entity.StructuredMemoryEntity
