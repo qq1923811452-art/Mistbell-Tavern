@@ -96,12 +96,9 @@ class BackupManager(private val context: Context) {
         val updatedAt: Long,
     ) {
         fun toEntity(): ApiConfigEntity {
-            // 恢复同样要过端点的写入判据：备份是外部输入，不能因为"能导入"就绕过明文策略。
-            // ⚠️ 消息里**不回显原始 apiUrl**：该地址来自备份文件，可能带 userinfo 或敏感查询参数，
-            // 而它正是因为不合规才被拒——回显等于把用户凭据写进异常消息（会进 UI 与日志）。
-            check(ApiEndpointPolicy.writeRejectionReason(apiUrl) == null) {
-                "备份中的 API 配置 $id 使用了无效或未获平台放行的地址，已中止恢复；请检查该配置的 API 地址"
-            }
+            // Backup endpoints are untrusted. Quarantine unsafe values as blank rather than aborting
+            // the whole restore; decodeTables adds a warning so the user can reconfigure this entry.
+            val safeApiUrl = endpointForRestore(apiUrl)
             val plainApiKey =
                 when {
                     apiKey.isEmpty() -> ""
@@ -120,7 +117,7 @@ class BackupManager(private val context: Context) {
             return ApiConfigEntity(
                 id = id,
                 name = name,
-                apiUrl = apiUrl,
+                apiUrl = safeApiUrl,
                 apiKey = wrapRestoredApiKey(id, plainApiKey, SecureStore::wrap),
                 model = model,
                 isDefault = isDefault,
@@ -401,6 +398,9 @@ class BackupManager(private val context: Context) {
         }
     }
 
+    internal fun endpointForRestore(endpoint: String): String =
+        if (ApiEndpointPolicy.writeRejectionReason(endpoint) == null) endpoint else ""
+
     // ---- 导出 ----
 
     suspend fun exportToUri(uri: Uri): BackupSummary =
@@ -522,6 +522,20 @@ class BackupManager(private val context: Context) {
             serializer: KSerializer<T>,
         ): List<T> = decodeBackupList(files, manifest, entryName, serializer, decodeWarnings)
 
+        val decodedApiConfigs =
+            requireUniqueBackupIds(
+                decode(API_CONFIGS, ApiConfigBackupEntry.serializer()),
+                API_CONFIGS,
+            ) { it.id }
+        val quarantinedApiConfigCount =
+            decodedApiConfigs.count { ApiEndpointPolicy.writeRejectionReason(it.apiUrl) != null }
+        if (quarantinedApiConfigCount > 0) {
+            decodeWarnings.add(
+                "备份中有 $quarantinedApiConfigCount 个 API 地址不符合当前网络安全策略，" +
+                    "恢复时已清空地址以防止不安全请求；请在 API 配置中重新填写。",
+            )
+        }
+
         return Tables(
             characters = decode(CHARACTERS, CharacterEntity.serializer()),
             sessions = decode(SESSIONS, SessionEntity.serializer()),
@@ -533,11 +547,7 @@ class BackupManager(private val context: Context) {
             structuredMemories = decode(STRUCTURED_MEMORY, StructuredMemoryEntity.serializer()),
             vectorMemories = decode(VECTOR_MEMORY, VectorMemoryEntity.serializer()),
             themePacks = decode(THEME_PACKS, ThemePackEntity.serializer()),
-            apiConfigs =
-                requireUniqueBackupIds(
-                    decode(API_CONFIGS, ApiConfigBackupEntry.serializer()),
-                    API_CONFIGS,
-                ) { it.id },
+            apiConfigs = decodedApiConfigs,
             customPrompts =
                 requireUniqueBackupIds(
                     decode(CUSTOM_PROMPTS, CustomPromptBackupEntry.serializer()),
