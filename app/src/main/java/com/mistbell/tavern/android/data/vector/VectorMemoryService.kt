@@ -54,14 +54,17 @@ class VectorMemoryService(
     ): String {
         try {
             val modelId = embeddingService.getModelId()
-            val vectorId = generateVectorId(
-                ownerId = ownerId,
-                characterId = characterId,
-                sessionId = sessionId,
-                messageId = messageId,
-                contentType = contentType,
-                modelId = modelId,
-            )
+            val vectorId =
+                generateVectorId(
+                    VectorIdentity(
+                        ownerId = ownerId,
+                        characterId = characterId,
+                        sessionId = sessionId,
+                        messageId = messageId,
+                        contentType = contentType,
+                        modelId = modelId,
+                    ),
+                )
 
             // Idempotent fast path: reuse a persisted vector when this exact message/model
             // pair was already embedded. This survives process restarts and provider cache expiry.
@@ -258,20 +261,29 @@ class VectorMemoryService(
      * Stable ID makes vector writes idempotent across retries and app restarts.
      * Model identity is included so incompatible embedding spaces never overwrite each other.
      */
-    private fun generateVectorId(
-        ownerId: String,
-        characterId: String,
-        sessionId: String,
-        messageId: String,
-        contentType: String,
-        modelId: String,
-    ): String {
-        val identity = listOf(ownerId, characterId, sessionId, messageId, contentType, modelId)
-            .joinToString(separator = "\u0000")
+    private fun generateVectorId(identity: VectorIdentity): String {
+        val encodedIdentity =
+            listOf(
+                identity.ownerId,
+                identity.characterId,
+                identity.sessionId,
+                identity.messageId,
+                identity.contentType,
+                identity.modelId,
+            ).joinToString(separator = "\u0000")
         val digest = MessageDigest.getInstance("SHA-256")
-            .digest(identity.toByteArray(Charsets.UTF_8))
+            .digest(encodedIdentity.toByteArray(Charsets.UTF_8))
         return "vec_" + digest.joinToString("") { byte -> "%02x".format(byte) }
     }
+
+    private data class VectorIdentity(
+        val ownerId: String,
+        val characterId: String,
+        val sessionId: String,
+        val messageId: String,
+        val contentType: String,
+        val modelId: String,
+    )
 
     /**
      * 向量统计信息
