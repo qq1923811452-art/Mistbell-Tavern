@@ -288,6 +288,39 @@ class BackupManager(private val context: Context) {
                 }.getOrDefault(emptyList())
             }
 
+        /**
+         * Restore-time decoding: reject a broken whole-table payload, but keep the legacy
+         * per-row salvage behavior when at least one record remains decodable.
+         */
+        internal fun <T> decodeBackupList(
+            text: String?,
+            entryName: String,
+            expectedCount: Int?,
+            serializer: KSerializer<T>,
+        ): List<T> {
+            if (text == null) {
+                require(expectedCount == null || expectedCount == 0) {
+                    "备份文件损坏：清单声明 $entryName 有 $expectedCount 条数据，但缺少该文件"
+                }
+                return emptyList()
+            }
+            val array =
+                try {
+                    json.parseToJsonElement(text) as? JsonArray
+                        ?: throw IllegalArgumentException("不是 JSON 数组")
+                } catch (e: Exception) {
+                    throw IllegalArgumentException("备份文件损坏：$entryName 无法解析为 JSON 数组", e)
+                }
+            val decoded = decodeList(text, serializer)
+            require(expectedCount == null || expectedCount == 0 || decoded.isNotEmpty()) {
+                "备份文件损坏：清单声明 $entryName 有 $expectedCount 条数据，但没有任何可恢复记录"
+            }
+            require(expectedCount == null || expectedCount == 0 || array.isNotEmpty()) {
+                "备份文件损坏：清单声明 $entryName 有 $expectedCount 条数据，但数组为空"
+            }
+            return decoded
+        }
+
         /** settings 导出条目：密文解为明文并标记 sensitive（明文原样直通） */
         fun toBackupEntry(entity: SettingsEntity): SettingsBackupEntry {
             val encrypted = SecureStore.isEncrypted(entity.value)
@@ -436,9 +469,9 @@ class BackupManager(private val context: Context) {
             val manifestText =
                 files[MANIFEST]
                     ?: throw IllegalArgumentException("恢复失败：备份中缺少 manifest.json，不是有效的 Mistbell 备份")
-            parseManifest(manifestText)
+            val manifest = parseManifest(manifestText)
 
-            val tables = decodeTables(files)
+            val tables = decodeTables(files, manifest)
             tables.themePacks.forEach { validateThemePackId(it.id) }
             val summary = mergeTables(tables)
 
@@ -448,20 +481,23 @@ class BackupManager(private val context: Context) {
             summary
         }
 
-    private fun decodeTables(files: Map<String, String>): Tables =
+    private fun decodeTables(
+        files: Map<String, String>,
+        manifest: BackupManifest,
+    ): Tables =
         Tables(
-            characters = decodeList(files[CHARACTERS], CharacterEntity.serializer()),
-            sessions = decodeList(files[SESSIONS], SessionEntity.serializer()),
-            messages = decodeList(files[MESSAGES], MessageEntity.serializer()),
-            memories = decodeList(files[MEMORIES], MemoryEntity.serializer()),
-            worldBooks = decodeList(files[WORLD_BOOKS], WorldBookEntity.serializer()),
-            worldBookEntries = decodeList(files[WORLD_BOOK_ENTRIES], WorldBookEntryEntity.serializer()),
-            settings = decodeList(files[SETTINGS], SettingsBackupEntry.serializer()),
-            structuredMemories = decodeList(files[STRUCTURED_MEMORY], StructuredMemoryEntity.serializer()),
-            vectorMemories = decodeList(files[VECTOR_MEMORY], VectorMemoryEntity.serializer()),
-            themePacks = decodeList(files[THEME_PACKS], ThemePackEntity.serializer()),
-            apiConfigs = decodeList(files[API_CONFIGS], ApiConfigBackupEntry.serializer()),
-            customPrompts = decodeList(files[CUSTOM_PROMPTS], CustomPromptBackupEntry.serializer()),
+            characters = decodeBackupList(files[CHARACTERS], CHARACTERS, manifest.counts[CHARACTERS], CharacterEntity.serializer()),
+            sessions = decodeBackupList(files[SESSIONS], SESSIONS, manifest.counts[SESSIONS], SessionEntity.serializer()),
+            messages = decodeBackupList(files[MESSAGES], MESSAGES, manifest.counts[MESSAGES], MessageEntity.serializer()),
+            memories = decodeBackupList(files[MEMORIES], MEMORIES, manifest.counts[MEMORIES], MemoryEntity.serializer()),
+            worldBooks = decodeBackupList(files[WORLD_BOOKS], WORLD_BOOKS, manifest.counts[WORLD_BOOKS], WorldBookEntity.serializer()),
+            worldBookEntries = decodeBackupList(files[WORLD_BOOK_ENTRIES], WORLD_BOOK_ENTRIES, manifest.counts[WORLD_BOOK_ENTRIES], WorldBookEntryEntity.serializer()),
+            settings = decodeBackupList(files[SETTINGS], SETTINGS, manifest.counts[SETTINGS], SettingsBackupEntry.serializer()),
+            structuredMemories = decodeBackupList(files[STRUCTURED_MEMORY], STRUCTURED_MEMORY, manifest.counts[STRUCTURED_MEMORY], StructuredMemoryEntity.serializer()),
+            vectorMemories = decodeBackupList(files[VECTOR_MEMORY], VECTOR_MEMORY, manifest.counts[VECTOR_MEMORY], VectorMemoryEntity.serializer()),
+            themePacks = decodeBackupList(files[THEME_PACKS], THEME_PACKS, manifest.counts[THEME_PACKS], ThemePackEntity.serializer()),
+            apiConfigs = decodeBackupList(files[API_CONFIGS], API_CONFIGS, manifest.counts[API_CONFIGS], ApiConfigBackupEntry.serializer()),
+            customPrompts = decodeBackupList(files[CUSTOM_PROMPTS], CUSTOM_PROMPTS, manifest.counts[CUSTOM_PROMPTS], CustomPromptBackupEntry.serializer()),
         )
 
     /** 全部表在同一事务合并：要么全部成功，要么回到恢复前状态 */
