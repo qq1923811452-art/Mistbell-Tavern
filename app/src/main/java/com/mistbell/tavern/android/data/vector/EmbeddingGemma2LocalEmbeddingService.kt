@@ -293,7 +293,9 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
                     digest.update(buffer, 0, count)
                 }
             }
-            return digest.digest().joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
+            return digest.digest().joinToString("") { byte ->
+                "%02x".format(byte.toInt() and BYTE_MASK)
+            }
         }
 
         private fun createEngine(
