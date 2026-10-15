@@ -498,8 +498,16 @@ class BackupManager(private val context: Context) {
             structuredMemories = decode(STRUCTURED_MEMORY, StructuredMemoryEntity.serializer()),
             vectorMemories = decode(VECTOR_MEMORY, VectorMemoryEntity.serializer()),
             themePacks = decode(THEME_PACKS, ThemePackEntity.serializer()),
-            apiConfigs = decode(API_CONFIGS, ApiConfigBackupEntry.serializer()),
-            customPrompts = decode(CUSTOM_PROMPTS, CustomPromptBackupEntry.serializer()),
+            apiConfigs =
+                requireUniqueBackupIds(
+                    decode(API_CONFIGS, ApiConfigBackupEntry.serializer()),
+                    API_CONFIGS,
+                ) { it.id },
+            customPrompts =
+                requireUniqueBackupIds(
+                    decode(CUSTOM_PROMPTS, CustomPromptBackupEntry.serializer()),
+                    CUSTOM_PROMPTS,
+                ) { it.id },
         )
     }
 
@@ -725,4 +733,17 @@ private fun storeEntry(
         } else {
             String(bytes, Charsets.UTF_8)
         }
+}
+
+/** Reject ambiguous duplicate primary keys in imported tables before the merge transaction. */
+internal fun <T> requireUniqueBackupIds(
+    entries: List<T>,
+    entryName: String,
+    idOf: (T) -> String,
+): List<T> {
+    val seen = HashSet<String>()
+    require(entries.all { seen.add(idOf(it)) }) {
+        "备份文件损坏：$entryName 存在重复 ID"
+    }
+    return entries
 }
