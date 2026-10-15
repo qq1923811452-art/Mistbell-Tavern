@@ -53,6 +53,16 @@ Extraction must not delay the chat response. A future dedicated memory-LLM confi
 - Mock embeddings are placeholders only. When the real embedding service is unavailable, use lexical fallback and do not write mock vectors.
 - Search-cache keys include the exact query vector, top-K, and normalized filters. Cache writes are rejected if a mutation invalidated the cache while a search was in flight.
 
+## On-device EmbeddingGemma 2 (LiteRT-LM)
+
+- A separate `local-gemma` source uses Google's text-only EmbeddingGemma 2 through the Android LiteRT-LM Kotlin API; the existing ONNX BGE Chinese backend and remote OpenAI-compatible Embedding API remain available.
+- The approximately 165 MB `.litertlm` model is downloaded on first activation into app-private storage over HTTPS, written to a temporary file, size-checked, and atomically renamed. Inference is offline after a successful download. Do not bundle the model into the APK.
+- GPU initialization is attempted first; if it fails, initialize the same model on CPU. If both fail, mark vector embedding unavailable and use the existing lexical fallback; never silently send memory text to the remote API.
+- Use `task: search result | text:` for indexed memories and `task: search query | text:` for search requests. Normalize output vectors and validate the expected 768 dimensions.
+- The model ID has its own namespace. Existing BGE/API vectors are not compatible even when dimensions happen to match; use the existing safe reindex flow before migrating stored memories.
+- The initial download requires network access and about 165 MB of free storage plus temporary download space. Do not change the user's selected source if initialization fails.
+- Published Android benchmarks use Pixel/Samsung devices, not Snapdragon 8 Gen 3. Validate latency, memory, thermals, battery impact and recall quality on the target phone before changing the default source. This first integration uses the portable CPU/GPU model; a device-specific Qualcomm NPU model can be evaluated separately after runtime-library compatibility is confirmed.
+
 ## Token and cache policy
 
 - Keep stable prompt sections byte-for-byte stable between adjacent turns where possible.
