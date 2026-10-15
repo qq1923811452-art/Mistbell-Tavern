@@ -60,7 +60,7 @@ class StreamParseUsageTest {
     fun `gemini 同帧正文与用量时 Delta 携带 usage`() {
         val data =
             """{"candidates":[{"content":{"parts":[{"text":"答"}],"role":"model"},"finishReason":"STOP"}],
-                "usageMetadata":{"promptTokenCount":8,"candidatesTokenCount":20,"totalTokenCount":28}}"""
+                "usageMetadata":{"promptTokenCount":8,"candidatesTokenCount":20,"totalTokenCount":28,"cachedContentTokenCount":3}}"""
         val result = GeminiChatProtocol.parseStreamData(data)
         assertTrue("同帧正文+用量应产出 Delta", result is StreamParseResult.Delta)
         val delta = result as StreamParseResult.Delta
@@ -68,16 +68,21 @@ class StreamParseUsageTest {
         assertEquals(28, delta.usage?.totalTokens)
         assertEquals(8, delta.usage?.promptTokens)
         assertEquals(20, delta.usage?.completionTokens)
+        assertEquals(3, delta.usage?.cacheHitTokens)
+        assertEquals(5, delta.usage?.cacheMissTokens)
     }
 
     @Test
     fun `gemini 仅用量帧产出 UsageUpdate`() {
         val data =
             """{"candidates":[{"content":{"parts":[{"text":""}],"role":"model"},"finishReason":"STOP"}],
-                "usageMetadata":{"promptTokenCount":8,"candidatesTokenCount":20,"totalTokenCount":28}}"""
+                "usageMetadata":{"promptTokenCount":8,"candidatesTokenCount":20,"totalTokenCount":28,"cachedContentTokenCount":3}}"""
         val result = GeminiChatProtocol.parseStreamData(data)
         assertTrue("无正文仅用量帧应产出 UsageUpdate", result is StreamParseResult.UsageUpdate)
-        assertEquals(28, (result as StreamParseResult.UsageUpdate).usage.totalTokens)
+        val usage = (result as StreamParseResult.UsageUpdate).usage
+        assertEquals(28, usage.totalTokens)
+        assertEquals(3, usage.cacheHitTokens)
+        assertEquals(5, usage.cacheMissTokens)
     }
 
     @Test
