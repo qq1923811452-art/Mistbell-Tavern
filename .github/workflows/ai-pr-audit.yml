@@ -238,7 +238,7 @@ jobs:
                       item for item in comments
                       if isinstance(item, dict)
                       and ((item.get("user") or {}).get("login") == "github-actions[bot]")
-                      and "<!-- ai-pr-audit-report -->" in str(item.get("body") or "")
+                      and any(marker in str(item.get("body") or "") for marker in ("<!-- ai-pr-audit-report -->", "<!-- ai-pr-audit-rereview-report -->"))
                   ]
                   if prior_reports:
                       previous_report = prior_reports[0]
@@ -248,7 +248,7 @@ jobs:
                       break
                   comments_url = next_link.group(1)
               if previous_report is None:
-                  raise SystemExit("Re-review requested, but no previous AI audit report by github-actions[bot] was found.")
+                  raise SystemExit("Re-review requested, but no previous AI audit or re-review report by github-actions[bot] was found.")
               prior_body = str(previous_report.get("body") or "")
               if len(prior_body) > 16000:
                   raise SystemExit("Previous AI audit report exceeds the safe re-review context limit (16000 characters); refusing a partial re-review that could silently omit findings.")
