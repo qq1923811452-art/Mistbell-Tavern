@@ -392,7 +392,8 @@ class OpenAIEmbeddingService(
                             val delayMs = INITIAL_RETRY_DELAY_MS * (1 shl attempt) * delayMultiplier
                             Log.w(
                                 TAG,
-                                "Batch embedding HTTP ${e.statusCode}, retry ${attempt + 1}/$MAX_RETRIES after ${delayMs}ms",
+                                "Batch embedding HTTP ${e.statusCode}, retry ${attempt + 1}/$MAX_RETRIES " +
+                                    "after ${delayMs}ms",
                             )
                             delay(delayMs)
                         }
