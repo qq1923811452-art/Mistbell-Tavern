@@ -38,8 +38,9 @@ object PromptBuilder {
         private val sessions = mutableMapOf<String, SessionState>()
 
         /**
-         * Activates World Info for one prompt.  Matching is recursive: content activated in
-         * an earlier pass becomes scan material for the next pass, bounded to three passes.
+         * Activates World Info for one prompt. Matching is recursive when enabled: content activated
+         * in an earlier pass becomes scan material for the next pass, bounded by the configured depth.
+         * Disabling recursion still allows the initial keyword-matching pass.
          * Secondary keys are an AND gate (every non-empty secondary key must match).  Entries
          * sharing a non-empty group compete by score and only the highest scoring entry wins.
          */
