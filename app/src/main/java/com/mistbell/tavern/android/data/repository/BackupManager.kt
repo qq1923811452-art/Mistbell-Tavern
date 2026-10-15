@@ -482,8 +482,10 @@ class BackupManager(private val context: Context) {
         files: Map<String, String>,
         manifest: BackupManifest,
     ): Tables {
-        fun <T> decode(entryName: String, serializer: KSerializer<T>): List<T> =
-            decodeBackupList(files, manifest, entryName, serializer)
+        fun <T> decode(
+            entryName: String,
+            serializer: KSerializer<T>,
+        ): List<T> = decodeBackupList(files, manifest, entryName, serializer)
 
         return Tables(
             characters = decode(CHARACTERS, CharacterEntity.serializer()),
