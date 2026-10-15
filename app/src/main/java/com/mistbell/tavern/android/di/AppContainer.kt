@@ -101,8 +101,7 @@ class AppContainer(private val appContext: Context) {
         // Publish the matching pair atomically so concurrent callers cannot observe mixed generations.
         runtimeEmbeddingServices = RuntimeEmbeddingServices(service, memoryService)
         Log.i(TAG, "Embedding source switched: requested=$source, active=${service::class.java.simpleName}")
-        return service is OpenAIEmbeddingService || service is LocalEmbeddingService ||
-            service is EmbeddingGemma2LocalEmbeddingService
+        return service.isSemantic
     }
 
     @Suppress("TooGenericExceptionCaught")
@@ -126,6 +125,9 @@ class AppContainer(private val appContext: Context) {
                     Log.d(TAG, "Embedding source=local-gemma: loading EmbeddingGemma 2 with LiteRT-LM")
                     try {
                         EmbeddingGemma2LocalEmbeddingService.create(appContext)
+                    } catch (e: LinkageError) {
+                        Log.e(TAG, "LiteRT-LM native runtime is unavailable on this device; remote fallback is disabled", e)
+                        MockEmbeddingService()
                     } catch (e: Exception) {
                         Log.e(TAG, "Local EmbeddingGemma 2 init failed; remote fallback is disabled", e)
                         MockEmbeddingService()
