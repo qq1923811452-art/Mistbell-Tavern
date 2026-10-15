@@ -219,9 +219,8 @@ class StructuredMemoryRepository(context: Context) {
 
         try {
             val vectorMemoryService = TavernApplication.instance.container.vectorMemoryService
-            // Remove stale copies even when the active provider cannot create a replacement.
-            vectorMemoryService.deleteByMessageId(vectorMessageId(memory.id))
-            // Never persist mock/random vectors; retrieval uses lexical fallback when embeddings are unavailable.
+            // Preserve vectors from other real models if the current provider is unavailable.
+            // Stable vector IDs overwrite changed content for this model without deleting other model spaces.
             if (!vectorMemoryService.available) {
                 Log.d(TAG, "Skip vector sync for memory ${memory.id}: embedding service unavailable")
                 return
