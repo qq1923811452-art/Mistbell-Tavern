@@ -241,12 +241,12 @@ fun WorldBookListScreen(
                             var pendingDepth by remember(recursiveScanDepth) {
                                 mutableStateOf(recursiveScanDepth.toFloat())
                             }
+                            val minRecursionDepth = WorldBookScanSettingsRepository.MIN_RECURSION_DEPTH.toFloat()
+                            val maxRecursionDepth = WorldBookScanSettingsRepository.MAX_RECURSION_DEPTH.toFloat()
                             Slider(
                                 value = pendingDepth,
                                 onValueChange = { pendingDepth = it },
-                                valueRange =
-                                    WorldBookScanSettingsRepository.MIN_RECURSION_DEPTH.toFloat()..
-                                        WorldBookScanSettingsRepository.MAX_RECURSION_DEPTH.toFloat(),
+                                valueRange = minRecursionDepth..maxRecursionDepth,
                                 steps =
                                     WorldBookScanSettingsRepository.MAX_RECURSION_DEPTH -
                                         WorldBookScanSettingsRepository.MIN_RECURSION_DEPTH - 1,
