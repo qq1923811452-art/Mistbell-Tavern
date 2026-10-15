@@ -169,13 +169,9 @@ internal object AnthropicChatProtocol : ChatProtocol {
             // prompt 保留 message_start 的真实值，total 取 prompt+completion —— 不再覆盖成 0（修 P2-1）
             "message_delta" ->
                 event.usage?.let {
-                    StreamParseResult.UsageUpdate(
-                        Usage(
-                            promptTokens = 0,
-                            completionTokens = it.outputTokens,
-                            totalTokens = 0,
-                        ),
-                    )
+                    // Keep any cache counters supplied by compatible gateways. Missing input
+                    // fields still normalize to zero and are preserved by the field-wise merger.
+                    StreamParseResult.UsageUpdate(normalizeUsage(it))
                 } ?: StreamParseResult.Ignore
             else -> StreamParseResult.Ignore
         }
