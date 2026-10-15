@@ -1,0 +1,26 @@
+name: AI PR Re-review After Fixes
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "PR number whose previous AI findings should be re-checked"
+        required: true
+        type: number
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: ai-pr-rereview-${{ github.repository }}-${{ inputs.pr_number }}
+  cancel-in-progress: true
+
+jobs:
+  re-review:
+    name: Re-review selected PR
+    uses: ./.github/workflows/ai-pr-audit.yml
+    with:
+      pr_number: ${{ inputs.pr_number }}
+      review_mode: re-review
+    secrets: inherit
