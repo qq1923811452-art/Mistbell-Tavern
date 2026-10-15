@@ -23,12 +23,11 @@ data class MemoryExtractionModelSettings(
         val endpoint = runCatching { URI(normalizedBaseUrl) }.getOrNull()
         val host = endpoint?.host?.lowercase()
         val validEndpoint =
-            endpoint != null &&
-                endpoint.scheme in setOf("http", "https") &&
-                !host.isNullOrBlank()
+            endpoint?.let { it.scheme in setOf("http", "https") && !it.host.isNullOrBlank() } == true
         val loopbackEndpoint = host in setOf("localhost", "127.0.0.1", "::1", "[::1]")
         val validKey = !keyNeedsReentry && (apiKey.isNotBlank() || loopbackEndpoint)
-        return if (normalizedBaseUrl.isNotBlank() && normalizedModel.isNotBlank() && validEndpoint && validKey) {
+        val validModelTarget = normalizedBaseUrl.isNotBlank() && normalizedModel.isNotBlank()
+        return if (validModelTarget && validEndpoint && validKey) {
             LlmConfig(
                 baseUrl = normalizedBaseUrl,
                 apiKey = apiKey.trim(),
