@@ -276,11 +276,18 @@ internal fun validateEmbeddingResponseIndices(
     }
     val expectedIndices = (0 until expectedCount).toList()
     if (indices.sorted() != expectedIndices) {
+        val actualIndices = indices.sorted()
         error(
-            "Embedding response contains invalid input indices: expected $expectedIndices, received ${indices.sorted()}",
+            "Embedding response contains invalid input indices: " +
+                "expected $expectedIndices, received $actualIndices",
         )
     }
 }
 
+private const val HTTP_TOO_MANY_REQUESTS = 429
+private const val HTTP_SERVER_ERROR_MIN = 500
+private const val HTTP_SERVER_ERROR_MAX = 599
+
 internal fun isRetryableEmbeddingStatusCode(statusCode: Int): Boolean =
-    statusCode == 429 || statusCode in 500..599
+    statusCode == HTTP_TOO_MANY_REQUESTS ||
+        statusCode in HTTP_SERVER_ERROR_MIN..HTTP_SERVER_ERROR_MAX
