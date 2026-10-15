@@ -137,14 +137,6 @@ class InMemoryVectorStore(
         }
     }
 
-    override suspend fun getAllEntries(): List<VectorStore.VectorEntry> =
-        mutex.withLock {
-            ensureLoaded()
-            vectors.values.map { entry ->
-                entry.copy(vector = entry.vector.copyOf(), metadata = entry.metadata.toMap())
-            }
-        }
-
     override suspend fun delete(id: String) {
         mutex.withLock {
             ensureLoaded()
