@@ -25,15 +25,18 @@ internal object TemporalMemoryFactPolicy {
         val subject = data["subject"].orEmpty()
         val relation = data["relation"].orEmpty()
         val objectValue = data["object"].orEmpty()
-        if (subject.isBlank() || relation.isBlank() || objectValue.isBlank()) return null
-        return Fact(
-            id = id,
-            subject = subject,
-            relation = relation,
-            objectValue = objectValue,
-            status = data["status"].orEmpty().ifBlank { CURRENT },
-            validTo = data["valid_to"].orEmpty(),
-        )
+        return if (subject.isBlank() || relation.isBlank() || objectValue.isBlank()) {
+            null
+        } else {
+            Fact(
+                id = id,
+                subject = subject,
+                relation = relation,
+                objectValue = objectValue,
+                status = data["status"].orEmpty().ifBlank { CURRENT },
+                validTo = data["valid_to"].orEmpty(),
+            )
+        }
     }
 
     fun findRelatedFacts(
@@ -45,13 +48,10 @@ internal object TemporalMemoryFactPolicy {
         val normalizedSubject = normalize(subject)
         val normalizedRelation = normalize(relation)
         val normalizedObject = normalize(objectValue)
-        if (
-            normalizedSubject.isBlank() ||
-            normalizedRelation.isBlank() ||
-            normalizedObject.isBlank() ||
-            normalizedRelation == "other" ||
-            normalizedRelation == "unknown"
-        ) {
+        val hasBlankFactKey =
+            normalizedSubject.isBlank() || normalizedRelation.isBlank() || normalizedObject.isBlank()
+        val unsupportedRelation = normalizedRelation in setOf("other", "unknown")
+        if (hasBlankFactKey || unsupportedRelation) {
             return emptyList()
         }
         return existingFacts.filter { existing ->
@@ -122,7 +122,12 @@ internal object TemporalMemoryFactPolicy {
         runCatching { Json.decodeFromString<Map<String, String>>(structuredData) }.getOrDefault(emptyMap())
 
     private fun normalize(value: String): String =
-        value.lowercase().replace(Regex("[\\s\\p{Punct}，。！？、；：“”‘’（）【】《》]+"), "").trim()
+        value
+            .lowercase()
+            .replace(
+                Regex("[\\s\\p{Punct}，。！？、；：“”‘’（）【】《》]+"),
+                "",
+            ).trim()
 
     private const val CURRENT = "current"
     private const val HISTORICAL = "historical"
