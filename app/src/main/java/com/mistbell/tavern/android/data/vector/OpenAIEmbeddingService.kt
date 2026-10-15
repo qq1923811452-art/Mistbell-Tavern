@@ -210,20 +210,16 @@ class OpenAIEmbeddingService(
 
         Log.d(TAG, "Generated ${embeddingResponse.data.size} embeddings in batch")
 
+        validateEmbeddingResponseIndices(
+            indices = embeddingResponse.data.map { it.index },
+            expectedCount = texts.size,
+        )
         val orderedData = embeddingResponse.data.sortedBy { it.index }
-        if (orderedData.size != texts.size) {
-            error(
-                "Embedding response count mismatch: expected ${texts.size}, received ${orderedData.size}",
-            )
-        }
         if (orderedData.any { it.embedding.size != DIMENSION }) {
             val dimensions = orderedData.map { it.embedding.size }.distinct()
             error(
                 "Unexpected embedding dimensions for model $model: $dimensions (expected $DIMENSION)",
             )
-        }
-        if (orderedData.map { it.index }.distinct().size != orderedData.size) {
-            error("Embedding response contains duplicate input indices")
         }
 
         return orderedData.map { data ->
@@ -263,4 +259,21 @@ class OpenAIEmbeddingService(
         val embedding: List<Double>,
         val index: Int,
     )
+}
+
+/** Reject duplicate, missing, negative, or out-of-range indexes before trusting batch order. */
+internal fun validateEmbeddingResponseIndices(
+    indices: List<Int>,
+    expectedCount: Int,
+) {
+    if (indices.size != expectedCount) {
+        error("Embedding response count mismatch: expected $expectedCount, received ${indices.size}")
+    }
+    if (indices.distinct().size != indices.size) {
+        error("Embedding response contains duplicate input indices")
+    }
+    val expectedIndices = (0 until expectedCount).toList()
+    if (indices.sorted() != expectedIndices) {
+        error("Embedding response contains invalid input indices: expected $expectedIndices, received ${indices.sorted()}")
+    }
 }
