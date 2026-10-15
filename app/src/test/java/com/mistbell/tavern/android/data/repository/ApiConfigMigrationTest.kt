@@ -73,7 +73,10 @@ class ApiConfigMigrationTest {
         assertEquals("", ApiConfigMigration.endpointForMigration("http://api.example.com/v1"))
         assertEquals("", ApiConfigMigration.endpointForMigration("https://user:secret@example.com/v1"))
         assertEquals("https://api.example.com/v1", ApiConfigMigration.endpointForMigration("https://api.example.com/v1"))
-        assertEquals("http://10.0.2.2:3000/", ApiConfigMigration.endpointForMigration("http://10.0.2.2:3000/"))
+        assertEquals(
+            "http://10.0.2.2:3000/",
+            ApiConfigMigration.endpointForMigration("http://10.0.2.2:3000/"),
+        )
     }
 
     @Test
