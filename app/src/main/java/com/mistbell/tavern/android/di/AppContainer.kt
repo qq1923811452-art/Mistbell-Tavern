@@ -14,10 +14,14 @@ import com.mistbell.tavern.android.data.vector.VectorCacheStatistics
 import com.mistbell.tavern.android.data.vector.VectorMemoryService
 import com.mistbell.tavern.android.data.vector.VectorStore
 import com.mistbell.tavern.android.util.SecureStore
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
 
 /**
  * 应用级 DI 容器：集中装配 database / vectorStore / embeddingService / vectorMemoryService。
@@ -83,6 +87,14 @@ class AppContainer(private val appContext: Context) {
     @Volatile
     private var runtimeEmbeddingServices: RuntimeEmbeddingServices? = null
 
+    private val runtimeStatusScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    @Volatile
+    private var runtimeStatusJob: Job? = null
+
+    private val _embeddingRuntimeStatus = MutableStateFlow(EmbeddingRuntimeStatus())
+    val embeddingRuntimeStatus: StateFlow<EmbeddingRuntimeStatus> = _embeddingRuntimeStatus
+
     // Never download or initialize a large on-device model from a synchronous lazy getter.
     // Startup initializes the configured source asynchronously; Mock remains a safe temporary fallback.
     private val initialEmbeddingService: EmbeddingService by lazy { MockEmbeddingService() }
@@ -108,6 +120,26 @@ class AppContainer(private val appContext: Context) {
         val memoryService = VectorMemoryService(vectorStore, service)
         // Publish the matching pair atomically so concurrent callers cannot observe mixed generations.
         runtimeEmbeddingServices = RuntimeEmbeddingServices(service, memoryService)
+        runtimeStatusJob?.cancel()
+        if (service is EmbeddingGemma2LocalEmbeddingService) {
+            _embeddingRuntimeStatus.value = service.runtimeStatus.value
+            runtimeStatusJob =
+                runtimeStatusScope.launch {
+                    service.runtimeStatus.collect { status -> _embeddingRuntimeStatus.value = status }
+                }
+        } else {
+            _embeddingRuntimeStatus.value =
+                EmbeddingRuntimeStatus(
+                    source = source,
+                    initialized = service.isSemantic,
+                    errorMessage =
+                        if (source == "local-gemma") {
+                            "本地 EmbeddingGemma 初始化失败，当前使用词法记忆回退"
+                        } else {
+                            null
+                        },
+                )
+        }
         Log.i(TAG, "Embedding source switched: requested=$source, active=${service::class.java.simpleName}")
         return service.isSemantic
     }
