@@ -430,23 +430,8 @@ class MemoryExtractionService(
                     existingFacts = existingFacts,
                 )
             val ignoredDuplicateIds = relatedFacts.map { it.id }.toSet()
-            val stagedConflicts =
-                validated.filter { staged ->
-                    TemporalMemoryFactPolicy.conflictsWithStagedFact(
-                        subject = enhanced.subject,
-                        relation = enhanced.relation,
-                        objectValue = enhanced.objValue,
-                        content = enhanced.content,
-                        stagedFact =
-                            TemporalMemoryFactPolicy.Fact(
-                                id = -1L,
-                                subject = staged.subject,
-                                relation = staged.relation,
-                                objectValue = staged.objValue,
-                            ),
-                    )
-                }
-            val duplicateInBatch = validated.any { normalizeForCompare(it.content) == normalizeForCompare(enhanced.content) }
+            val stagedConflicts = findStagedConflicts(enhanced, validated)
+            val duplicateInBatch = hasDuplicateInBatch(enhanced, validated)
             if (duplicateInBatch || isDuplicate(enhanced, existingMemories, ignoredDuplicateIds)) {
                 // The current database fact wins over an earlier conflicting candidate from this same batch.
                 validated.removeAll(stagedConflicts.toSet())
@@ -463,6 +448,32 @@ class MemoryExtractionService(
         }
         return validated.distinctBy { normalizeForCompare(it.content) }
     }
+
+    private fun findStagedConflicts(
+        candidate: MemoryCandidate,
+        validated: List<MemoryCandidate>,
+    ): List<MemoryCandidate> =
+        validated.filter { staged ->
+            TemporalMemoryFactPolicy.conflictsWithStagedFact(
+                subject = candidate.subject,
+                relation = candidate.relation,
+                objectValue = candidate.objValue,
+                content = candidate.content,
+                stagedFact =
+                    TemporalMemoryFactPolicy.Fact(
+                        id = -1L,
+                        subject = staged.subject,
+                        relation = staged.relation,
+                        objectValue = staged.objValue,
+                    ),
+            )
+        }
+
+    private fun hasDuplicateInBatch(
+        candidate: MemoryCandidate,
+        validated: List<MemoryCandidate>,
+    ): Boolean =
+        validated.any { normalizeForCompare(it.content) == normalizeForCompare(candidate.content) }
 
     private fun convertToMemoryDomain(
         candidate: MemoryCandidate,
