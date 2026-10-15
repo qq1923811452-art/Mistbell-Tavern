@@ -36,6 +36,7 @@ import kotlin.math.sqrt
  * into app-private storage; after that, inference is offline. Try Qualcomm NPU first, then GPU,
  * then CPU. This service never falls back to a remote API.
  */
+@Suppress("TooManyFunctions", "LongMethod", "CyclomaticComplexMethod", "TooGenericExceptionCaught")
 class EmbeddingGemma2LocalEmbeddingService private constructor(
     private val engine: EmbeddingEngine,
     private val backendName: String,
