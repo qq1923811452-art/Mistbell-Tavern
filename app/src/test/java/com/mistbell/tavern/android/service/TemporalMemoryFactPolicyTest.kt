@@ -74,6 +74,23 @@ class TemporalMemoryFactPolicyTest {
     }
 
     @Test
+    fun `historical facts are excluded from current-fact deduplication policy`() {
+        val historical =
+            Json.encodeToString(
+                mapOf(
+                    "subject" to "user",
+                    "relation" to "name",
+                    "object" to "Alice",
+                    "status" to "historical",
+                    "valid_to" to "2026-10-15T12:00:00Z",
+                ),
+            )
+
+        assertTrue(TemporalMemoryFactPolicy.isHistorical(historical))
+        assertTrue(!TemporalMemoryFactPolicy.isHistorical(null))
+    }
+
+    @Test
     fun `current fact stores start time and previous value metadata`() {
         val original = Json.encodeToString(mapOf("subject" to "user", "relation" to "name", "object" to "Bob"))
 
