@@ -100,7 +100,10 @@ fun ImageGenerationSettingsSection() {
             )
             OutlinedTextField(
                 value = baseUrl,
-                onValueChange = { baseUrl = it; status = null },
+                onValueChange = {
+                    baseUrl = it
+                    status = null
+                },
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text("生图 API 基础地址") },
                 placeholder = { Text("https://example.com/v1") },
@@ -120,7 +123,10 @@ fun ImageGenerationSettingsSection() {
             )
             OutlinedTextField(
                 value = model,
-                onValueChange = { model = it; status = null },
+                onValueChange = {
+                    model = it
+                    status = null
+                },
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text("生图模型 ID") },
                 placeholder = { Text("由你的服务商提供") },
@@ -128,7 +134,10 @@ fun ImageGenerationSettingsSection() {
             )
             OutlinedTextField(
                 value = prompt,
-                onValueChange = { prompt = it; status = null },
+                onValueChange = {
+                    prompt = it
+                    status = null
+                },
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text("图片提示词") },
                 placeholder = { Text("描述角色外观、动作、场景、光线与画风") },
@@ -211,7 +220,8 @@ fun ImageGenerationSettingsSection() {
                             }
                         }
                     },
-                    enabled = !busy && !apiKeyUnreadable && prompt.isNotBlank() && baseUrl.isNotBlank() && model.isNotBlank(),
+                    enabled =
+                        !busy && !apiKeyUnreadable && prompt.isNotBlank() && baseUrl.isNotBlank() && model.isNotBlank(),
                 ) {
                     if (busy) {
                         CircularProgressIndicator(
