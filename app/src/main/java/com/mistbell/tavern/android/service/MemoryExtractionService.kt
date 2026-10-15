@@ -95,8 +95,11 @@ class MemoryExtractionService(
                                 sessionId = sessionId,
                                 messageIds = messageIds,
                             )
-                        val newMemoryId = structuredMemoryRepository.createMemory(memory)
-                        markSupersededMemoriesAsHistorical(candidate.supersededMemoryIds, newMemoryId)
+                        structuredMemoryRepository.createMemoryWithSupersession(
+                            memory = memory,
+                            supersededIds = candidate.supersededMemoryIds,
+                            transformSuperseded = ::markSupersededMemoryAsHistorical,
+                        )
                         savedCount++
                         Log.d(TAG, "Saved memory candidate #$savedCount")
                     } catch (cancelled: CancellationException) {
@@ -119,46 +122,27 @@ class MemoryExtractionService(
             }
         }
 
-    private suspend fun markSupersededMemoriesAsHistorical(
-        oldMemoryIds: List<Long>,
+    private fun markSupersededMemoryAsHistorical(
+        oldMemory: StructuredMemory,
         newMemoryId: Long,
-    ) {
-        oldMemoryIds.forEach { oldMemoryId ->
-            markSingleMemoryAsHistorical(oldMemoryId, newMemoryId)
-        }
-    }
-
-    private suspend fun markSingleMemoryAsHistorical(
-        oldMemoryId: Long,
-        newMemoryId: Long,
-    ) {
-        try {
-            val oldMemory = structuredMemoryRepository.getMemoryById(oldMemoryId) ?: return
-            val historicalMemory =
-                oldMemory.copy(
-                    content =
-                        if (oldMemory.content.startsWith("【历史事实】")) {
-                            oldMemory.content
-                        } else {
-                            "【历史事实】${oldMemory.content}"
-                        },
-                    structuredData =
-                        TemporalMemoryFactPolicy.markHistorical(
-                            oldMemory.structuredData,
-                            Instant.now().toString(),
-                            newMemoryId,
-                        ),
-                    tags = (listOf("历史事实") + oldMemory.tags).distinct().take(8),
-                    keywords = (listOf("历史事实") + oldMemory.keywords).distinct().take(8),
-                    importance = min(oldMemory.importance, MAX_HISTORICAL_MEMORY_IMPORTANCE),
-                )
-            structuredMemoryRepository.updateMemory(historicalMemory)
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to mark superseded memory as historical: ${e.message}", e)
-        }
-    }
+    ): StructuredMemory =
+        oldMemory.copy(
+            content =
+                if (oldMemory.content.startsWith("【历史事实】")) {
+                    oldMemory.content
+                } else {
+                    "【历史事实】${oldMemory.content}"
+                },
+            structuredData =
+                TemporalMemoryFactPolicy.markHistorical(
+                    oldMemory.structuredData,
+                    Instant.now().toString(),
+                    newMemoryId,
+                ),
+            tags = (listOf("历史事实") + oldMemory.tags).distinct().take(8),
+            keywords = (listOf("历史事实") + oldMemory.keywords).distinct().take(8),
+            importance = min(oldMemory.importance, MAX_HISTORICAL_MEMORY_IMPORTANCE),
+        )
 
     // 多轮拼接：轮间空行分隔；无用户消息的轮次（群聊"让TA继续"）省略 User 行
     private fun buildDialogueText(turns: List<DialogueTurn>): String {
