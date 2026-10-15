@@ -4,7 +4,7 @@ These workflows are designed to run on the consolidated PR #29 line. The reposit
 
 ## Single-PR audit
 
-Use **Actions → AI Pull Request Audit → Run workflow**:
+Use **Actions → AI Pull Request Audit → Run workflow**. The workflow requires `ODYS_MODEL` and a distinct `ODYS_MODEL_B` model configured on the same relay:
 - Enter the PR number.
 - Select `audit` for a fresh review of the current pinned PR diff.
 - Select `re-review` after fixes to compare the latest pinned diff against the latest `github-actions[bot]` audit or re-review report.
@@ -32,6 +32,7 @@ The batch calls the reusable `ai-pr-audit.yml` workflow directly. It does not re
 
 ## Evidence and status semantics
 
+- Model A performs the initial audit; Model B independently challenges A's findings against the same pinned diff and can add missed issues. The workflow fails rather than silently skipping cross-review if Model B is not configured or its request fails.
 - Audit/re-review reports include the exact audited head SHA, base SHA, and merge-base SHA.
 - A report is not posted if the PR head/base changes during audit.
 - Candidate findings whose evidence cannot be matched to the pinned diff are discarded.
