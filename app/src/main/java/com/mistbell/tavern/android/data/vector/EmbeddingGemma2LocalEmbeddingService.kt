@@ -275,6 +275,7 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
             return modelFile
         }
 
+        @Suppress("ReturnCount")
         private suspend fun isVerifiedModel(file: File): Boolean {
             if (verifiedModelFingerprint == modelFingerprint(file)) return true
             if (sha256(file) != EXPECTED_MODEL_SHA256) return false
