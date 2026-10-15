@@ -133,8 +133,9 @@ dependencies {
     // Coroutines
     implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0"
 
-    // F3 本地语义向量：onnxruntime-android（MIT）+ assets 内置量化 BGE 中文模型
+    // F3 本地语义向量：保留 ONNX BGE 作为轻量方案，并增加 LiteRT-LM EmbeddingGemma 2。
     implementation "com.microsoft.onnxruntime:onnxruntime-android:1.17.3"
+    implementation "com.google.ai.edge.litertlm:litertlm-android:0.18.0"
 
     // 单元测试（本地 JVM）
     testImplementation "junit:junit:4.13.2"
