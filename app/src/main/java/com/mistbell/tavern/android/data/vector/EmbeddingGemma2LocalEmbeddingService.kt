@@ -363,15 +363,25 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
                 }
             }
         }
-        private fun createCompatibleEngine(modelPath: String): EmbeddingGemma2LocalEmbeddingService {
+        private fun createCompatibleEngine(
+            modelPath: String,
+        ): EmbeddingGemma2LocalEmbeddingService {
             var gpuFailure: Throwable? = null
             var gpuEngine: EmbeddingEngine? = null
             try {
                 val candidate =
-                    EmbeddingEngine(EmbeddingEngineConfig(modelPath = modelPath, backend = Backend.GPU()))
+                    EmbeddingEngine(
+                        EmbeddingEngineConfig(
+                            modelPath = modelPath,
+                            backend = Backend.GPU(),
+                        ),
+                    )
                 gpuEngine = candidate
                 candidate.initialize()
-                Log.i(TAG, "Generic EmbeddingGemma 2 initialized with GPU backend (NPU intentionally skipped)")
+                Log.i(
+                    TAG,
+                    "Generic EmbeddingGemma 2 initialized with GPU backend (NPU intentionally skipped)",
+                )
                 return EmbeddingGemma2LocalEmbeddingService(candidate, "GPU", "generic-8c9f652")
             } catch (e: Exception) {
                 gpuFailure = e
@@ -382,11 +392,16 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
                 gpuEngine?.let { runCatching { it.close() } }
                 Log.w(TAG, "Generic EmbeddingGemma 2 GPU native runtime unavailable; retrying on CPU", e)
             }
-    
+
             var cpuEngine: EmbeddingEngine? = null
             try {
                 val candidate =
-                    EmbeddingEngine(EmbeddingEngineConfig(modelPath = modelPath, backend = Backend.CPU()))
+                    EmbeddingEngine(
+                        EmbeddingEngineConfig(
+                            modelPath = modelPath,
+                            backend = Backend.CPU(),
+                        ),
+                    )
                 cpuEngine = candidate
                 candidate.initialize()
                 Log.i(TAG, "Generic EmbeddingGemma 2 initialized with CPU backend")
@@ -403,7 +418,6 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
                 }
             }
         }
-    
     }
 
     private val inferenceMutex = Mutex()
