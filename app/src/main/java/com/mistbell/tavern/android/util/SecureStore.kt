@@ -30,6 +30,8 @@ object SecureStore {
     @Volatile
     private var cachedKey: SecretKey? = null
 
+    fun hasCipherPrefix(value: String): Boolean = value.startsWith(PREFIX)
+
     fun isEncrypted(value: String): Boolean = value.startsWith(PREFIX)
 
     /** 写入敏感字段前调用；失败时退回明文存储（宁可弱存储也不丢数据）。 */

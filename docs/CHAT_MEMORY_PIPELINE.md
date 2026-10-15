@@ -41,7 +41,7 @@ Persist completed user/assistant turn
   -> on edit/delete, remove the matching summary vector
 ```
 
-Extraction must not delay the chat response. A future dedicated memory-LLM configuration should have its own base URL, API key, model ID, timeout and retry policy; it must not silently reuse the chat model unless explicitly configured to do so. Persist a processed-message watermark/idempotency key so process death or retry cannot repeatedly charge for the same turns.
+Extraction must not delay the chat response. The settings screen now supports an independent memory-LLM base URL, API key and model ID (the key is wrapped with the existing SecureStore helper). When the endpoint and model are configured, background extraction prefers this provider; otherwise the current session/chat provider fallback remains unchanged. The extractor still applies its low-temperature, bounded-output and no-thinking policy. Timeout and retry settings currently use the existing LlmClient defaults; independent timeout/retry controls are not yet exposed. A persistent processed-message watermark/idempotency queue remains follow-up work: the current three-turn buffer is process-local, so process death can still lose a not-yet-dispatched batch.
 
 ## Embedding and index invariants
 
