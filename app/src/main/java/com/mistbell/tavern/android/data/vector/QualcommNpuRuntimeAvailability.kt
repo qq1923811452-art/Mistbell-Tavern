@@ -21,6 +21,7 @@ internal object QualcommNpuRuntimeAvailability {
 
     fun missingLibraries(nativeLibraryDir: File): List<String> =
         requiredLibraries.filterNot { libraryName ->
-            File(nativeLibraryDir, libraryName).isFile
+            val library = File(nativeLibraryDir, libraryName)
+            library.isFile && library.length() > 0L
         }
 }
