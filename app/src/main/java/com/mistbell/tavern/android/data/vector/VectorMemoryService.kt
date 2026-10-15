@@ -416,15 +416,26 @@ class VectorMemoryService(
                 skipped++
                 continue
             }
-            val targetId = generateVectorId(
-                VectorIdentity(ownerId, characterId, sessionId, messageId, contentType, embeddingModelId),
-            )
+            val targetId =
+                generateVectorId(
+                    VectorIdentity(
+                        ownerId,
+                        characterId,
+                        sessionId,
+                        messageId,
+                        contentType,
+                        embeddingModelId,
+                    ),
+                )
             candidates +=
                 LegacyVectorCandidate(
                     legacyId = entry.id,
                     targetId = targetId,
                     content = content,
-                    metadata = metadata.toMutableMap().apply { put("embedding_model", embeddingModelId) },
+                    metadata =
+                        metadata.toMutableMap().apply {
+                            put("embedding_model", embeddingModelId)
+                        },
                 )
         }
 
@@ -451,7 +462,9 @@ class VectorMemoryService(
                 existingTarget.metadata["embedding_model"] == embeddingModelId &&
                 existingTarget.metadata["content"] == candidate.content
             ) {
-                if (candidate.legacyId != candidate.targetId) vectorStore.delete(candidate.legacyId)
+                if (candidate.legacyId != candidate.targetId) {
+                    vectorStore.delete(candidate.legacyId)
+                }
                 reused++
             } else {
                 pending += candidate
@@ -460,7 +473,9 @@ class VectorMemoryService(
         return LegacyCandidatePreparation(pending, skipped, reused)
     }
 
-    private suspend fun reindexLegacyBatch(batch: List<LegacyVectorCandidate>): LegacyBatchResult {
+    private suspend fun reindexLegacyBatch(
+        batch: List<LegacyVectorCandidate>,
+    ): LegacyBatchResult {
         // Recheck target IDs immediately before embedding. Another writer may have stored
         // a newer version after the initial snapshot; never overwrite that version blindly.
         val readyBatch = mutableListOf<LegacyVectorCandidate>()
@@ -484,7 +499,9 @@ class VectorMemoryService(
                 Log.w(TAG, "Skipped legacy vector because its target ID now contains different content")
             }
         }
-        if (readyBatch.isEmpty()) return LegacyBatchResult(reindexed = 0, skipped = skipped, reused = reused)
+        if (readyBatch.isEmpty()) {
+            return LegacyBatchResult(reindexed = 0, skipped = skipped, reused = reused)
+        }
 
         val embeddings = embeddingService.embedBatch(
             readyBatch.map { it.content },
@@ -507,8 +524,13 @@ class VectorMemoryService(
             },
         )
         // Delete only after the replacement batch has been persisted.
-        readyBatch.filter { it.legacyId != it.targetId }.forEach { vectorStore.delete(it.legacyId) }
-        return LegacyBatchResult(reindexed = readyBatch.size, skipped = skipped, reused = reused)
+        readyBatch.filter { it.legacyId != it.targetId }
+            .forEach { vectorStore.delete(it.legacyId) }
+        return LegacyBatchResult(
+            reindexed = readyBatch.size,
+            skipped = skipped,
+            reused = reused,
+        )
     }
 
     private fun generateVectorId(identity: VectorIdentity): String {
