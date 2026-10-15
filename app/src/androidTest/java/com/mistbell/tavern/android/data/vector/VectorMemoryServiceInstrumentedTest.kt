@@ -278,7 +278,11 @@ class VectorMemoryServiceInstrumentedTest {
                 )
 
             assertEquals(setOf("current-model", "legacy-compatible"), results.map { it.id }.toSet())
-            assertEquals("The current-model query should fall back only because it cannot fill top-K", 2, recordingStore.searchCalls.size)
+            assertEquals(
+                "The current-model query should fall back only because it cannot fill top-K",
+                2,
+                recordingStore.searchCalls.size,
+            )
             assertEquals(2, recordingStore.searchCalls[0].topK)
             assertTrue(recordingStore.searchCalls[0].filters.containsKey("embedding_model"))
             assertEquals(3, recordingStore.searchCalls[1].topK)
@@ -350,7 +354,11 @@ class VectorMemoryServiceInstrumentedTest {
 
             assertEquals(2, results.size)
             assertTrue(results.all { it.metadata["embedding_model"] == "known-default" })
-            assertEquals("A full current-model result must not trigger the broad legacy scan", 1, recordingStore.searchCalls.size)
+            assertEquals(
+                "A full current-model result must not trigger the broad legacy scan",
+                1,
+                recordingStore.searchCalls.size,
+            )
         }
 
     @Test
