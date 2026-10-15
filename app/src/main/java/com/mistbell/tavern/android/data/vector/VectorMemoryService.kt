@@ -407,6 +407,17 @@ class VectorMemoryService(
                 )
         }
 
+        // Multiple historical versions can share the same logical identity. Do not guess which
+        // content is authoritative: leave every ambiguous legacy copy untouched for manual review.
+        val ambiguousTargetIds = candidates.groupingBy { it.targetId }.eachCount()
+            .filterValues { it > 1 }.keys
+        if (ambiguousTargetIds.isNotEmpty()) {
+            val ambiguousCount = candidates.count { it.targetId in ambiguousTargetIds }
+            candidates.removeAll { it.targetId in ambiguousTargetIds }
+            skipped += ambiguousCount
+            Log.w(TAG, "Skipped $ambiguousCount legacy vectors with ambiguous logical identities")
+        }
+
         candidates.chunked(batchSize).forEach { batch ->
             val embeddings = embeddingService.embedBatch(
                 batch.map { it.content },
