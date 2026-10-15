@@ -156,7 +156,7 @@ fun ModernChatTopBar(
                 val status = embeddingRuntimeStatus
                 val badgeLabel =
                     when {
-                        !status.initialized -> "本地 EmbeddingGemma 不可用"
+                        !status.initialized && status.errorMessage != null -> "本地 EmbeddingGemma 不可用"
                         status.backend == "NPU" && status.lastInferenceSucceeded == false ->
                             "NPU 推理失败 · 查看设置"
                         status.backend == "NPU" && status.lastInferenceSucceeded == true ->
