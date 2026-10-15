@@ -58,13 +58,15 @@ class VectorMemoryService(
      *
      * 由构造时注入的 embedding 服务决定：
      * - 真实 API embedding 服务（OpenAIEmbeddingService）→ true
-     * - 本地语义向量（LocalEmbeddingService，F3 ONNX）→ true
+     * - 本地语义向量（ONNX BGE 或 LiteRT-LM EmbeddingGemma 2）→ true
      * - 占位服务（Mock 等）→ false
      *
      * available=false 时调用方应跳过向量写入/检索，改走词法回退（LexicalMemoryService）。
      */
     val available: Boolean =
-        embeddingService is OpenAIEmbeddingService || embeddingService is LocalEmbeddingService
+        embeddingService is OpenAIEmbeddingService ||
+            embeddingService is LocalEmbeddingService ||
+            embeddingService is EmbeddingGemma2LocalEmbeddingService
 
     private val embeddingModelId = embeddingService.modelId()
     private val legacyVectorsCompatible = embeddingService.supportsLegacyVectors()
