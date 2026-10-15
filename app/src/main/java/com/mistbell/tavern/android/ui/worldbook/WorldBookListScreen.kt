@@ -25,6 +25,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.mistbell.tavern.android.TavernApplication
+import com.mistbell.tavern.android.data.repository.WorldBookScanSettingsRepository
 import com.mistbell.tavern.android.ui.common.ModernTopBar
 import com.mistbell.tavern.android.ui.components.*
 import com.mistbell.tavern.android.ui.utils.clearFocusOnTap
@@ -52,6 +53,8 @@ fun WorldBookListScreen(
     val entryForm by viewModel.entryForm.collectAsState()
     val message by viewModel.message.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
+    val recursiveScanEnabled by viewModel.recursiveScanEnabled.collectAsState()
+    val recursiveScanDepth by viewModel.recursiveScanDepth.collectAsState()
 
     var showNewBookDialog by remember { mutableStateOf(false) }
     var newBookName by remember { mutableStateOf("") }
@@ -179,6 +182,60 @@ fun WorldBookListScreen(
 
                 // Search bar (only show when not in entry list view)
                 if (selectedBookId == null) {
+                Card(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                ) {
+                    Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("递归扫描", style = MaterialTheme.typography.titleSmall)
+                                Text(
+                                    "允许已激活的世界书继续触发其他条目",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            Switch(
+                                checked = recursiveScanEnabled,
+                                onCheckedChange = viewModel::setRecursiveScanEnabled,
+                            )
+                        }
+                        if (recursiveScanEnabled) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text("最大扫描深度：$recursiveScanDepth", style = MaterialTheme.typography.bodySmall)
+                            var pendingDepth by remember(recursiveScanDepth) {
+                                mutableStateOf(recursiveScanDepth.toFloat())
+                            }
+                            val minDepth = WorldBookScanSettingsRepository.MIN_RECURSION_DEPTH.toFloat()
+                            val maxDepth = WorldBookScanSettingsRepository.MAX_RECURSION_DEPTH.toFloat()
+                            Slider(
+                                value = pendingDepth,
+                                onValueChange = { pendingDepth = it },
+                                valueRange = minDepth..maxDepth,
+                                steps = WorldBookScanSettingsRepository.MAX_RECURSION_DEPTH -
+                                    WorldBookScanSettingsRepository.MIN_RECURSION_DEPTH - 1,
+                                onValueChangeFinished = {
+                                    viewModel.setRecursiveScanDepth(
+                                        pendingDepth.toInt().coerceIn(
+                                            WorldBookScanSettingsRepository.MIN_RECURSION_DEPTH,
+                                            WorldBookScanSettingsRepository.MAX_RECURSION_DEPTH,
+                                        ),
+                                    )
+                                },
+                            )
+                            Text(
+                                "深度越高，设定联动越完整，但可能激活更多内容并增加 Token",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
                     SearchBar(
                         value = searchQuery,
                         onValueChange = { viewModel.updateSearchQuery(it) },
