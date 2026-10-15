@@ -113,6 +113,26 @@ const val MAX_PROBABILITY = 1.0
 class WorldBookEditorViewModel(application: Application) : AndroidViewModel(application) {
     private val repo = WorldBookRepository(application)
 
+    val recursiveScanEnabled: StateFlow<Boolean> =
+        repo.observeRecursiveScanEnabled()
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
+
+    val recursiveScanDepth: StateFlow<Int> =
+        repo.observeRecursiveScanDepth()
+            .stateIn(
+                viewModelScope,
+                SharingStarted.WhileSubscribed(5_000),
+                WorldBookRepository.DEFAULT_RECURSION_DEPTH,
+            )
+
+    fun setRecursiveScanEnabled(enabled: Boolean) {
+        viewModelScope.launch { repo.setRecursiveScanEnabled(enabled) }
+    }
+
+    fun setRecursiveScanDepth(depth: Int) {
+        viewModelScope.launch { repo.setRecursiveScanDepth(depth) }
+    }
+
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery
 
