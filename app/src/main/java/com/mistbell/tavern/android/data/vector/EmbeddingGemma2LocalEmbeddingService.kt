@@ -271,6 +271,8 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
             }
         }
 
+    // LiteRT-LM's input list represents one multimodal embedding, not independent batch rows.
+    // Process each document separately; cancellation throws before a partial list can be returned.
     override suspend fun embedBatch(texts: List<String>): List<FloatArray> =
         embedBatch(texts, "LOCAL_GEMMA_BATCH")
 
