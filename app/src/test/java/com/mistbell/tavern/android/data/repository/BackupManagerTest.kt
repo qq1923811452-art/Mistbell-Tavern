@@ -19,6 +19,14 @@ class BackupManagerTest {
     private fun manifestJson(format: Int): String =
         """{"format":$format,"appVersion":"0.8.0-beta","createdAt":"2026-09-26 12:00:00","counts":{}}"""
 
+    @Test
+    fun unsafeBackupApiEndpointsAreQuarantinedInsteadOfBlockingRestore() {
+        assertEquals("", BackupManager.endpointForRestore("http://api.example.com/v1"))
+        assertEquals("", BackupManager.endpointForRestore("https://user:secret@api.example.com/v1"))
+        assertEquals("https://api.example.com/v1", BackupManager.endpointForRestore("https://api.example.com/v1"))
+        assertEquals("http://10.0.2.2:3000/", BackupManager.endpointForRestore("http://10.0.2.2:3000/"))
+    }
+
     // ---- 清单校验 ----
 
     @Test
