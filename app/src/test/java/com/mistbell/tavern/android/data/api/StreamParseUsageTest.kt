@@ -102,7 +102,11 @@ class StreamParseUsageTest {
     @Test
     fun `anthropic message_delta 保留网关提供的缓存用量`() {
         val data =
-            """{"type":"message_delta","usage":{"output_tokens":12,"cache_creation_input_tokens":2,"cache_read_input_tokens":5}}"""
+            """
+            {"type":"message_delta","usage":{
+                "output_tokens":12,"cache_creation_input_tokens":2,"cache_read_input_tokens":5
+            }}
+            """.trimIndent()
         val usage = (AnthropicChatProtocol.parseStreamData(data) as StreamParseResult.UsageUpdate).usage
         assertEquals(7, usage.promptTokens)
         assertEquals(12, usage.completionTokens)
