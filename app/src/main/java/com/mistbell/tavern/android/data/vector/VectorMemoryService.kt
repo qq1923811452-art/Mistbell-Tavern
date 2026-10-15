@@ -409,7 +409,7 @@ class VectorMemoryService(
         )
     }
 
-    @Suppress("CyclomaticComplexMethod", "ComplexCondition")
+    @Suppress("CyclomaticComplexMethod", "ComplexCondition", "LongMethod")
     private suspend fun prepareLegacyCandidates(entries: List<VectorStore.VectorEntry>): LegacyCandidatePreparation {
         var skipped = 0
         val candidates = mutableListOf<LegacyVectorCandidate>()
