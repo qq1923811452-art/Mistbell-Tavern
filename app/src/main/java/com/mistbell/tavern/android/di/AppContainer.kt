@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import com.mistbell.tavern.android.data.local.AppDatabase
 import com.mistbell.tavern.android.data.vector.CachedVectorStore
+import com.mistbell.tavern.android.data.vector.EmbeddingRuntimeStatus
 import com.mistbell.tavern.android.data.vector.EmbeddingService
 import com.mistbell.tavern.android.data.vector.EmbeddingGemma2LocalEmbeddingService
 import com.mistbell.tavern.android.data.vector.InMemoryVectorStore
