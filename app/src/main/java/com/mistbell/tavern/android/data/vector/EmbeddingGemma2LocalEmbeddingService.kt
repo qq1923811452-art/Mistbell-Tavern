@@ -66,7 +66,7 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
         private const val MIN_MODEL_BYTES = 180L * 1024L * 1024L
         private const val MAX_MODEL_BYTES = 240L * 1024L * 1024L
         private const val EXPECTED_DIMENSION = 768
-        private const val EXPECTED_MODEL_SHA256 = "7dabcb17eed982d6de4435aaf29cc56147a627f6ab20a1e37aadd7af5399457b"
+        private const val EXPECTED_MODEL_SHA256 = "6a5043146940e738cfa9111aa445b1cdb3dc7bbef30caef367622f14ada1a895"
         private const val COMPAT_MODEL_FILE_NAME = "embeddinggemma-2-text-270m.litertlm"
         private const val COMPAT_MODEL_URL =
             "https://huggingface.co/litert-community/embeddinggemma-2-text-270m-litert-lm/" +
