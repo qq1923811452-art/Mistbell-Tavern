@@ -121,9 +121,11 @@ class BackupManagerTest {
     fun `restore decoding reports skipped rows and fully undecodable optional tables`() {
         val serializer = SettingsEntity.serializer()
         val warnings = mutableListOf<String>()
-        val partial = BackupManager.decodeBackupList(
+        val partial =
+            BackupManager.decodeBackupList(
             files = mapOf("settings.json" to """[{"key":"a","value":"1"},{"key":42}]"""),
-            manifest = BackupManager.BackupManifest(
+            manifest =
+                BackupManager.BackupManifest(
                 format = 1,
                 appVersion = "test",
                 createdAt = "test",
@@ -138,9 +140,11 @@ class BackupManagerTest {
         assertTrue(warnings.any { it.contains("1 条记录无法解析") })
 
         val optionalWarnings = mutableListOf<String>()
-        val noRecords = BackupManager.decodeBackupList(
+        val noRecords =
+            BackupManager.decodeBackupList(
             files = mapOf("settings.json" to """[{"key":42}]"""),
-            manifest = BackupManager.BackupManifest(
+            manifest =
+                BackupManager.BackupManifest(
                 format = 1,
                 appVersion = "legacy",
                 createdAt = "test",
