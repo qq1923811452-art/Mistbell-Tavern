@@ -61,9 +61,12 @@ class VectorMemoryService(
                 mapOf(
                     "owner_id" to ownerId,
                     "character_id" to characterId,
+                    // Keep embeddings from different models in separate retrieval namespaces.
+                    "embedding_model" to embeddingService.getModelId(),
                     "session_id" to sessionId,
                     "message_id" to messageId,
                     "content_type" to contentType,
+                    "embedding_model" to embeddingService.getModelId(),
                     "content" to content,
                     "created_at" to System.currentTimeMillis().toString(),
                 )
