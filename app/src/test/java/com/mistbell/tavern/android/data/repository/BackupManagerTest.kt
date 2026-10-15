@@ -84,17 +84,17 @@ class BackupManagerTest {
             payload: String?,
             count: Int?,
         ) = BackupManager.decodeBackupList(
-                files = payload?.let { mapOf("settings.json" to it) }.orEmpty(),
-                manifest =
-                    BackupManager.BackupManifest(
-                        format = 1,
-                        appVersion = "test",
-                        createdAt = "test",
-                        counts = count?.let { mapOf("settings.json" to it) }.orEmpty(),
-                    ),
-                entryName = "settings.json",
-                serializer = serializer,
-            )
+            files = payload?.let { mapOf("settings.json" to it) }.orEmpty(),
+            manifest =
+                BackupManager.BackupManifest(
+                    format = 1,
+                    appVersion = "test",
+                    createdAt = "test",
+                    counts = count?.let { mapOf("settings.json" to it) }.orEmpty(),
+                ),
+            entryName = "settings.json",
+            serializer = serializer,
+        )
 
         listOf("{", "{}", """[{"key":42}]""").forEach { payload ->
             try {
