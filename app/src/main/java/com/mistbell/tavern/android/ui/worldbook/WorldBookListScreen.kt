@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.mistbell.tavern.android.TavernApplication
 import com.mistbell.tavern.android.ui.common.ModernTopBar
+import com.mistbell.tavern.android.data.repository.WorldBookScanSettingsRepository
 import com.mistbell.tavern.android.ui.components.*
 import com.mistbell.tavern.android.ui.utils.clearFocusOnTap
 import com.mistbell.tavern.android.util.WorldBookParser
@@ -234,14 +235,14 @@ fun WorldBookListScreen(
                         if (recursiveScanEnabled) {
                             Spacer(modifier = Modifier.height(8.dp))
                             Text("最大扫描深度：$recursiveScanDepth", style = MaterialTheme.typography.bodySmall)
-                            var pendingDepth by remember(recursiveScanDepth) { mutableFloatStateOf(recursiveScanDepth.toFloat()) }
+                            var pendingDepth by remember(recursiveScanDepth) { mutableStateOf(recursiveScanDepth.toFloat()) }
                             Slider(
                                 value = pendingDepth,
                                 onValueChange = { pendingDepth = it },
-                                valueRange = 1f..5f,
-                                steps = 3,
+                                valueRange = WorldBookScanSettingsRepository.MIN_RECURSION_DEPTH.toFloat()..WorldBookScanSettingsRepository.MAX_RECURSION_DEPTH.toFloat(),
+                                steps = WorldBookScanSettingsRepository.MAX_RECURSION_DEPTH - WorldBookScanSettingsRepository.MIN_RECURSION_DEPTH - 1,
                                 onValueChangeFinished = {
-                                    viewModel.setRecursiveScanDepth(pendingDepth.toInt().coerceIn(1, 5))
+                                    viewModel.setRecursiveScanDepth(pendingDepth.toInt().coerceIn(WorldBookScanSettingsRepository.MIN_RECURSION_DEPTH, WorldBookScanSettingsRepository.MAX_RECURSION_DEPTH))
                                 },
                             )
                             Text(
