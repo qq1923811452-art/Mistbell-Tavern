@@ -1,6 +1,21 @@
 package com.mistbell.tavern.android.data.vector
 
 /**
+ * Runtime facts shown in the chat UI. Backend is reported only after the engine initialized;
+ * lastInferenceSucceeded changes only after a real embedding request returns a valid vector.
+ */
+data class EmbeddingRuntimeStatus(
+    val source: String = "auto",
+    val backend: String? = null,
+    val modelVariant: String? = null,
+    val initialized: Boolean = false,
+    val successfulInferenceCount: Long = 0,
+    val lastInferenceAtMillis: Long? = null,
+    val lastInferenceSucceeded: Boolean? = null,
+    val errorMessage: String? = null,
+)
+
+/**
  * 嵌入服务接口
  *
  * 用于将文本转换为向量表示
