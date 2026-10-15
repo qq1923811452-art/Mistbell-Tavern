@@ -19,7 +19,8 @@ import java.time.Instant
 object PromptBuilder {
     /** World Info 的会话内运行状态：sticky/cooldown/delay 只影响激活决策，不改变 Room 主数据。 */
     private object WorldInfoRuntime {
-        private const val MAX_RECURSION_DEPTH = 3
+        private const val DEFAULT_RECURSION_DEPTH = 3
+        private const val MAX_ALLOWED_RECURSION_DEPTH = 5
 
         private data class EntryState(var lastTurn: Int = -1, var sticky: Boolean = false)
 
@@ -48,13 +49,15 @@ object PromptBuilder {
             sessionId: String,
             entries: List<WorldBookEntryEntity>,
             scanText: String,
+            recursiveEnabled: Boolean = true,
+            maxDepth: Int = DEFAULT_RECURSION_DEPTH,
         ): Set<String> {
             val state = sessions.getOrPut(sessionId) { SessionState() }
             state.turn += 1
             val activated = linkedSetOf<String>()
             val selectedGroups = mutableSetOf<String>()
             var corpus = scanText
-            repeat(MAX_RECURSION_DEPTH) {
+            repeat(if (recursiveEnabled) maxDepth.coerceIn(1, MAX_ALLOWED_RECURSION_DEPTH) else 1) {
                 val candidates =
                     entries
                         .asSequence()
@@ -497,7 +500,17 @@ object PromptBuilder {
         // 关键词激活判定（与位置规划正交）：非常驻、启用、概率掷骰通过、命中当前用户消息任一关键词；
         // probability=1（缺省）跳过掷骰快速路径，constant 常驻条目不参与本判定（恒注入）
         val activatedEntryIds =
-            WorldInfoRuntime.activate(sessionId, worldBookEntries, worldInfoScanText)
+            WorldInfoRuntime.activate(
+                sessionId = sessionId,
+                entries = worldBookEntries,
+                scanText = worldInfoScanText,
+                recursiveEnabled = settingsDao.getValue("worldbook_recursive_scan_enabled") != "0",
+                maxDepth =
+                    settingsDao.getValue("worldbook_recursive_scan_depth")
+                        ?.toIntOrNull()
+                        ?.coerceIn(1, 5)
+                        ?: 3,
+            )
         val wbPlan = WorldBookPlacement.plan(worldBookEntries)
         // 缓存优化：只注入 constant 条目到历史之前，activated 条目稍后注入到历史之后
         worldInfoBlock(wbPlan.afterPrompt, activatedEntryIds, mctx, constantOnly = true)?.let {
