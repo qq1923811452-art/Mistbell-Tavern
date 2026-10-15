@@ -32,6 +32,13 @@ class MemoryExtractionModelSettingsTest {
                 model = "qwen",
             ).toLlmConfigOrNull(),
         )
+        assertNull(
+            MemoryExtractionModelSettings(
+                baseUrl = "https://",
+                apiKey = "key",
+                model = "qwen",
+            ).toLlmConfigOrNull(),
+        )
     }
 
     @Test
