@@ -161,35 +161,37 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
 
         private fun createEngine(modelPath: String): EmbeddingGemma2LocalEmbeddingService {
             var gpuFailure: Throwable? = null
-            val gpuEngine =
-                EmbeddingEngine(EmbeddingEngineConfig(modelPath = modelPath, backend = Backend.GPU()))
+            var gpuEngine: EmbeddingEngine? = null
             try {
+                gpuEngine =
+                    EmbeddingEngine(EmbeddingEngineConfig(modelPath = modelPath, backend = Backend.GPU()))
                 gpuEngine.initialize()
                 Log.i(TAG, "EmbeddingGemma 2 initialized with GPU backend")
                 return EmbeddingGemma2LocalEmbeddingService(gpuEngine)
             } catch (e: Exception) {
                 gpuFailure = e
-                runCatching { gpuEngine.close() }
+                gpuEngine?.let { runCatching { it.close() } }
                 Log.w(TAG, "GPU backend unavailable; retrying EmbeddingGemma 2 on CPU", e)
             } catch (e: LinkageError) {
                 gpuFailure = e
-                runCatching { gpuEngine.close() }
+                gpuEngine?.let { runCatching { it.close() } }
                 Log.w(TAG, "GPU native backend unavailable; retrying EmbeddingGemma 2 on CPU", e)
             }
 
-            val cpuEngine =
-                EmbeddingEngine(EmbeddingEngineConfig(modelPath = modelPath, backend = Backend.CPU()))
+            var cpuEngine: EmbeddingEngine? = null
             try {
+                cpuEngine =
+                    EmbeddingEngine(EmbeddingEngineConfig(modelPath = modelPath, backend = Backend.CPU()))
                 cpuEngine.initialize()
                 Log.i(TAG, "EmbeddingGemma 2 initialized with CPU backend")
                 return EmbeddingGemma2LocalEmbeddingService(cpuEngine)
             } catch (e: Exception) {
-                runCatching { cpuEngine.close() }
+                cpuEngine?.let { runCatching { it.close() } }
                 throw IOException("EmbeddingGemma 2 could not initialize on GPU or CPU", e).also {
                     gpuFailure?.let(it::addSuppressed)
                 }
             } catch (e: LinkageError) {
-                runCatching { cpuEngine.close() }
+                cpuEngine?.let { runCatching { it.close() } }
                 throw IOException("EmbeddingGemma 2 native runtime is unavailable", e).also {
                     gpuFailure?.let(it::addSuppressed)
                 }
