@@ -735,7 +735,6 @@ private fun storeEntry(
         }
 }
 
-
 /** Add the config ID to Keystore failures so a failed restore is diagnosable. */
 internal fun wrapRestoredApiKey(
     id: String,
@@ -744,7 +743,7 @@ internal fun wrapRestoredApiKey(
 ): String =
     try {
         wrap(plainApiKey)
-    } catch (e: Exception) {
+    } catch (e: IllegalStateException) {
         throw IllegalStateException("无法加密备份中 API 配置 $id 的密钥，已中止恢复", e)
     }
 
