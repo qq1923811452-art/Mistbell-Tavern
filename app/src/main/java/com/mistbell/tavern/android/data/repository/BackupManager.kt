@@ -811,8 +811,6 @@ private fun auxiliaryRestoreWarning(error: Exception): List<String> {
     return listOf("数据已恢复，但部分资材文件未写入；请检查附件是否完整。")
 }
 
-/** Quarantine unsafe API endpoints imported from an untrusted backup. */
-internal fun endpointForRestore(endpoint: String): String = if (ApiEndpointPolicy.writeRejectionReason(endpoint) == null) endpoint else ""
 
 /** Add the config ID to Keystore failures so a failed restore is diagnosable. */
 internal fun wrapRestoredApiKey(
