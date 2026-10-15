@@ -74,6 +74,7 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
         private const val COMPAT_MIN_MODEL_BYTES = 150L * 1024L * 1024L
         private const val COMPAT_MAX_MODEL_BYTES = 180L * 1024L * 1024L
         private const val COMPAT_MODEL_SHA256 = "2d079ee2f6f066b1f368e8d7c819f55214eaef1d0513b312321901f30ab286fb"
+        private const val BYTE_MASK = 0xff
 
         private val modelDownloadMutex = Mutex()
 
