@@ -103,7 +103,7 @@ class BackupManager(private val context: Context) {
             val plainApiKey =
                 when {
                     apiKey.isEmpty() -> ""
-                    apiKey.startsWith("enc:v1:") -> {
+                    apiKey.startsWith(SecureStore.PREFIX) -> {
                         check(SecureStore.isEncrypted(apiKey)) {
                             "备份中的 API 配置 $id 使用不可解密的密钥，已中止恢复；请重新输入 API Key"
                         }
@@ -137,7 +137,7 @@ class BackupManager(private val context: Context) {
         companion object {
             fun fromEntity(entity: ApiConfigEntity): ApiConfigBackupEntry {
                 val encrypted = SecureStore.isEncrypted(entity.apiKey)
-                check(!entity.apiKey.startsWith("enc:v1:") || encrypted) {
+                check(!entity.apiKey.startsWith(SecureStore.PREFIX) || encrypted) {
                     "API 配置 ${entity.id} 的加密格式损坏，已中止备份以避免丢失敏感数据"
                 }
                 val plainKey = if (encrypted) SecureStore.unwrap(entity.apiKey) else entity.apiKey
@@ -338,7 +338,7 @@ class BackupManager(private val context: Context) {
         /** settings 导出条目：密文解为明文并标记 sensitive（明文原样直通） */
         fun toBackupEntry(entity: SettingsEntity): SettingsBackupEntry {
             val encrypted = SecureStore.isEncrypted(entity.value)
-            check(!entity.value.startsWith("enc:v1:") || encrypted) {
+            check(!entity.value.startsWith(SecureStore.PREFIX) || encrypted) {
                 "设置 ${entity.key} 的加密格式损坏，已中止备份以避免丢失敏感数据"
             }
             val sensitive = encrypted || isSensitiveSettingKey(entity.key)

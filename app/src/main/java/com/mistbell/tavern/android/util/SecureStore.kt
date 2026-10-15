@@ -24,7 +24,14 @@ import javax.crypto.spec.GCMParameterSpec
 object SecureStore {
     private const val TAG = "SecureStore"
     private const val KEY_ALIAS = "mistbell_secure_v1"
-    private const val PREFIX = "enc:v1:"
+
+    /**
+     * 密文信封前缀（**唯一来源**）。
+     *
+     * 其它模块做前缀判断时必须引用本常量，不要再硬编码字面量——
+     * 散落的副本会在信封格式演进时静默不同步。
+     */
+    const val PREFIX = "enc:v1:"
     private const val IV_SIZE = 12
     private const val TAG_BITS = 128
     private const val TAG_BYTES = TAG_BITS / 8
@@ -69,7 +76,12 @@ object SecureStore {
 
     private fun containsCredentialSegment(normalized: String): Boolean {
         val credentialSegments =
-            setOf("token", "secret", "password", "passwd", "credential", "credentials", "authorization", "bearer")
+            setOf(
+                "token", "secret", "password", "passwd", "credential", "credentials", "authorization", "bearer",
+                // "key" 必须在内：否则 `llm_key` / `dashscope_key` 这类命名会被判为非敏感而明文落盘。
+                // 现有键中只有 `llm_api_key` / `embedding_api_key` 含该段，二者原本已由 "apikey" 命中，故无行为变化。
+                "key",
+            )
         return normalized.split('_').filter(String::isNotBlank).any { it in credentialSegments }
     }
 
