@@ -300,7 +300,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                     normalized == "local" ->
                         "本地 ONNX 初始化失败，向量记忆暂不可用；未回退到远程 API。请检查本地模型文件。"
                     normalized == "local-gemma" && active ->
-                        "已启用本地 EmbeddingGemma 2。首次使用需下载约 165MB 模型；" +
+                        "已启用本地 EmbeddingGemma 2。首次使用需下载约 208MB 模型；" +
                             "后续向量化可离线完成。已有旧模型向量会隔离，不会混用。"
                     normalized == "local-gemma" ->
                         "EmbeddingGemma 2 未能初始化；向量记忆暂不可用，且不会回退到远程 API。" +
