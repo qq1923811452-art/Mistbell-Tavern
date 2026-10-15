@@ -110,7 +110,8 @@ class InMemoryVectorStore(
                 if (compatibleEntries.size != matchingEntries.size) {
                     Log.w(
                         TAG,
-                        "Skipped ${matchingEntries.size - compatibleEntries.size} vectors with incompatible dimensions (query=${queryVector.size})",
+                        "Skipped ${matchingEntries.size - compatibleEntries.size} vectors with incompatible " +
+                            "dimensions (query=${queryVector.size})",
                     )
                 }
                 compatibleEntries
