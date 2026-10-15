@@ -46,6 +46,7 @@ class VectorMemoryService(
         private const val EMBEDDING_CACHE_LOAD_FACTOR = 0.75f
         private const val EMBEDDING_CACHE_MAX_ENTRIES = 512
         private const val EMBEDDING_CACHE_STRIPE_COUNT = 32
+        // Keep explicit legacy reindex requests bounded to limit peak memory and API batch cost.
         private const val LEGACY_REINDEX_BATCH_SIZE = 32
         private const val HEX_BYTE_WIDTH = 2
         private const val BYTE_MASK = 0xff
