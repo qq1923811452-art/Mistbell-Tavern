@@ -8,6 +8,9 @@ package com.mistbell.tavern.android.data.vector
  * instruction with an explicit missing-title marker.
  */
 internal object EmbeddingGemma2InputPolicy {
+    // Bump this whenever either instruction changes so persisted vectors are reindexed.
+    const val VERSION = "search-query-document-v1"
+
     private const val QUERY_PREFIX = "task: search result | query: "
     private const val DOCUMENT_PREFIX = "title: none | text: "
 
