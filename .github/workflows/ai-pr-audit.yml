@@ -243,7 +243,7 @@ jobs:
                   if prior_reports:
                       previous_report = prior_reports[0]
                       break
-                  next_link = re.search(r'<([^>]+)>;\\s*rel="next"', link_header)
+                  next_link = re.search(r'<([^>]+)>;\s*rel="next"', link_header)
                   if not next_link:
                       break
                   comments_url = next_link.group(1)
