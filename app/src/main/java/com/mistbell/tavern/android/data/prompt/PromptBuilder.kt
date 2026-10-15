@@ -1108,8 +1108,9 @@ object PromptBuilder {
         return buildString {
             appendLine("## Relevant Past Conversations")
             relevantResults.forEachIndexed { index, result ->
-                val similarityPercent = (result.score * 100).toInt()
-                appendLine("${index + 1}. ${result.content} (similarity: $similarityPercent%)")
+                // Similarity is retrieval metadata, not story information; omit it from the prompt
+                // to save tokens without discarding the recalled conversation content.
+                appendLine("${index + 1}. ${result.content}")
             }
         }
     }
