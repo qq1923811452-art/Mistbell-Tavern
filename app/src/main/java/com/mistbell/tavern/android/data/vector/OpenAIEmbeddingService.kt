@@ -66,7 +66,7 @@ class OpenAIEmbeddingService(
                         delay(delayMs)
                     }
                 } catch (e: Exception) {
-                    if (e.message?.contains("429") == true) {
+                    if (isRetryableHttpError(e)) {
                         lastException = e
                         if (attempt < MAX_RETRIES - 1) {
                             val delayMs = INITIAL_RETRY_DELAY_MS * (1 shl attempt) * 2
@@ -149,7 +149,7 @@ class OpenAIEmbeddingService(
                         delay(delayMs)
                     }
                 } catch (e: Exception) {
-                    if (e.message?.contains("429") == true) {
+                    if (isRetryableHttpError(e)) {
                         lastException = e
                         if (attempt < MAX_RETRIES - 1) {
                             val delayMs = INITIAL_RETRY_DELAY_MS * (1 shl attempt) * 2
@@ -222,6 +222,11 @@ class OpenAIEmbeddingService(
         }
     }
 
+    private fun isRetryableHttpError(error: Exception): Boolean {
+        val message = error.message.orEmpty()
+        return message.contains("429") ||
+            Regex("OpenAI API error: 5\\d\\d").containsMatchIn(message)
+    }
     override fun getDimension(): Int = DIMENSION
 
     override fun getModelId(): String = "api:${baseUrl.trimEnd('/')}:$model"
