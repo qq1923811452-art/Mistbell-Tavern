@@ -49,6 +49,7 @@ Extraction must not delay the chat response. A future dedicated memory-LLM confi
 - Query vectors and stored vectors must have compatible dimensions. Incompatible historical vectors are skipped instead of crashing the entire search.
 - Switching the configured source refreshes the active service wrapper. The old model's vectors remain isolated and can be retrieved again when switching back to that same model identity.
 - Existing vectors written before model identity was added have no model namespace and are therefore not selected by the new filter. A deliberate re-embedding/reindex path is needed to migrate them; do not guess their original model.
+- Vector writes use a stable ID derived from message identity and embedding model; unchanged content reuses the persisted vector, while changed content overwrites that model's prior vector instead of adding a duplicate.
 - Mock embeddings are placeholders only. When the real embedding service is unavailable, use lexical fallback and do not write mock vectors.
 - Search-cache keys include the exact query vector, top-K, and normalized filters. Cache writes are rejected if a mutation invalidated the cache while a search was in flight.
 
@@ -69,10 +70,10 @@ Extraction must not delay the chat response. A future dedicated memory-LLM confi
 3. Old vectors with no model metadata do not crash retrieval; reindex migration is separately tested.
 4. A mock embedding provider writes no vectors; lexical fallback still supplies context.
 5. Cache-key collision and search/write races cannot return cached results from a different query or stale index generation.
-6. Batch embedding results are ordered by response index and reject missing/duplicate indices or unexpected dimensions.
+6. Batch embedding results are ordered by response index and reject duplicate indices, response-count mismatches, or unexpected dimensions.
 7. Repeated chat turns preserve the stable prompt prefix; tests cover worldbook placement, group chat, @D placement, history truncation and duplicate-memory removal.
 8. Report measured prompt tokens, cached tokens, uncached tokens, extraction cost, retrieval quality and latency for the same fixtures before and after changes.
 
 ## Current scope of this branch
 
-This branch hardens vector-cache correctness, model isolation, runtime source refresh, mock-vector avoidance, and batch embedding response validation. It does not yet implement a dedicated memory-LLM settings screen, persistent extraction queue/watermark, or legacy-vector reindex UI. Those should be added as explicit follow-up work rather than hidden behind the current Embedding settings.
+This branch hardens vector-cache correctness, model isolation, atomic runtime source refresh, mock-vector avoidance, idempotent vector writes, and batch embedding response validation. It does not yet implement a dedicated memory-LLM settings screen, persistent extraction queue/watermark, or legacy-vector reindex UI. Those should be added as explicit follow-up work rather than hidden behind the current Embedding settings.
