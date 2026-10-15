@@ -77,7 +77,26 @@ class ImageGenerationService(
 
             val response =
                 client.newCall(requestBuilder.build()).execute().use { httpResponse ->
-                    val body = httpResponse.body?.string().orEmpty()
+                    val responseBody = httpResponse.body
+                    if (responseBody != null && responseBody.contentLength() > MAX_RESPONSE_JSON_BYTES) {
+                        throw IOException("生图 API 响应超过大小限制")
+                    }
+                    val body =
+                        responseBody?.byteStream()?.use { input ->
+                            val output = java.io.ByteArrayOutputStream()
+                            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                            var total = 0L
+                            while (true) {
+                                val count = input.read(buffer)
+                                if (count < 0) break
+                                total += count
+                                if (total > MAX_RESPONSE_JSON_BYTES) {
+                                    throw IOException("生图 API 响应超过大小限制")
+                                }
+                                output.write(buffer, 0, count)
+                            }
+                            String(output.toByteArray(), Charsets.UTF_8)
+                        }.orEmpty()
                     if (!httpResponse.isSuccessful) {
                         // Do not surface arbitrary provider error bodies: some gateways echo request data.
                         throw IOException("生图 API 返回 HTTP ${httpResponse.code}: ${httpResponse.message}")
@@ -220,6 +239,7 @@ class ImageGenerationService(
         private const val MAX_DIMENSION = 2048
         private const val MAX_IMAGE_BYTES = 30L * 1024L * 1024L
         private const val MAX_BASE64_CHARS = 4L * ((MAX_IMAGE_BYTES + 2L) / 3L)
+        private const val MAX_RESPONSE_JSON_BYTES = MAX_BASE64_CHARS + 1_048_576L
         private const val MAX_REDIRECTS = 5
         private const val OUTPUT_DIRECTORY = "generated-images"
         private const val CONNECT_TIMEOUT_SECONDS = 20L
