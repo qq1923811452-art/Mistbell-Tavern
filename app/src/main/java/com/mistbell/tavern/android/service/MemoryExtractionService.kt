@@ -673,6 +673,8 @@ class MemoryExtractionService(
         val importance: Double,
         val tags: List<String>,
         val keywords: List<String>,
+        val supersededMemoryIds: List<Long> = emptyList(),
+        val previousValues: List<String> = emptyList(),
     )
 }
 
