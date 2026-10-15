@@ -93,6 +93,8 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
                 try {
                     val modelFile = ensureModelDownloaded(context)
                     createEngine(modelFile.absolutePath, context.applicationInfo.nativeLibraryDir)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
                 } catch (qualcommModelFailure: Exception) {
                     Log.w(TAG, "SM8650-optimized model could not initialize on available backends; trying the generic 165 MB EmbeddingGemma 2 model", qualcommModelFailure)
                     val compatibleModel = ensureCompatibleModelDownloaded(context)
