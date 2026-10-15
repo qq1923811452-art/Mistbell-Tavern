@@ -46,6 +46,7 @@ class VectorMemoryService(
         private const val EMBEDDING_CACHE_LOAD_FACTOR = 0.75f
         private const val EMBEDDING_CACHE_MAX_ENTRIES = 512
         private const val EMBEDDING_CACHE_STRIPE_COUNT = 32
+        private const val LEGACY_REINDEX_BATCH_SIZE = 32
         private const val HEX_BYTE_WIDTH = 2
         private const val BYTE_MASK = 0xff
     }
@@ -362,7 +363,9 @@ class VectorMemoryService(
      * This operation is explicit because remote reindexing may incur API cost. Replacements are
      * persisted before legacy entries are deleted; incomplete metadata is skipped, never guessed.
      */
-    suspend fun reindexLegacyVectors(batchSize: Int = LEGACY_REINDEX_BATCH_SIZE): LegacyReindexResult {
+    suspend fun reindexLegacyVectors(
+        batchSize: Int = LEGACY_REINDEX_BATCH_SIZE,
+    ): LegacyReindexResult {
         require(batchSize > 0) { "batchSize must be positive" }
         check(embeddingService !is MockEmbeddingService) {
             "Legacy vector reindex requires a real embedding service; mock vectors must never be persisted"
@@ -391,6 +394,7 @@ class VectorMemoryService(
         )
     }
 
+    @Suppress("CyclomaticComplexMethod", "ComplexCondition")
     private suspend fun prepareLegacyCandidates(
         entries: List<VectorStore.VectorEntry>,
     ): LegacyCandidatePreparation {
@@ -425,8 +429,11 @@ class VectorMemoryService(
 
         // Multiple historical versions can share the same logical identity. Do not guess which
         // content is authoritative: leave every ambiguous legacy copy untouched for manual review.
-        val ambiguousTargetIds = candidates.groupingBy { it.targetId }.eachCount()
-            .filterValues { it > 1 }.keys
+        val ambiguousTargetIds =
+            candidates.groupingBy { it.targetId }
+                .eachCount()
+                .filterValues { it > 1 }
+                .keys
         if (ambiguousTargetIds.isNotEmpty()) {
             val ambiguousCount = candidates.count { it.targetId in ambiguousTargetIds }
             candidates.removeAll { it.targetId in ambiguousTargetIds }
@@ -513,8 +520,9 @@ class VectorMemoryService(
                 identity.contentType,
                 identity.modelId,
             ).joinToString(separator = "\u0000")
-        val digest = MessageDigest.getInstance("SHA-256")
-            .digest(encodedIdentity.toByteArray(StandardCharsets.UTF_8))
+        val digest =
+            MessageDigest.getInstance("SHA-256")
+                .digest(encodedIdentity.toByteArray(StandardCharsets.UTF_8))
         return "vec_" + digest.joinToString("") { byte ->
             ("%0" + HEX_BYTE_WIDTH + "x").format(byte.toInt() and BYTE_MASK)
         }
