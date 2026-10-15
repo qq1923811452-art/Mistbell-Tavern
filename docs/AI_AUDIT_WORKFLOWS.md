@@ -9,7 +9,7 @@ Use **Actions → AI Pull Request Audit → Run workflow**:
 - Select `audit` for a fresh review of the current pinned PR diff.
 - Select `re-review` after fixes to compare the latest pinned diff against the previous `github-actions[bot]` audit report.
 
-The re-review loads only the previous report authored by `github-actions[bot]`, redacts it before external transmission, pins and rechecks the current PR base/head SHAs, and asks the model to classify prior findings as `fixed`, `still_open`, or `uncertain`. Fixed/still-open classifications are only displayed as confirmed when their cited lines match the submitted diff. AI findings remain advisory; CI and human source review are still required.
+The re-review loads only the previous report authored by `github-actions[bot]`, redacts it before external transmission, pins and rechecks the current PR base/head SHAs, and asks the model to classify prior findings as `fixed`, `still_open`, or `uncertain`. To avoid silently omitting findings, it refuses to re-review a previous report larger than 16,000 characters rather than truncating it. Fixed/still-open classifications are only displayed as confirmed when their cited lines match the submitted diff. AI findings remain advisory; CI and human source review are still required.
 
 ## Dedicated re-review
 
