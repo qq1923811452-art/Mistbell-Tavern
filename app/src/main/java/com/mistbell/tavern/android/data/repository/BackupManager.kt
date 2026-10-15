@@ -498,10 +498,15 @@ class BackupManager(private val context: Context) {
             // 那会让调用方报「恢复失败」，而实际上数据已完整合并进库——用户会以为白恢复了。
             // 因此降级为 warning，让 UI 如实呈现「数据已恢复，但部分资材未写入」。
             val assetWarnings =
-                runCatching { writeAuxiliaryFiles(files, tables.themePacks) }
-                    .exceptionOrNull()
-                    ?.let { listOf("数据已恢复，但部分资材文件未写入（${it.message ?: it.javaClass.simpleName}）") }
-                    .orEmpty()
+                try {
+                    writeAuxiliaryFiles(files, tables.themePacks)
+                    emptyList()
+                } catch (error: Exception) {
+                    // 取消恢复必须继续向上传播；不能把协程取消伪装成「部分资材未写入」。
+                    if (error is kotlinx.coroutines.CancellationException) throw error
+                    // 只将普通异常降级为附件 warning。Error（例如 OutOfMemoryError）不被捕获。
+                    listOf("数据已恢复，但部分资材文件未写入（${error.message ?: error.javaClass.simpleName}）")
+                }
             summary.copy(warnings = tables.decodeWarnings + assetWarnings)
         }
 
