@@ -104,7 +104,7 @@ internal fun VectorMemorySettingsCard(viewModel: SettingsViewModel) {
             Text(
                 text =
                     "「本地 ONNX」使用内置 BGE 中文模型；「本地 EmbeddingGemma 2」通过 LiteRT-LM " +
-                        "加载约 165MB 的纯文本模型，首次启用需联网下载，完成后可离线向量化。" +
+                        "加载约 208MB 的纯文本模型，首次启用需联网下载，完成后可离线向量化。" +
                         "Gemma 2 会优先尝试 GPU，初始化不支持时回退 CPU；本地模型初始化失败不会静默调用远程 API。" +
                         "不同模型的向量空间会隔离，切换模型后需安全重建索引；提示词缓存布局不受影响。",
                 style = MaterialTheme.typography.bodySmall,
