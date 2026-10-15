@@ -118,15 +118,17 @@ class AppContainer(private val appContext: Context) {
         val newEmbeddingService = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             assembleEmbeddingService()
         }
-        // Clear cached retrieval results whenever the active provider is replaced.
-        (vectorStore as? CachedVectorStore)?.invalidateSearchCache()
         val newRuntime = EmbeddingRuntime(
             embeddingService = newEmbeddingService,
             vectorMemoryService = VectorMemoryService(vectorStore, newEmbeddingService),
         )
+        // Publish the new provider pair first, then invalidate results from the previous runtime.
+        // Model identity is also part of retrieval filters, so old in-flight searches cannot match
+        // a different model namespace after this swap.
         synchronized(embeddingLock) {
             currentEmbeddingRuntime = newRuntime
         }
+        (vectorStore as? CachedVectorStore)?.invalidateSearchCache()
     }
 
     private fun getEmbeddingApiKey(): String {
