@@ -224,6 +224,8 @@ class OpenAIEmbeddingService(
 
     override fun getDimension(): Int = DIMENSION
 
+    override fun getModelId(): String = "api:${baseUrl.trimEnd('/')}:$model"
+
     @Serializable
     private data class EmbeddingRequestSingle(
         val input: String,
