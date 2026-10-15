@@ -52,7 +52,9 @@ class CachedVectorStore(
             SearchCacheKey(
                 queryVector = QueryVectorKey(queryVector),
                 topK = topK,
-                filters = filters.entries.sortedBy { it.key }.map { it.key to normalizeFilterValue(it.value) },
+                // Preserve each value's equality semantics: the delegate compares metadataValue == value.
+                // Normalizing arrays/iterables can merge cache keys that the delegate considers unequal.
+                filters = filters.entries.sortedBy { it.key }.map { it.key to it.value },
             )
 
         val generation =
@@ -107,34 +109,6 @@ class CachedVectorStore(
 
     /** Public hook for provider/model reconfiguration. */
     suspend fun invalidateSearchCache() = invalidateCache()
-
-    private fun normalizeFilterValue(value: Any?): Any? =
-        when (value) {
-            null -> null
-            is Map<*, *> -> normalizeMap(value)
-            is Set<*> -> value.map { normalizeFilterValue(it) }.sortedBy { it.toString() }
-            is Iterable<*> -> value.map { normalizeFilterValue(it) }
-            is Array<*> -> value.map { normalizeFilterValue(it) }
-            else -> normalizePrimitiveArray(value) ?: value
-        }
-
-    private fun normalizePrimitiveArray(value: Any): List<*>? =
-        when (value) {
-            is IntArray -> value.toList()
-            is LongArray -> value.toList()
-            is FloatArray -> value.toList()
-            is DoubleArray -> value.toList()
-            is BooleanArray -> value.toList()
-            is ByteArray -> value.toList()
-            is ShortArray -> value.toList()
-            is CharArray -> value.toList()
-            else -> null
-        }
-
-    private fun normalizeMap(value: Map<*, *>): List<Pair<String, Any?>> =
-        value.entries
-            .map { it.key.toString() to normalizeFilterValue(it.value) }
-            .sortedBy { it.first }
 
     private suspend fun invalidateCache() {
         cacheMutex.withLock {
