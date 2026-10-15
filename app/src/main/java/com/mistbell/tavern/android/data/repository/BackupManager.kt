@@ -98,7 +98,7 @@ class BackupManager(private val context: Context) {
         fun toEntity(): ApiConfigEntity {
             // Backup endpoints are untrusted. Quarantine unsafe values as blank rather than aborting
             // the whole restore; decodeTables adds a warning so the user can reconfigure this entry.
-            val safeApiUrl = endpointForRestore(apiUrl)
+            val safeApiUrl = BackupManager.endpointForRestore(apiUrl)
             val plainApiKey =
                 when {
                     apiKey.isEmpty() -> ""
@@ -247,6 +247,9 @@ class BackupManager(private val context: Context) {
                 isLenient = true
                 encodeDefaults = true
             }
+
+        internal fun endpointForRestore(endpoint: String): String =
+            if (ApiEndpointPolicy.writeRejectionReason(endpoint) == null) endpoint else ""
 
         // ---- 纯函数（JVM 可测）：清单校验与容错列表解码 ----
 
@@ -397,9 +400,6 @@ class BackupManager(private val context: Context) {
             }
         }
     }
-
-    internal fun endpointForRestore(endpoint: String): String =
-        if (ApiEndpointPolicy.writeRejectionReason(endpoint) == null) endpoint else ""
 
     // ---- 导出 ----
 
