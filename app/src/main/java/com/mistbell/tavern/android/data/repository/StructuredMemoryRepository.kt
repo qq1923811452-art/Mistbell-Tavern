@@ -224,7 +224,7 @@ class StructuredMemoryRepository(context: Context) {
      */
     private suspend fun syncToVectorIfNeeded(memory: StructuredMemory) {
         if (memory.importance < SYNC_THRESHOLD) {
-            deleteVectorCopy(memory.id)
+            // Callers already remove stale copies when importance drops below the sync threshold.
             return
         }
 
