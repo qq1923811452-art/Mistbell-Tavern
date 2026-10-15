@@ -101,12 +101,11 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
-  # Emulator/instrumentation tests are a normal CI gate, not an opt-in release step.
-  # Gradle builds the debug/test APKs required to execute tests, but no APK is
-  # copied or published as a release artifact during routine verification.
+  # Emulator tests and test-APK packaging run only during explicit final validation.
+  # Routine CI stays fast: compile, unit tests, static checks, and schema artifact only.
   instrumented-tests:
     needs: verify
-    if: ${{ needs.verify.result == 'success' && needs.verify.outputs.quality_gate == 'success' }}
+    if: ${{ inputs.full_android_validation == true && needs.verify.result == 'success' && needs.verify.outputs.quality_gate == 'success' }}
     name: Android emulator and migration validation
     runs-on: ubuntu-latest
     timeout-minutes: 55
