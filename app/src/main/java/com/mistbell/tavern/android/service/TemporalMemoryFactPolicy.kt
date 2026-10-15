@@ -10,7 +10,8 @@ import kotlinx.serialization.json.contentOrNull
  * Temporal metadata lives in structured_data JSON so this policy does not require a Room migration.
  * Bump/extend the JSON keys here rather than adding columns for each temporal attribute.
  */
-internal object TemporalMemoryFactPolicy {
+internal @Suppress("TooManyFunctions")
+object TemporalMemoryFactPolicy {
     private val singleValuedRelations = setOf("name", "role_is", "located_at", "title_is")
 
     data class Fact(
