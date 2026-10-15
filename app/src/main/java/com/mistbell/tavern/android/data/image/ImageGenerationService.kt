@@ -78,15 +78,8 @@ class ImageGenerationService(
                 client.newCall(requestBuilder.build()).execute().use { httpResponse ->
                     val body = httpResponse.body?.string().orEmpty()
                     if (!httpResponse.isSuccessful) {
-                        val safeBody =
-                            body.take(MAX_ERROR_BODY_CHARS)
-                                .replace(
-                                    Regex("(?i)(api[_-]?key|authorization|bearer)\\s*[:=]?\\s*[^,\\s]+"),
-                                    "$1=[redacted]",
-                                )
-                        throw IOException(
-                            "生图 API 返回 HTTP ${httpResponse.code}: ${safeBody.ifBlank { httpResponse.message }}",
-                        )
+                        // Do not surface arbitrary provider error bodies: some gateways echo request data.
+                        throw IOException("生图 API 返回 HTTP ${httpResponse.code}: ${httpResponse.message}")
                     }
                     try {
                         Json { ignoreUnknownKeys = true }.parseToJsonElement(body).jsonObject
@@ -180,7 +173,6 @@ class ImageGenerationService(
         private const val MIN_DIMENSION = 256
         private const val MAX_DIMENSION = 2048
         private const val MAX_IMAGE_BYTES = 30L * 1024L * 1024L
-        private const val MAX_ERROR_BODY_CHARS = 1200
         private const val OUTPUT_DIRECTORY = "generated-images"
         private const val CONNECT_TIMEOUT_SECONDS = 20L
         private const val READ_TIMEOUT_SECONDS = 180L
