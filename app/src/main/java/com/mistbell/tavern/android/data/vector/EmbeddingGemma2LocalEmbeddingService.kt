@@ -163,11 +163,12 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
             var gpuFailure: Throwable? = null
             var gpuEngine: EmbeddingEngine? = null
             try {
-                gpuEngine =
+                val candidate =
                     EmbeddingEngine(EmbeddingEngineConfig(modelPath = modelPath, backend = Backend.GPU()))
-                gpuEngine.initialize()
+                gpuEngine = candidate
+                candidate.initialize()
                 Log.i(TAG, "EmbeddingGemma 2 initialized with GPU backend")
-                return EmbeddingGemma2LocalEmbeddingService(gpuEngine)
+                return EmbeddingGemma2LocalEmbeddingService(candidate)
             } catch (e: Exception) {
                 gpuFailure = e
                 gpuEngine?.let { runCatching { it.close() } }
@@ -180,11 +181,12 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
 
             var cpuEngine: EmbeddingEngine? = null
             try {
-                cpuEngine =
+                val candidate =
                     EmbeddingEngine(EmbeddingEngineConfig(modelPath = modelPath, backend = Backend.CPU()))
-                cpuEngine.initialize()
+                cpuEngine = candidate
+                candidate.initialize()
                 Log.i(TAG, "EmbeddingGemma 2 initialized with CPU backend")
-                return EmbeddingGemma2LocalEmbeddingService(cpuEngine)
+                return EmbeddingGemma2LocalEmbeddingService(candidate)
             } catch (e: Exception) {
                 cpuEngine?.let { runCatching { it.close() } }
                 throw IOException("EmbeddingGemma 2 could not initialize on GPU or CPU", e).also {
