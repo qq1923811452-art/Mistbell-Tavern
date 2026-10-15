@@ -378,9 +378,13 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             try {
                 _isLoading.value = true
                 val summary = BackupManager(getApplication()).restoreFromUri(uri)
-                _message.value =
-                    "恢复完成：合并 ${summary.totalAdded} 项" +
-                    (if (summary.totalSkipped > 0) "（跳过已存在 ${summary.totalSkipped} 项）" else "")
+                val skippedText =
+                    if (summary.totalSkipped > 0) "（跳过已存在 ${summary.totalSkipped} 项）" else ""
+                val warningText =
+                    summary.warnings.takeIf { it.isNotEmpty() }
+                        ?.joinToString(separator = "；", prefix = "。注意：")
+                        .orEmpty()
+                _message.value = "恢复完成：合并 ${summary.totalAdded} 项" + skippedText + warningText
             } catch (e: Exception) {
                 android.util.Log.e("Settings", "Backup restore failed", e)
                 _message.value = e.message ?: "恢复失败"
