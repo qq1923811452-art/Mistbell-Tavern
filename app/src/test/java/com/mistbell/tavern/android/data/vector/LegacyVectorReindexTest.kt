@@ -1,7 +1,11 @@
 package com.mistbell.tavern.android.data.vector
 
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.yield
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -70,6 +74,63 @@ class LegacyVectorReindexTest {
 
         assertNotNull(store.get("legacy-vector"))
         assertEquals(1, store.entries.size)
+    }
+
+    @Test
+    fun `concurrent newer write waits for legacy replacement and wins afterward`() = runBlocking {
+        val store =
+            FakeVectorStore(
+                VectorStore.VectorEntry(
+                    id = "legacy-vector",
+                    vector = floatArrayOf(0.2f, 0.3f),
+                    metadata = legacyMetadata(),
+                ),
+            )
+        val embedding = BlockingBatchEmbeddingService()
+        val service = VectorMemoryService(store, embedding)
+
+        val reindex = async { service.reindexLegacyVectors() }
+        embedding.batchStarted.await()
+
+        val newerWrite =
+            async {
+                service.storeMessage(
+                    content = "newer content",
+                    ownerId = "owner",
+                    characterId = "character",
+                    sessionId = "session",
+                    messageId = "message-1",
+                    contentType = "user_message",
+                )
+            }
+        yield()
+        assertFalse("same-identity write must wait while reindex owns write locks", newerWrite.isCompleted)
+
+        embedding.allowBatch.complete(Unit)
+        reindex.await()
+        newerWrite.await()
+
+        val replacement = store.getAllEntries().single()
+        assertEquals("newer content", replacement.metadata["content"])
+        assertEquals("test:model:v2", replacement.metadata["embedding_model"])
+        assertNull(store.get("legacy-vector"))
+    }
+
+    private class BlockingBatchEmbeddingService : EmbeddingService {
+        val batchStarted = CompletableDeferred<Unit>()
+        val allowBatch = CompletableDeferred<Unit>()
+
+        override suspend fun embed(text: String): FloatArray = floatArrayOf(0.7f, 0.8f)
+
+        override suspend fun embedBatch(texts: List<String>): List<FloatArray> {
+            batchStarted.complete(Unit)
+            allowBatch.await()
+            return texts.map { floatArrayOf(1f, 0f) }
+        }
+
+        override fun getDimension(): Int = 2
+
+        override fun modelId(): String = "test:model:v2"
     }
 
     private fun legacyMetadata(): Map<String, Any> =
