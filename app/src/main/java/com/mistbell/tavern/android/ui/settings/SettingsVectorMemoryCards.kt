@@ -106,7 +106,7 @@ internal fun VectorMemorySettingsCard(viewModel: SettingsViewModel) {
                     "「本地 ONNX」使用内置 BGE 中文模型；「本地 EmbeddingGemma 2」通过 LiteRT-LM " +
                         "加载骁龙 8 Gen 3 专用约 208MB 纯文本模型，优先尝试 NPU，再回退 GPU/CPU；" +
                         "首次启用需联网下载，完成后可离线向量化；SM8650 专用模型优先尝试 NPU，再回退 GPU/CPU。" +
-                        "若专用模型或运行时不可用，应选择通用文本模型；本地模型初始化失败不会静默调用远程 API。" +
+                        "若专用模型无法在 NPU/GPU/CPU 初始化，会自动下载通用约 165MB 文本模型并只尝试 GPU/CPU；本地模型全部失败不会静默调用远程 API。" +
                         "不同模型的向量空间会隔离，切换模型后需安全重建索引；提示词缓存布局不受影响。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
