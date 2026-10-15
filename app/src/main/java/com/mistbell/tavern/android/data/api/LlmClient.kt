@@ -100,16 +100,16 @@ data class Usage(
     val reportedCacheHitTokens: Int?
         get() =
             when {
-            cacheHitTokens > 0 || cacheMissTokens > 0 -> cacheHitTokens
-            else -> nestedCachedTokens
-        }
+                cacheHitTokens > 0 || cacheMissTokens > 0 -> cacheHitTokens
+                else -> nestedCachedTokens
+            }
 
     val reportedCacheMissTokens: Int?
         get() =
             when {
-            cacheHitTokens > 0 || cacheMissTokens > 0 -> cacheMissTokens
-            else -> nestedCachedTokens?.let { cached -> (promptTokens - cached).coerceAtLeast(0) }
-        }
+                cacheHitTokens > 0 || cacheMissTokens > 0 -> cacheMissTokens
+                else -> nestedCachedTokens?.let { cached -> (promptTokens - cached).coerceAtLeast(0) }
+            }
 }
 
 @Serializable
