@@ -12,6 +12,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
@@ -93,27 +94,42 @@ class ImageGenerationService(
             val remoteUrl = first["url"]?.jsonPrimitive?.contentOrNull()
             val base64 = first["b64_json"]?.jsonPrimitive?.contentOrNull()
             val outputFile = createOutputFile()
-            when {
-                !base64.isNullOrBlank() -> {
-                    val encoded = base64.substringAfter("base64,", base64)
-                    val bytes =
-                        try {
-                            Base64.getDecoder().decode(encoded)
-                        } catch (e: IllegalArgumentException) {
-                            throw IOException("生图 API 返回了无效的 Base64 图片", e)
+            var completed = false
+            try {
+                when {
+                    !base64.isNullOrBlank() -> {
+                        val encoded = base64.substringAfter("base64,", base64)
+                        // Bound the encoded text before Base64.getDecoder().decode allocates the decoded array.
+                        // A post-decode size check alone still allows an oversized response to exhaust memory.
+                        if (encoded.length.toLong() > MAX_BASE64_CHARS) {
+                            throw IOException("生成图片超过 30 MB 限制")
                         }
-                    if (bytes.isEmpty() || bytes.size > MAX_IMAGE_BYTES) {
-                        throw IOException("生成图片为空或超过 30 MB 限制")
+                        val bytes =
+                            try {
+                                Base64.getDecoder().decode(encoded)
+                            } catch (e: IllegalArgumentException) {
+                                throw IOException("生图 API 返回了无效的 Base64 图片", e)
+                            }
+                        if (bytes.isEmpty() || bytes.size.toLong() > MAX_IMAGE_BYTES) {
+                            throw IOException("生成图片为空或超过 30 MB 限制")
+                        }
+                        outputFile.writeBytes(bytes)
                     }
-                    outputFile.writeBytes(bytes)
+                    !remoteUrl.isNullOrBlank() -> downloadImage(remoteUrl, config.baseUrl, config.apiKey, outputFile)
+                    else -> throw IOException("生图 API 响应既没有 url，也没有 b64_json")
                 }
-                !remoteUrl.isNullOrBlank() -> downloadImage(remoteUrl, config.baseUrl, config.apiKey, outputFile)
-                else -> throw IOException("生图 API 响应既没有 url，也没有 b64_json")
+                if (!outputFile.isFile || outputFile.length() == 0L) {
+                    throw IOException("生成图片为空")
+                }
+                completed = true
+                GeneratedImage(
+                    file = outputFile,
+                    revisedPrompt = first["revised_prompt"]?.jsonPrimitive?.contentOrNull(),
+                )
+            } finally {
+                // A failed decode/download/write must never leave a partial image in app storage.
+                if (!completed) outputFile.delete()
             }
-            GeneratedImage(
-                file = outputFile,
-                revisedPrompt = first["revised_prompt"]?.jsonPrimitive?.contentOrNull(),
-            )
         }
 
     private fun endpoint(baseUrl: String): String {
@@ -124,41 +140,71 @@ class ImageGenerationService(
         return if (base.endsWith("/images/generations")) base else "$base/images/generations"
     }
 
-    @Suppress("CyclomaticComplexMethod", "NestedBlockDepth", "ThrowsCount")
+    @Suppress("CyclomaticComplexMethod", "NestedBlockDepth", "ThrowsCount", "LoopWithTooManyJumpStatements")
     private fun downloadImage(
         url: String,
         baseUrl: String,
         apiKey: String,
         outputFile: File,
     ) {
-        val request =
-            Request.Builder().url(url).get().apply {
-                // Signed image URLs normally need no authorization; only add it for same-host URLs.
-                val imageHost = runCatching { java.net.URL(url).host }.getOrNull()
-                val apiHost = runCatching { java.net.URL(baseUrl).host }.getOrNull()
-                if (apiKey.isNotBlank() && imageHost != null && imageHost == apiHost) {
-                    header("Authorization", "Bearer ${apiKey.trim()}")
+        val apiOrigin = baseUrl.toHttpUrlOrNull()
+        val redirectSafeClient = client.newBuilder().followRedirects(false).followSslRedirects(false).build()
+        var currentUrl = url
+        for (redirectCount in 0..MAX_REDIRECTS) {
+            val targetUrl =
+                currentUrl.toHttpUrlOrNull()
+                    ?: throw IOException("生图服务返回了无效的图片地址")
+            if (targetUrl.scheme != "http" && targetUrl.scheme != "https") {
+                throw IOException("生图服务返回了不支持的图片协议")
+            }
+            val request =
+                Request.Builder().url(targetUrl).get().apply {
+                    // Send the API credential only to the exact configured origin, never to a redirect host.
+                    val sameOrigin =
+                        apiOrigin != null &&
+                            targetUrl.scheme == apiOrigin.scheme &&
+                            targetUrl.host == apiOrigin.host &&
+                            targetUrl.port == apiOrigin.port
+                    if (apiKey.isNotBlank() && sameOrigin) {
+                        header("Authorization", "Bearer ${apiKey.trim()}")
+                    }
+                }.build()
+            redirectSafeClient.newCall(request).execute().use { response ->
+                if (response.code in 300..399) {
+                    if (redirectCount == MAX_REDIRECTS) {
+                        throw IOException("图片下载重定向次数超过限制")
+                    }
+                    val location = response.header("Location") ?: throw IOException("图片下载重定向缺少目标地址")
+                    val nextUrl =
+                        response.request.url.resolve(location)
+                            ?: throw IOException("图片下载重定向地址无效")
+                    if (nextUrl.scheme != "http" && nextUrl.scheme != "https") {
+                        throw IOException("图片下载重定向使用了不支持的协议")
+                    }
+                    currentUrl = nextUrl.toString()
+                    return@use
                 }
-            }.build()
-        client.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) throw IOException("下载生成图片失败（HTTP ${response.code}）")
-            val body = response.body ?: throw IOException("图片响应为空")
-            if (body.contentLength() > MAX_IMAGE_BYTES) throw IOException("生成图片超过 30 MB 限制")
-            body.byteStream().use { input ->
-                outputFile.outputStream().use { output ->
-                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-                    var total = 0L
-                    while (true) {
-                        val count = input.read(buffer)
-                        if (count < 0) break
-                        total += count
-                        if (total > MAX_IMAGE_BYTES) throw IOException("生成图片超过 30 MB 限制")
-                        output.write(buffer, 0, count)
+                if (!response.isSuccessful) throw IOException("下载生成图片失败（HTTP ${response.code}）")
+                val body = response.body ?: throw IOException("图片响应为空")
+                if (body.contentLength() > MAX_IMAGE_BYTES) throw IOException("生成图片超过 30 MB 限制")
+                body.byteStream().use { input ->
+                    outputFile.outputStream().use { output ->
+                        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                        var total = 0L
+                        while (true) {
+                            val count = input.read(buffer)
+                            if (count < 0) break
+                            total += count
+                            if (total > MAX_IMAGE_BYTES) throw IOException("生成图片超过 30 MB 限制")
+                            output.write(buffer, 0, count)
+                        }
                     }
                 }
+                if (outputFile.length() == 0L) throw IOException("下载到的图片为空")
+                return
             }
-            if (outputFile.length() == 0L) throw IOException("下载到的图片为空")
         }
+        throw IOException("图片下载重定向次数超过限制")
     }
 
     private fun createOutputFile(): File {
@@ -173,6 +219,8 @@ class ImageGenerationService(
         private const val MIN_DIMENSION = 256
         private const val MAX_DIMENSION = 2048
         private const val MAX_IMAGE_BYTES = 30L * 1024L * 1024L
+        private const val MAX_BASE64_CHARS = 4L * ((MAX_IMAGE_BYTES + 2L) / 3L)
+        private const val MAX_REDIRECTS = 5
         private const val OUTPUT_DIRECTORY = "generated-images"
         private const val CONNECT_TIMEOUT_SECONDS = 20L
         private const val READ_TIMEOUT_SECONDS = 180L
