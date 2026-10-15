@@ -27,4 +27,7 @@ interface EmbeddingService {
      * 获取向量维度
      */
     fun getDimension(): Int
+
+    /** Stable namespace for persisted vectors; implementations should include model identity. */
+    fun getModelId(): String = this::class.java.simpleName
 }
