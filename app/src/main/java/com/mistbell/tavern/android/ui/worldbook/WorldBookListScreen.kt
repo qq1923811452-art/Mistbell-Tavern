@@ -52,6 +52,8 @@ fun WorldBookListScreen(
     val entryForm by viewModel.entryForm.collectAsState()
     val message by viewModel.message.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
+    val recursiveScanEnabled by viewModel.recursiveScanEnabled.collectAsState()
+    val recursiveScanDepth by viewModel.recursiveScanDepth.collectAsState()
 
     var showNewBookDialog by remember { mutableStateOf(false) }
     var newBookName by remember { mutableStateOf("") }
@@ -206,6 +208,50 @@ fun WorldBookListScreen(
             modifier = Modifier.fillMaxSize().padding(paddingValues).imePadding(),
         ) {
             if (selectedBookId == null) {
+                Card(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                ) {
+                    Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("递归扫描", style = MaterialTheme.typography.titleSmall)
+                                Text(
+                                    "允许已激活的世界书继续触发其他条目",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            Switch(
+                                checked = recursiveScanEnabled,
+                                onCheckedChange = viewModel::setRecursiveScanEnabled,
+                            )
+                        }
+                        if (recursiveScanEnabled) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text("最大扫描深度：$recursiveScanDepth", style = MaterialTheme.typography.bodySmall)
+                            var pendingDepth by remember(recursiveScanDepth) { mutableFloatStateOf(recursiveScanDepth.toFloat()) }
+                            Slider(
+                                value = pendingDepth,
+                                onValueChange = { pendingDepth = it },
+                                valueRange = 1f..5f,
+                                steps = 3,
+                                onValueChangeFinished = {
+                                    viewModel.setRecursiveScanDepth(pendingDepth.toInt().coerceIn(1, 5))
+                                },
+                            )
+                            Text(
+                                "深度越高，设定联动越完整，但可能激活更多内容并增加 Token",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
                 // Book list view
                 if (worldBooks.isEmpty()) {
                     // Empty state - centered
