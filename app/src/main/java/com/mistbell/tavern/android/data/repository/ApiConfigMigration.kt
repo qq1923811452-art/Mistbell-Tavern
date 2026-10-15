@@ -4,6 +4,7 @@ import androidx.room.withTransaction
 import com.mistbell.tavern.android.data.local.AppDatabase
 import com.mistbell.tavern.android.data.local.entity.ApiConfigEntity
 import com.mistbell.tavern.android.data.local.entity.SettingsEntity
+import com.mistbell.tavern.android.util.ApiEndpointPolicy
 import com.mistbell.tavern.android.util.SecureStore
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -66,6 +67,11 @@ object ApiConfigMigration {
         now: Long,
     ): List<ApiConfigEntity> =
         providers.mapIndexed { index, provider ->
+            // 旧版 providers_json 是外部/历史输入；迁移落库前也必须执行统一端点策略。
+            // 失败时整个迁移事务回滚，旧配置仍保留，且错误不回显原始 URL。
+            check(ApiEndpointPolicy.writeRejectionReason(provider.endpoint) == null) {
+                "旧版 API 配置 ${provider.id.ifBlank { "(无 ID)" }} 的地址不符合当前网络安全策略，迁移已中止；请检查该配置的 API 地址"
+            }
             ApiConfigEntity(
                 id = provider.id.ifBlank { UUID.randomUUID().toString() },
                 name = provider.name,
