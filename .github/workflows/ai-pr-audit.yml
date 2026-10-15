@@ -6,9 +6,28 @@ on:
   workflow_dispatch:
     inputs:
       pr_number:
-        description: "Pull request number to audit"
+        description: "PR number to audit or re-review"
         required: true
         type: number
+      review_mode:
+        description: "Fresh audit or review the previous findings after fixes"
+        required: true
+        default: audit
+        type: choice
+        options:
+          - audit
+          - re-review
+  workflow_call:
+    inputs:
+      pr_number:
+        description: "PR number to audit"
+        required: true
+        type: number
+      review_mode:
+        description: "audit or re-review"
+        required: false
+        default: audit
+        type: string
 
 permissions:
   contents: read
@@ -25,7 +44,7 @@ jobs:
     timeout-minutes: 15
     # Fork PRs do not receive repository secrets. Do not run a secret-dependent
     # external-model request for them; maintainers can audit after reviewing the source.
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
     steps:
       - name: Validate required secrets
         env:
@@ -46,6 +65,7 @@ jobs:
           ODYS_MODEL: ${{ secrets.ODYS_MODEL }}
           REPOSITORY: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
+          REVIEW_MODE: ${{ inputs.review_mode || 'audit' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -65,6 +85,9 @@ jobs:
           token = os.environ["GH_TOKEN"]
           model = os.environ["ODYS_MODEL"]
           api_key = os.environ["ODYS_API_KEY"]
+          review_mode = os.environ.get("REVIEW_MODE", "audit").strip().lower()
+          if review_mode not in {"audit", "re-review"}:
+              raise SystemExit("REVIEW_MODE must be audit or re-review.")
 
           try:
               pr_number_int = int(pr_number)
