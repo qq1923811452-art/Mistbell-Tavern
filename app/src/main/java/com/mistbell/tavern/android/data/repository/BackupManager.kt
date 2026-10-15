@@ -17,6 +17,7 @@ import com.mistbell.tavern.android.data.local.entity.ThemePackEntity
 import com.mistbell.tavern.android.data.local.entity.VectorMemoryEntity
 import com.mistbell.tavern.android.data.local.entity.WorldBookEntity
 import com.mistbell.tavern.android.data.local.entity.WorldBookEntryEntity
+import com.mistbell.tavern.android.util.ApiEndpointPolicy
 import com.mistbell.tavern.android.util.SecureStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -95,6 +96,10 @@ class BackupManager(private val context: Context) {
         val updatedAt: Long,
     ) {
         fun toEntity(): ApiConfigEntity {
+            // 恢复同样要过端点的写入判据：备份是外部输入，不能因为"能导入"就绕过明文策略。
+            check(ApiEndpointPolicy.writeRejectionReason(apiUrl) == null) {
+                "备份中的 API 配置 $id 使用了无效或未获平台放行的地址，已中止恢复：$apiUrl"
+            }
             val plainApiKey =
                 when {
                     apiKey.isEmpty() -> ""
