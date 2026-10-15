@@ -112,7 +112,7 @@ class BackupManager(private val context: Context) {
                 id = id,
                 name = name,
                 apiUrl = apiUrl,
-                apiKey = SecureStore.wrap(plainApiKey),
+                apiKey = wrapRestoredApiKey(id, plainApiKey, SecureStore::wrap),
                 model = model,
                 isDefault = isDefault,
                 lastTestStatus = lastTestStatus,
@@ -734,6 +734,19 @@ private fun storeEntry(
             String(bytes, Charsets.UTF_8)
         }
 }
+
+
+/** Add the config ID to Keystore failures so a failed restore is diagnosable. */
+internal fun wrapRestoredApiKey(
+    id: String,
+    plainApiKey: String,
+    wrap: (String) -> String,
+): String =
+    try {
+        wrap(plainApiKey)
+    } catch (e: Exception) {
+        throw IllegalStateException("无法加密备份中 API 配置 $id 的密钥，已中止恢复", e)
+    }
 
 /** Reject ambiguous duplicate primary keys in imported tables before the merge transaction. */
 internal fun <T> requireUniqueBackupIds(
