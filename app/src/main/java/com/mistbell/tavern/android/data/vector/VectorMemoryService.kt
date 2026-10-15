@@ -19,6 +19,7 @@ class VectorMemoryService(
 ) {
     companion object {
         private const val TAG = "VectorMemoryService"
+        private const val LEGACY_REINDEX_BATCH_SIZE = 32
     }
 
     /**
@@ -274,6 +275,122 @@ class VectorMemoryService(
             VectorStatistics(0, 0)
         }
     }
+
+    /**
+     * Explicitly re-embed legacy entries that have no model identity.
+     *
+     * This is intentionally opt-in: reindexing can incur provider cost. New vectors are written
+     * successfully before their legacy copies are removed, so a failed batch never destroys
+     * the only copy. Entries missing the identity/content metadata required for a safe rewrite
+     * are left untouched and reported as skipped.
+     */
+    suspend fun reindexLegacyVectors(batchSize: Int = LEGACY_REINDEX_BATCH_SIZE): LegacyReindexResult {
+        require(batchSize > 0) { "batchSize must be positive" }
+
+        val modelId = embeddingService.getModelId()
+        val legacyEntries = vectorStore.getAllEntries().filter { it.metadata["embedding_model"] == null }
+        var migrated = 0
+        var skipped = 0
+        var reused = 0
+        val candidates = mutableListOf<LegacyVectorCandidate>()
+
+        for (entry in legacyEntries) {
+            val metadata = entry.metadata
+            val content = metadata["content"] as? String
+            val ownerId = metadata["owner_id"] as? String
+            val characterId = metadata["character_id"] as? String
+            val sessionId = metadata["session_id"] as? String
+            val messageId = metadata["message_id"] as? String
+            val contentType = metadata["content_type"] as? String
+
+            if (
+                content.isNullOrBlank() ||
+                ownerId.isNullOrBlank() ||
+                characterId.isNullOrBlank() ||
+                sessionId == null ||
+                messageId.isNullOrBlank() ||
+                contentType.isNullOrBlank()
+            ) {
+                skipped++
+                continue
+            }
+
+            val targetId = generateVectorId(
+                VectorIdentity(
+                    ownerId = ownerId,
+                    characterId = characterId,
+                    sessionId = sessionId,
+                    messageId = messageId,
+                    contentType = contentType,
+                    modelId = modelId,
+                ),
+            )
+            val targetMetadata = metadata.toMutableMap().apply {
+                put("embedding_model", modelId)
+            }
+            val existingTarget = vectorStore.get(targetId)
+            if (
+                existingTarget != null &&
+                existingTarget.metadata["embedding_model"] == modelId &&
+                existingTarget.metadata["content"] == content
+            ) {
+                if (entry.id != targetId) vectorStore.delete(entry.id)
+                migrated++
+                reused++
+                continue
+            }
+
+            candidates += LegacyVectorCandidate(entry.id, targetId, content, targetMetadata)
+        }
+
+        for (batch in candidates.chunked(batchSize)) {
+            val embeddings = embeddingService.embedBatch(batch.map { it.content })
+            if (embeddings.size != batch.size) {
+                error("Legacy vector reindex count mismatch: expected ${batch.size}, received ${embeddings.size}")
+            }
+            val expectedDimension = embeddingService.getDimension()
+            if (embeddings.any { it.size != expectedDimension }) {
+                error("Legacy vector reindex returned an unexpected embedding dimension")
+            }
+
+            vectorStore.addBatch(
+                batch.mapIndexed { index, candidate ->
+                    VectorStore.VectorEntry(
+                        id = candidate.targetId,
+                        vector = embeddings[index],
+                        metadata = candidate.metadata,
+                    )
+                },
+            )
+
+            // Remove old entries only after the replacement batch has been persisted.
+            batch.filter { it.legacyId != it.targetId }.forEach { candidate ->
+                vectorStore.delete(candidate.legacyId)
+            }
+            migrated += batch.size
+        }
+
+        return LegacyReindexResult(
+            scannedLegacy = legacyEntries.size,
+            migrated = migrated,
+            skipped = skipped,
+            reused = reused,
+        )
+    }
+
+    data class LegacyReindexResult(
+        val scannedLegacy: Int,
+        val migrated: Int,
+        val skipped: Int,
+        val reused: Int,
+    )
+
+    private data class LegacyVectorCandidate(
+        val legacyId: String,
+        val targetId: String,
+        val content: String,
+        val metadata: Map<String, Any>,
+    )
 
     /**
      * Stable ID makes vector writes idempotent across retries and app restarts.
