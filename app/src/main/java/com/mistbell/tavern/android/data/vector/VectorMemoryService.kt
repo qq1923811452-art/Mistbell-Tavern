@@ -166,7 +166,7 @@ class VectorMemoryService(
                     existing?.metadata?.get("content") == content &&
                     existing.metadata["embedding_model"] == embeddingModelId
                 ) {
-                    Log.d(TAG, "Reused persisted embedding for message: $messageId")
+                    runCatching { Log.d(TAG, "Reused persisted embedding for message: $messageId") }
                     return@withLock vectorId
                 }
 
@@ -187,7 +187,7 @@ class VectorMemoryService(
                 // Stable IDs plus a per-ID write stripe make repeated concurrent writes idempotent.
                 vectorStore.add(vectorId, embedding, metadata)
 
-                Log.d(TAG, "Stored message vector: $messageId -> $vectorId")
+                runCatching { Log.d(TAG, "Stored message vector: $messageId -> $vectorId") }
                 vectorId
             }
         } catch (e: CancellationException) {
