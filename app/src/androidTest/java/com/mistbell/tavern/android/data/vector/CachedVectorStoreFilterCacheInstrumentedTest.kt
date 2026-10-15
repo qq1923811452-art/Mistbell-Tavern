@@ -49,6 +49,7 @@ class CachedVectorStoreFilterCacheInstrumentedTest {
             assertEquals(0, nonMatching.size)
         }
     }
+
     @Test
     fun mutationFailureStillInvalidatesSearchCacheWhenDelegateAlreadyChanged() {
         runBlocking {
@@ -81,5 +82,4 @@ class CachedVectorStoreFilterCacheInstrumentedTest {
             assertEquals(1, store.search(query, 5, emptyMap()).size)
         }
     }
-
 }
