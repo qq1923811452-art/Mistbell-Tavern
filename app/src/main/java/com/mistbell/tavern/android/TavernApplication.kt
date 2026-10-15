@@ -9,8 +9,14 @@ import com.mistbell.tavern.android.data.vector.VectorMemoryService
 import com.mistbell.tavern.android.data.vector.VectorStore
 import com.mistbell.tavern.android.di.AppContainer
 import com.mistbell.tavern.android.util.SecureStore
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 class TavernApplication : Application() {
+    private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     /**
      * 应用级 DI 容器：所有服务的唯一装配入口。
      *
@@ -41,8 +47,20 @@ class TavernApplication : Application() {
         super.onCreate()
         instance = this
 
-        // 移除同步初始化，改为完全延迟加载
-        Log.d(TAG, "TavernApplication created (services will be initialized on demand)")
+        // Initialize the configured embedding provider in the background. A first-use model download
+        // must never block the main thread or delay normal chat startup.
+        applicationScope.launch {
+            try {
+                container.initializeConfiguredEmbeddingSource()
+            } catch (e: Exception) {
+                Log.e(
+                    TAG,
+                    "Configured embedding service initialization failed; lexical fallback remains available",
+                    e,
+                )
+            }
+        }
+        Log.d(TAG, "TavernApplication created (embedding service initialization is asynchronous)")
     }
 
     /**

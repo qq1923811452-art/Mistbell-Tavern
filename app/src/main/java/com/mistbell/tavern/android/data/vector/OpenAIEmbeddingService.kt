@@ -68,6 +68,8 @@ class OpenAIEmbeddingService(
     private val baseUrl: String = "https://api.openai.com/v1",
     private val model: String = "text-embedding-3-small",
 ) : EmbeddingService {
+    override val isSemantic: Boolean = true
+
     private val normalizedBaseUrl = baseUrl.trim().trimEnd('/')
 
     private val client =
@@ -384,21 +386,18 @@ class OpenAIEmbeddingService(
                         )
                         delay(delayMs)
                     }
-                } catch (e: Exception) {
-                    if (e is EmbeddingHttpException && isRetryableEmbeddingStatusCode(e.statusCode)) {
-                        lastException = e
-                        if (attempt < MAX_RETRIES - 1) {
-                            val delayMultiplier = if (e.statusCode == HTTP_TOO_MANY_REQUESTS) 2 else 1
-                            val delayMs = INITIAL_RETRY_DELAY_MS * (1 shl attempt) * delayMultiplier
-                            Log.w(
-                                TAG,
-                                "Batch embedding HTTP ${e.statusCode}, retry ${attempt + 1}/$MAX_RETRIES " +
-                                    "after ${delayMs}ms",
-                            )
-                            delay(delayMs)
-                        }
-                    } else {
-                        throw e
+                } catch (e: EmbeddingHttpException) {
+                    if (!isRetryableEmbeddingStatusCode(e.statusCode)) throw e
+                    lastException = e
+                    if (attempt < MAX_RETRIES - 1) {
+                        val delayMultiplier = if (e.statusCode == HTTP_TOO_MANY_REQUESTS) 2 else 1
+                        val delayMs = INITIAL_RETRY_DELAY_MS * (1 shl attempt) * delayMultiplier
+                        Log.w(
+                            TAG,
+                            "Batch embedding HTTP ${e.statusCode}, retry ${attempt + 1}/$MAX_RETRIES " +
+                                "after ${delayMs}ms",
+                        )
+                        delay(delayMs)
                     }
                 }
             }
@@ -453,10 +452,11 @@ class OpenAIEmbeddingService(
 
         val orderedIndexes =
             validateEmbeddingResponseOrder(embeddingResponse.data.map { it.index }, texts.size)
-        val embeddings = orderedIndexes.map { index ->
-            val embedding = embeddingResponse.data[index].embedding
-            FloatArray(embedding.size) { i -> embedding[i].toFloat() }
-        }
+        val embeddings =
+            orderedIndexes.map { index ->
+                val embedding = embeddingResponse.data[index].embedding
+                FloatArray(embedding.size) { i -> embedding[i].toFloat() }
+            }
         val dimensions = embeddings.map { it.size }.distinct()
         val expectedDimension = lastKnownDimension
         check(

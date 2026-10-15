@@ -11,19 +11,40 @@ import java.util.concurrent.atomic.AtomicInteger
 
 class VectorMemoryServiceWriteConcurrencyTest {
     @Test
-    fun `concurrent writes to the same logical message persist one vector`() = runBlocking {
-        val store = FakeVectorStore()
-        val embedding = CountingEmbeddingService()
-        val service = VectorMemoryService(store, embedding)
+    fun `concurrent writes to the same logical message persist one vector`() =
+        runBlocking {
+            val store = FakeVectorStore()
+            val embedding = CountingEmbeddingService()
+            val service = VectorMemoryService(store, embedding)
 
-        val first = async { service.storeMessage("same content", "owner", "character", "session", "message", "summary") }
-        val second = async { service.storeMessage("same content", "owner", "character", "session", "message", "summary") }
+            val first =
+                async {
+                    service.storeMessage(
+                        "same content",
+                        "owner",
+                        "character",
+                        "session",
+                        "message",
+                        "summary",
+                    )
+                }
+            val second =
+                async {
+                    service.storeMessage(
+                        "same content",
+                        "owner",
+                        "character",
+                        "session",
+                        "message",
+                        "summary",
+                    )
+                }
 
-        assertEquals(first.await(), second.await())
-        assertEquals(1, store.addCalls.get())
-        assertEquals(1, store.entries.size)
-        assertEquals(1, embedding.embedCalls.get())
-    }
+            assertEquals(first.await(), second.await())
+            assertEquals(1, store.addCalls.get())
+            assertEquals(1, store.entries.size)
+            assertEquals(1, embedding.embedCalls.get())
+        }
 
     private class CountingEmbeddingService : EmbeddingService {
         val embedCalls = AtomicInteger()
@@ -46,7 +67,11 @@ class VectorMemoryServiceWriteConcurrencyTest {
         val addCalls = AtomicInteger()
         private val mutex = Mutex()
 
-        override suspend fun add(id: String, vector: FloatArray, metadata: Map<String, Any>) {
+        override suspend fun add(
+            id: String,
+            vector: FloatArray,
+            metadata: Map<String, Any>,
+        ) {
             mutex.withLock {
                 addCalls.incrementAndGet()
                 entries[id] = VectorStore.VectorEntry(id, vector.copyOf(), metadata.toMap())
@@ -73,9 +98,10 @@ class VectorMemoryServiceWriteConcurrencyTest {
 
         override suspend fun deleteByFilters(filters: Map<String, Any>): Int =
             mutex.withLock {
-                val matchingIds = entries.values.filter { entry ->
-                    filters.all { (key, value) -> entry.metadata[key] == value }
-                }.map { it.id }
+                val matchingIds =
+                    entries.values.filter { entry ->
+                        filters.all { (key, value) -> entry.metadata[key] == value }
+                    }.map { it.id }
                 matchingIds.forEach(entries::remove)
                 matchingIds.size
             }

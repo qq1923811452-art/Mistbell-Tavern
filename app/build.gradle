@@ -9,6 +9,20 @@ plugins {
 }
 
 android {
+    // Optional matching Qualcomm QAIRT/LiteRT dispatch libraries for local SM8650 NPU builds.
+    // Pass -PqualcommNpuLibDir=/path/to/jniLibs containing arm64-v8a dispatch and QAIRT libraries.
+    def qualcommNpuLibDir = project.findProperty("qualcommNpuLibDir")
+    def qualcommNpuRuntimeEnabled =
+        project.hasProperty("qualcommNpuRuntime") ||
+        (qualcommNpuLibDir != null && !qualcommNpuLibDir.toString().trim().isEmpty())
+    if (qualcommNpuLibDir != null && !qualcommNpuLibDir.toString().trim().isEmpty()) {
+        sourceSets {
+            main {
+                jniLibs.srcDir(file(qualcommNpuLibDir.toString()))
+            }
+        }
+    }
+
     namespace "com.mistbell.tavern.android"
     compileSdk 37
 
@@ -51,6 +65,12 @@ android {
 
     // 优化 APK 体积
     packagingOptions {
+        if (qualcommNpuRuntimeEnabled) {
+            jniLibs {
+                useLegacyPackaging true
+                keepDebugSymbols += ["**/libLiteRtDispatch_Qualcomm.so", "**/libQnnHtp*.so", "**/libQnnSystem.so"]
+            }
+        }
         resources {
             excludes += ['/META-INF/{AL2.0,LGPL2.1}']
             excludes += ['/META-INF/INDEX.LIST']
@@ -133,8 +153,9 @@ dependencies {
     // Coroutines
     implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0"
 
-    // F3 本地语义向量：onnxruntime-android（MIT）+ assets 内置量化 BGE 中文模型
+    // F3 本地语义向量：保留 ONNX BGE 作为轻量方案，并增加 LiteRT-LM EmbeddingGemma 2。
     implementation "com.microsoft.onnxruntime:onnxruntime-android:1.17.3"
+    implementation "com.google.ai.edge.litertlm:litertlm-android:0.18.0"
 
     // 单元测试（本地 JVM）
     testImplementation "junit:junit:4.13.2"

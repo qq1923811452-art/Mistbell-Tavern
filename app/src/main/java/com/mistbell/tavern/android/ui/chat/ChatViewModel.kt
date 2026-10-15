@@ -14,6 +14,7 @@ import com.mistbell.tavern.android.data.repository.ChatSettingsResolver
 import com.mistbell.tavern.android.data.repository.ThemePackRepository
 import com.mistbell.tavern.android.data.theme.ThemeSupport
 import com.mistbell.tavern.android.data.theme.ThemeTokens
+import com.mistbell.tavern.android.data.vector.EmbeddingRuntimeStatus
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -24,6 +25,10 @@ import kotlinx.coroutines.launch
 @OptIn(ExperimentalCoroutinesApi::class)
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val db = TavernApplication.instance.container.database
+
+    /** Live local-embedding backend and last successful inference for the chat status badge. */
+    val embeddingRuntimeStatus: StateFlow<EmbeddingRuntimeStatus> =
+        TavernApplication.instance.container.embeddingRuntimeStatus
 
     private val repo = ChatRepository(application)
 

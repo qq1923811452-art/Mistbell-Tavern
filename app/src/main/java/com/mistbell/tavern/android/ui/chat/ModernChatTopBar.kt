@@ -13,8 +13,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.mistbell.tavern.android.data.api.model.Character
+import com.mistbell.tavern.android.data.vector.EmbeddingRuntimeStatus
 
-@Suppress("FunctionNaming", "LongParameterList", "LongMethod", "MaxLineLength", "MagicNumber")
+@Suppress("FunctionNaming", "LongParameterList", "LongMethod", "CyclomaticComplexMethod", "MaxLineLength", "MagicNumber")
 @Composable
 fun ModernChatTopBar(
     chatTitle: String,
@@ -30,6 +31,7 @@ fun ModernChatTopBar(
     usageRounds: Int = 0,
     usageTotalTokens: Int = 0,
     usageCacheHitRate: Double? = null,
+    embeddingRuntimeStatus: EmbeddingRuntimeStatus? = null,
 ) {
     // 滚动时只增加很轻的层级，避免聊天内容被一条厚重阴影切开。
     val elevation by animateDpAsState(
@@ -147,6 +149,50 @@ fun ModernChatTopBar(
                         )
                     }
                 }
+            }
+            // Small live indicator: reports the initialized backend and only calls inference successful
+            // after a real, validated vector has been returned by LiteRT-LM.
+            if (embeddingRuntimeStatus?.source == "local-gemma") {
+                val status = embeddingRuntimeStatus
+                val badgeLabel =
+                    when {
+                        !status.initialized && status.errorMessage != null -> "本地 EmbeddingGemma 不可用"
+                        status.backend == "NPU" && status.lastInferenceSucceeded == false ->
+                            "NPU 推理失败 · 查看设置"
+                        status.backend == "NPU" && status.lastInferenceSucceeded == true ->
+                            "NPU 推理成功 · ${status.successfulInferenceCount} 次"
+                        status.backend == "NPU" -> "NPU 已就绪 · 等待首次推理"
+                        status.backend != null && status.lastInferenceSucceeded == false ->
+                            "${status.backend} 推理失败 · NPU 未启用"
+                        status.backend != null && status.lastInferenceSucceeded == true ->
+                            "${status.backend} 推理成功 · NPU 未启用"
+                        !status.initialized -> "EmbeddingGemma 初始化中…"
+                        status.backend == null -> "EmbeddingGemma 状态待确认"
+                        else -> "EmbeddingGemma 已就绪"
+                    }
+                AssistChip(
+                    onClick = onSettingsClick,
+                    label = {
+                        Text(
+                            text = badgeLabel,
+                            style = MaterialTheme.typography.labelSmall,
+                            maxLines = 1,
+                        )
+                    },
+                    leadingIcon = {
+                        Text(
+                            text = "●",
+                            color =
+                                when {
+                                    !status.initialized -> MaterialTheme.colorScheme.error
+                                    status.lastInferenceSucceeded == false -> MaterialTheme.colorScheme.error
+                                    status.backend == "NPU" -> MaterialTheme.colorScheme.primary
+                                    else -> MaterialTheme.colorScheme.secondary
+                                },
+                        )
+                    },
+                    modifier = Modifier.padding(start = 60.dp, end = 12.dp, bottom = 6.dp),
+                )
             }
             // 底部分割线（滚动时显示）
             if (isScrolled) {

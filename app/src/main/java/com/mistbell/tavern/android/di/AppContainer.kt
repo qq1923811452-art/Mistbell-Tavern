@@ -4,6 +4,8 @@ import android.content.Context
 import android.util.Log
 import com.mistbell.tavern.android.data.local.AppDatabase
 import com.mistbell.tavern.android.data.vector.CachedVectorStore
+import com.mistbell.tavern.android.data.vector.EmbeddingGemma2LocalEmbeddingService
+import com.mistbell.tavern.android.data.vector.EmbeddingRuntimeStatus
 import com.mistbell.tavern.android.data.vector.EmbeddingService
 import com.mistbell.tavern.android.data.vector.InMemoryVectorStore
 import com.mistbell.tavern.android.data.vector.LocalEmbeddingService
@@ -13,8 +15,14 @@ import com.mistbell.tavern.android.data.vector.VectorCacheStatistics
 import com.mistbell.tavern.android.data.vector.VectorMemoryService
 import com.mistbell.tavern.android.data.vector.VectorStore
 import com.mistbell.tavern.android.util.SecureStore
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
 
 /**
  * 应用级 DI 容器：集中装配 database / vectorStore / embeddingService / vectorMemoryService。
@@ -69,7 +77,8 @@ class AppContainer(private val appContext: Context) {
      *
      * - auto（默认）：有 embedding API key → OpenAI；无 key → Mock（词法回退）——兼容历史行为；
      * - api：强制 API（无 key 则 Mock）；
-     * - local：本地 ONNX（bge-small-zh）；初始化失败回退 Mock 并记日志。
+     * - local：本地 ONNX（bge-small-zh）；local-gemma：LiteRT-LM EmbeddingGemma 2。
+     *   本地初始化失败时均回退 Mock，不调用远程 API。
      */
     private data class RuntimeEmbeddingServices(
         val embeddingService: EmbeddingService,
@@ -79,10 +88,23 @@ class AppContainer(private val appContext: Context) {
     @Volatile
     private var runtimeEmbeddingServices: RuntimeEmbeddingServices? = null
 
-    private val initialEmbeddingService: EmbeddingService by lazy {
-        kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
-            assembleEmbeddingService()
-        }
+    private val runtimeStatusScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    @Volatile
+    private var runtimeStatusJob: Job? = null
+
+    private val _embeddingRuntimeStatus = MutableStateFlow(EmbeddingRuntimeStatus())
+    val embeddingRuntimeStatus: StateFlow<EmbeddingRuntimeStatus> = _embeddingRuntimeStatus
+
+    // Never download or initialize a large on-device model from a synchronous lazy getter.
+    // Startup initializes the configured source asynchronously; Mock remains a safe temporary fallback.
+    private val initialEmbeddingService: EmbeddingService by lazy { MockEmbeddingService() }
+
+    suspend fun initializeConfiguredEmbeddingSource() {
+        val source =
+            runCatching { database.settingsDao().getValue("embedding_source") }
+                .getOrNull() ?: "auto"
+        refreshEmbeddingSource(source)
     }
 
     val embeddingService: EmbeddingService
@@ -95,12 +117,37 @@ class AppContainer(private val appContext: Context) {
      * Returns true only when a real local or remote embedding implementation is active.
      */
     suspend fun refreshEmbeddingSource(source: String): Boolean {
+        runtimeStatusJob?.cancel()
+        runtimeStatusJob = null
+        if (source == "local-gemma") {
+            _embeddingRuntimeStatus.value = EmbeddingRuntimeStatus(source = source)
+        }
         val service = assembleEmbeddingService(source)
         val memoryService = VectorMemoryService(vectorStore, service)
         // Publish the matching pair atomically so concurrent callers cannot observe mixed generations.
         runtimeEmbeddingServices = RuntimeEmbeddingServices(service, memoryService)
+        runtimeStatusJob?.cancel()
+        if (service is EmbeddingGemma2LocalEmbeddingService) {
+            _embeddingRuntimeStatus.value = service.runtimeStatus.value
+            runtimeStatusJob =
+                runtimeStatusScope.launch {
+                    service.runtimeStatus.collect { status -> _embeddingRuntimeStatus.value = status }
+                }
+        } else {
+            _embeddingRuntimeStatus.value =
+                EmbeddingRuntimeStatus(
+                    source = source,
+                    initialized = service.isSemantic,
+                    errorMessage =
+                        if (source == "local-gemma") {
+                            "本地 EmbeddingGemma 初始化失败，当前使用词法记忆回退"
+                        } else {
+                            null
+                        },
+                )
+        }
         Log.i(TAG, "Embedding source switched: requested=$source, active=${service::class.java.simpleName}")
-        return service is OpenAIEmbeddingService || service is LocalEmbeddingService
+        return service.isSemantic
     }
 
     @Suppress("TooGenericExceptionCaught")
@@ -116,7 +163,26 @@ class AppContainer(private val appContext: Context) {
                     try {
                         LocalEmbeddingService.create(appContext)
                     } catch (e: Exception) {
-                        Log.e(TAG, "Local embedding init failed; remote fallback is disabled", e)
+                        Log.e(TAG, "Local ONNX embedding init failed; remote fallback is disabled", e)
+                        MockEmbeddingService()
+                    }
+                }
+                "local-gemma" -> {
+                    Log.d(
+                        TAG,
+                        "Embedding source=local-gemma: loading EmbeddingGemma 2 with LiteRT-LM",
+                    )
+                    try {
+                        EmbeddingGemma2LocalEmbeddingService.create(appContext)
+                    } catch (e: LinkageError) {
+                        Log.e(
+                            TAG,
+                            "LiteRT-LM native runtime is unavailable; remote fallback is disabled",
+                            e,
+                        )
+                        MockEmbeddingService()
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Local EmbeddingGemma 2 init failed; remote fallback is disabled", e)
                         MockEmbeddingService()
                     }
                 }

@@ -23,7 +23,7 @@ import java.util.Locale
 
 private const val HIT_RATE_PERCENT_MULTIPLIER = 100
 
-/** S2 向量记忆召回设置：记忆源（自动/API/本地 ONNX）+ 召回条数 + 相似度阈值 */
+/** S2 向量记忆召回设置：记忆源（自动/API/本地 ONNX/EmbeddingGemma 2）+ 召回条数 + 相似度阈值 */
 @Suppress("FunctionNaming", "LongMethod")
 @Composable
 internal fun VectorMemorySettingsCard(viewModel: SettingsViewModel) {
@@ -103,9 +103,11 @@ internal fun VectorMemorySettingsCard(viewModel: SettingsViewModel) {
 
             Text(
                 text =
-                    "「本地 ONNX」（bge-small-zh，约 24MB 模型随应用内置）无需 API Key 即可使用语义记忆；" +
-                        "切换记忆源会立即重建服务，无需重启；若本地模型初始化失败，不会静默回退到远程 API。" +
-                        "不同模型的向量会隔离；旧版本中缺少模型标识的向量不会被混用，需要安全重建索引。",
+                    "「本地 ONNX」使用内置 BGE 中文模型；「本地 EmbeddingGemma 2」通过 LiteRT-LM " +
+                        "加载骁龙 8 Gen 3 专用约 208MB 纯文本模型，优先尝试 NPU，再回退 GPU/CPU；" +
+                        "首次启用需联网下载，完成后可离线向量化；SM8650 专用模型优先尝试 NPU，再回退 GPU/CPU。" +
+                        "若专用模型无法在 NPU/GPU/CPU 初始化，会自动下载通用约 165MB 文本模型并只尝试 GPU/CPU；本地模型全部失败不会静默调用远程 API。" +
+                        "不同模型的向量空间会隔离，切换模型后需安全重建索引；提示词缓存布局不受影响。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -187,7 +189,12 @@ private fun EmbeddingSourceChips(
             FilterChip(
                 selected = embeddingSource == "local",
                 onClick = { onSelect("local") },
-                label = { Text("本地 ONNX（实验）") },
+                label = { Text("本地 ONNX") },
+            )
+            FilterChip(
+                selected = embeddingSource == "local-gemma",
+                onClick = { onSelect("local-gemma") },
+                label = { Text("Gemma 2 本地") },
             )
         }
     }

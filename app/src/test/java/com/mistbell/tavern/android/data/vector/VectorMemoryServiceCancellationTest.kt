@@ -8,34 +8,37 @@ import org.junit.Test
 
 class VectorMemoryServiceCancellationTest {
     @Test
-    fun `search propagates coroutine cancellation`() = runBlocking {
-        val cancellation = CancellationException("search cancelled")
-        val service = VectorMemoryService(TestVectorStore("search", cancellation), TestEmbeddingService())
+    fun `search propagates coroutine cancellation`() =
+        runBlocking {
+            val cancellation = CancellationException("search cancelled")
+            val service = VectorMemoryService(TestVectorStore("search", cancellation), TestEmbeddingService())
 
-        assertCancellation(cancellation) {
-            service.searchRelevantMemories("query", "owner", "character", null)
+            assertCancellation(cancellation) {
+                service.searchRelevantMemories("query", "owner", "character", null)
+            }
         }
-    }
 
     @Test
-    fun `delete propagates coroutine cancellation`() = runBlocking {
-        val cancellation = CancellationException("delete cancelled")
-        val service = VectorMemoryService(TestVectorStore("deleteByFilters", cancellation), TestEmbeddingService())
+    fun `delete propagates coroutine cancellation`() =
+        runBlocking {
+            val cancellation = CancellationException("delete cancelled")
+            val service = VectorMemoryService(TestVectorStore("deleteByFilters", cancellation), TestEmbeddingService())
 
-        assertCancellation(cancellation) {
-            service.deleteSessionVectors("owner", "character", "session")
+            assertCancellation(cancellation) {
+                service.deleteSessionVectors("owner", "character", "session")
+            }
         }
-    }
 
     @Test
-    fun `statistics propagates coroutine cancellation`() = runBlocking {
-        val cancellation = CancellationException("count cancelled")
-        val service = VectorMemoryService(TestVectorStore("count", cancellation), TestEmbeddingService())
+    fun `statistics propagates coroutine cancellation`() =
+        runBlocking {
+            val cancellation = CancellationException("count cancelled")
+            val service = VectorMemoryService(TestVectorStore("count", cancellation), TestEmbeddingService())
 
-        assertCancellation(cancellation) {
-            service.getStatistics()
+            assertCancellation(cancellation) {
+                service.getStatistics()
+            }
         }
-    }
 
     private suspend fun assertCancellation(
         expected: CancellationException,
@@ -67,7 +70,11 @@ class VectorMemoryServiceCancellationTest {
             if (operation == failOn) throw cancellation
         }
 
-        override suspend fun add(id: String, vector: FloatArray, metadata: Map<String, Any>) = Unit
+        override suspend fun add(
+            id: String,
+            vector: FloatArray,
+            metadata: Map<String, Any>,
+        ) = Unit
 
         override suspend fun addBatch(entries: List<VectorStore.VectorEntry>) = Unit
 

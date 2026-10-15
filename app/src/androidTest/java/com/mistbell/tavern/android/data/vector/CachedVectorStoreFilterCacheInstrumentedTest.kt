@@ -34,16 +34,18 @@ class CachedVectorStoreFilterCacheInstrumentedTest {
                 metadata = mapOf("tag" to storedTag, "content" to "array-backed metadata"),
             )
 
-            val matching = cachedStore.search(
-                queryVector = floatArrayOf(1f, 0f),
-                topK = 5,
-                filters = mapOf("tag" to storedTag),
-            )
-            val nonMatching = cachedStore.search(
-                queryVector = floatArrayOf(1f, 0f),
-                topK = 5,
-                filters = mapOf("tag" to intArrayOf(1, 2, 3)),
-            )
+            val matching =
+                cachedStore.search(
+                    queryVector = floatArrayOf(1f, 0f),
+                    topK = 5,
+                    filters = mapOf("tag" to storedTag),
+                )
+            val nonMatching =
+                cachedStore.search(
+                    queryVector = floatArrayOf(1f, 0f),
+                    topK = 5,
+                    filters = mapOf("tag" to intArrayOf(1, 2, 3)),
+                )
 
             assertEquals(1, matching.size)
             assertEquals(0, nonMatching.size)
