@@ -72,6 +72,27 @@ class LegacyVectorReindexTest {
         assertEquals(1, store.entries.size)
     }
 
+    @Test
+    fun `mock embeddings cannot be persisted by legacy reindex`() = runBlocking {
+        val store = FakeVectorStore(
+            VectorStore.VectorEntry(
+                id = "legacy-vector",
+                vector = floatArrayOf(0.2f, 0.3f),
+                metadata = legacyMetadata(),
+            ),
+        )
+
+        try {
+            VectorMemoryService(store, MockEmbeddingService()).reindexLegacyVectors()
+            fail("Expected mock embedding reindex to be rejected")
+        } catch (expected: IllegalStateException) {
+            assertTrue(expected.message.orEmpty().contains("mock vectors must never be persisted"))
+        }
+
+        assertNotNull(store.get("legacy-vector"))
+        assertEquals(1, store.entries.size)
+    }
+
     private fun legacyMetadata(): Map<String, Any> =
         mapOf(
             "owner_id" to "owner",
