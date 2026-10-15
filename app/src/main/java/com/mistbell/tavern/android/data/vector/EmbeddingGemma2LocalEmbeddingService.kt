@@ -28,9 +28,9 @@ import kotlin.math.sqrt
 /**
  * EmbeddingGemma 2 text-only model running on-device through LiteRT-LM.
  *
- * The approximately 165 MB model is downloaded on first activation into app-private storage;
- * after that, inference is offline. GPU is attempted first, with CPU fallback if GPU
- * initialization is unsupported on the device. This service never falls back to a remote API.
+ * The Snapdragon 8 Gen 3 (SM8650) Qualcomm-optimized model is downloaded on first activation
+ * into app-private storage; after that, inference is offline. Try Qualcomm NPU first, then GPU,
+ * then CPU. This service never falls back to a remote API.
  */
 class EmbeddingGemma2LocalEmbeddingService private constructor(
     private val engine: EmbeddingEngine,
@@ -40,14 +40,15 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
     companion object {
         private const val TAG = "EmbeddingGemma2Local"
         private const val MODEL_DIR = "litert-models"
-        private const val MODEL_FILE_NAME = "embeddinggemma-2-text-270m.litertlm"
+        private const val MODEL_FILE_NAME = "embeddinggemma-2-text-270m_Qualcomm_SM8650.litertlm"
         private const val MODEL_URL =
             "https://huggingface.co/litert-community/embeddinggemma-2-text-270m-litert-lm/" +
-                "resolve/9be6e8b/embeddinggemma-2-text-270m.litertlm?download=true"
-        private const val MIN_MODEL_BYTES = 100L * 1024L * 1024L
-        private const val MAX_MODEL_BYTES = 250L * 1024L * 1024L
+                "resolve/e8ae63263a69e01014bb0420c0d48d03497041a2/" +
+                "embeddinggemma-2-text-270m_Qualcomm_SM8650.litertlm?download=true"
+        private const val MIN_MODEL_BYTES = 180L * 1024L * 1024L
+        private const val MAX_MODEL_BYTES = 240L * 1024L * 1024L
         private const val EXPECTED_DIMENSION = 768
-        private const val EXPECTED_MODEL_SHA256 = "2d079ee2f6f066b1f368e8d7c819f55214eaef1d0513b312321901f30ab286fb"
+        private const val EXPECTED_MODEL_SHA256 = "7dabcb17eed982d6de4435aaf29cc56147a627f6ab20a1e37aadd7af5399457b"
 
         private val modelDownloadMutex = Mutex()
 
@@ -66,7 +67,7 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
         suspend fun create(context: Context): EmbeddingGemma2LocalEmbeddingService =
             withContext(Dispatchers.IO) {
                 val modelFile = ensureModelDownloaded(context)
-                createEngine(modelFile.absolutePath)
+                createEngine(modelFile.absolutePath, context.applicationInfo.nativeLibraryDir)
             }
 
         private suspend fun ensureModelDownloaded(context: Context): File =
@@ -179,7 +180,38 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
             return digest.digest().joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
         }
 
-        private fun createEngine(modelPath: String): EmbeddingGemma2LocalEmbeddingService {
+        private fun createEngine(
+            modelPath: String,
+            nativeLibraryDir: String,
+        ): EmbeddingGemma2LocalEmbeddingService {
+            var npuFailure: Throwable? = null
+            var npuEngine: EmbeddingEngine? = null
+            try {
+                val candidate =
+                    EmbeddingEngine(
+                        EmbeddingEngineConfig(
+                            modelPath = modelPath,
+                            backend = Backend.NPU(nativeLibraryDir = nativeLibraryDir),
+                        ),
+                    )
+                npuEngine = candidate
+                candidate.initialize()
+                Log.i(TAG, "EmbeddingGemma 2 initialized with Qualcomm NPU backend (SM8650 model)")
+                return EmbeddingGemma2LocalEmbeddingService(candidate)
+            } catch (e: Exception) {
+                npuFailure = e
+                npuEngine?.let { runCatching { it.close() } }
+                Log.w(
+                    TAG,
+                    "Qualcomm NPU unavailable or its runtime libraries are missing; retrying on GPU",
+                    e,
+                )
+            } catch (e: LinkageError) {
+                npuFailure = e
+                npuEngine?.let { runCatching { it.close() } }
+                Log.w(TAG, "Qualcomm NPU native runtime unavailable; retrying on GPU", e)
+            }
+
             var gpuFailure: Throwable? = null
             var gpuEngine: EmbeddingEngine? = null
             try {
@@ -209,12 +241,14 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
                 return EmbeddingGemma2LocalEmbeddingService(candidate)
             } catch (e: Exception) {
                 cpuEngine?.let { runCatching { it.close() } }
-                throw IOException("EmbeddingGemma 2 could not initialize on GPU or CPU", e).also {
+                throw IOException("EmbeddingGemma 2 could not initialize on NPU, GPU or CPU", e).also {
+                    npuFailure?.let(it::addSuppressed)
                     gpuFailure?.let(it::addSuppressed)
                 }
             } catch (e: LinkageError) {
                 cpuEngine?.let { runCatching { it.close() } }
                 throw IOException("EmbeddingGemma 2 native runtime is unavailable", e).also {
+                    npuFailure?.let(it::addSuppressed)
                     gpuFailure?.let(it::addSuppressed)
                 }
             }
@@ -223,7 +257,7 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
 
     private val inferenceMutex = Mutex()
 
-    override fun modelId(): String = "local:embeddinggemma-2-text-270m-litertlm:9be6e8b:$EXPECTED_DIMENSION"
+    override fun modelId(): String = "local:embeddinggemma-2-text-270m-qualcomm-sm8650-litertlm:e8ae632:$EXPECTED_DIMENSION"
 
     override fun supportsLegacyVectors(): Boolean = false
 
