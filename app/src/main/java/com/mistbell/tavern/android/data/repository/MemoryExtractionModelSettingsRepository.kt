@@ -17,15 +17,17 @@ data class MemoryExtractionModelSettings(
     fun toLlmConfigOrNull(): LlmConfig? {
         val normalizedBaseUrl = baseUrl.trim().trimEnd('/')
         val normalizedModel = model.trim()
-        if (normalizedBaseUrl.isBlank() || normalizedModel.isBlank()) return null
-        if (!normalizedBaseUrl.startsWith("https://") && !normalizedBaseUrl.startsWith("http://")) {
-            return null
+        val validEndpoint =
+            normalizedBaseUrl.startsWith("https://") || normalizedBaseUrl.startsWith("http://")
+        return if (normalizedBaseUrl.isNotBlank() && normalizedModel.isNotBlank() && validEndpoint) {
+            LlmConfig(
+                baseUrl = normalizedBaseUrl,
+                apiKey = apiKey.trim(),
+                model = normalizedModel,
+            )
+        } else {
+            null
         }
-        return LlmConfig(
-            baseUrl = normalizedBaseUrl,
-            apiKey = apiKey.trim(),
-            model = normalizedModel,
-        )
     }
 }
 
