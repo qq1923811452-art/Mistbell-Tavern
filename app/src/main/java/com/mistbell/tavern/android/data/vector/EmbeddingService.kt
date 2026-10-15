@@ -28,6 +28,6 @@ interface EmbeddingService {
      */
     fun getDimension(): Int
 
-    /** Stable namespace for persisted vectors; implementations should include model identity. */
-    fun getModelId(): String = this::class.java.simpleName
+    /** Stable namespace for persisted vectors; every implementation must identify its model. */
+    fun getModelId(): String
 }
