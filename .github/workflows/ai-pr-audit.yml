@@ -22,7 +22,7 @@ jobs:
   audit:
     name: Model ${{ matrix.model_slot }} · pass ${{ matrix.audit_pass }}
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       # Limit concurrent calls to the shared relay to reduce 429/rate-limit failures.
@@ -308,7 +308,7 @@ jobs:
                   method="POST",
               )
               try:
-                  with urllib.request.urlopen(request, timeout=90) as response:
+                  with urllib.request.urlopen(request, timeout=240) as response:
                       response_body = response.read().decode("utf-8", errors="replace")
               except urllib.error.HTTPError as exc:
                   if attempt == 0 and exc.code in {429, 500, 502, 503, 504}:
