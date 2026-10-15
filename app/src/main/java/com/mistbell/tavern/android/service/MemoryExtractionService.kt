@@ -125,6 +125,7 @@ class MemoryExtractionService(
     private fun markSupersededMemoryAsHistorical(
         oldMemory: StructuredMemory,
         newMemoryId: Long,
+        validTo: String,
     ): StructuredMemory =
         oldMemory.copy(
             content =
@@ -136,7 +137,7 @@ class MemoryExtractionService(
             structuredData =
                 TemporalMemoryFactPolicy.markHistorical(
                     oldMemory.structuredData,
-                    Instant.now().toString(),
+                    validTo,
                     newMemoryId,
                 ),
             tags = (listOf("历史事实") + oldMemory.tags).distinct().take(8),
