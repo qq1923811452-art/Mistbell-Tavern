@@ -504,8 +504,9 @@ class BackupManager(private val context: Context) {
                 } catch (cancelled: kotlinx.coroutines.CancellationException) {
                     throw cancelled
                 } catch (error: Exception) {
-                    // Only ordinary exceptions become an asset warning; fatal Error values propagate.
-                    listOf("数据已恢复，但部分资材文件未写入（${error.message ?: error.javaClass.simpleName}）")
+                    // Keep untrusted file paths/URLs from an imported backup out of UI messages and logs.
+                    android.util.Log.w("BackupManager", "Auxiliary restore failed (${error.javaClass.simpleName})")
+                    listOf("数据已恢复，但部分资材文件未写入；请检查附件是否完整。")
                 }
             summary.copy(warnings = tables.decodeWarnings + assetWarnings)
         }
