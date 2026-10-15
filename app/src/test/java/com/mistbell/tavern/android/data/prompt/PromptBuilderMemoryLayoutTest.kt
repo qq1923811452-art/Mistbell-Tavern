@@ -98,8 +98,10 @@ class PromptBuilderMemoryLayoutTest {
                 results = listOf(result("昨晚课堂上张老师点名提问了三次")),
                 alreadyInjected = injected,
             )
-        assertTrue(out.contains("## Relevant Past Conversations"))
-        assertTrue(out.contains("昨晚课堂上张老师点名提问了三次"))
+        assertEquals(
+            "## Relevant Past Conversations\\n1. 昨晚课堂上张老师点名提问了三次\\n",
+            out,
+        )
     }
 
     @Test
