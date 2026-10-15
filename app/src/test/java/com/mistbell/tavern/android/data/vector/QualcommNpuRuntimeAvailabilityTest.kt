@@ -1,15 +1,15 @@
 package com.mistbell.tavern.android.data.vector
 
 import java.io.File
+import java.nio.file.Files
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class QualcommNpuRuntimeAvailabilityTest {
     @Test
     fun `missing dispatch library blocks unsafe NPU initialization`() {
-        val directory = createTempDir(prefix = "qnn-runtime-missing-")
+        val directory = Files.createTempDirectory("qnn-runtime-missing-").toFile()
         try {
             QualcommNpuRuntimeAvailability.requiredLibraries
                 .filterNot { it == QualcommNpuRuntimeAvailability.DISPATCH_LIBRARY }
@@ -27,7 +27,7 @@ class QualcommNpuRuntimeAvailabilityTest {
 
     @Test
     fun `complete matching runtime permits NPU initialization attempt`() {
-        val directory = createTempDir(prefix = "qnn-runtime-ready-")
+        val directory = Files.createTempDirectory("qnn-runtime-ready-").toFile()
         try {
             QualcommNpuRuntimeAvailability.requiredLibraries.forEach {
                 File(directory, it).createNewFile()
