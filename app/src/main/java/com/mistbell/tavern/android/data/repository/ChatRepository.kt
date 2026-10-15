@@ -33,6 +33,7 @@ class ChatRepository(private val context: Context) {
     private val settingsRepo = SettingsRepository()
     private val structuredMemoryRepo = StructuredMemoryRepository(context)
     private val memoryExtractionService = MemoryExtractionService(context, structuredMemoryRepo)
+    private val memoryExtractionModelSettingsRepo = MemoryExtractionModelSettingsRepository()
     private val backgroundScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     companion object {
@@ -1364,31 +1365,51 @@ class ChatRepository(private val context: Context) {
         }
     }
 
-    // 解析记忆抽取用的 LLM 配置：会话指定配置 → api_configs 默认配置 → 活跃 LLM 配置兜底；都没有则返回 null（抽取跳过）
+    // 独立记忆模型优先；未配置时保持原有会话 provider → 默认 provider → 活跃 LLM 的回退顺序。
+    // 记忆抽取仍在后台运行，且不进入聊天请求的稳定提示词前缀。
     private suspend fun resolveExtractionConfig(providerId: String): LlmConfig? {
+        val dedicatedConfig =
+            try {
+                memoryExtractionModelSettingsRepo.resolveLlmConfigOrNull()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (e: Exception) {
+                // A stale Keystore entry must not disable the existing chat-provider fallback.
+                android.util.Log.w(
+                    "ChatRepository",
+                    "Independent memory model settings unavailable (${e.javaClass.simpleName}); using chat fallback",
+                )
+                null
+            }
+        if (dedicatedConfig != null) {
+            android.util.Log.d("ChatRepository", "Using independent memory extraction model configuration")
+        }
+
         val dao = db.apiConfigDao()
         val matched = if (providerId.isNotBlank()) dao.getById(providerId) else null
         val fallback = matched ?: dao.getDefault()
-        if (fallback != null) {
-            android.util.Log.d("ChatRepository", "Memory extraction using config: ${fallback.name}")
-            return LlmConfig(
-                baseUrl = fallback.apiUrl,
-                apiKey = fallback.apiKey,
-                model = fallback.model,
-            )
-        }
-
-        val llmConfig = loadLlmConfig()
-        return if (
-            llmConfig.baseUrl.isNotBlank() &&
-            llmConfig.apiKey.isNotBlank() &&
-            llmConfig.model.isNotBlank()
-        ) {
-            android.util.Log.i("ChatRepository", "Using active LLM config for memory extraction")
-            llmConfig
-        } else {
-            android.util.Log.w("ChatRepository", "No LLM configs available, memory extraction disabled")
-            null
-        }
+        val chatConfig =
+            if (fallback != null) {
+                android.util.Log.d("ChatRepository", "Memory extraction using chat config: ${fallback.name}")
+                LlmConfig(
+                    baseUrl = fallback.apiUrl,
+                    apiKey = fallback.apiKey,
+                    model = fallback.model,
+                )
+            } else {
+                val llmConfig = loadLlmConfig()
+                if (
+                    llmConfig.baseUrl.isNotBlank() &&
+                    llmConfig.apiKey.isNotBlank() &&
+                    llmConfig.model.isNotBlank()
+                ) {
+                    android.util.Log.i("ChatRepository", "Using active LLM config for memory extraction")
+                    llmConfig
+                } else {
+                    android.util.Log.w("ChatRepository", "No LLM configs available, memory extraction disabled")
+                    null
+                }
+            }
+        return dedicatedConfig ?: chatConfig
     }
 }
