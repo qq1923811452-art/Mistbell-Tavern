@@ -20,6 +20,9 @@ class CachedVectorStore(
     private val searchCache = LruCache<SearchCacheKey, List<VectorStore.SearchResult>>(cacheSize)
     private val cacheMutex = Mutex()
 
+    // Prevent an in-flight search from repopulating the cache after a write invalidates it.
+    private var cacheGeneration: Long = 0L
+
     companion object {
         private const val TAG = "CachedVectorStore"
     }
@@ -43,28 +46,31 @@ class CachedVectorStore(
         topK: Int,
         filters: Map<String, Any>,
     ): List<VectorStore.SearchResult> {
+        // Exact vector contents avoid collisions from contentHashCode-only cache keys.
         val cacheKey =
             SearchCacheKey(
-                vectorHash = queryVector.contentHashCode(),
+                queryVector = queryVector.toList(),
                 topK = topK,
-                filters = filters,
+                filters = filters.toSortedMap(),
             )
 
-        // 尝试从缓存获取
-        cacheMutex.withLock {
-            searchCache.get(cacheKey)?.let { cached ->
-                Log.d(TAG, "Cache hit for search (hash=${cacheKey.vectorHash})")
-                return cached
+        val generation =
+            cacheMutex.withLock {
+                searchCache.get(cacheKey)?.let { cached ->
+                    Log.d(TAG, "Cache hit for search")
+                    return cached
+                }
+                cacheGeneration
             }
-        }
 
-        // 缓存未命中，执行实际搜索
-        Log.d(TAG, "Cache miss for search (hash=${cacheKey.vectorHash})")
+        Log.d(TAG, "Cache miss for search")
         val results = delegate.search(queryVector, topK, filters)
 
-        // 缓存结果
+        // Do not cache stale results if a write/delete occurred during the search.
         cacheMutex.withLock {
-            searchCache.put(cacheKey, results)
+            if (generation == cacheGeneration) {
+                searchCache.put(cacheKey, results)
+            }
         }
 
         return results
@@ -96,8 +102,11 @@ class CachedVectorStore(
         invalidateCache()
     }
 
-    private fun invalidateCache() {
-        searchCache.evictAll()
+    private suspend fun invalidateCache() {
+        cacheMutex.withLock {
+            cacheGeneration += 1
+            searchCache.evictAll()
+        }
         Log.d(TAG, "Cache invalidated")
     }
 
@@ -105,7 +114,7 @@ class CachedVectorStore(
      * 搜索缓存键
      */
     private data class SearchCacheKey(
-        val vectorHash: Int,
+        val queryVector: List<Float>,
         val topK: Int,
         val filters: Map<String, Any>,
     )
