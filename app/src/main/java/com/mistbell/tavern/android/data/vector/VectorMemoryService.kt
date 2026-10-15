@@ -428,7 +428,10 @@ class VectorMemoryService(
             val readyBatch = mutableListOf<LegacyVectorCandidate>()
             for (candidate in batch) {
                 val existingTarget = vectorStore.get(candidate.targetId)
-                if (existingTarget == null) {
+                if (
+                    existingTarget == null ||
+                    (existingTarget.id == candidate.legacyId && existingTarget.metadata["embedding_model"] == null)
+                ) {
                     readyBatch += candidate
                 } else if (
                     existingTarget.metadata["embedding_model"] == embeddingModelId &&
