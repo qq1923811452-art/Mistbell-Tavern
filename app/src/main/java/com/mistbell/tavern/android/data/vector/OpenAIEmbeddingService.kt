@@ -205,7 +205,19 @@ class OpenAIEmbeddingService(
 
         Log.d(TAG, "Generated ${embeddingResponse.data.size} embeddings in batch")
 
-        return embeddingResponse.data.map { data ->
+        val orderedData = embeddingResponse.data.sortedBy { it.index }
+        if (orderedData.size != texts.size) {
+            throw Exception("Embedding response count mismatch: expected ${texts.size}, received ${orderedData.size}")
+        }
+        if (orderedData.any { it.embedding.size != DIMENSION }) {
+            val dimensions = orderedData.map { it.embedding.size }.distinct()
+            throw Exception("Unexpected embedding dimensions for model $model: $dimensions (expected $DIMENSION)")
+        }
+        if (orderedData.map { it.index } != texts.indices.toList()) {
+            throw Exception("Embedding response contains missing or duplicate input indices")
+        }
+
+        return orderedData.map { data ->
             FloatArray(data.embedding.size) { i -> data.embedding[i].toFloat() }
         }
     }
