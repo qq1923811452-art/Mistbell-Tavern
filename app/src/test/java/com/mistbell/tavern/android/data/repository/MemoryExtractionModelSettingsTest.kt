@@ -56,6 +56,30 @@ class MemoryExtractionModelSettingsTest {
     }
 
     @Test
+    fun remoteCleartextAndUserInfoEndpointsAreRejected() {
+        val remoteHttp =
+            MemoryExtractionModelSettings(
+                baseUrl = "http://relay.example/v1",
+                apiKey = "key",
+                model = "qwen-memory",
+            )
+        assertNull(remoteHttp.toLlmConfigOrNull())
+        assertEquals(
+            "远程 API 必须使用 HTTPS；HTTP 仅允许本机回环地址",
+            remoteHttp.endpointRejectionReason(),
+        )
+
+        val userInfoUrl =
+            MemoryExtractionModelSettings(
+                baseUrl = "https://user:secret@relay.example/v1",
+                apiKey = "key",
+                model = "qwen-memory",
+            )
+        assertNull(userInfoUrl.toLlmConfigOrNull())
+        assertEquals("API 基础地址不能包含用户名或密码", userInfoUrl.endpointRejectionReason())
+    }
+
+    @Test
     fun `remote endpoint requires API key`() {
         assertNull(
             MemoryExtractionModelSettings(
