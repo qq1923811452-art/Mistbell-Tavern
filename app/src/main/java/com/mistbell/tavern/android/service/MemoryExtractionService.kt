@@ -34,6 +34,7 @@ class MemoryExtractionService(
         private const val MIN_MEMORY_CONTENT_LENGTH = 10
         private const val MIN_IMPORTANCE_SCORE = 0.5 // 降低阈值，让更多内容有机会被保存
         private const val SIMILARITY_THRESHOLD = 0.85
+        private const val MAX_HISTORICAL_MEMORY_IMPORTANCE = 7
 
         /** 空正文重试时追加：部分模型会把输出预算全花在思考过程上，导致 JSON 正文为空 */
         private const val NO_REASONING_SUFFIX =
@@ -95,36 +96,7 @@ class MemoryExtractionService(
                                 messageIds = messageIds,
                             )
                         val newMemoryId = structuredMemoryRepository.createMemory(memory)
-                        candidate.supersededMemoryIds.forEach { oldMemoryId ->
-                            try {
-                                val oldMemory = structuredMemoryRepository.getMemoryById(oldMemoryId)
-                                if (oldMemory != null) {
-                                    val historicalMemory =
-                                        oldMemory.copy(
-                                            content =
-                                                if (oldMemory.content.startsWith("【历史事实】")) {
-                                                    oldMemory.content
-                                                } else {
-                                                    "【历史事实】${oldMemory.content}"
-                                                },
-                                            structuredData =
-                                                TemporalMemoryFactPolicy.markHistorical(
-                                                    oldMemory.structuredData,
-                                                    Instant.now().toString(),
-                                                    newMemoryId,
-                                                ),
-                                            tags = (listOf("历史事实") + oldMemory.tags).distinct().take(8),
-                                            keywords = (listOf("历史事实") + oldMemory.keywords).distinct().take(8),
-                                            importance = min(oldMemory.importance, 7),
-                                        )
-                                    structuredMemoryRepository.updateMemory(historicalMemory)
-                                }
-                            } catch (cancelled: CancellationException) {
-                                throw cancelled
-                            } catch (e: Exception) {
-                                Log.e(TAG, "Failed to mark superseded memory as historical: ${e.message}", e)
-                            }
-                        }
+                        markSupersededMemoriesAsHistorical(candidate.supersededMemoryIds, newMemoryId)
                         savedCount++
                         Log.d(TAG, "Saved memory candidate #$savedCount")
                     } catch (cancelled: CancellationException) {
@@ -143,6 +115,47 @@ class MemoryExtractionService(
                 0
             }
         }
+
+    private suspend fun markSupersededMemoriesAsHistorical(
+        oldMemoryIds: List<Long>,
+        newMemoryId: Long,
+    ) {
+        oldMemoryIds.forEach { oldMemoryId ->
+            markSingleMemoryAsHistorical(oldMemoryId, newMemoryId)
+        }
+    }
+
+    private suspend fun markSingleMemoryAsHistorical(
+        oldMemoryId: Long,
+        newMemoryId: Long,
+    ) {
+        try {
+            val oldMemory = structuredMemoryRepository.getMemoryById(oldMemoryId) ?: return
+            val historicalMemory =
+                oldMemory.copy(
+                    content =
+                        if (oldMemory.content.startsWith("【历史事实】")) {
+                            oldMemory.content
+                        } else {
+                            "【历史事实】${oldMemory.content}"
+                        },
+                    structuredData =
+                        TemporalMemoryFactPolicy.markHistorical(
+                            oldMemory.structuredData,
+                            Instant.now().toString(),
+                            newMemoryId,
+                        ),
+                    tags = (listOf("历史事实") + oldMemory.tags).distinct().take(8),
+                    keywords = (listOf("历史事实") + oldMemory.keywords).distinct().take(8),
+                    importance = min(oldMemory.importance, MAX_HISTORICAL_MEMORY_IMPORTANCE),
+                )
+            structuredMemoryRepository.updateMemory(historicalMemory)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to mark superseded memory as historical: ${e.message}", e)
+        }
+    }
 
     // 多轮拼接：轮间空行分隔；无用户消息的轮次（群聊"让TA继续"）省略 User 行
     private fun buildDialogueText(turns: List<DialogueTurn>): String {
