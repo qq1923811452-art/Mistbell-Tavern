@@ -100,6 +100,12 @@ class MemoryExtractionService(
                                 if (oldMemory != null) {
                                     val historicalMemory =
                                         oldMemory.copy(
+                                            content =
+                                                if (oldMemory.content.startsWith("【历史事实】")) {
+                                                    oldMemory.content
+                                                } else {
+                                                    "【历史事实】${oldMemory.content}"
+                                                },
                                             structuredData =
                                                 TemporalMemoryFactPolicy.markHistorical(
                                                     oldMemory.structuredData,
@@ -108,7 +114,7 @@ class MemoryExtractionService(
                                                 ),
                                             tags = (oldMemory.tags + "历史事实").distinct().take(8),
                                             keywords = (oldMemory.keywords + "历史事实").distinct().take(8),
-                                            importance = min(oldMemory.importance, 6),
+                                            importance = min(oldMemory.importance, 7),
                                         )
                                     structuredMemoryRepository.updateMemory(historicalMemory)
                                 }
