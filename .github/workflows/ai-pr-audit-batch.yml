@@ -10,7 +10,7 @@ permissions:
   actions: write
 
 concurrency:
-  group: ai-pr-audit-batch-${{ github.workflow }}-${{ github.ref }}
+  group: ai-pr-audit-batch-${{ github.workflow }}
   cancel-in-progress: false
 
 jobs:
