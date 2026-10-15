@@ -11,8 +11,7 @@ import kotlinx.coroutines.withContext
 class WorldBookScanSettingsRepository {
     private val db get() = TavernApplication.instance.container.database
 
-    fun observeEnabled(): Flow<Boolean> =
-        db.settingsDao().observeValue(KEY_RECURSIVE_SCAN_ENABLED).map { it != "0" }
+    fun observeEnabled(): Flow<Boolean> = db.settingsDao().observeValue(KEY_RECURSIVE_SCAN_ENABLED).map { it != "0" }
 
     fun observeDepth(): Flow<Int> =
         db.settingsDao().observeValue(KEY_RECURSIVE_SCAN_DEPTH).map {
