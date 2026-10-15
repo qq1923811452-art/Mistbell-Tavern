@@ -2,6 +2,9 @@ package com.mistbell.tavern.android.service
 
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 
 /**
  * Temporal metadata lives in structured_data JSON so this policy does not require a Room migration.
@@ -22,9 +25,9 @@ internal object TemporalMemoryFactPolicy {
     fun parseFact(id: Long, structuredData: String?): Fact? {
         if (structuredData.isNullOrBlank()) return null
         val data = decode(structuredData)
-        val subject = data["subject"].orEmpty()
-        val relation = data["relation"].orEmpty()
-        val objectValue = data["object"].orEmpty()
+        val subject = data.stringValue("subject").orEmpty()
+        val relation = data.stringValue("relation").orEmpty()
+        val objectValue = data.stringValue("object").orEmpty()
         return if (subject.isBlank() || relation.isBlank() || objectValue.isBlank()) {
             null
         } else {
@@ -33,8 +36,8 @@ internal object TemporalMemoryFactPolicy {
                 subject = subject,
                 relation = relation,
                 objectValue = objectValue,
-                status = data["status"].orEmpty().ifBlank { CURRENT },
-                validTo = data["valid_to"].orEmpty(),
+                status = data.stringValue("status").orEmpty().ifBlank { CURRENT },
+                validTo = data.stringValue("valid_to").orEmpty(),
             )
         }
     }
@@ -88,7 +91,7 @@ internal object TemporalMemoryFactPolicy {
     fun isHistorical(structuredData: String?): Boolean {
         if (structuredData.isNullOrBlank()) return false
         val data = decode(structuredData)
-        return data["status"] == HISTORICAL || data["valid_to"].orEmpty().isNotBlank()
+        return data.stringValue("status") == HISTORICAL || data.stringValue("valid_to").orEmpty().isNotBlank()
     }
 
     fun markCurrent(
@@ -98,12 +101,12 @@ internal object TemporalMemoryFactPolicy {
         previousValues: List<String>,
     ): String {
         val data = decode(structuredData).toMutableMap()
-        data["status"] = CURRENT
-        data["valid_from"] = validFrom
-        data["valid_to"] = ""
-        data["supersedes_ids"] = supersededIds.distinct().joinToString(",")
-        data["previous_values"] = previousValues.distinct().joinToString(" | ")
-        return Json.encodeToString(data)
+        data["status"] = JsonPrimitive(CURRENT)
+        data["valid_from"] = JsonPrimitive(validFrom)
+        data["valid_to"] = JsonPrimitive("")
+        data["supersedes_ids"] = JsonPrimitive(supersededIds.distinct().joinToString(","))
+        data["previous_values"] = JsonPrimitive(previousValues.distinct().joinToString(" | "))
+        return Json.encodeToString(JsonObject(data))
     }
 
     fun markHistorical(
@@ -112,14 +115,30 @@ internal object TemporalMemoryFactPolicy {
         supersededById: Long,
     ): String {
         val data = decode(structuredData.orEmpty()).toMutableMap()
-        data["status"] = HISTORICAL
-        data["valid_to"] = validTo
-        data["superseded_by"] = supersededById.toString()
-        return Json.encodeToString(data)
+        data["status"] = JsonPrimitive(HISTORICAL)
+        data["valid_to"] = JsonPrimitive(validTo)
+        data["superseded_by"] = JsonPrimitive(supersededById.toString())
+        return Json.encodeToString(JsonObject(data))
     }
 
-    private fun decode(structuredData: String): Map<String, String> =
-        runCatching { Json.decodeFromString<Map<String, String>>(structuredData) }.getOrDefault(emptyMap())
+    /**
+     * Keep the full JSON tree instead of decoding Map<String, String>: legacy payloads may contain
+     * numbers, arrays, booleans, or nested objects. A strict map decode silently replaced those
+     * payloads with an empty map and destroyed every non-string field during temporal updates.
+     * Invalid/non-object legacy data is preserved verbatim under legacy_raw before adding metadata.
+     */
+    private fun decode(structuredData: String): JsonObject =
+        runCatching {
+            when (val element = Json.parseToJsonElement(structuredData)) {
+                is JsonObject -> element
+                else -> JsonObject(mapOf("legacy_raw" to JsonPrimitive(structuredData)))
+            }
+        }.getOrElse {
+            JsonObject(mapOf("legacy_raw" to JsonPrimitive(structuredData)))
+        }
+
+    private fun JsonObject.stringValue(key: String): String? =
+        (this[key] as? JsonPrimitive)?.contentOrNull
 
     private fun normalize(value: String): String =
         value
