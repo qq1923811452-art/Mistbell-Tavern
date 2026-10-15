@@ -59,8 +59,11 @@ class StreamParseUsageTest {
     @Test
     fun `gemini 同帧正文与用量时 Delta 携带 usage`() {
         val data =
-            """{"candidates":[{"content":{"parts":[{"text":"答"}],"role":"model"},"finishReason":"STOP"}],
-                "usageMetadata":{"promptTokenCount":8,"candidatesTokenCount":20,"totalTokenCount":28}}"""
+            """
+            {"candidates":[{"content":{"parts":[{"text":"答"}],"role":"model"},"finishReason":"STOP"}],
+             "usageMetadata":{"promptTokenCount":8,"candidatesTokenCount":20,
+              "totalTokenCount":28,"cachedContentTokenCount":3}}
+            """.trimIndent()
         val result = GeminiChatProtocol.parseStreamData(data)
         assertTrue("同帧正文+用量应产出 Delta", result is StreamParseResult.Delta)
         val delta = result as StreamParseResult.Delta
@@ -68,16 +71,24 @@ class StreamParseUsageTest {
         assertEquals(28, delta.usage?.totalTokens)
         assertEquals(8, delta.usage?.promptTokens)
         assertEquals(20, delta.usage?.completionTokens)
+        assertEquals(3, delta.usage?.cacheHitTokens)
+        assertEquals(5, delta.usage?.cacheMissTokens)
     }
 
     @Test
     fun `gemini 仅用量帧产出 UsageUpdate`() {
         val data =
-            """{"candidates":[{"content":{"parts":[{"text":""}],"role":"model"},"finishReason":"STOP"}],
-                "usageMetadata":{"promptTokenCount":8,"candidatesTokenCount":20,"totalTokenCount":28}}"""
+            """
+            {"candidates":[{"content":{"parts":[{"text":""}],"role":"model"},"finishReason":"STOP"}],
+             "usageMetadata":{"promptTokenCount":8,"candidatesTokenCount":20,
+              "totalTokenCount":28,"cachedContentTokenCount":3}}
+            """.trimIndent()
         val result = GeminiChatProtocol.parseStreamData(data)
         assertTrue("无正文仅用量帧应产出 UsageUpdate", result is StreamParseResult.UsageUpdate)
-        assertEquals(28, (result as StreamParseResult.UsageUpdate).usage.totalTokens)
+        val usage = (result as StreamParseResult.UsageUpdate).usage
+        assertEquals(28, usage.totalTokens)
+        assertEquals(3, usage.cacheHitTokens)
+        assertEquals(5, usage.cacheMissTokens)
     }
 
     @Test
@@ -97,6 +108,22 @@ class StreamParseUsageTest {
         val usage = (AnthropicChatProtocol.parseStreamData(data) as StreamParseResult.UsageUpdate).usage
         assertEquals(0, usage.promptTokens)
         assertEquals(12, usage.completionTokens)
+    }
+
+    @Test
+    fun `anthropic message_delta 保留网关提供的缓存用量`() {
+        val data =
+            """
+            {"type":"message_delta","usage":{
+                "output_tokens":12,"cache_creation_input_tokens":2,"cache_read_input_tokens":5
+            }}
+            """.trimIndent()
+        val usage = (AnthropicChatProtocol.parseStreamData(data) as StreamParseResult.UsageUpdate).usage
+        assertEquals(7, usage.promptTokens)
+        assertEquals(12, usage.completionTokens)
+        assertEquals(19, usage.totalTokens)
+        assertEquals(5, usage.cacheHitTokens)
+        assertEquals(2, usage.cacheMissTokens)
     }
 
     @Test

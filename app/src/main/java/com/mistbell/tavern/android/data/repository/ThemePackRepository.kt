@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -36,6 +37,7 @@ private data class ThemeManifest(
  * 主题包仓库：导入/导出 zip、增删查、应用链 tokens 解析。
  * 皮肤级：纯数据 tokens，无代码执行。
  */
+@Suppress("TooManyFunctions")
 class ThemePackRepository(private val context: Context) {
     private val db get() = TavernApplication.instance.container.database
 
@@ -46,6 +48,12 @@ class ThemePackRepository(private val context: Context) {
         }
 
     private val imageExtensions = setOf("png", "jpg", "jpeg", "webp")
+
+    private companion object {
+        const val MAX_THEME_ZIP_ENTRIES = 512
+        const val MAX_THEME_ENTRY_BYTES = 16L * 1024L * 1024L
+        const val MAX_THEME_TOTAL_BYTES = 64L * 1024L * 1024L
+    }
 
     fun observePacks(): Flow<List<ThemePackEntity>> = db.themePackDao().observeAll()
 
@@ -70,6 +78,8 @@ class ThemePackRepository(private val context: Context) {
             var themeJson: String? = null
             var backgroundName: String? = null
             val backgroundBytes = mutableListOf<Pair<String, ByteArray>>()
+            var totalBytes = 0L
+            var entryCount = 0
 
             try {
                 context.contentResolver.openInputStream(uri)?.use { input ->
@@ -77,10 +87,20 @@ class ThemePackRepository(private val context: Context) {
                         var entry: ZipEntry? = zip.nextEntry
                         if (entry == null) throw IllegalArgumentException("主题包无效：zip 内没有任何文件")
                         while (entry != null) {
-                            val name = entry!!.name
-                            if (name.split('/').any { it == ".." }) throw IllegalArgumentException("主题包非法：条目路径包含 \"..\"（疑似路径穿越）")
-                            if (!entry!!.isDirectory) {
-                                val content = zip.readBytes()
+                            val currentEntry = entry
+                            val name = currentEntry.name
+                            entryCount++
+                            require(entryCount <= MAX_THEME_ZIP_ENTRIES) { "主题包非法：条目数量超出限制" }
+                            require(
+                                !name.startsWith("/") &&
+                                    '\\' !in name &&
+                                    name.removeSuffix("/").split('/').none { it == "." || it == ".." },
+                            ) { "主题包非法：条目路径不安全" }
+                            if (!currentEntry.isDirectory) {
+                                val remainingBytes = MAX_THEME_TOTAL_BYTES - totalBytes
+                                require(remainingBytes > 0L) { "主题包非法：解压内容超出大小限制" }
+                                val content = readBoundedEntry(zip, minOf(MAX_THEME_ENTRY_BYTES, remainingBytes))
+                                totalBytes += content.size
                                 when {
                                     name == "manifest.json" ->
                                         manifest = parseManifest(content.toString(Charsets.UTF_8))
@@ -147,6 +167,23 @@ class ThemePackRepository(private val context: Context) {
             }
             m.id
         }
+
+    private fun readBoundedEntry(
+        zip: ZipInputStream,
+        maxBytes: Long,
+    ): ByteArray {
+        val output = ByteArrayOutputStream()
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+        var total = 0L
+        while (true) {
+            val read = zip.read(buffer)
+            if (read < 0) break
+            total += read
+            require(total <= maxBytes) { "主题包非法：单个文件超出解压大小限制" }
+            output.write(buffer, 0, read)
+        }
+        return output.toByteArray()
+    }
 
     private fun parseManifest(text: String): ThemeManifest {
         val m =

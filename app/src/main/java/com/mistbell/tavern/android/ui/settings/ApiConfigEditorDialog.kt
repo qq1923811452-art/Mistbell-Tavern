@@ -181,7 +181,12 @@ private fun DialogConfirmButtons(
     onDismiss: () -> Unit,
     onConfirm: () -> Unit,
 ) {
-    val canConfirm = name.isNotBlank() && apiUrl.isNotBlank() && apiKey.isNotBlank() && model.isNotBlank()
+    val canConfirm =
+        name.isNotBlank() &&
+            ApiBaseUrlPolicy.isValid(apiUrl) &&
+            !ApiBaseUrlPolicy.requiresCleartextWarning(apiUrl) &&
+            apiKey.isNotBlank() &&
+            model.isNotBlank()
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -525,6 +530,7 @@ fun ApiConfigEditorDialog(
                     shape = RoundedCornerShape(16.dp),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
                 )
+                ApiUrlValidationMessage(apiUrl)
                 // API 密钥
                 ApiKeyField(
                     apiKey = apiKey,

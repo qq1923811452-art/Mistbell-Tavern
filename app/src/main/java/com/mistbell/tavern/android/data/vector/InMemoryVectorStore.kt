@@ -1,6 +1,7 @@
 package com.mistbell.tavern.android.data.vector
 
 import android.content.Context
+import android.util.AtomicFile
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
@@ -10,6 +11,8 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.io.File
+import java.io.FileOutputStream
+import java.util.UUID
 
 /**
  * 内存向量存储实现（带持久化和内存限制）
@@ -31,6 +34,7 @@ class InMemoryVectorStore(
     private val capacity = maxVectorsInMemory.coerceAtLeast(1)
     private val mutex = Mutex()
     private val storageFile = File(context.filesDir, "vector_store.json")
+    private val atomicStorageFile = AtomicFile(storageFile)
 
     private val json =
         Json {
@@ -173,6 +177,33 @@ class InMemoryVectorStore(
         }
     }
 
+    override suspend fun recoverCorruptStorage(): Boolean {
+        return mutex.withLock {
+            val backupFile = File(storageFile.path + ".bak")
+            val existingFiles = listOf(storageFile, backupFile).filter { it.exists() }
+            if (existingFiles.isEmpty()) return@withLock false
+
+            val quarantineDirectory = File(context.filesDir, "vector_store_quarantine")
+            check(quarantineDirectory.isDirectory || quarantineDirectory.mkdirs()) {
+                "Unable to create vector-store quarantine directory"
+            }
+            val recoveryId = UUID.randomUUID().toString()
+            existingFiles.forEach { file ->
+                val suffix = if (file == backupFile) ".bak" else ".json"
+                val quarantine = File(quarantineDirectory, "vector_store.corrupt-$recoveryId$suffix")
+                check(file.renameTo(quarantine)) {
+                    "Unable to preserve corrupt vector memory file at ${file.name}"
+                }
+            }
+
+            vectors.clear()
+            isLoaded = true
+            saveToDisk()
+            Log.w(TAG, "Corrupt vector store quarantined; recreated an empty store")
+            true
+        }
+    }
+
     override suspend fun clear() {
         mutex.withLock {
             vectors.clear()
@@ -201,23 +232,28 @@ class InMemoryVectorStore(
      * 持久化到磁盘
      */
     private fun saveToDisk() {
+        val data =
+            VectorStoreData(
+                vectors =
+                    vectors.values.map { entry ->
+                        SerializableVectorEntry(
+                            id = entry.id,
+                            vector = entry.vector.toList(),
+                            metadata = entry.metadata.mapValues { (_, v) -> v.toString() },
+                        )
+                    },
+            )
+        val serialized = json.encodeToString(data).toByteArray(Charsets.UTF_8)
+        var output: FileOutputStream? = null
         try {
-            val data =
-                VectorStoreData(
-                    vectors =
-                        vectors.values.map { entry ->
-                            SerializableVectorEntry(
-                                id = entry.id,
-                                vector = entry.vector.toList(),
-                                metadata = entry.metadata.mapValues { (_, v) -> v.toString() },
-                            )
-                        },
-                )
-
-            storageFile.writeText(json.encodeToString(data))
+            output = atomicStorageFile.startWrite()
+            output.write(serialized)
+            atomicStorageFile.finishWrite(output)
             Log.d(TAG, "Saved ${vectors.size} vectors to disk")
         } catch (e: Exception) {
+            output?.let { stream -> runCatching { atomicStorageFile.failWrite(stream) } }
             Log.e(TAG, "Failed to save vectors to disk: ${e.message}", e)
+            throw IllegalStateException("Failed to persist vector memory", e)
         }
     }
 
@@ -225,13 +261,13 @@ class InMemoryVectorStore(
      * 从磁盘加载
      */
     private fun loadFromDisk() {
-        if (!storageFile.exists()) {
+        if (!storageFile.exists() && !File(storageFile.path + ".bak").exists()) {
             Log.d(TAG, "No existing vector store file")
             return
         }
 
         try {
-            val content = storageFile.readText()
+            val content = atomicStorageFile.openRead().bufferedReader().use { it.readText() }
             val data = json.decodeFromString<VectorStoreData>(content)
 
             data.vectors.forEach { entry ->
@@ -257,6 +293,7 @@ class InMemoryVectorStore(
             Log.d(TAG, "Loaded ${vectors.size} vectors from disk")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to load vectors from disk: ${e.message}", e)
+            throw IllegalStateException("Failed to load vector memory; refusing to treat it as empty", e)
         }
     }
 

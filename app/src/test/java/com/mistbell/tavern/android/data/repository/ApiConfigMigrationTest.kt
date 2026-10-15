@@ -24,11 +24,16 @@ class ApiConfigMigrationTest {
         assertEquals("gpt-4o", providers[0].selectedModel)
     }
 
+    @Test(expected = kotlinx.serialization.SerializationException::class)
+    fun `非空坏 JSON 抛出异常以阻止迁移被误标完成`() {
+        ApiConfigMigration.parseProvidersJson("{not json")
+    }
+
     @Test
-    fun `坏 JSON 返回空列表`() {
-        assertTrue(ApiConfigMigration.parseProvidersJson("{not json").isEmpty())
+    fun `空 JSON 文本表示没有遗留提供商`() {
         assertTrue(ApiConfigMigration.parseProvidersJson("").isEmpty())
         assertTrue(ApiConfigMigration.parseProvidersJson("  ").isEmpty())
+        assertTrue(ApiConfigMigration.parseProvidersJson("[]").isEmpty())
     }
 
     // ---- toApiConfigEntities ----

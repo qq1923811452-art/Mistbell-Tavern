@@ -217,6 +217,7 @@ fun WorldBookListScreen(
                     }
                 } else {
                     LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(16.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
@@ -292,6 +293,7 @@ fun WorldBookListScreen(
             } else {
                 // Entry list view
                 LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(horizontal = 24.dp, vertical = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
@@ -486,7 +488,10 @@ fun WorldBookListScreen(
                                                 viewModel.updateEntry(
                                                     entry.id,
                                                     kotlinx.serialization.json.buildJsonObject {
-                                                        put("disable", kotlinx.serialization.json.JsonPrimitive(!enabled))
+                                                        put(
+                                                            "disable",
+                                                            kotlinx.serialization.json.JsonPrimitive(!enabled),
+                                                        )
                                                     },
                                                 )
                                             },
@@ -648,12 +653,18 @@ fun WorldBookListScreen(
                 // Toggles
                 Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Switch(checked = !entryForm.disable, onCheckedChange = { viewModel.updateEntryForm { copy(disable = !it) } })
+                        Switch(
+                            checked = !entryForm.disable,
+                            onCheckedChange = { viewModel.updateEntryForm { copy(disable = !it) } },
+                        )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text("启用", style = MaterialTheme.typography.bodyMedium)
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Switch(checked = entryForm.constant, onCheckedChange = { viewModel.updateEntryForm { copy(constant = it) } })
+                        Switch(
+                            checked = entryForm.constant,
+                            onCheckedChange = { viewModel.updateEntryForm { copy(constant = it) } },
+                        )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text("常量", style = MaterialTheme.typography.bodyMedium)
                     }

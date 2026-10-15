@@ -1,7 +1,31 @@
 package com.mistbell.tavern.android.data.vector
 
 import android.util.Log
+import com.mistbell.tavern.android.data.api.ApiCallTrace
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import java.nio.charset.StandardCharsets
+import java.security.MessageDigest
 import java.util.UUID
+
+private fun recordVectorStorageFailure(
+    storageError: MutableStateFlow<String?>,
+    error: Exception,
+) {
+    var cause: Throwable? = error
+    while (cause != null) {
+        if (cause.message?.contains("refusing to treat it as empty") == true) {
+            storageError.value =
+                "向量记忆文件读取失败。原文件已保留；请先导出备份或联系支持，不要清空应用数据。"
+            return
+        }
+        cause = cause.cause
+    }
+}
 
 /**
  * 向量记忆服务
@@ -18,6 +42,12 @@ class VectorMemoryService(
 ) {
     companion object {
         private const val TAG = "VectorMemoryService"
+        private const val EMBEDDING_CACHE_INITIAL_CAPACITY = 32
+        private const val EMBEDDING_CACHE_LOAD_FACTOR = 0.75f
+        private const val EMBEDDING_CACHE_MAX_ENTRIES = 512
+        private const val EMBEDDING_CACHE_STRIPE_COUNT = 32
+        private const val HEX_BYTE_WIDTH = 2
+        private const val BYTE_MASK = 0xff
     }
 
     /**
@@ -32,6 +62,68 @@ class VectorMemoryService(
      */
     val available: Boolean =
         embeddingService is OpenAIEmbeddingService || embeddingService is LocalEmbeddingService
+
+    private val embeddingModelId = embeddingService.modelId()
+    private val legacyVectorsCompatible = embeddingService.supportsLegacyVectors()
+    private val embeddingCache =
+        LinkedHashMap<String, FloatArray>(
+            EMBEDDING_CACHE_INITIAL_CAPACITY,
+            EMBEDDING_CACHE_LOAD_FACTOR,
+            true,
+        )
+
+    // Per-key hashing stripes preserve same-text single-flight while allowing unrelated
+    // embedding requests (including remote API calls) to proceed concurrently.
+    private val embeddingCacheMutexes = Array(EMBEDDING_CACHE_STRIPE_COUNT) { Mutex() }
+
+    private val _storageError = MutableStateFlow<String?>(null)
+
+    /** Non-destructive diagnostic surfaced in Settings when persisted vectors cannot be loaded. */
+    val storageError: StateFlow<String?> = _storageError.asStateFlow()
+
+    /** Mutable diagnostic state for the container's confirmed recovery path. */
+    internal val storageErrorState: MutableStateFlow<String?>
+        get() = _storageError
+
+    /**
+     * Reuse the exact text embedding across the write-then-retrieve path.
+     * A deterministic stripe lock covers cache lookup and generation for each key, preventing
+     * duplicate same-text misses while allowing most unrelated texts to embed concurrently.
+     */
+    private fun embeddingCacheKey(text: String): String {
+        val digest =
+            MessageDigest.getInstance("SHA-256")
+                .digest("$embeddingModelId\u0000$text".toByteArray(StandardCharsets.UTF_8))
+        return digest.joinToString("") { byte -> ("%0" + HEX_BYTE_WIDTH + "x").format(byte.toInt() and BYTE_MASK) }
+    }
+
+    private suspend fun embedCached(
+        text: String,
+        source: String,
+    ): FloatArray {
+        val key = embeddingCacheKey(text)
+        val mutex = embeddingCacheMutexes[Math.floorMod(key.hashCode(), embeddingCacheMutexes.size)]
+        return mutex.withLock {
+            val cached = synchronized(embeddingCache) { embeddingCache[key]?.copyOf() }
+            if (cached != null) {
+                ApiCallTrace.log(
+                    ApiCallTrace.newId(),
+                    source,
+                    "CACHE_HIT",
+                    "engine=memory model=$embeddingModelId dimension=${cached.size}",
+                )
+                return@withLock cached
+            }
+            val generated = embeddingService.embed(text, source)
+            synchronized(embeddingCache) {
+                embeddingCache[key] = generated.copyOf()
+                while (embeddingCache.size > EMBEDDING_CACHE_MAX_ENTRIES) {
+                    embeddingCache.remove(embeddingCache.keys.first())
+                }
+            }
+            generated.copyOf()
+        }
+    }
 
     /**
      * 存储消息到向量数据库
@@ -54,7 +146,7 @@ class VectorMemoryService(
     ): String {
         try {
             // 1. 生成向量
-            val embedding = embeddingService.embed(content)
+            val embedding = embedCached(content, "EMBEDDING_STORE_${contentType.uppercase()}")
 
             // 2. 构建元数据
             val metadata =
@@ -65,6 +157,7 @@ class VectorMemoryService(
                     "message_id" to messageId,
                     "content_type" to contentType,
                     "content" to content,
+                    "embedding_model" to embeddingModelId,
                     "created_at" to System.currentTimeMillis().toString(),
                 )
 
@@ -77,8 +170,11 @@ class VectorMemoryService(
             Log.d(TAG, "Stored message vector: $messageId -> $vectorId")
 
             return vectorId
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to store message vector: ${e.message}", e)
+            recordVectorStorageFailure(_storageError, e)
+            Log.e(TAG, "Failed to store message vector (${e.javaClass.simpleName})")
             throw e
         }
     }
@@ -93,6 +189,7 @@ class VectorMemoryService(
      * @param topK 返回前K个结果
      * @return 搜索结果列表
      */
+    @Suppress("ReturnCount")
     suspend fun searchRelevantMemories(
         query: String,
         ownerId: String,
@@ -100,15 +197,18 @@ class VectorMemoryService(
         sessionId: String?,
         topK: Int = 5,
     ): List<VectorStore.SearchResult> {
+        if (topK <= 0) return emptyList()
         try {
             // 1. 查询向量化
-            val queryEmbedding = embeddingService.embed(query)
+            val queryEmbedding = embedCached(query, "EMBEDDING_MEMORY_QUERY")
 
-            // 2. 构建过滤器
+            // 2. Filter by scope and embedding model in the store first. This avoids
+            // materializing and sorting vectors from unrelated embedding spaces on the common path.
             val filters =
                 mutableMapOf<String, Any>(
                     "owner_id" to ownerId,
                     "character_id" to characterId,
+                    "embedding_model" to embeddingModelId,
                 )
 
             // 如果指定了会话ID，则只检索当前会话
@@ -116,14 +216,35 @@ class VectorMemoryService(
                 filters["session_id"] = sessionId
             }
 
-            // 3. 向量检索
-            val results = vectorStore.search(queryEmbedding, topK, filters)
+            val modelResults = vectorStore.search(queryEmbedding, topK, filters)
+            val results =
+                if (!legacyVectorsCompatible || modelResults.size >= topK) {
+                    modelResults
+                } else {
+                    // Only known-compatible embedding services may reuse legacy vectors without
+                    // embedding_model metadata. Fall back to a broad search only when the current
+                    // model cannot fill top-K, so legacy entries remain available without taxing
+                    // every query. The result-layer check still excludes other model identities.
+                    filters.remove("embedding_model")
+                    val candidateLimit = maxOf(topK, vectorStore.count())
+                    vectorStore.search(queryEmbedding, candidateLimit, filters)
+                        .filter { result ->
+                            if (result.metadata.containsKey("embedding_model")) {
+                                result.metadata["embedding_model"]?.toString() == embeddingModelId
+                            } else {
+                                true
+                            }
+                        }.take(topK)
+                }
 
             Log.d(TAG, "Search found ${results.size} relevant memories for queryLength=${query.length}")
 
             return results
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to search relevant memories: ${e.message}", e)
+            recordVectorStorageFailure(_storageError, e)
+            Log.e(TAG, "Failed to search relevant memories (${e.javaClass.simpleName})")
             return emptyList()
         }
     }
@@ -148,8 +269,10 @@ class VectorMemoryService(
             Log.d(TAG, "Deleted $deleted vectors for session: $sessionId")
 
             return deleted
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to delete session vectors: ${e.message}", e)
+            Log.e(TAG, "Failed to delete session vectors (${e.javaClass.simpleName})")
             return 0
         }
     }
@@ -172,8 +295,10 @@ class VectorMemoryService(
             Log.d(TAG, "Deleted $deleted vectors for character: $characterId")
 
             return deleted
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to delete character vectors: ${e.message}", e)
+            Log.e(TAG, "Failed to delete character vectors (${e.javaClass.simpleName})")
             return 0
         }
     }
@@ -188,8 +313,10 @@ class VectorMemoryService(
             val deleted = vectorStore.deleteByFilters(mapOf("message_id" to messageId))
             Log.d(TAG, "Deleted $deleted vectors by messageId: $messageId")
             deleted
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to delete vectors by messageId: ${e.message}", e)
+            Log.e(TAG, "Failed to delete vectors by messageId (${e.javaClass.simpleName})")
             0
         }
     }
@@ -215,8 +342,10 @@ class VectorMemoryService(
             val deleted = vectorStore.deleteByFilters(filters)
             Log.d(TAG, "Deleted $deleted summary vectors (owner=$ownerId, character=$characterId, session=$sessionId)")
             deleted
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to delete summary vectors: ${e.message}", e)
+            Log.e(TAG, "Failed to delete summary vectors (${e.javaClass.simpleName})")
             0
         }
     }
@@ -231,8 +360,11 @@ class VectorMemoryService(
                 totalVectors = count,
                 dimension = embeddingService.getDimension(),
             )
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to get statistics: ${e.message}", e)
+            recordVectorStorageFailure(_storageError, e)
+            Log.e(TAG, "Failed to get statistics (${e.javaClass.simpleName})")
             VectorStatistics(0, 0)
         }
     }

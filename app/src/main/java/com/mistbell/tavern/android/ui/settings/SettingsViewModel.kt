@@ -75,6 +75,9 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     val vectorCacheStatistics: StateFlow<VectorCacheStatistics> =
         TavernApplication.instance.container.vectorCacheStatistics
 
+    val vectorStorageError: StateFlow<String?> =
+        TavernApplication.instance.container.vectorMemoryService.storageError
+
     // --- 提示词模板（全局 KV，明文存储；空值语义见各 resolver） ---
     //
     // 用 observeValue + stateIn 而不是一次性 getValue：备份恢复或别处改写后，编辑对话框能实时同步。
@@ -305,6 +308,23 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    fun recoverCorruptVectorStorage() {
+        viewModelScope.launch {
+            try {
+                val recovered = TavernApplication.instance.container.recoverCorruptVectorStorage()
+                _message.value =
+                    if (recovered) {
+                        "损坏的向量记忆文件已保留到隔离备份，并已重建空存储；旧记忆不会自动恢复。"
+                    } else {
+                        "未找到需要恢复的向量记忆文件。"
+                    }
+            } catch (e: Exception) {
+                android.util.Log.e("Settings", "Vector-store recovery failed", e)
+                _message.value = "恢复失败。请勿清除应用数据；原始文件可能仍在，请联系支持。"
+            }
+        }
+    }
+
     fun setMemoryRecallTopK(value: Int) {
         val normalized =
             value.coerceIn(
@@ -358,9 +378,13 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             try {
                 _isLoading.value = true
                 val summary = BackupManager(getApplication()).restoreFromUri(uri)
-                _message.value =
-                    "恢复完成：合并 ${summary.totalAdded} 项" +
-                    (if (summary.totalSkipped > 0) "（跳过已存在 ${summary.totalSkipped} 项）" else "")
+                val skippedText =
+                    if (summary.totalSkipped > 0) "（跳过已存在 ${summary.totalSkipped} 项）" else ""
+                val warningText =
+                    summary.warnings.takeIf { it.isNotEmpty() }
+                        ?.joinToString(separator = "；", prefix = "。注意：")
+                        .orEmpty()
+                _message.value = "恢复完成：合并 ${summary.totalAdded} 项" + skippedText + warningText
             } catch (e: Exception) {
                 android.util.Log.e("Settings", "Backup restore failed", e)
                 _message.value = e.message ?: "恢复失败"

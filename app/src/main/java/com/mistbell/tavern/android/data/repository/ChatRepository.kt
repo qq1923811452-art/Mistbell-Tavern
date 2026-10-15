@@ -177,14 +177,8 @@ class ChatRepository(private val context: Context) {
                 MessageEntity.fromDomain(userMsg, sessionId, ownerId, characterId),
             )
 
-            // 1.5. 向量化用户消息（异步，不阻塞主流程）
-            storeUserMessageVector(
-                content = message,
-                ownerId = ownerId,
-                characterId = characterId,
-                sessionId = sessionId,
-                messageId = msgId,
-            )
+            // The current message's embedding is written inside the guarded LLM try block below.
+            // Keep the count update ahead of cancellable vector I/O so cancel cannot leave it stale.
 
             // 2. Update session message count
             val session = db.sessionDao().get(sessionId, ownerId, characterId)
@@ -212,6 +206,15 @@ class ChatRepository(private val context: Context) {
             // 流式累计缓冲，作用域覆盖整个 try，取消时据此判断是否已有部分回复
             val sb = StringBuilder()
             try {
+                // Store before prompt construction so this message's embedding can be reused by retrieval.
+                // This must stay inside try: cancellation must follow the repository's established cancel path.
+                storeUserMessageVector(
+                    content = message,
+                    ownerId = ownerId,
+                    characterId = characterId,
+                    sessionId = sessionId,
+                    messageId = msgId,
+                )
                 val llmConfig = loadLlmConfig(sessionId)
                 if (llmConfig.baseUrl.isNotBlank() && llmConfig.apiKey.isNotBlank()) {
                     // 群聊模式：优先用 VM 传入的 groupContext；未传时按会话 mode/参与者兜底构建
@@ -1353,8 +1356,10 @@ class ChatRepository(private val context: Context) {
                         config = extractionConfig,
                     )
                 android.util.Log.d("ChatRepository", "Memory extraction completed, saved $savedCount memories")
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                android.util.Log.e("ChatRepository", "Memory extraction failed: ${e.message}", e)
+                android.util.Log.e("ChatRepository", "Memory extraction failed (${e.javaClass.simpleName})")
             }
         }
     }

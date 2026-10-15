@@ -3,13 +3,19 @@ package com.mistbell.tavern.android.ui.settings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.mistbell.tavern.android.data.vector.VectorCacheStatistics
@@ -18,13 +24,15 @@ import java.util.Locale
 private const val HIT_RATE_PERCENT_MULTIPLIER = 100
 
 /** S2 向量记忆召回设置：记忆源（自动/API/本地 ONNX）+ 召回条数 + 相似度阈值 */
-@Suppress("FunctionNaming")
+@Suppress("FunctionNaming", "LongMethod")
 @Composable
 internal fun VectorMemorySettingsCard(viewModel: SettingsViewModel) {
     val embeddingSource by viewModel.embeddingSource.collectAsState()
     val recallTopK by viewModel.memoryRecallTopK.collectAsState()
     val threshold by viewModel.memorySimilarityThreshold.collectAsState()
     val cacheStats by viewModel.vectorCacheStatistics.collectAsState()
+    val storageError by viewModel.vectorStorageError.collectAsState()
+    var showRecoveryConfirmation by remember { mutableStateOf(false) }
     val cacheHitRatePercent =
         String.format(Locale.US, "%.1f", cacheStats.hitRate * HIT_RATE_PERCENT_MULTIPLIER)
 
@@ -56,6 +64,40 @@ internal fun VectorMemorySettingsCard(viewModel: SettingsViewModel) {
                 steps = 17,
                 onValueChange = { viewModel.setMemorySimilarityThreshold(it) },
             )
+
+            storageError?.let { message ->
+                Text(
+                    text = message,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
+                )
+                Button(onClick = { showRecoveryConfirmation = true }) {
+                    Text("隔离损坏文件并重建向量存储")
+                }
+            }
+
+            if (showRecoveryConfirmation) {
+                AlertDialog(
+                    onDismissRequest = { showRecoveryConfirmation = false },
+                    title = { Text("恢复向量记忆存储？") },
+                    text = {
+                        Text(
+                            "将把无法读取的原文件及 AtomicFile 备份移至独立隔离文件，再创建空存储。隔离文件不会删除，但原有向量不会自动恢复。建议先确认已有其他备份。",
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                showRecoveryConfirmation = false
+                                viewModel.recoverCorruptVectorStorage()
+                            },
+                        ) { Text("确认隔离并重建") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showRecoveryConfirmation = false }) { Text("取消") }
+                    },
+                )
+            }
 
             VectorCacheStatisticsSection(cacheStats, cacheHitRatePercent)
 
@@ -103,6 +145,11 @@ private fun VectorCacheStatisticsSection(
         )
         Text(
             text = "命中率 = 命中数 ÷（命中数 + 未命中数）；写入与失效不计入分母。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            text = "此处只统计向量搜索缓存，不统计聊天 API 请求或词法记忆召回。长期记忆关闭或 Embedding 不可用时，向量查询数会保持为 0。",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

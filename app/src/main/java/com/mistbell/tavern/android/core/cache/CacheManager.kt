@@ -1,40 +1,56 @@
 package com.mistbell.tavern.android.core.cache
 
+import java.util.LinkedHashMap
+
 /**
- * Mistbell 2.0 unified cache manager.
- *
- * Provides a lightweight cache layer for prompt/context/vector cache.
+ * Bounded, thread-safe LRU cache with optional absolute expiry timestamps.
  */
-class CacheManager<K, V> {
-    private val cache = mutableMapOf<K, CacheEntry<V>>()
+class CacheManager<K, V>(maxEntries: Int = DEFAULT_MAX_ENTRIES) {
+    private val capacity = maxEntries.coerceAtLeast(1)
+    private val lock = Any()
+    private val cache =
+        object : LinkedHashMap<K, CacheEntry<V>>(capacity + 1, CACHE_LOAD_FACTOR, true) {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<K, CacheEntry<V>>?) = size > capacity
+        }
     private val stats = CacheStats()
 
-    fun get(key: K): V? {
-        val entry = cache[key]
-        return if (entry != null) {
-            stats.recordHit()
-            entry.value
-        } else {
-            stats.recordMiss()
-            null
+    fun get(key: K): V? =
+        synchronized(lock) {
+            val entry = cache[key]
+            if (entry == null || entry.isExpired()) {
+                if (entry != null) cache.remove(key)
+                stats.recordMiss()
+                null
+            } else {
+                stats.recordHit()
+                entry.value
+            }
         }
-    }
 
+    /** [expiresAt] is an absolute Unix timestamp in milliseconds; null means no expiry. */
     fun put(
         key: K,
         value: V,
+        expiresAt: Long? = null,
     ) {
-        cache[key] = CacheEntry(key = key.toString(), value = value)
-        stats.recordWrite()
+        synchronized(lock) {
+            cache[key] = CacheEntry(key = key.toString(), value = value, expiresAt = expiresAt)
+            stats.recordWrite()
+        }
     }
 
     fun remove(key: K) {
-        cache.remove(key)
+        synchronized(lock) { cache.remove(key) }
     }
 
     fun clear() {
-        cache.clear()
+        synchronized(lock) { cache.clear() }
     }
 
     fun getStats(): CacheStats = stats
+
+    companion object {
+        private const val DEFAULT_MAX_ENTRIES = 512
+        private const val CACHE_LOAD_FACTOR = 0.75f
+    }
 }

@@ -1,8 +1,10 @@
 package com.mistbell.tavern.android.data.local
 
 import androidx.room.Room
+import androidx.room.testing.MigrationTestHelper
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -10,6 +12,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -314,7 +317,7 @@ class MigrationDataIntegrityTest {
         raw.close()
     }
 
-    /** 打开数据库并执行迁移（用生产同款迁移链——AppDatabase 伴生对象的 internal 成员，直达最新版本 21） */
+    /** 打开数据库并执行生产迁移链，直达当前最新数据库版本 27。 */
     private fun openWithRoom(): AppDatabase {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         return Room.databaseBuilder(context, AppDatabase::class.java, dbName)
@@ -337,6 +340,12 @@ class MigrationDataIntegrityTest {
                 AppDatabase.Companion.MIGRATION_18_19,
                 AppDatabase.Companion.MIGRATION_19_20,
                 AppDatabase.Companion.MIGRATION_20_21,
+                AppDatabase.Companion.MIGRATION_21_22,
+                AppDatabase.Companion.MIGRATION_22_23,
+                AppDatabase.Companion.MIGRATION_23_24,
+                AppDatabase.Companion.MIGRATION_24_25,
+                AppDatabase.Companion.MIGRATION_25_26,
+                AppDatabase.Companion.MIGRATION_26_27,
             )
             .allowMainThreadQueries()
             .build()
@@ -361,7 +370,7 @@ class MigrationDataIntegrityTest {
             // 验证消息
             val messages =
                 db.messageDao()
-                    .getBySession("sess-1", "local-user", "char-1")
+                    .getBySession("sess-1", "local-user")
                     .first()
             assertEquals("消息应全部保留", 3, messages.size)
             assertEquals("你好", messages[0].content)
@@ -416,7 +425,7 @@ class MigrationDataIntegrityTest {
             )
             val messages =
                 db.messageDao()
-                    .getBySession("sess-1", "local-user", "char-1")
+                    .getBySession("sess-1", "local-user")
                     .first()
             assertEquals("迁移后写入的新消息应在查询中", 4, messages.size)
         }
@@ -589,5 +598,209 @@ class MigrationDataIntegrityTest {
             assertEquals(3, entries[0].depth)
             assertEquals("assistant", entries[0].depthRole)
             assertEquals(0.5, entries[0].probability, 0.0001)
+        }
+
+    @get:Rule
+    val migrationTestHelper =
+        MigrationTestHelper(
+            InstrumentationRegistry.getInstrumentation(),
+            AppDatabase::class.java,
+        )
+
+    @Test
+    fun migrateV26ToV27_preservesEveryExistingApiConfigField() {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val v26DbName = "migration-v26-api-config-preservation.db"
+        context.deleteDatabase(v26DbName)
+
+        val expectedRows =
+            mapOf(
+                "cfg-primary" to
+                    listOf(
+                        "cfg-primary", "Primary Gemini", "https://gemini.example.invalid/v1",
+                        "fake-key-primary-123", "gemini-test-model", "1", "SUCCESS",
+                        "1723456789", "17", "gemini", "1", "0", "1", "1700000001", "1700000002",
+                    ),
+                "cfg-secondary" to
+                    listOf(
+                        "cfg-secondary", "Secondary OpenAI", "https://openai.example.invalid/v1",
+                        "fake-key-secondary-456", "openai-test-model", "0", "FAILED",
+                        "0", "42", "openai", "0", "1", "0", "1600000003", "1800000004",
+                    ),
+            )
+
+        // Create the database from the committed v26 Room schema, not a hand-written approximation.
+        migrationTestHelper.createDatabase(v26DbName, 26).apply {
+            execSQL(
+                """
+                INSERT INTO api_configs (
+                    id, name, apiUrl, apiKey, model, isDefault, lastTestStatus,
+                    lastTestTime, sortOrder, type, context1m, streamingEnabled,
+                    thinkingDisabled, createdAt, updatedAt
+                ) VALUES (
+                    'cfg-primary', 'Primary Gemini', 'https://gemini.example.invalid/v1',
+                    'fake-key-primary-123', 'gemini-test-model', 1, 'SUCCESS',
+                    1723456789, 17, 'gemini', 1, 0, 1, 1700000001, 1700000002
+                )
+                """.trimIndent(),
+            )
+            execSQL(
+                """
+                INSERT INTO api_configs (
+                    id, name, apiUrl, apiKey, model, isDefault, lastTestStatus,
+                    lastTestTime, sortOrder, type, context1m, streamingEnabled,
+                    thinkingDisabled, createdAt, updatedAt
+                ) VALUES (
+                    'cfg-secondary', 'Secondary OpenAI', 'https://openai.example.invalid/v1',
+                    'fake-key-secondary-456', 'openai-test-model', 0, 'FAILED',
+                    0, 42, 'openai', 0, 1, 0, 1600000003, 1800000004
+                )
+                """.trimIndent(),
+            )
+            close()
+        }
+
+        // Run the production migration and let Room validate the v27 schema on open.
+        val migratedDb =
+            Room.databaseBuilder(context, AppDatabase::class.java, v26DbName)
+                .addMigrations(AppDatabase.Companion.MIGRATION_26_27)
+                .allowMainThreadQueries()
+                .build()
+
+        try {
+            val raw = migratedDb.openHelper.writableDatabase
+            raw.query(
+                """
+                SELECT id, name, apiUrl, apiKey, model, isDefault, lastTestStatus,
+                    lastTestTime, sortOrder, type, context1m, streamingEnabled,
+                    thinkingDisabled, createdAt, updatedAt
+                FROM api_configs ORDER BY id
+                """.trimIndent(),
+            ).use { cursor ->
+                assertEquals("迁移前后的 API 配置数量必须一致", expectedRows.size, cursor.count)
+                val actualIds = mutableSetOf<String>()
+                while (cursor.moveToNext()) {
+                    val actual = (0 until cursor.columnCount).map(cursor::getString)
+                    val id = actual.first()
+                    actualIds += id
+                    assertEquals("配置 $id 的全部 15 个字段必须原样保留", expectedRows[id], actual)
+                }
+                assertEquals("迁移前后的 API 配置 ID 集合必须一致", expectedRows.keys, actualIds)
+            }
+        } finally {
+            migratedDb.close()
+            context.deleteDatabase(v26DbName)
+        }
+    }
+
+    @Test
+    fun migrateV11ToV27_preservesMessagesAndAppliesV26V27ColumnDefaults() =
+        runBlocking {
+            createV11Database()
+            db = openWithRoom()
+
+            // Existing messages must survive v25→26→27 without inventing usage data.
+            db.openHelper.writableDatabase
+                .query(
+                    """
+                    SELECT id, content, usage_json, prompt_context_snapshot_json
+                    FROM messages WHERE id IN (?, ?, ?) ORDER BY id
+                    """.trimIndent(),
+                    arrayOf("msg-1", "msg-2", "msg-3"),
+                ).use { cursor ->
+                    assertEquals("三条旧消息均应保留", 3, cursor.count)
+                    val idIdx = cursor.getColumnIndexOrThrow("id")
+                    val contentIdx = cursor.getColumnIndexOrThrow("content")
+                    val usageIdx = cursor.getColumnIndexOrThrow("usage_json")
+                    val snapshotIdx = cursor.getColumnIndexOrThrow("prompt_context_snapshot_json")
+                    val expectedContent =
+                        mapOf(
+                            "msg-1" to "你好",
+                            "msg-2" to "你好！我是测试角色。",
+                            "msg-3" to "再见",
+                        )
+                    while (cursor.moveToNext()) {
+                        val id = cursor.getString(idIdx)
+                        assertEquals("旧消息内容不得改变：$id", expectedContent[id], cursor.getString(contentIdx))
+                        assertTrue("旧消息 usage 未上报时必须保持 SQL NULL：$id", cursor.isNull(usageIdx))
+                        assertEquals("旧消息的内部快照默认应为空字符串：$id", "", cursor.getString(snapshotIdx))
+                    }
+                }
+
+            // Validate the migration's actual SQLite defaults, not just Kotlin constructor defaults.
+            db.openHelper.writableDatabase.query("PRAGMA table_info(api_configs)").use { cursor ->
+                val nameIdx = cursor.getColumnIndexOrThrow("name")
+                val defaultIdx = cursor.getColumnIndexOrThrow("dflt_value")
+                var found = false
+                while (cursor.moveToNext()) {
+                    if (cursor.getString(nameIdx) == "thinkingDisabled") {
+                        found = true
+                        assertEquals("thinkingDisabled 的 SQL 默认值应为 0", "0", cursor.getString(defaultIdx))
+                    }
+                }
+                assertTrue("迁移后 api_configs.thinkingDisabled 列应存在", found)
+            }
+
+            // Insert a row omitting thinkingDisabled to prove SQLite itself applies the legacy-safe default.
+            db.openHelper.writableDatabase.execSQL(
+                """
+                INSERT INTO api_configs (
+                    id, name, apiUrl, apiKey, model, isDefault, lastTestStatus,
+                    lastTestTime, sortOrder, type, context1m, streamingEnabled, createdAt, updatedAt
+                ) VALUES ('migration-default-test', '迁移默认值测试', 'https://example.invalid/v1', 'test-key',
+                    'test-model', 0, 'UNKNOWN', 0, 0, 'openai', 0, 1, 0, 0)
+                """.trimIndent(),
+            )
+            db.openHelper.writableDatabase
+                .query("SELECT thinkingDisabled FROM api_configs WHERE id = ?", arrayOf("migration-default-test"))
+                .use { cursor ->
+                    assertTrue("测试 API 配置应写入成功", cursor.moveToFirst())
+                    assertEquals("省略 thinkingDisabled 时数据库默认应为 false/0", 0, cursor.getInt(0))
+                }
+
+            // The v26→v27 table rebuild must leave exactly the indexes declared by Room v27.
+            // This guards against both dropped indexes and accidental undeclared leftovers.
+            val expectedIndexes =
+                mapOf(
+                    "api_configs" to setOf("index_api_configs_isDefault", "index_api_configs_sortOrder"),
+                    "custom_prompts" to
+                        setOf(
+                            "index_custom_prompts_type",
+                            "index_custom_prompts_position",
+                            "index_custom_prompts_isEnabled",
+                            "index_custom_prompts_priority",
+                        ),
+                )
+            expectedIndexes.forEach { (table, expected) ->
+                val actual = mutableSetOf<String>()
+                db.openHelper.writableDatabase
+                    .query(
+                        "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = ? AND name NOT LIKE 'sqlite_autoindex%'",
+                        arrayOf(table),
+                    ).use { cursor ->
+                        while (cursor.moveToNext()) actual += cursor.getString(0)
+                    }
+                assertEquals("$table 的迁移后索引应与 Room v27 schema 完全一致", expected, actual)
+            }
+
+            // The migrated Room database must still accept writes after the new columns are validated.
+            db.messageDao().upsert(
+                com.mistbell.tavern.android.data.local.entity.MessageEntity(
+                    id = "msg-v27-write",
+                    sessionId = "sess-1",
+                    ownerId = "local-user",
+                    characterId = "char-1",
+                    role = "assistant",
+                    content = "v27 写入验证",
+                    thinking = null,
+                    createdAt = "2026-10-14T00:00:00Z",
+                    memoryIdsJson = "",
+                    swipesJson = "",
+                    swipeIndex = 0,
+                    thinkingSwipesJson = "",
+                ),
+            )
+            val written = db.messageDao().getBySession("sess-1", "local-user").first()
+            assertTrue("迁移后的消息表应可正常写入和查询", written.any { it.id == "msg-v27-write" })
         }
 }

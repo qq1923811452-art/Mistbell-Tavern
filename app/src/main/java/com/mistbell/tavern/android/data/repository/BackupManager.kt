@@ -2,9 +2,12 @@ package com.mistbell.tavern.android.data.repository
 
 import android.content.Context
 import android.net.Uri
+import android.util.AtomicFile
 import androidx.room.withTransaction
 import com.mistbell.tavern.android.TavernApplication
+import com.mistbell.tavern.android.data.local.entity.ApiConfigEntity
 import com.mistbell.tavern.android.data.local.entity.CharacterEntity
+import com.mistbell.tavern.android.data.local.entity.CustomPromptEntity
 import com.mistbell.tavern.android.data.local.entity.MemoryEntity
 import com.mistbell.tavern.android.data.local.entity.MessageEntity
 import com.mistbell.tavern.android.data.local.entity.SessionEntity
@@ -23,6 +26,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -49,6 +53,7 @@ class BackupManager(private val context: Context) {
     data class BackupSummary(
         val added: Map<String, Int> = emptyMap(),
         val skipped: Map<String, Int> = emptyMap(),
+        val warnings: List<String> = emptyList(),
     ) {
         val totalAdded: Int get() = added.values.sum()
         val totalSkipped: Int get() = skipped.values.sum()
@@ -70,7 +75,130 @@ class BackupManager(private val context: Context) {
         val sensitive: Boolean = false,
     )
 
-    /** 十张业务表的完整快照（导出采集 / 恢复解码共用结构） */
+    /** API 配置备份 DTO：API Key 在 ZIP 中明文保存，恢复时重新绑定本机 Keystore。 */
+    @Serializable
+    data class ApiConfigBackupEntry(
+        val id: String,
+        val name: String,
+        val apiUrl: String,
+        val apiKey: String,
+        val model: String,
+        val isDefault: Boolean = false,
+        val lastTestStatus: String = "UNKNOWN",
+        val lastTestTime: Long = 0L,
+        val sortOrder: Int = 0,
+        val type: String = "openai",
+        val context1m: Boolean = false,
+        val streamingEnabled: Boolean = true,
+        val thinkingDisabled: Boolean = false,
+        val createdAt: Long,
+        val updatedAt: Long,
+    ) {
+        fun toEntity(): ApiConfigEntity {
+            val plainApiKey =
+                when {
+                    apiKey.isEmpty() -> ""
+                    apiKey.startsWith("enc:v1:") -> {
+                        check(SecureStore.isEncrypted(apiKey)) {
+                            "备份中的 API 配置 $id 使用不可解密的密钥，已中止恢复；请重新输入 API Key"
+                        }
+                        SecureStore.unwrap(apiKey).also { decrypted ->
+                            check(decrypted.isNotEmpty()) {
+                                "备份中的 API 配置 $id 无法解密，已中止恢复；请重新输入 API Key"
+                            }
+                        }
+                    }
+                    else -> apiKey
+                }
+            return ApiConfigEntity(
+                id = id,
+                name = name,
+                apiUrl = apiUrl,
+                apiKey = wrapRestoredApiKey(id, plainApiKey, SecureStore::wrap),
+                model = model,
+                isDefault = isDefault,
+                lastTestStatus = lastTestStatus,
+                lastTestTime = lastTestTime,
+                sortOrder = sortOrder,
+                type = type,
+                context1m = context1m,
+                streamingEnabled = streamingEnabled,
+                thinkingDisabled = thinkingDisabled,
+                createdAt = createdAt,
+                updatedAt = updatedAt,
+            )
+        }
+
+        companion object {
+            fun fromEntity(entity: ApiConfigEntity): ApiConfigBackupEntry {
+                val encrypted = SecureStore.isEncrypted(entity.apiKey)
+                check(!entity.apiKey.startsWith("enc:v1:") || encrypted) {
+                    "API 配置 ${entity.id} 的加密格式损坏，已中止备份以避免丢失敏感数据"
+                }
+                val plainKey = if (encrypted) SecureStore.unwrap(entity.apiKey) else entity.apiKey
+                check(!encrypted || plainKey.isNotEmpty()) {
+                    "无法解密 API 配置 ${entity.id}，已中止备份以避免丢失敏感数据"
+                }
+                return ApiConfigBackupEntry(
+                    id = entity.id, name = entity.name, apiUrl = entity.apiUrl,
+                    apiKey = plainKey, model = entity.model, isDefault = entity.isDefault,
+                    lastTestStatus = entity.lastTestStatus, lastTestTime = entity.lastTestTime,
+                    sortOrder = entity.sortOrder, type = entity.type, context1m = entity.context1m,
+                    streamingEnabled = entity.streamingEnabled, thinkingDisabled = entity.thinkingDisabled,
+                    createdAt = entity.createdAt, updatedAt = entity.updatedAt,
+                )
+            }
+        }
+    }
+
+    @Serializable
+    data class CustomPromptBackupEntry(
+        val id: String,
+        val name: String,
+        val content: String,
+        val type: String,
+        val position: String,
+        val isEnabled: Boolean = true,
+        val priority: Int = 0,
+        val tags: String = "",
+        val description: String = "",
+        val createdAt: Long,
+        val updatedAt: Long,
+    ) {
+        fun toEntity() =
+            CustomPromptEntity(
+                id = id,
+                name = name,
+                content = content,
+                type = type,
+                position = position,
+                isEnabled = isEnabled,
+                priority = priority,
+                tags = tags,
+                description = description,
+                createdAt = createdAt,
+                updatedAt = updatedAt,
+            )
+
+        companion object {
+            fun fromEntity(entity: CustomPromptEntity) =
+                CustomPromptBackupEntry(
+                    id = entity.id,
+                    name = entity.name,
+                    content = entity.content,
+                    type = entity.type,
+                    position = entity.position,
+                    isEnabled = entity.isEnabled,
+                    priority = entity.priority,
+                    tags = entity.tags,
+                    description = entity.description,
+                    createdAt = entity.createdAt,
+                    updatedAt = entity.updatedAt,
+                )
+        }
+    }
+
+    /** 当前快照包含全部 12 张业务表（导出采集 / 恢复解码共用结构）。 */
     private data class Tables(
         val characters: List<CharacterEntity> = emptyList(),
         val sessions: List<SessionEntity> = emptyList(),
@@ -82,6 +210,9 @@ class BackupManager(private val context: Context) {
         val structuredMemories: List<StructuredMemoryEntity> = emptyList(),
         val vectorMemories: List<VectorMemoryEntity> = emptyList(),
         val themePacks: List<ThemePackEntity> = emptyList(),
+        val apiConfigs: List<ApiConfigBackupEntry> = emptyList(),
+        val customPrompts: List<CustomPromptBackupEntry> = emptyList(),
+        val decodeWarnings: List<String> = emptyList(),
     )
 
     companion object {
@@ -97,8 +228,14 @@ class BackupManager(private val context: Context) {
         private const val STRUCTURED_MEMORY = "structured_memory.json"
         private const val VECTOR_MEMORY = "vector_memory.json"
         private const val THEME_PACKS = "theme_packs.json"
+        private const val API_CONFIGS = "api_configs.json"
+        private const val CUSTOM_PROMPTS = "custom_prompts.json"
         internal const val VECTOR_STORE_FILE = "vector_store.json"
         internal const val THEMES_DIR_PREFIX = "themes/"
+        private const val MAX_BACKUP_ENTRIES = 4096
+        private const val MAX_BACKUP_ENTRY_BYTES = 32L * 1024L * 1024L
+        private const val MAX_BACKUP_TOTAL_BYTES = 128L * 1024L * 1024L
+        private val SAFE_THEME_PACK_ID = Regex("[A-Za-z0-9._-]{1,128}")
 
         internal val json =
             Json {
@@ -154,20 +291,107 @@ class BackupManager(private val context: Context) {
                 }.getOrDefault(emptyList())
             }
 
+        /**
+         * Restore-time decoding: reject a broken whole-table payload, but keep the legacy
+         * per-row salvage behavior when at least one record remains decodable.
+         */
+        internal fun <T> decodeBackupList(
+            files: Map<String, String>,
+            manifest: BackupManifest,
+            entryName: String,
+            serializer: KSerializer<T>,
+            warnings: MutableList<String>? = null,
+        ): List<T> {
+            val text = files[entryName]
+            val expectedCount = manifest.counts[entryName]
+            if (text == null) {
+                require(expectedCount == null || expectedCount == 0) {
+                    "备份文件损坏：清单声明 $entryName 有 $expectedCount 条数据，但缺少该文件"
+                }
+                return emptyList()
+            }
+            val array =
+                try {
+                    json.parseToJsonElement(text) as? JsonArray
+                        ?: throw IllegalArgumentException("不是 JSON 数组")
+                } catch (e: IllegalArgumentException) {
+                    throw IllegalArgumentException("备份文件损坏：$entryName 无法解析为 JSON 数组", e)
+                }
+            val decoded = decodeList(text, serializer)
+            if (decoded.size < array.size) {
+                warnings?.add("备份表 $entryName 有 ${array.size - decoded.size} 条记录无法解析，已跳过")
+            }
+            if (expectedCount != null && expectedCount != array.size) {
+                warnings?.add("备份清单中 $entryName 声明 $expectedCount 条，文件实际包含 ${array.size} 条")
+            }
+            require(expectedCount == null || expectedCount == 0 || decoded.isNotEmpty()) {
+                "备份文件损坏：清单声明 $entryName 有 $expectedCount 条数据，但没有任何可恢复记录"
+            }
+            return decoded
+        }
+
         /** settings 导出条目：密文解为明文并标记 sensitive（明文原样直通） */
-        fun toBackupEntry(entity: SettingsEntity): SettingsBackupEntry =
-            if (SecureStore.isEncrypted(entity.value)) {
-                SettingsBackupEntry(entity.key, SecureStore.unwrap(entity.value), sensitive = true)
-            } else {
-                SettingsBackupEntry(entity.key, entity.value)
+        fun toBackupEntry(entity: SettingsEntity): SettingsBackupEntry {
+            val encrypted = SecureStore.isEncrypted(entity.value)
+            check(!entity.value.startsWith("enc:v1:") || encrypted) {
+                "设置 ${entity.key} 的加密格式损坏，已中止备份以避免丢失敏感数据"
+            }
+            val sensitive = encrypted || isSensitiveSettingKey(entity.key)
+            val value =
+                if (encrypted) {
+                    requireDecryptedSecretValue(entity.key, SecureStore.unwrap(entity.value))
+                } else {
+                    entity.value
+                }
+            return SettingsBackupEntry(
+                key = entity.key,
+                value = value,
+                sensitive = sensitive,
+            )
+        }
+
+        internal fun requireDecryptedSecretValue(
+            key: String,
+            value: String,
+        ): String =
+            value.also { decrypted ->
+                check(decrypted.isNotEmpty()) {
+                    "无法解密设置 $key，已中止备份以避免丢失敏感数据"
+                }
             }
 
-        /** settings 恢复条目：sensitive 值重新加密落库 */
+        /** Treat credential-bearing keys as sensitive even when importing an untrusted backup. */
+        internal fun isSensitiveSettingKey(key: String): Boolean = SecureStore.isSensitiveKey(key)
+
+        /** settings 恢复条目：敏感值必须重新加密，不能信任备份中的 sensitive 标志。 */
         fun toSettingsEntity(entry: SettingsBackupEntry): SettingsEntity =
             SettingsEntity(
                 entry.key,
-                if (entry.sensitive) SecureStore.wrap(entry.value) else entry.value,
+                if (entry.sensitive || isSensitiveSettingKey(entry.key)) {
+                    SecureStore.wrap(entry.value)
+                } else {
+                    entry.value
+                },
             )
+
+        internal fun validateThemePackId(id: String) {
+            require(id != "." && id != ".." && SAFE_THEME_PACK_ID.matches(id)) {
+                "备份文件非法：主题包 ID 包含不安全的路径字符"
+            }
+        }
+
+        internal fun validateBackupEntryPath(
+            name: String,
+            isDirectory: Boolean,
+        ) {
+            val path = if (isDirectory) name.removeSuffix("/") else name
+            require(path.isNotBlank() && !path.startsWith("/") && '\\' !in path) {
+                "备份文件非法：条目路径格式不安全"
+            }
+            require(path.split('/').none { it.isBlank() || it == "." || it == ".." }) {
+                "备份文件非法：条目路径包含不安全的路径段"
+            }
+        }
     }
 
     // ---- 导出 ----
@@ -203,6 +427,11 @@ class BackupManager(private val context: Context) {
                     )
                     zip.putJsonEntry(VECTOR_MEMORY, encodeList(tables.vectorMemories, VectorMemoryEntity.serializer()))
                     zip.putJsonEntry(THEME_PACKS, encodeList(tables.themePacks, ThemePackEntity.serializer()))
+                    zip.putJsonEntry(API_CONFIGS, encodeList(tables.apiConfigs, ApiConfigBackupEntry.serializer()))
+                    zip.putJsonEntry(
+                        CUSTOM_PROMPTS,
+                        encodeList(tables.customPrompts, CustomPromptBackupEntry.serializer()),
+                    )
 
                     // 主题包资产与向量库文件（可选条目；缺失不报错）
                     tables.themePacks.forEach { pack -> putThemeAssets(zip, context, pack) }
@@ -236,6 +465,8 @@ class BackupManager(private val context: Context) {
             structuredMemories = db.structuredMemoryDao().getAllOnce(),
             vectorMemories = db.vectorMemoryDao().getAllOnce(),
             themePacks = db.themePackDao().observeAll().first(),
+            apiConfigs = db.apiConfigDao().getAll().map(ApiConfigBackupEntry::fromEntity),
+            customPrompts = db.customPromptDao().getAll().map(CustomPromptBackupEntry::fromEntity),
         )
     }
 
@@ -247,30 +478,53 @@ class BackupManager(private val context: Context) {
             val manifestText =
                 files[MANIFEST]
                     ?: throw IllegalArgumentException("恢复失败：备份中缺少 manifest.json，不是有效的 Mistbell 备份")
-            parseManifest(manifestText)
+            val manifest = parseManifest(manifestText)
 
-            val tables = decodeTables(files)
+            val tables = decodeTables(files, manifest)
+            tables.themePacks.forEach { validateThemePackId(it.id) }
             val summary = mergeTables(tables)
 
             // 文件写入在事务提交之后（文件系统不可回滚，不参与原子性）：
             // 主题包资产仅在目录缺失时铺入；向量库仅当本地不存在时铺入（避免覆盖更健康的本地索引）
             writeAuxiliaryFiles(files, tables.themePacks)
-            summary
+            summary.copy(warnings = tables.decodeWarnings)
         }
 
-    private fun decodeTables(files: Map<String, String>): Tables =
-        Tables(
-            characters = decodeList(files[CHARACTERS], CharacterEntity.serializer()),
-            sessions = decodeList(files[SESSIONS], SessionEntity.serializer()),
-            messages = decodeList(files[MESSAGES], MessageEntity.serializer()),
-            memories = decodeList(files[MEMORIES], MemoryEntity.serializer()),
-            worldBooks = decodeList(files[WORLD_BOOKS], WorldBookEntity.serializer()),
-            worldBookEntries = decodeList(files[WORLD_BOOK_ENTRIES], WorldBookEntryEntity.serializer()),
-            settings = decodeList(files[SETTINGS], SettingsBackupEntry.serializer()),
-            structuredMemories = decodeList(files[STRUCTURED_MEMORY], StructuredMemoryEntity.serializer()),
-            vectorMemories = decodeList(files[VECTOR_MEMORY], VectorMemoryEntity.serializer()),
-            themePacks = decodeList(files[THEME_PACKS], ThemePackEntity.serializer()),
+    private fun decodeTables(
+        files: Map<String, String>,
+        manifest: BackupManifest,
+    ): Tables {
+        val decodeWarnings = mutableListOf<String>()
+
+        fun <T> decode(
+            entryName: String,
+            serializer: KSerializer<T>,
+        ): List<T> = decodeBackupList(files, manifest, entryName, serializer, decodeWarnings)
+
+        return Tables(
+            characters = decode(CHARACTERS, CharacterEntity.serializer()),
+            sessions = decode(SESSIONS, SessionEntity.serializer()),
+            messages = decode(MESSAGES, MessageEntity.serializer()),
+            memories = decode(MEMORIES, MemoryEntity.serializer()),
+            worldBooks = decode(WORLD_BOOKS, WorldBookEntity.serializer()),
+            worldBookEntries = decode(WORLD_BOOK_ENTRIES, WorldBookEntryEntity.serializer()),
+            settings = decode(SETTINGS, SettingsBackupEntry.serializer()),
+            structuredMemories = decode(STRUCTURED_MEMORY, StructuredMemoryEntity.serializer()),
+            vectorMemories = decode(VECTOR_MEMORY, VectorMemoryEntity.serializer()),
+            themePacks = decode(THEME_PACKS, ThemePackEntity.serializer()),
+            apiConfigs =
+                requireUniqueBackupIds(
+                    decode(API_CONFIGS, ApiConfigBackupEntry.serializer()),
+                    API_CONFIGS,
+                ) { it.id },
+            customPrompts =
+                requireUniqueBackupIds(
+                    decode(CUSTOM_PROMPTS, CustomPromptBackupEntry.serializer()),
+                    CUSTOM_PROMPTS,
+                ) { it.id },
+            decodeWarnings = decodeWarnings,
         )
+    }
 
     /** 全部表在同一事务合并：要么全部成功，要么回到恢复前状态 */
     private suspend fun mergeTables(t: Tables): BackupSummary {
@@ -328,6 +582,17 @@ class BackupManager(private val context: Context) {
             newPacks.forEach { db.themePackDao().upsert(it) }
             added[THEME_PACKS] = newPacks.size
             skipped[THEME_PACKS] = dupPacks.size
+
+            val (newApiConfigs, dupApiConfigs) = t.apiConfigs.partition { db.apiConfigDao().getById(it.id) == null }
+            db.apiConfigDao().insertAll(newApiConfigs.map(ApiConfigBackupEntry::toEntity))
+            added[API_CONFIGS] = newApiConfigs.size
+            skipped[API_CONFIGS] = dupApiConfigs.size
+
+            val (newCustomPrompts, dupCustomPrompts) =
+                t.customPrompts.partition { db.customPromptDao().getById(it.id) == null }
+            db.customPromptDao().insertAll(newCustomPrompts.map(CustomPromptBackupEntry::toEntity))
+            added[CUSTOM_PROMPTS] = newCustomPrompts.size
+            skipped[CUSTOM_PROMPTS] = dupCustomPrompts.size
         }
         return BackupSummary(added = added, skipped = skipped.filterValues { it > 0 })
     }
@@ -340,7 +605,7 @@ class BackupManager(private val context: Context) {
         val vectorStoreEntry = files[VECTOR_STORE_FILE] ?: return
         val target = File(context.filesDir, VECTOR_STORE_FILE)
         if (!target.exists()) {
-            target.writeBytes(vectorStoreEntry.toByteArray(Charsets.ISO_8859_1))
+            writeBytesAtomically(target, vectorStoreEntry.toByteArray(Charsets.ISO_8859_1))
         }
     }
 
@@ -358,6 +623,8 @@ class BackupManager(private val context: Context) {
             STRUCTURED_MEMORY to t.structuredMemories.size,
             VECTOR_MEMORY to t.vectorMemories.size,
             THEME_PACKS to t.themePacks.size,
+            API_CONFIGS to t.apiConfigs.size,
+            CUSTOM_PROMPTS to t.customPrompts.size,
         )
 
     /**
@@ -366,11 +633,22 @@ class BackupManager(private val context: Context) {
      */
     private fun readBackupZip(uri: Uri): Map<String, String> {
         val files = mutableMapOf<String, String>()
+        var totalBytes = 0L
+        var entryCount = 0
         context.contentResolver.openInputStream(uri)?.use { input ->
             ZipInputStream(input.buffered()).use { zip ->
                 var entry: ZipEntry? = zip.nextEntry
                 while (entry != null) {
-                    storeEntry(files, zip, entry!!)
+                    entryCount++
+                    require(entryCount <= MAX_BACKUP_ENTRIES) {
+                        "备份文件非法：条目数量超出限制"
+                    }
+                    val currentEntry = entry
+                    val remainingBytes = MAX_BACKUP_TOTAL_BYTES - totalBytes
+                    require(remainingBytes > 0) { "备份文件过大，已超出解压大小限制" }
+                    val bytes = readBoundedEntry(zip, minOf(MAX_BACKUP_ENTRY_BYTES, remainingBytes))
+                    totalBytes += bytes.size
+                    storeEntry(files, currentEntry, bytes)
                     zip.closeEntry()
                     entry = zip.nextEntry
                 }
@@ -401,6 +679,7 @@ private fun putThemeAssets(
     context: Context,
     pack: ThemePackEntity,
 ) {
+    BackupManager.validateThemePackId(pack.id)
     val dir = File(context.filesDir, "themes/${pack.id}")
     dir.listFiles()?.forEach { f ->
         zip.putNextEntry(ZipEntry("${BackupManager.THEMES_DIR_PREFIX}${pack.id}/${f.name}"))
@@ -414,32 +693,107 @@ private fun writeThemeAssetsIfAbsent(
     pack: ThemePackEntity,
     files: Map<String, String>,
 ) {
+    BackupManager.validateThemePackId(pack.id)
     val dir = File(context.filesDir, "themes/${pack.id}")
-    if (dir.exists()) return
-    dir.mkdirs()
-    files.forEach { (name, content) ->
-        if (name.startsWith("${BackupManager.THEMES_DIR_PREFIX}${pack.id}/")) {
-            val fileName = name.substringAfterLast('/')
-            if (fileName.isNotBlank()) {
-                File(dir, fileName).writeBytes(content.toByteArray(Charsets.ISO_8859_1))
-            }
-        }
+    if (!dir.exists()) {
+        check(dir.mkdirs() || dir.isDirectory) { "无法创建主题资源目录" }
     }
+    check(dir.isDirectory) { "主题资源路径不是目录" }
+    val prefix = "${BackupManager.THEMES_DIR_PREFIX}${pack.id}/"
+    files.forEach { (name, content) ->
+        if (name.startsWith(prefix)) writeThemeAssetIfMissing(dir, name, content)
+    }
+}
+
+private fun writeThemeAssetIfMissing(
+    dir: File,
+    name: String,
+    content: String,
+) {
+    val fileName = name.substringAfterLast('/')
+    if (fileName.isBlank()) return
+    val target = File(dir, fileName)
+    if (!target.exists()) writeBytesAtomically(target, content.toByteArray(Charsets.ISO_8859_1))
+}
+
+@Suppress("ThrowsCount")
+private fun writeBytesAtomically(
+    target: File,
+    bytes: ByteArray,
+) {
+    val atomicFile = AtomicFile(target)
+    var output: java.io.FileOutputStream? = null
+    try {
+        output = atomicFile.startWrite()
+        output.write(bytes)
+        atomicFile.finishWrite(output)
+    } catch (e: java.io.IOException) {
+        output?.let { runCatching { atomicFile.failWrite(it) } }
+        throw e
+    } catch (e: SecurityException) {
+        output?.let { runCatching { atomicFile.failWrite(it) } }
+        throw e
+    } catch (e: IllegalStateException) {
+        output?.let { runCatching { atomicFile.failWrite(it) } }
+        throw e
+    }
+}
+
+private fun readBoundedEntry(
+    zip: ZipInputStream,
+    maxBytes: Long,
+): ByteArray {
+    val output = ByteArrayOutputStream()
+    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+    var total = 0L
+    while (true) {
+        val read = zip.read(buffer)
+        if (read < 0) break
+        total += read
+        require(total <= maxBytes) { "备份文件过大：单个条目超出解压大小限制" }
+        output.write(buffer, 0, read)
+    }
+    return output.toByteArray()
 }
 
 private fun storeEntry(
     files: MutableMap<String, String>,
-    zip: ZipInputStream,
     entry: ZipEntry,
+    bytes: ByteArray,
 ) {
     val name = entry.name
-    require(name.split('/').none { it == ".." }) { "备份文件非法：条目路径包含 \"..\"（疑似路径穿越）" }
+    BackupManager.validateBackupEntryPath(name, entry.isDirectory)
     if (entry.isDirectory) return
-    val bytes = zip.readBytes()
+    require(!files.containsKey(name)) { "备份文件非法：存在重复条目 $name" }
     files[name] =
         if (name.startsWith(BackupManager.THEMES_DIR_PREFIX) || name == BackupManager.VECTOR_STORE_FILE) {
             String(bytes, Charsets.ISO_8859_1)
         } else {
             String(bytes, Charsets.UTF_8)
         }
+}
+
+/** Add the config ID to Keystore failures so a failed restore is diagnosable. */
+internal fun wrapRestoredApiKey(
+    id: String,
+    plainApiKey: String,
+    wrap: (String) -> String,
+): String =
+    try {
+        wrap(plainApiKey)
+    } catch (e: IllegalStateException) {
+        throw IllegalStateException("无法加密备份中 API 配置 $id 的密钥，已中止恢复", e)
+    }
+
+/** Reject ambiguous duplicate primary keys in imported tables before the merge transaction. */
+internal fun <T> requireUniqueBackupIds(
+    entries: List<T>,
+    entryName: String,
+    idOf: (T) -> String,
+): List<T> {
+    val seen = HashSet<String>()
+    require(entries.all { seen.add(idOf(it)) }) {
+        "备份文件损坏：$entryName 存在重复 ID"
+    }
+    return entries
 }

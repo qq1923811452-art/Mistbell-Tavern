@@ -12,7 +12,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
  * Gemini generateContent 适配（generativelanguage.googleapis.com）。
  *
  * 与 OpenAI 格式的差异：
- * - key 拼在 URL query（?key=...），流式再加 &alt=sse
+ * - API key 使用 x-goog-api-key 请求头，流式仅在 query 加 alt=sse
  * - 请求体 contents[]：assistant 角色映射为 "model"，system 提取为 systemInstruction
  * - 采样参数在 generationConfig（maxOutputTokens/temperature/topP/topK），无 frequency_penalty
  * - 响应 candidates[].content.parts[] 拼接；用量在 usageMetadata
@@ -68,6 +68,7 @@ internal object GeminiChatProtocol : ChatProtocol {
             @SerialName("promptTokenCount") val promptTokens: Int = 0,
             @SerialName("candidatesTokenCount") val candidatesTokens: Int = 0,
             @SerialName("totalTokenCount") val totalTokens: Int = 0,
+            @SerialName("cachedContentTokenCount") val cachedContentTokens: Int = 0,
         )
     }
 
@@ -111,12 +112,11 @@ internal object GeminiChatProtocol : ChatProtocol {
             } else {
                 "$base/v1beta/$modelPath"
             }
-        val urlBuilder =
-            endpoint.toHttpUrl().newBuilder()
-                .addQueryParameter("key", config.apiKey)
+        val urlBuilder = endpoint.toHttpUrl().newBuilder()
         if (stream) urlBuilder.addQueryParameter("alt", "sse")
         return Request.Builder()
             .url(urlBuilder.build())
+            .addHeader("x-goog-api-key", config.apiKey)
             .addHeader("Content-Type", "application/json")
             .post(bodyJson.toRequestBody("application/json".toMediaType()))
             .build()
@@ -140,7 +140,9 @@ internal object GeminiChatProtocol : ChatProtocol {
                 Usage(
                     promptTokens = it.promptTokens,
                     completionTokens = it.candidatesTokens,
-                    totalTokens = it.totalTokens,
+                    totalTokens = if (it.totalTokens > 0) it.totalTokens else it.promptTokens + it.candidatesTokens,
+                    cacheHitTokens = it.cachedContentTokens,
+                    cacheMissTokens = (it.promptTokens - it.cachedContentTokens).coerceAtLeast(0),
                 )
             }
         return ProtocolContent(
@@ -172,7 +174,9 @@ internal object GeminiChatProtocol : ChatProtocol {
                 Usage(
                     promptTokens = it.promptTokens,
                     completionTokens = it.candidatesTokens,
-                    totalTokens = it.totalTokens,
+                    totalTokens = if (it.totalTokens > 0) it.totalTokens else it.promptTokens + it.candidatesTokens,
+                    cacheHitTokens = it.cachedContentTokens,
+                    cacheMissTokens = (it.promptTokens - it.cachedContentTokens).coerceAtLeast(0),
                 )
             }
         val usageUpdate = usage?.let { StreamParseResult.UsageUpdate(it) }

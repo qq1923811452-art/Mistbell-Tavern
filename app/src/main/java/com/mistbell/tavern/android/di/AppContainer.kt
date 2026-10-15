@@ -50,17 +50,34 @@ class AppContainer(private val appContext: Context) {
     }
 
     /**
+     * Quarantine the unreadable vector-store file, then publish a fresh service pair so
+     * the settings diagnostic clears only after recovery has succeeded.
+     */
+    suspend fun recoverCorruptVectorStorage(): Boolean {
+        val previousMemoryService = vectorMemoryService
+        val recovered = vectorStore.recoverCorruptStorage()
+        if (recovered) {
+            previousMemoryService.storageErrorState.value = null
+            val service = embeddingService
+            runtimeEmbeddingServices = RuntimeEmbeddingServices(service, VectorMemoryService(vectorStore, service))
+        }
+        return recovered
+    }
+
+    /**
      * Embedding 服务（延迟初始化，源路由：settings `embedding_source`）
      *
      * - auto（默认）：有 embedding API key → OpenAI；无 key → Mock（词法回退）——兼容历史行为；
      * - api：强制 API（无 key 则 Mock）；
      * - local：本地 ONNX（bge-small-zh）；初始化失败回退 Mock 并记日志。
      */
-    @Volatile
-    private var runtimeEmbeddingService: EmbeddingService? = null
+    private data class RuntimeEmbeddingServices(
+        val embeddingService: EmbeddingService,
+        val vectorMemoryService: VectorMemoryService,
+    )
 
     @Volatile
-    private var runtimeVectorMemoryService: VectorMemoryService? = null
+    private var runtimeEmbeddingServices: RuntimeEmbeddingServices? = null
 
     private val initialEmbeddingService: EmbeddingService by lazy {
         kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
@@ -69,19 +86,19 @@ class AppContainer(private val appContext: Context) {
     }
 
     val embeddingService: EmbeddingService
-        get() = runtimeEmbeddingService ?: initialEmbeddingService
+        get() = runtimeEmbeddingServices?.embeddingService ?: initialEmbeddingService
 
     /**
      * Rebuild both services after the user changes embedding source.
-     * The vector store itself is intentionally retained so existing memories and cache statistics survive.
+     * The vector store is retained, but retrieval is filtered by embedding model identity so
+     * vectors produced by incompatible models are never compared. Existing cache statistics survive.
      * Returns true only when a real local or remote embedding implementation is active.
      */
     suspend fun refreshEmbeddingSource(source: String): Boolean {
         val service = assembleEmbeddingService(source)
-        synchronized(this) {
-            runtimeEmbeddingService = service
-            runtimeVectorMemoryService = VectorMemoryService(vectorStore, service)
-        }
+        val memoryService = VectorMemoryService(vectorStore, service)
+        // Publish the matching pair atomically so concurrent callers cannot observe mixed generations.
+        runtimeEmbeddingServices = RuntimeEmbeddingServices(service, memoryService)
         Log.i(TAG, "Embedding source switched: requested=$source, active=${service::class.java.simpleName}")
         return service is OpenAIEmbeddingService || service is LocalEmbeddingService
     }
@@ -125,7 +142,7 @@ class AppContainer(private val appContext: Context) {
             OpenAIEmbeddingService(
                 apiKey = apiKey,
                 baseUrl = baseUrl,
-                model = "text-embedding-3-small",
+                model = getEmbeddingModel(),
             )
         } else {
             // 无 key：不用伪向量，注入 Mock 占位（available=false，调用方走词法回退）
@@ -149,7 +166,7 @@ class AppContainer(private val appContext: Context) {
     }
 
     val vectorMemoryService: VectorMemoryService
-        get() = runtimeVectorMemoryService ?: initialVectorMemoryService
+        get() = runtimeEmbeddingServices?.vectorMemoryService ?: initialVectorMemoryService
 
     private fun getEmbeddingApiKey(): String {
         val prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -162,10 +179,19 @@ class AppContainer(private val appContext: Context) {
             ?: "https://api.openai.com/v1"
     }
 
+    private fun getEmbeddingModel(): String {
+        val prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return prefs.getString(KEY_EMBEDDING_MODEL, "text-embedding-3-small")
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?: "text-embedding-3-small"
+    }
+
     companion object {
         private const val TAG = "AppContainer"
         private const val PREFS_NAME = "tavern_settings"
         private const val KEY_EMBEDDING_API_KEY = "embedding_api_key"
         private const val KEY_EMBEDDING_BASE_URL = "embedding_base_url"
+        private const val KEY_EMBEDDING_MODEL = "embedding_model"
     }
 }

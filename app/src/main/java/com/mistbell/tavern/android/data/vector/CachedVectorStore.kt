@@ -16,6 +16,7 @@ import kotlinx.coroutines.sync.withLock
  * - LRU 缓存策略，避免内存过度占用
  * - 写操作完成后使搜索缓存失效，并防止并发中的旧搜索结果重新写入缓存
  */
+@Suppress("TooManyFunctions")
 class CachedVectorStore(
     private val delegate: VectorStore,
     cacheSize: Int = 50,
@@ -39,13 +40,15 @@ class CachedVectorStore(
         vector: FloatArray,
         metadata: Map<String, Any>,
     ) {
-        delegate.add(id, vector, metadata)
-        invalidateCache()
+        mutateStore {
+            delegate.add(id, vector, metadata)
+        }
     }
 
     override suspend fun addBatch(entries: List<VectorStore.VectorEntry>) {
-        delegate.addBatch(entries)
-        invalidateCache()
+        mutateStore {
+            delegate.addBatch(entries)
+        }
     }
 
     override suspend fun search(
@@ -98,25 +101,31 @@ class CachedVectorStore(
     }
 
     override suspend fun delete(id: String) {
-        delegate.delete(id)
-        invalidateCache()
+        mutateStore {
+            delegate.delete(id)
+        }
     }
 
     override suspend fun deleteByFilters(filters: Map<String, Any>): Int {
-        val count = delegate.deleteByFilters(filters)
-        if (count > 0) {
-            invalidateCache()
-        }
-        return count
+        return mutateStore(
+            shouldInvalidate = { it > 0 },
+            mutation = { delegate.deleteByFilters(filters) },
+        )
     }
 
     override suspend fun count(): Int {
         return delegate.count()
     }
 
+    override suspend fun recoverCorruptStorage(): Boolean =
+        mutateStore {
+            delegate.recoverCorruptStorage()
+        }
+
     override suspend fun clear() {
-        delegate.clear()
-        invalidateCache()
+        mutateStore {
+            delegate.clear()
+        }
     }
 
     private fun publishCacheStatistics() {
@@ -130,13 +139,37 @@ class CachedVectorStore(
             )
     }
 
-    private suspend fun invalidateCache() {
-        cacheMutex.withLock {
-            cacheGeneration++
-            cacheInvalidationCount++
-            searchCache.evictAll()
-            publishCacheStatistics()
+    /**
+     * Serialize store mutations with cache lookups. This closes the window where a writer has
+     * changed the delegate but a concurrent lookup can still return a pre-write cached result.
+     * In-flight misses are also prevented from repopulating the cache by the generation change.
+     */
+    @Suppress("TooGenericExceptionCaught")
+    private suspend fun <T> mutateStore(
+        shouldInvalidate: (T) -> Boolean = { true },
+        mutation: suspend () -> T,
+    ): T {
+        cacheMutex.lock()
+        try {
+            val result = mutation()
+            if (shouldInvalidate(result)) {
+                invalidateCacheLocked()
+            }
+            return result
+        } catch (e: Exception) {
+            // A failed mutation may have partially changed the delegate; evict defensively.
+            invalidateCacheLocked()
+            throw e
+        } finally {
+            cacheMutex.unlock()
         }
+    }
+
+    private fun invalidateCacheLocked() {
+        cacheGeneration++
+        cacheInvalidationCount++
+        searchCache.evictAll()
+        publishCacheStatistics()
         Log.d(TAG, "Cache invalidated")
     }
 

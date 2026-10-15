@@ -185,7 +185,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 if (sessionId.isBlank()) return@launch
                 val entity = db.messageDao().getById(messageId, sessionId, ownerId) ?: return@launch
                 if (entity.content == rendered) return@launch
-                db.messageDao().upsert(entity.copy(content = rendered))
+                db.messageDao().upsert(entity.copy(content = rendered, promptContextSnapshotJson = ""))
             } catch (e: Exception) {
                 _toast.value = "切换开场白失败: ${e.message}"
             }

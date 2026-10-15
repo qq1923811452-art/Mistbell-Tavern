@@ -21,7 +21,10 @@ import okhttp3.sse.EventSource
 import okhttp3.sse.EventSourceListener
 import okhttp3.sse.EventSources
 import java.io.IOException
+import java.net.ConnectException
+import java.net.NoRouteToHostException
 import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 
@@ -83,6 +86,26 @@ data class Usage(
     @SerialName("total_tokens") val totalTokens: Int = 0,
     @SerialName("prompt_cache_hit_tokens") val cacheHitTokens: Int = 0,
     @SerialName("prompt_cache_miss_tokens") val cacheMissTokens: Int = 0,
+    @SerialName("prompt_tokens_details") val promptTokensDetails: PromptTokensDetails? = null,
+) {
+    /** Normalize OpenAI-compatible cached_tokens into the app's cache counters. */
+    fun withNormalizedCacheMetrics(): Usage {
+        val cachedTokens = promptTokensDetails?.cachedTokens
+        return if (cacheHitTokens > 0 || cacheMissTokens > 0 || cachedTokens == null) {
+            this
+        } else {
+            val normalizedHits = cachedTokens.coerceIn(0, promptTokens.coerceAtLeast(0))
+            copy(
+                cacheHitTokens = normalizedHits,
+                cacheMissTokens = (promptTokens - normalizedHits).coerceAtLeast(0),
+            )
+        }
+    }
+}
+
+@Serializable
+data class PromptTokensDetails(
+    @SerialName("cached_tokens") val cachedTokens: Int? = null,
 )
 
 @Serializable
@@ -173,8 +196,17 @@ object SseParser {
 }
 
 object LlmClient {
+    internal class ApiError(
+        val statusCode: Int,
+        val statusMessage: String,
+        val thinkingParameterRejected: Boolean,
+    ) : Exception("LLM API returned HTTP $statusCode $statusMessage")
+
     private val client =
         OkHttpClient.Builder()
+            // Never forward API credentials through an untrusted redirect.
+            .followRedirects(false)
+            .followSslRedirects(false)
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(120, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
@@ -191,8 +223,46 @@ object LlmClient {
     /** S1: 重试上限 = 1 + 配置重试次数（钳制 0..5）。 */
     private fun maxAttemptsFor(config: LlmConfig): Int = 1 + config.retries.coerceIn(0, 5)
 
+    /** HTTP 5xx responses are transient and may be retried before any stream output. */
+    internal fun isTransientServerError(statusCode: Int): Boolean {
+        return statusCode in HTTP_SERVER_ERROR_MIN..HTTP_SERVER_ERROR_MAX
+    }
+
+    private data class RetryPolicy(
+        val shouldRetry: Boolean,
+        val rateLimited: Boolean,
+    )
+
+    /** Centralize retry classification so stream handling does not duplicate status/type branches. */
+    internal fun isRetryableException(error: Exception): Boolean {
+        return error !is CancellationException && retryPolicyFor(error).shouldRetry
+    }
+
+    private fun retryPolicyFor(error: Exception): RetryPolicy =
+        when (error) {
+            is CancellationException -> RetryPolicy(shouldRetry = false, rateLimited = false)
+            is ApiError -> {
+                val rateLimited = error.statusCode == HTTP_TOO_MANY_REQUESTS
+                RetryPolicy(
+                    shouldRetry = rateLimited || isTransientServerError(error.statusCode),
+                    rateLimited = rateLimited,
+                )
+            }
+            // Only retry failures that prove the request could not reach the provider.
+            // Generic I/O errors and socket timeouts may occur after a POST was accepted,
+            // so retrying them can duplicate generations or charges.
+            is ConnectException, is UnknownHostException, is NoRouteToHostException ->
+                RetryPolicy(shouldRetry = true, rateLimited = false)
+            is IOException -> RetryPolicy(shouldRetry = false, rateLimited = false)
+            else -> RetryPolicy(shouldRetry = false, rateLimited = false)
+        }
+
+    private const val HTTP_TOO_MANY_REQUESTS = 429
+    private const val HTTP_SERVER_ERROR_MIN = 500
+    private const val HTTP_SERVER_ERROR_MAX = 599
     private const val LOG_TAG = "LlmUsage"
     private const val PERCENT_MULTIPLIER = 100.0
+    private const val HTTP_BAD_REQUEST = 400
 
     /**
      * Merge usage fields from stream frames without counting repeated cumulative values twice.
@@ -223,6 +293,7 @@ object LlmClient {
                     totalTokens = totalTokens,
                     cacheHitTokens = maxOf(current.cacheHitTokens, incoming.cacheHitTokens),
                     cacheMissTokens = maxOf(current.cacheMissTokens, incoming.cacheMissTokens),
+                    promptTokensDetails = incoming.promptTokensDetails ?: current.promptTokensDetails,
                 )
             }
         }
@@ -267,29 +338,113 @@ object LlmClient {
      * 重试一次——思考开关是 DeepSeek 系参数，OpenAI 兼容网关未必认（400 Unrecognized request argument），
      * 不回退的话一次参数差异就会打死整轮调用。
      */
+    @Suppress("TooGenericExceptionCaught", "LongMethod", "ThrowsCount")
     suspend fun chat(
         config: LlmConfig,
         messages: List<ChatMessage>,
-    ): String =
-        try {
-            chatWithRetries(config, messages)
+    ): String {
+        val traceId = ApiCallTrace.newId()
+        val startedAt = System.currentTimeMillis()
+        val caller = ApiCallTrace.caller()
+        ApiCallTrace.log(
+            traceId,
+            "LLM_CHAT",
+            "START",
+            "caller=$caller protocol=${config.type} model=${config.model} " +
+                "endpoint=${ApiCallTrace.safeEndpoint(config.baseUrl)} mode=non-stream",
+        )
+        return try {
+            chatWithRetries(config, messages).also {
+                ApiCallTrace.log(
+                    traceId,
+                    "LLM_CHAT",
+                    "SUCCESS",
+                    "caller=$caller elapsedMs=${System.currentTimeMillis() - startedAt}",
+                )
+            }
+        } catch (e: CancellationException) {
+            ApiCallTrace.log(
+                traceId,
+                "LLM_CHAT",
+                "CANCELLED",
+                "caller=$caller elapsedMs=${System.currentTimeMillis() - startedAt}",
+            )
+            throw e
         } catch (e: Exception) {
             if (config.disableThinking && isThinkingParamRejected(e)) {
-                android.util.Log.w("LlmClient", "thinking 参数被网关拒绝，回退为不发送后重试: ${e.message}")
-                chatWithRetries(config.copy(disableThinking = false), messages)
+                android.util.Log.w("LlmClient", "thinking 参数被网关拒绝，回退为不发送后重试 (${e.javaClass.simpleName})")
+                try {
+                    chatWithRetries(config.copy(disableThinking = false), messages).also {
+                        ApiCallTrace.log(
+                            traceId,
+                            "LLM_CHAT",
+                            "SUCCESS",
+                            "caller=$caller fallback=without-thinking " +
+                                "elapsedMs=${System.currentTimeMillis() - startedAt}",
+                        )
+                    }
+                } catch (cancelled: CancellationException) {
+                    ApiCallTrace.log(
+                        traceId,
+                        "LLM_CHAT",
+                        "CANCELLED",
+                        "caller=$caller fallback=without-thinking " +
+                            "elapsedMs=${System.currentTimeMillis() - startedAt}",
+                    )
+                    throw cancelled
+                } catch (fallbackError: Exception) {
+                    ApiCallTrace.log(
+                        traceId,
+                        "LLM_CHAT",
+                        "FAILURE",
+                        "caller=$caller fallback=without-thinking error=${fallbackError.javaClass.simpleName}",
+                    )
+                    throw fallbackError
+                }
             } else {
+                ApiCallTrace.log(
+                    traceId,
+                    "LLM_CHAT",
+                    "FAILURE",
+                    "caller=$caller error=${e.javaClass.simpleName}",
+                )
                 throw e
             }
         }
+    }
 
     /** 疑似"思考参数被拒"：错误正文提到 thinking，或 HTTP 400（请求格式错误） */
-    private fun isThinkingParamRejected(e: Exception): Boolean {
-        val message = e.message.orEmpty()
-        val mentionsThinking = message.contains("thinking", ignoreCase = true)
-        if (!mentionsThinking) return false
+    private fun isThinkingParamRejected(e: Exception): Boolean =
+        if (e is ApiError) {
+            e.thinkingParameterRejected
+        } else {
+            val message = e.message.orEmpty()
+            val mentionsThinking = message.contains("thinking", ignoreCase = true)
+            val parameterRejectionTerms =
+                listOf(
+                    "unrecognized",
+                    "unknown parameter",
+                    "unsupported parameter",
+                    "invalid parameter",
+                    "not allowed",
+                    "unexpected field",
+                    "unknown field",
+                    "extra inputs",
+                    "not supported",
+                )
+            val explicitlyRejected =
+                parameterRejectionTerms.any { message.contains(it, ignoreCase = true) }
+            val isBadRequest = Regex("""\b$HTTP_BAD_REQUEST\b""").containsMatchIn(message)
+            val mentionsRequestField =
+                listOf("parameter", "argument", "field").any { message.contains(it, ignoreCase = true) }
+            mentionsThinking && (explicitlyRejected || (isBadRequest && mentionsRequestField))
+        }
 
-        // A generic HTTP 400 can mean malformed JSON, invalid model, or another request
-        // problem. Only fall back when the response looks like a parameter/field rejection.
+    private fun isThinkingParameterRejected(
+        statusCode: Int,
+        responseBody: String,
+    ): Boolean {
+        if (!responseBody.contains("thinking", ignoreCase = true)) return false
         val parameterRejectionTerms =
             listOf(
                 "unrecognized",
@@ -302,14 +457,16 @@ object LlmClient {
                 "extra inputs",
                 "not supported",
             )
-        val explicitlyRejected = parameterRejectionTerms.any { message.contains(it, ignoreCase = true) }
-        val isBadRequest = Regex("""\b400\b""").containsMatchIn(message)
+        val explicitlyRejected =
+            parameterRejectionTerms.any { responseBody.contains(it, ignoreCase = true) }
         val mentionsRequestField =
-            listOf("parameter", "argument", "field").any { message.contains(it, ignoreCase = true) }
-
-        return explicitlyRejected || (isBadRequest && mentionsRequestField)
+            listOf("parameter", "argument", "field").any {
+                responseBody.contains(it, ignoreCase = true)
+            }
+        return explicitlyRejected || (statusCode == HTTP_BAD_REQUEST && mentionsRequestField)
     }
 
+    @Suppress("ThrowsCount")
     private suspend fun chatWithRetries(
         config: LlmConfig,
         messages: List<ChatMessage>,
@@ -321,33 +478,38 @@ object LlmClient {
                 try {
                     return@withContext executeChatRequest(config, messages)
                 } catch (e: SocketTimeoutException) {
-                    lastException = e
-                    if (attempt < maxAttempts - 1) {
-                        val delayMs = INITIAL_RETRY_DELAY_MS * (1 shl attempt) // 指数退避：1s, 2s, 4s
-                        android.util.Log.w("LlmClient", "Request timeout, retry ${attempt + 1}/$maxAttempts after ${delayMs}ms")
-                        delay(delayMs)
-                    }
+                    // A timeout does not reveal whether the provider completed the POST.
+                    // Fail rather than blindly create a second generation.
+                    throw e
                 } catch (e: IOException) {
+                    if (!isRetryableException(e)) throw e
                     lastException = e
-                    // 网络错误可重试
+                    // These classified failures happen before the provider can accept the request.
                     if (attempt < maxAttempts - 1) {
                         val delayMs = INITIAL_RETRY_DELAY_MS * (1 shl attempt)
-                        android.util.Log.w("LlmClient", "Network error, retry ${attempt + 1}/$maxAttempts after ${delayMs}ms: ${e.message}")
+                        android.util.Log.w(
+                            "LlmClient",
+                            "Pre-connect network error, retry ${attempt + 1}/$maxAttempts " +
+                                "after ${delayMs}ms (${e.javaClass.simpleName})",
+                        )
                         delay(delayMs)
                     }
                 } catch (e: Exception) {
-                    // 其他错误（如 4xx 客户端错误）不重试
-                    if (e.message?.contains("429") == true) {
-                        // 速率限制，可以重试
-                        lastException = e
-                        if (attempt < maxAttempts - 1) {
-                            val delayMs = INITIAL_RETRY_DELAY_MS * (1 shl attempt) * 2 // 速率限制时延迟更久
-                            android.util.Log.w("LlmClient", "Rate limit hit, retry ${attempt + 1}/$maxAttempts after ${delayMs}ms")
-                            delay(delayMs)
-                        }
-                    } else {
+                    val retryPolicy = retryPolicyFor(e)
+                    if (!isRetryableException(e)) {
                         // 其他错误直接抛出
                         throw e
+                    }
+                    lastException = e
+                    if (attempt < maxAttempts - 1) {
+                        // Rate limits use longer backoff; 5xx responses use normal exponential backoff.
+                        val backoffMultiplier = if (retryPolicy.rateLimited) 2 else 1
+                        val delayMs = INITIAL_RETRY_DELAY_MS * (1 shl attempt) * backoffMultiplier
+                        android.util.Log.w(
+                            "LlmClient",
+                            "Retryable HTTP error, retry ${attempt + 1}/$maxAttempts after ${delayMs}ms",
+                        )
+                        delay(delayMs)
                     }
                 }
             }
@@ -375,10 +537,22 @@ object LlmClient {
         val request = buildChatRequest(config, messages, stream = false)
         val response = clientFor(config).newCall(request).execute()
         if (!response.isSuccessful) {
-            val errorBody = response.body?.string() ?: "No error details"
-            throw Exception("LLM API error: ${response.code} ${response.message} - $errorBody")
+            val statusCode = response.code
+            val responseBody = response.body?.string().orEmpty()
+            response.close()
+            // Parse only the fallback signal; never retain or expose an untrusted error body.
+            throw ApiError(
+                statusCode,
+                response.message,
+                isThinkingParameterRejected(statusCode, responseBody),
+            )
         }
-        val responseBody = response.body?.string() ?: throw Exception("Empty response")
+        val responseBody =
+            response.body?.string()
+                ?: run {
+                    response.close()
+                    error("Empty response")
+                }
         val content = chatProtocolFor(config.type).parseContent(responseBody)
         logUsage(content.usage, config.model, "non-stream")
         // 截断是最隐蔽的失败：JSON 写到一半被 max_tokens 砍断，调用方只看到"解析失败/空结果"
@@ -394,20 +568,80 @@ object LlmClient {
     }
 
     /** 非流式响应的正文与思维链，供聊天落库使用；普通 [chat] 保持只返回正文的兼容接口。 */
+    @Suppress("TooGenericExceptionCaught", "LongMethod", "ThrowsCount")
     suspend fun chatWithThinking(
         config: LlmConfig,
         messages: List<ChatMessage>,
-    ): ProtocolContent =
-        try {
-            chatContentWithRetries(config, messages)
+    ): ProtocolContent {
+        val traceId = ApiCallTrace.newId()
+        val startedAt = System.currentTimeMillis()
+        val caller = ApiCallTrace.caller()
+        ApiCallTrace.log(
+            traceId,
+            "LLM_CHAT_WITH_THINKING",
+            "START",
+            "caller=$caller protocol=${config.type} model=${config.model} " +
+                "endpoint=${ApiCallTrace.safeEndpoint(config.baseUrl)} mode=non-stream",
+        )
+        return try {
+            chatContentWithRetries(config, messages).also {
+                ApiCallTrace.log(
+                    traceId,
+                    "LLM_CHAT_WITH_THINKING",
+                    "SUCCESS",
+                    "caller=$caller elapsedMs=${System.currentTimeMillis() - startedAt}",
+                )
+            }
+        } catch (e: CancellationException) {
+            ApiCallTrace.log(
+                traceId,
+                "LLM_CHAT_WITH_THINKING",
+                "CANCELLED",
+                "caller=$caller elapsedMs=${System.currentTimeMillis() - startedAt}",
+            )
+            throw e
         } catch (e: Exception) {
             if (config.disableThinking && isThinkingParamRejected(e)) {
-                android.util.Log.w("LlmClient", "thinking 参数被网关拒绝，回退为不发送后重试: ${e.message}")
-                chatContentWithRetries(config.copy(disableThinking = false), messages)
+                android.util.Log.w("LlmClient", "thinking 参数被网关拒绝，回退为不发送后重试 (${e.javaClass.simpleName})")
+                try {
+                    chatContentWithRetries(config.copy(disableThinking = false), messages).also {
+                        ApiCallTrace.log(
+                            traceId,
+                            "LLM_CHAT_WITH_THINKING",
+                            "SUCCESS",
+                            "caller=$caller fallback=without-thinking " +
+                                "elapsedMs=${System.currentTimeMillis() - startedAt}",
+                        )
+                    }
+                } catch (cancelled: CancellationException) {
+                    ApiCallTrace.log(
+                        traceId,
+                        "LLM_CHAT_WITH_THINKING",
+                        "CANCELLED",
+                        "caller=$caller fallback=without-thinking " +
+                            "elapsedMs=${System.currentTimeMillis() - startedAt}",
+                    )
+                    throw cancelled
+                } catch (fallbackError: Exception) {
+                    ApiCallTrace.log(
+                        traceId,
+                        "LLM_CHAT_WITH_THINKING",
+                        "FAILURE",
+                        "caller=$caller fallback=without-thinking error=${fallbackError.javaClass.simpleName}",
+                    )
+                    throw fallbackError
+                }
             } else {
+                ApiCallTrace.log(
+                    traceId,
+                    "LLM_CHAT_WITH_THINKING",
+                    "FAILURE",
+                    "caller=$caller error=${e.javaClass.simpleName}",
+                )
                 throw e
             }
         }
+    }
 
     private suspend fun chatContentWithRetries(
         config: LlmConfig,
@@ -420,15 +654,20 @@ object LlmClient {
                 try {
                     return@withContext executeChatContentRequest(config, messages)
                 } catch (e: SocketTimeoutException) {
-                    lastException = e
-                    if (attempt < maxAttempts - 1) delay(INITIAL_RETRY_DELAY_MS * (1 shl attempt))
+                    // The provider may have accepted and billed the POST before the response timed out.
+                    // Do not retry an ambiguous outcome.
+                    throw e
                 } catch (e: IOException) {
+                    // Retry only failures classified as occurring before provider acceptance.
+                    if (!isRetryableException(e)) throw e
                     lastException = e
                     if (attempt < maxAttempts - 1) delay(INITIAL_RETRY_DELAY_MS * (1 shl attempt))
                 } catch (e: Exception) {
-                    if (e.message?.contains("429") == true && attempt < maxAttempts - 1) {
+                    val retryPolicy = retryPolicyFor(e)
+                    if (attempt < maxAttempts - 1 && retryPolicy.shouldRetry) {
                         lastException = e
-                        delay(INITIAL_RETRY_DELAY_MS * (1 shl attempt) * 2)
+                        val backoffMultiplier = if (retryPolicy.rateLimited) 2 else 1
+                        delay(INITIAL_RETRY_DELAY_MS * (1 shl attempt) * backoffMultiplier)
                     } else {
                         throw e
                     }
@@ -451,34 +690,103 @@ object LlmClient {
             .filter { it.isNotEmpty() }
 
     /** 流式正文接口的增强版，保留思维链增量（最后一帧可能只带 [ChatDelta.usage]）。 */
+    @Suppress("LongMethod")
     fun chatStreamWithThinking(
         config: LlmConfig,
         messages: List<ChatMessage>,
     ): Flow<ChatDelta> =
         flow {
+            val traceId = ApiCallTrace.newId()
+            val startedAt = System.currentTimeMillis()
+            val caller = ApiCallTrace.caller()
+            ApiCallTrace.log(
+                traceId,
+                "LLM_CHAT_STREAM",
+                "START",
+                "caller=$caller protocol=${config.type} model=${config.model} " +
+                    "endpoint=${ApiCallTrace.safeEndpoint(config.baseUrl)} mode=stream",
+            )
             val maxAttempts = maxAttemptsFor(config) // S1: 复用配置重试上限（流式）
-            for (attempt in 0 until maxAttempts) {
+            var activeConfig = config
+            var fallbackUsed = false
+            var attempt = 0
+            var requestAttempts = 0
+            while (attempt < maxAttempts) {
                 var emittedAny = false
+                requestAttempts++
                 try {
-                    chatStreamOnce(config, messages).collect { delta ->
+                    chatStreamOnce(activeConfig, messages).collect { delta ->
                         emittedAny = true
                         emit(delta)
                     }
+                    ApiCallTrace.log(
+                        traceId,
+                        "LLM_CHAT_STREAM",
+                        "SUCCESS",
+                        "caller=$caller attempts=$requestAttempts elapsedMs=${System.currentTimeMillis() - startedAt}",
+                    )
                     return@flow
                 } catch (e: CancellationException) {
+                    ApiCallTrace.log(
+                        traceId,
+                        "LLM_CHAT_STREAM",
+                        "CANCELLED",
+                        "caller=$caller elapsedMs=${System.currentTimeMillis() - startedAt}",
+                    )
                     throw e // 取消不重试
                 } catch (e: Exception) {
+                    // A single capability fallback shares this trace and the same transient retry budget.
+                    if (!emittedAny && !fallbackUsed && activeConfig.disableThinking) {
+                        if (isThinkingParamRejected(e)) {
+                            fallbackUsed = true
+                            activeConfig = config.copy(disableThinking = false)
+                            ApiCallTrace.log(
+                                traceId,
+                                "LLM_CHAT_STREAM",
+                                "FALLBACK",
+                                "caller=$caller fallback=without-thinking requestAttempts=$requestAttempts",
+                            )
+                            // Do not consume a transient retry slot for the one protocol-capability fallback.
+                            continue
+                        }
+                    }
                     // 已发出增量后不再重试
-                    if (emittedAny) throw e
-                    val retryable = e is IOException || e.message?.contains("429") == true
-                    if (attempt < maxAttempts - 1 && retryable) {
-                        val delayMs = 1000L * (1 shl attempt) * (if (e.message?.contains("429") == true) 2 else 1)
+                    if (emittedAny) {
+                        ApiCallTrace.log(
+                            traceId,
+                            "LLM_CHAT_STREAM",
+                            "FAILURE",
+                            "caller=$caller emittedAny=true error=${e.javaClass.simpleName} " +
+                                "elapsedMs=${System.currentTimeMillis() - startedAt}",
+                        )
+                        throw e
+                    }
+                    val retryPolicy = retryPolicyFor(e)
+                    if (attempt < maxAttempts - 1 && retryPolicy.shouldRetry) {
+                        val backoffMultiplier = if (retryPolicy.rateLimited) 2 else 1
+                        val delayMs = INITIAL_RETRY_DELAY_MS * (1 shl attempt) * backoffMultiplier
+                        ApiCallTrace.log(
+                            traceId,
+                            "LLM_CHAT_STREAM",
+                            "RETRY",
+                            "caller=$caller retry=${attempt + 1}/$maxAttempts requestAttempts=$requestAttempts " +
+                                "error=${e.javaClass.simpleName} delayMs=$delayMs",
+                        )
                         android.util.Log.w(
                             "LlmClient",
-                            "Stream failed before first token, retry ${attempt + 1}/$maxAttempts after ${delayMs}ms: ${e.message}",
+                            "Stream failed before first token, retry ${attempt + 1}/$maxAttempts " +
+                                "after ${delayMs}ms (${e.javaClass.simpleName})",
                         )
                         delay(delayMs)
+                        attempt++
                     } else {
+                        ApiCallTrace.log(
+                            traceId,
+                            "LLM_CHAT_STREAM",
+                            "FAILURE",
+                            "caller=$caller emittedAny=false error=${e.javaClass.simpleName} " +
+                                "requestAttempts=$requestAttempts elapsedMs=${System.currentTimeMillis() - startedAt}",
+                        )
                         throw e
                     }
                 }
@@ -532,20 +840,31 @@ object LlmClient {
                     ) {
                         val message = t?.message ?: ""
                         // 某些兼容网关流式响应 Content-Type 非 text/event-stream 会被 okhttp-sse 拒收
-                        if (message.contains("Content-Type", ignoreCase = true) || message.contains("content type", ignoreCase = true)) {
-                            close(IllegalStateException("流式响应 Content-Type 不受支持（$message）：该网关可能不兼容 SSE 流式，请在模型设置中关闭流式输出（降级为普通请求）。"))
+                        if (
+                            message.contains("Content-Type", ignoreCase = true) ||
+                            message.contains("content type", ignoreCase = true)
+                        ) {
+                            close(IllegalStateException("流式响应 Content-Type 不受支持：该网关可能不兼容 SSE，请在模型设置中关闭流式输出。"))
                             return
                         }
                         if (response != null) {
-                            val summary =
+                            val statusCode = response.code
+                            val responseBody =
                                 try {
-                                    response.body?.string()?.take(300) ?: "No error details"
+                                    response.body?.string().orEmpty()
                                 } catch (_: Exception) {
-                                    "No error details"
+                                    ""
                                 }
-                            close(IllegalStateException("LLM API error: ${response.code} ${response.message} - $summary"))
+                            response.close()
+                            close(
+                                ApiError(
+                                    statusCode,
+                                    response.message,
+                                    isThinkingParameterRejected(statusCode, responseBody),
+                                ),
+                            )
                         } else {
-                            close(IOException("LLM stream failed: ${t?.message}", t))
+                            close(IOException("LLM stream failed (${t?.javaClass?.simpleName ?: "unknown error"})"))
                         }
                     }
                 }

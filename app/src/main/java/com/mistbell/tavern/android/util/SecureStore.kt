@@ -5,6 +5,7 @@ import android.security.keystore.KeyProperties
 import android.util.Log
 import java.security.KeyStore
 import java.util.Base64
+import java.util.Locale
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -26,13 +27,72 @@ object SecureStore {
     private const val PREFIX = "enc:v1:"
     private const val IV_SIZE = 12
     private const val TAG_BITS = 128
+    private const val TAG_BYTES = TAG_BITS / 8
 
     @Volatile
     private var cachedKey: SecretKey? = null
 
-    fun isEncrypted(value: String): Boolean = value.startsWith(PREFIX)
+    fun isEncrypted(value: String): Boolean =
+        value.startsWith(PREFIX) &&
+            (
+                runCatching { Base64.getDecoder().decode(value.removePrefix(PREFIX)) }
+                    .getOrNull()
+                    ?.let { payload ->
+                        payload.size > IV_SIZE + TAG_BYTES && unwrap(value).isNotEmpty()
+                    } ?: false
+            )
 
-    /** 写入敏感字段前调用；失败时退回明文存储（宁可弱存储也不丢数据）。 */
+    /** Key names that may hold credentials or serialized provider secrets. */
+    fun isSensitiveKey(key: String): Boolean {
+        val normalized = key.trim().lowercase(Locale.ROOT).replace('-', '_').replace('.', '_').replace(' ', '_')
+        val compact = normalized.filter(Char::isLetterOrDigit)
+        return when {
+            isUsageMetricKey(normalized) -> false
+            normalized == "providers_json" || compact.contains("apikey") -> true
+            containsCredentialSegment(normalized) -> true
+            else -> containsSensitivePattern(compact)
+        }
+    }
+
+    private fun isUsageMetricKey(normalized: String): Boolean =
+        normalized in
+            setOf(
+                "context_token_limit",
+                "max_tokens",
+                "llm_max_tokens",
+                "prompt_tokens",
+                "completion_tokens",
+                "total_tokens",
+                "cached_tokens",
+                "reasoning_tokens",
+            )
+
+    private fun containsCredentialSegment(normalized: String): Boolean {
+        val credentialSegments =
+            setOf("token", "secret", "password", "passwd", "credential", "credentials", "authorization", "bearer")
+        return normalized.split('_').filter(String::isNotBlank).any { it in credentialSegments }
+    }
+
+    private fun containsSensitivePattern(compact: String): Boolean =
+        compact.endsWith("token") ||
+            listOf(
+                "accesstoken",
+                "refreshtoken",
+                "sessiontoken",
+                "authtoken",
+                "clientsecret",
+                "privatekey",
+                "authheader",
+                "secretaccesskey",
+                "secret",
+                "password",
+                "passwd",
+                "credential",
+                "authorization",
+                "bearer",
+            ).any(compact::contains)
+
+    /** 写入敏感字段前调用；加密失败时拒绝保存，避免静默落盘明文。 */
     fun wrap(plain: String): String {
         if (plain.isEmpty() || isEncrypted(plain)) return plain
         return try {
@@ -42,14 +102,14 @@ object SecureStore {
             val ciphertext = cipher.doFinal(plain.toByteArray(Charsets.UTF_8))
             PREFIX + Base64.getEncoder().encodeToString(iv + ciphertext)
         } catch (e: Exception) {
-            Log.w(TAG, "encrypt failed, falling back to plaintext", e)
-            plain
+            Log.e(TAG, "encrypt failed; sensitive value was not saved", e)
+            throw IllegalStateException("Unable to encrypt sensitive data; value was not saved", e)
         }
     }
 
     /** 读取敏感字段前调用；历史明文原样返回；密文解密失败返回空串（值已不可恢复，空串能让 UI 呈现"未配置"而非坏密钥）。 */
     fun unwrap(value: String): String {
-        if (value.isEmpty() || !isEncrypted(value)) return value
+        if (value.isEmpty() || !value.startsWith(PREFIX)) return value
         return try {
             val all = Base64.getDecoder().decode(value.removePrefix(PREFIX))
             require(all.size > IV_SIZE) { "ciphertext too short" }

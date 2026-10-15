@@ -103,6 +103,125 @@ class ChatProtocolTest {
     }
 
     @Test
+    fun `openai compatible usage maps cached_tokens to cache hit and miss counters`() {
+        val body =
+            """
+            {
+              "choices": [{"message": {"role": "assistant", "content": "ok"}}],
+              "usage": {
+                "prompt_tokens": 100,
+                "completion_tokens": 3,
+                "total_tokens": 103,
+                "prompt_tokens_details": {"cached_tokens": 80}
+              }
+            }
+            """.trimIndent()
+        val usage = OpenAiChatProtocol.parseContent(body).usage
+
+        assertEquals(100, usage?.promptTokens)
+        assertEquals(80, usage?.cacheHitTokens)
+        assertEquals(20, usage?.cacheMissTokens)
+    }
+
+    @Test
+    fun `deepseek cache token fields stay authoritative when supplied directly`() {
+        val body =
+            """
+            {
+              "choices": [{"message": {"role": "assistant", "content": "ok"}}],
+              "usage": {
+                "prompt_tokens": 100,
+                "completion_tokens": 3,
+                "total_tokens": 103,
+                "prompt_cache_hit_tokens": 70,
+                "prompt_cache_miss_tokens": 30
+              }
+            }
+            """.trimIndent()
+        val usage = OpenAiChatProtocol.parseContent(body).usage
+
+        assertEquals(70, usage?.cacheHitTokens)
+        assertEquals(30, usage?.cacheMissTokens)
+    }
+
+    @Test
+    fun `anthropic non streaming usage includes cache reads and creations`() {
+        val body =
+            """
+            {
+              "content": [{"type": "text", "text": "ok"}],
+              "usage": {
+                "input_tokens": 20,
+                "output_tokens": 3,
+                "cache_creation_input_tokens": 30,
+                "cache_read_input_tokens": 70
+              }
+            }
+            """.trimIndent()
+        val usage = AnthropicChatProtocol.parseContent(body).usage
+
+        assertEquals(120, usage?.promptTokens)
+        assertEquals(70, usage?.cacheHitTokens)
+        assertEquals(50, usage?.cacheMissTokens)
+        assertEquals(123, usage?.totalTokens)
+    }
+
+    @Test
+    fun `anthropic message_start reads nested cache metrics and delta preserves totals`() {
+        val start =
+            AnthropicChatProtocol.parseStreamData(
+                """
+                {
+                  "type": "message_start",
+                  "message": {
+                    "usage": {
+                      "input_tokens": 20,
+                      "output_tokens": 1,
+                      "cache_creation_input_tokens": 30,
+                      "cache_read_input_tokens": 70
+                    }
+                  }
+                }
+                """.trimIndent(),
+            )
+        val delta =
+            AnthropicChatProtocol.parseStreamData(
+                """{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":8}}""",
+            )
+
+        val startUsage = (start as StreamParseResult.UsageUpdate).usage
+        val deltaUsage = (delta as StreamParseResult.UsageUpdate).usage
+        assertEquals(120, startUsage.promptTokens)
+        assertEquals(70, startUsage.cacheHitTokens)
+        assertEquals(50, startUsage.cacheMissTokens)
+        assertEquals(8, deltaUsage.completionTokens)
+        assertEquals(0, deltaUsage.promptTokens)
+    }
+
+    @Test
+    fun `gemini cachedContentTokenCount maps to provider cache hit counters`() {
+        val body =
+            """
+            {
+              "candidates": [
+                {"content": {"parts": [{"text": "ok"}], "role": "model"}, "finishReason": "STOP"}
+              ],
+              "usageMetadata": {
+                "promptTokenCount": 100,
+                "candidatesTokenCount": 3,
+                "totalTokenCount": 103,
+                "cachedContentTokenCount": 80
+              }
+            }
+            """.trimIndent()
+        val usage = GeminiChatProtocol.parseContent(body).usage
+
+        assertEquals(100, usage?.promptTokens)
+        assertEquals(80, usage?.cacheHitTokens)
+        assertEquals(20, usage?.cacheMissTokens)
+    }
+
+    @Test
     fun `openai 流式解析 reasoning_content 增量`() {
         val data =
             """{"choices":[{"delta":{"role":"assistant","content":"","reasoning_content":"推理"}}]}"""
@@ -147,25 +266,30 @@ class ChatProtocolTest {
     // ---- Gemini 请求 ----
 
     @Test
-    fun `gemini 端点 key 在 query 流式加 alt sse`() {
+    fun `gemini API key stays in header and streaming adds alt sse`() {
         val nonStream = GeminiChatProtocol.buildRequest(geminiConfig(), messages, stream = false)
         val stream = GeminiChatProtocol.buildRequest(geminiConfig(), messages, stream = true)
 
         assertEquals(
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash" +
-                ":generateContent?key=gemini-key",
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent",
             nonStream.url.toString(),
         )
-        assertTrue(stream.url.toString().contains("&alt=sse"))
+        assertEquals(
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?alt=sse",
+            stream.url.toString(),
+        )
+        assertEquals("gemini-key", nonStream.header("x-goog-api-key"))
+        assertEquals(null, nonStream.url.queryParameter("key"))
     }
 
     @Test
-    fun `gemini key 中的特殊字符会正确编码且可还原`() {
+    fun `gemini key 中的特殊字符不会进入 URL`() {
         val apiKey = "key+with&reserved=chars%"
         val config = geminiConfig().copy(apiKey = apiKey)
         val request = GeminiChatProtocol.buildRequest(config, messages, stream = true)
 
-        assertEquals(apiKey, request.url.queryParameter("key"))
+        assertEquals(apiKey, request.header("x-goog-api-key"))
+        assertEquals(null, request.url.queryParameter("key"))
         assertEquals("sse", request.url.queryParameter("alt"))
     }
 
@@ -192,6 +316,26 @@ class ChatProtocolTest {
         assertEquals(10, content.usage?.promptTokens)
         assertEquals(4, content.usage?.completionTokens)
         assertEquals("STOP", content.finishReason)
+    }
+
+    @Test
+    fun geminiUsageTotalFallsBackToPromptPlusCompletionWhenOmitted() {
+        val nonStream =
+            GeminiChatProtocol.parseContent(
+                """
+                {
+                  "candidates": [{"content": {"parts": [{"text": "ok"}]}}],
+                  "usageMetadata": {"promptTokenCount": 10, "candidatesTokenCount": 4}
+                }
+                """.trimIndent(),
+            )
+        val stream =
+            GeminiChatProtocol.parseStreamData(
+                """{"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":4}}""",
+            )
+
+        assertEquals(14, nonStream.usage?.totalTokens)
+        assertEquals(14, (stream as StreamParseResult.UsageUpdate).usage.totalTokens)
     }
 
     @Test

@@ -18,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -26,6 +27,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.mistbell.tavern.android.data.api.model.SESSION_MODE_CLASSIC
 import com.mistbell.tavern.android.data.api.model.SESSION_MODE_GROUP
 import kotlinx.coroutines.launch
+
+private const val DROPDOWN_MAX_SCREEN_HEIGHT_FRACTION = 0.6f
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -55,6 +58,7 @@ fun ChatSetupScreen(
 
     var showProviderDropdown by remember { mutableStateOf(false) }
     var showWorldBookDropdown by remember { mutableStateOf(false) }
+    val dropdownMaxHeight = (LocalConfiguration.current.screenHeightDp * DROPDOWN_MAX_SCREEN_HEIGHT_FRACTION).dp
 
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
@@ -239,11 +243,14 @@ fun ChatSetupScreen(
                                 Modifier
                                     .fillMaxWidth()
                                     .menuAnchor(),
-                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = showProviderDropdown) },
+                            trailingIcon = {
+                                ExposedDropdownMenuDefaults.TrailingIcon(expanded = showProviderDropdown)
+                            },
                             colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
                         )
 
                         ExposedDropdownMenu(
+                            modifier = Modifier.heightIn(max = dropdownMaxHeight),
                             expanded = showProviderDropdown,
                             onDismissRequest = { showProviderDropdown = false },
                         ) {
@@ -306,11 +313,14 @@ fun ChatSetupScreen(
                                 Modifier
                                     .fillMaxWidth()
                                     .menuAnchor(),
-                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = showWorldBookDropdown) },
+                            trailingIcon = {
+                                ExposedDropdownMenuDefaults.TrailingIcon(expanded = showWorldBookDropdown)
+                            },
                             colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
                         )
 
                         ExposedDropdownMenu(
+                            modifier = Modifier.heightIn(max = dropdownMaxHeight),
                             expanded = showWorldBookDropdown,
                             onDismissRequest = { showWorldBookDropdown = false },
                         ) {

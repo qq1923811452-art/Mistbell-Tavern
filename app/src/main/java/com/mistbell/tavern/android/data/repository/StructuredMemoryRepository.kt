@@ -6,6 +6,7 @@ import com.mistbell.tavern.android.TavernApplication
 import com.mistbell.tavern.android.data.api.model.StructuredMemory
 import com.mistbell.tavern.android.data.local.entity.StructuredMemoryEntity
 import com.mistbell.tavern.android.data.memory.MemoryConflictResolver
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -138,12 +139,18 @@ class StructuredMemoryRepository(context: Context) {
     }
 
     // 更新记忆
-    suspend fun updateMemory(memory: StructuredMemory) {
+    suspend fun updateMemory(
+        memory: StructuredMemory,
+        preserveUpdatedAt: Boolean = false,
+    ) {
         withContext(Dispatchers.IO) {
-            val entity =
-                StructuredMemoryEntity.fromDomain(
-                    memory.copy(updatedAt = Instant.now().toString()),
-                )
+            val persistedMemory =
+                if (preserveUpdatedAt) {
+                    memory
+                } else {
+                    memory.copy(updatedAt = Instant.now().toString())
+                }
+            val entity = StructuredMemoryEntity.fromDomain(persistedMemory)
             memoryDao.update(entity)
 
             // 如果重要性 >= 7，重新同步到向量数据库；降到阈值以下则清理既有摘要副本
@@ -239,9 +246,11 @@ class StructuredMemoryRepository(context: Context) {
             )
 
             Log.d(TAG, "Synced memory ${memory.id} to vector store (importance: ${memory.importance})")
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             // 向量同步失败不应影响主流程
-            Log.e(TAG, "Failed to sync memory to vector: ${e.message}", e)
+            Log.e(TAG, "Failed to sync memory to vector (${e.javaClass.simpleName})")
         }
     }
 
@@ -255,9 +264,11 @@ class StructuredMemoryRepository(context: Context) {
             if (vectorMemoryService.available) {
                 vectorMemoryService.deleteByMessageId(vectorMessageId(memoryId))
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             // 向量清理失败不应影响主流程
-            Log.e(TAG, "Failed to delete vector copy: ${e.message}", e)
+            Log.e(TAG, "Failed to delete vector copy (${e.javaClass.simpleName})")
         }
     }
 
@@ -272,9 +283,11 @@ class StructuredMemoryRepository(context: Context) {
             if (vectorMemoryService.available) {
                 vectorMemoryService.deleteSummaryVectors(ownerId, characterId, sessionId)
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             // 向量清理失败不应影响主流程
-            Log.e(TAG, "Failed to delete summary vectors: ${e.message}", e)
+            Log.e(TAG, "Failed to delete summary vectors (${e.javaClass.simpleName})")
         }
     }
 }

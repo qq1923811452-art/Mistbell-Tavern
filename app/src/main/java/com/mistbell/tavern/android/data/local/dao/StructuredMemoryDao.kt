@@ -18,7 +18,9 @@ interface StructuredMemoryDao {
     /** 提示词召回只需有限候选，避免每轮把角色全部记忆加载到 Kotlin。 */
     @Query(
         "SELECT * FROM structured_memory WHERE owner_id = :ownerId AND character_id = :characterId " +
-            "AND (structured_data IS NULL OR structured_data NOT LIKE '%\"status\":\"superseded\"%') " +
+            "AND (structured_data IS NULL OR " +
+            "CASE WHEN json_valid(structured_data) " +
+            "THEN COALESCE(json_extract(structured_data, '$.status'), '') != 'superseded' ELSE 1 END) " +
             "ORDER BY importance DESC, created_at DESC LIMIT :limit",
     )
     suspend fun getPromptCandidates(

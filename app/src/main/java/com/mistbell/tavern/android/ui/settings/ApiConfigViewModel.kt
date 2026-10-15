@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.mistbell.tavern.android.TavernApplication
 import com.mistbell.tavern.android.data.local.entity.ApiConfigEntity
 import com.mistbell.tavern.android.data.repository.ApiConfigMigration
+import com.mistbell.tavern.android.util.SecureStore
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.util.*
@@ -72,16 +73,19 @@ class ApiConfigViewModel(application: Application) : AndroidViewModel(applicatio
     val message: StateFlow<String?> = _message.asStateFlow()
 
     init {
-        // 旧 providers_json 链路 → api_configs 的一次性迁移（幂等，先于默认配置创建）
+        // Migration must finish before default configuration creation; running two coroutines here
+        // could create a default row first and cause legacy providers to be skipped as "already migrated".
         viewModelScope.launch {
-            ApiConfigMigration.migrateIfNeeded(db)
-        }
-        // 初始化：如果没有配置，创建默认配置
-        viewModelScope.launch {
+            try {
+                ApiConfigMigration.migrateIfNeeded(db)
+            } catch (e: Exception) {
+                _message.value = "配置安全迁移失败，已阻止继续写入：${e.message ?: "加密不可用"}"
+                return@launch
+            }
+
             if (apiConfigDao.getCount() == 0) {
                 createDefaultApiConfig()
             }
-            // 设置当前索引为默认配置
             val defaultConfig = apiConfigDao.getDefault()
             if (defaultConfig != null) {
                 val configs = apiConfigDao.getAll()
@@ -132,7 +136,7 @@ class ApiConfigViewModel(application: Application) : AndroidViewModel(applicatio
                         id = UUID.randomUUID().toString(),
                         name = name,
                         apiUrl = apiUrl,
-                        apiKey = apiKey,
+                        apiKey = SecureStore.wrap(apiKey),
                         model = model,
                         isDefault = false,
                         sortOrder = apiConfigDao.getCount(),
@@ -368,7 +372,7 @@ private fun ApiConfigEntity.toApiConfig(): ApiConfig {
         id = id,
         name = name,
         apiUrl = apiUrl,
-        apiKey = apiKey,
+        apiKey = SecureStore.unwrap(apiKey),
         model = model,
         isDefault = isDefault,
         lastTestStatus =
@@ -394,7 +398,7 @@ private fun ApiConfig.toEntity(): ApiConfigEntity {
         id = id,
         name = name,
         apiUrl = apiUrl,
-        apiKey = apiKey,
+        apiKey = SecureStore.wrap(apiKey),
         model = model,
         isDefault = isDefault,
         lastTestStatus =

@@ -48,4 +48,27 @@ class CacheManagerTest {
         assertEquals(1L, manager.getStats().hitCount)
         assertEquals(2L, manager.getStats().missCount)
     }
+
+    @Test
+    fun `expired entries are treated as misses`() {
+        val manager = CacheManager<String, String>()
+        manager.put("expired", "stale", expiresAt = 0L)
+
+        assertNull(manager.get("expired"))
+        assertEquals(0L, manager.getStats().hitCount)
+        assertEquals(1L, manager.getStats().missCount)
+    }
+
+    @Test
+    fun `least recently used entries are evicted at capacity`() {
+        val manager = CacheManager<String, String>(maxEntries = 2)
+        manager.put("a", "one")
+        manager.put("b", "two")
+        assertEquals("one", manager.get("a"))
+        manager.put("c", "three")
+
+        assertEquals("one", manager.get("a"))
+        assertNull(manager.get("b"))
+        assertEquals("three", manager.get("c"))
+    }
 }

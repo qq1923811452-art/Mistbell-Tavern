@@ -1,5 +1,6 @@
 package com.mistbell.tavern.android.data.repository
 
+import androidx.room.withTransaction
 import com.mistbell.tavern.android.data.local.AppDatabase
 import com.mistbell.tavern.android.data.local.entity.ApiConfigEntity
 import com.mistbell.tavern.android.data.local.entity.SettingsEntity
@@ -52,14 +53,10 @@ internal data class ProviderConfig(
 object ApiConfigMigration {
     const val MIGRATED_FLAG_KEY = "providers_migrated_v1"
 
-    /** 纯函数：解密后的 providers_json → ProviderConfig 列表（坏 JSON/空串容错为空） */
+    /** 纯函数：解密后的 providers_json → ProviderConfig 列表；空串合法，非空坏 JSON 必须失败。 */
     internal fun parseProvidersJson(json: String): List<ProviderConfig> {
         if (json.isBlank()) return emptyList()
-        return try {
-            Json.decodeFromString(ListSerializer(ProviderConfig.serializer()), json)
-        } catch (_: Exception) {
-            emptyList()
-        }
+        return Json.decodeFromString(ListSerializer(ProviderConfig.serializer()), json)
     }
 
     /** 纯函数：ProviderConfig 列表 → ApiConfigEntity 列表（id 保留；activeId 为默认，缺省取第一个） */
@@ -99,18 +96,51 @@ object ApiConfigMigration {
      * 幂等迁移入口：已迁移 / api_configs 已有数据 / 无 providers_json 都直接置标志返回。
      */
     suspend fun migrateIfNeeded(db: AppDatabase) {
-        val settingsDao = db.settingsDao()
+        db.withTransaction { migrateInTransaction(db) }
+    }
 
-        // 已迁移 / api_configs 已有数据（恢复备份场景）：置标志后返回
+    private suspend fun migrateInTransaction(db: AppDatabase) {
+        encryptLegacyApiKeys(db)
+        val settingsDao = db.settingsDao()
         val alreadyMigrated =
             settingsDao.getValue(MIGRATED_FLAG_KEY) == "1" || db.apiConfigDao().getCount() > 0
+
+        encryptLegacySettings(settingsDao, alreadyMigrated)
         if (alreadyMigrated) {
             settingsDao.upsert(SettingsEntity(MIGRATED_FLAG_KEY, "1"))
             return
         }
 
-        val providers =
-            parseProvidersJson(SecureStore.unwrap(settingsDao.getValue("providers_json") ?: ""))
+        migrateProviders(db, settingsDao)
+    }
+
+    private suspend fun encryptLegacySettings(
+        settingsDao: com.mistbell.tavern.android.data.local.dao.SettingsDao,
+        alreadyMigrated: Boolean,
+    ) {
+        listOf("providers_json", "llm_api_key").forEach { key ->
+            val value = settingsDao.getValue(key).orEmpty()
+            if (value.isBlank()) return@forEach
+            val encrypted = SecureStore.isEncrypted(value)
+            val unreadableCiphertext = value.startsWith("enc:v1:") && !encrypted
+            if (unreadableCiphertext && key == "providers_json" && alreadyMigrated) return@forEach
+            check(!unreadableCiphertext) {
+                "设置 $key 的加密数据不可读取，迁移已中止以保留原始数据"
+            }
+            if (!encrypted) settingsDao.upsert(SettingsEntity(key, SecureStore.wrap(value)))
+        }
+    }
+
+    private suspend fun migrateProviders(
+        db: AppDatabase,
+        settingsDao: com.mistbell.tavern.android.data.local.dao.SettingsDao,
+    ) {
+        val storedProvidersJson = settingsDao.getValue("providers_json").orEmpty()
+        val decodedProvidersJson = SecureStore.unwrap(storedProvidersJson)
+        check(!storedProvidersJson.startsWith("enc:v1:") || decodedProvidersJson.isNotEmpty()) {
+            "无法解密旧版 API 配置，迁移已中止以保留原始数据"
+        }
+        val providers = parseProvidersJson(decodedProvidersJson)
         if (providers.isEmpty()) {
             settingsDao.upsert(SettingsEntity(MIGRATED_FLAG_KEY, "1"))
             return
@@ -118,14 +148,34 @@ object ApiConfigMigration {
 
         val activeId = settingsDao.getValue("active_provider_id") ?: ""
         val now = System.currentTimeMillis()
-
-        db.apiConfigDao().insertAll(toApiConfigEntities(providers, activeId, now))
+        val entities =
+            toApiConfigEntities(providers, activeId, now).map { entity ->
+                entity.copy(apiKey = SecureStore.wrap(entity.apiKey))
+            }
+        db.apiConfigDao().insertAll(entities)
 
         val active = providers.firstOrNull { it.id == activeId } ?: providers.first()
         activeProviderOverrides(active).forEach { (key, value) ->
             settingsDao.upsert(SettingsEntity(key, value))
         }
-
         settingsDao.upsert(SettingsEntity(MIGRATED_FLAG_KEY, "1"))
+    }
+
+    /**
+     * Encrypt API keys created by earlier versions. Encryption errors deliberately propagate:
+     * silently retaining plaintext would violate the storage security guarantee.
+     */
+    private suspend fun encryptLegacyApiKeys(db: AppDatabase) {
+        db.apiConfigDao().getAll().forEach { entity ->
+            if (entity.apiKey.isNotBlank()) {
+                val encrypted = SecureStore.isEncrypted(entity.apiKey)
+                check(!entity.apiKey.startsWith("enc:v1:") || encrypted) {
+                    "API 配置 ${entity.id} 的加密数据不可读取，迁移已中止以保留原始数据"
+                }
+                if (!encrypted) {
+                    db.apiConfigDao().update(entity.copy(apiKey = SecureStore.wrap(entity.apiKey)))
+                }
+            }
+        }
     }
 }

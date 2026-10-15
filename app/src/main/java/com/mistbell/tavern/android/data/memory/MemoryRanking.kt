@@ -3,6 +3,7 @@ package com.mistbell.tavern.android.data.memory
 import com.mistbell.tavern.android.data.api.model.StructuredMemory
 import java.time.Instant
 import java.time.temporal.ChronoUnit
+import java.util.Locale
 import kotlin.math.max
 
 /**
@@ -39,7 +40,7 @@ internal object MemoryRanking {
         now: Instant = Instant.now(),
     ): Double {
         val importance = memory.importance.coerceIn(MIN_IMPORTANCE, MAX_IMPORTANCE).toDouble()
-        val type = memory.memoryType.lowercase()
+        val type = memory.memoryType.lowercase(Locale.ROOT)
         val ageDays = ageDays(memory.updatedAt, now)
         val decay =
             when {

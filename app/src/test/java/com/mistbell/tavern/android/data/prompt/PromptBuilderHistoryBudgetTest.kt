@@ -75,6 +75,55 @@ class PromptBuilderHistoryBudgetTest {
     }
 
     @Test
+    fun `前缀缓存快照计入历史预算`() {
+        val history = listOf(msg("m1", small), msg("m2", small))
+        val args = listOf(ChatMessage("system", small))
+        val withoutSnapshots =
+            PromptBuilder.selectHistoryWithinBudget(
+                recentMessages = history,
+                currentMessages = args,
+                currentUserMessage = small,
+                contextTokenLimit = 512,
+            )
+        val withSnapshots =
+            PromptBuilder.selectHistoryWithinBudget(
+                recentMessages = history,
+                currentMessages = args,
+                currentUserMessage = small,
+                contextTokenLimit = 512,
+                promptCacheSnapshots =
+                    mapOf(
+                        "m2" to listOf(ChatMessage("system", huge)),
+                    ),
+            )
+
+        assertEquals(listOf("m1", "m2"), withoutSnapshots.map { it.id })
+        assertEquals(listOf("m2"), withSnapshots.map { it.id })
+    }
+
+    @Test
+    fun `前缀缓存快照中的渲染用户消息计入历史预算`() {
+        val history = listOf(msg("m1", small), msg("m2", small))
+        val selected =
+            PromptBuilder.selectHistoryWithinBudget(
+                recentMessages = history,
+                currentMessages = listOf(ChatMessage("system", small)),
+                currentUserMessage = small,
+                contextTokenLimit = 512,
+                promptCacheSnapshots =
+                    mapOf(
+                        "m2" to
+                            listOf(
+                                ChatMessage("system", small),
+                                ChatMessage("user", huge),
+                            ),
+                    ),
+            )
+
+        assertEquals(listOf("m2"), selected.map { it.id })
+    }
+
+    @Test
     fun `截断产生从最新往回的连续前缀而非跳选`() {
         // 最新与中间消息很小能装下，最旧的消息巨大装不下：
         // 连续前缀语义 => [mid, new]；跳选（旧缺陷）=> 可能出现 [old, new] 之类非连续结果

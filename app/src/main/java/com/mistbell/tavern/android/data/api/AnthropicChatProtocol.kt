@@ -61,14 +61,17 @@ internal object AnthropicChatProtocol : ChatProtocol {
         data class AnthropicUsage(
             @SerialName("input_tokens") val inputTokens: Int = 0,
             @SerialName("output_tokens") val outputTokens: Int = 0,
+            @SerialName("cache_creation_input_tokens") val cacheCreationInputTokens: Int = 0,
+            @SerialName("cache_read_input_tokens") val cacheReadInputTokens: Int = 0,
         )
     }
 
-    /** SSE data 负载：content_block_delta（正文）或 message_delta（含累计用量） */
+    /** SSE data payloads: message_start nests usage under message; message_delta reports it at top level. */
     @Serializable
     private data class AnthropicEvent(
         val type: String = "",
         val delta: EventDelta? = null,
+        val message: EventMessage? = null,
         val usage: AnthropicResponse.AnthropicUsage? = null,
     ) {
         @Serializable
@@ -76,6 +79,23 @@ internal object AnthropicChatProtocol : ChatProtocol {
             val type: String = "",
             val text: String = "",
             val thinking: String = "",
+        )
+
+        @Serializable
+        data class EventMessage(
+            val usage: AnthropicResponse.AnthropicUsage? = null,
+        )
+    }
+
+    private fun normalizeUsage(usage: AnthropicResponse.AnthropicUsage): Usage {
+        val totalPromptTokens =
+            usage.inputTokens + usage.cacheCreationInputTokens + usage.cacheReadInputTokens
+        return Usage(
+            promptTokens = totalPromptTokens,
+            completionTokens = usage.outputTokens,
+            totalTokens = totalPromptTokens + usage.outputTokens,
+            cacheHitTokens = usage.cacheReadInputTokens,
+            cacheMissTokens = usage.inputTokens + usage.cacheCreationInputTokens,
         )
     }
 
@@ -121,14 +141,7 @@ internal object AnthropicChatProtocol : ChatProtocol {
                 .filter { it.type == "thinking" || it.type == "redacted_thinking" }
                 .joinToString("") { it.thinking.ifBlank { it.text } }
                 .ifBlank { null }
-        val usage =
-            response.usage?.let {
-                Usage(
-                    promptTokens = it.inputTokens,
-                    completionTokens = it.outputTokens,
-                    totalTokens = it.inputTokens + it.outputTokens,
-                )
-            }
+        val usage = response.usage?.let(::normalizeUsage)
         // stop_reason=max_tokens 对应截断（同 OpenAI 的 finish_reason=length）
         return ProtocolContent(text = text, usage = usage, finishReason = response.stopReason, thinking = thinking)
     }
@@ -148,27 +161,16 @@ internal object AnthropicChatProtocol : ChatProtocol {
             }
             // message_start 携带真实 input_tokens（提示词用量）
             "message_start" ->
-                event.usage?.let {
-                    StreamParseResult.UsageUpdate(
-                        Usage(
-                            promptTokens = it.inputTokens,
-                            completionTokens = it.outputTokens,
-                            totalTokens = it.inputTokens + it.outputTokens,
-                        ),
-                    )
+                (event.message?.usage ?: event.usage)?.let {
+                    StreamParseResult.UsageUpdate(normalizeUsage(it))
                 } ?: StreamParseResult.Ignore
-            // message_delta 只带累计 output_tokens，input_tokens 缺省为 0。
-            // 这里把 totalTokens 也置 0（=本帧未提供），交给 LlmClient 用量合并器：
-            // prompt 保留 message_start 的真实值，total 取 prompt+completion —— 不再覆盖成 0（修 P2-1）
+            // 官方 message_delta 通常只带累计 output_tokens；兼容网关也可能回传缓存用量。
+            // normalizeUsage 会把缺省输入字段置 0，合并器按字段取最大值以保留 message_start 真值。
             "message_delta" ->
                 event.usage?.let {
-                    StreamParseResult.UsageUpdate(
-                        Usage(
-                            promptTokens = it.inputTokens,
-                            completionTokens = it.outputTokens,
-                            totalTokens = 0,
-                        ),
-                    )
+                    // Keep any cache counters supplied by compatible gateways. Missing input
+                    // fields still normalize to zero and are preserved by the field-wise merger.
+                    StreamParseResult.UsageUpdate(normalizeUsage(it))
                 } ?: StreamParseResult.Ignore
             else -> StreamParseResult.Ignore
         }

@@ -52,7 +52,9 @@ class SettingsRepository(private val context: Context) {
         val globalStreamingEnabled = dao.getValue("streaming_enabled") != "0"
         return LlmConfig(
             baseUrl = defaultApiConfig?.apiUrl ?: dao.getValue("llm_base_url") ?: "",
-            apiKey = defaultApiConfig?.apiKey ?: SecureStore.unwrap(dao.getValue("llm_api_key") ?: ""),
+            apiKey =
+                defaultApiConfig?.apiKey?.let(SecureStore::unwrap)
+                    ?: SecureStore.unwrap(dao.getValue("llm_api_key") ?: ""),
             model = defaultApiConfig?.model ?: dao.getValue("llm_model") ?: "",
             type = defaultApiConfig?.type ?: "openai",
             temperature = resolveTemperature(llmTemp, legacyTemp, preset),
@@ -118,7 +120,7 @@ class SettingsRepository(private val context: Context) {
                             else -> value.toString()
                         }
                     // 敏感 key 同样走加密写入，避免服务器同步把已加密值降级为明文落盘
-                    val stored = if (key == "llm_api_key") SecureStore.wrap(strValue) else strValue
+                    val stored = if (SecureStore.isSensitiveKey(key)) SecureStore.wrap(strValue) else strValue
                     dao.upsert(SettingsEntity(key, stored))
                 }
             }
