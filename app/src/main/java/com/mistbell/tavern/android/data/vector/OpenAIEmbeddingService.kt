@@ -107,22 +107,22 @@ class OpenAIEmbeddingService(
 
         if (!response.isSuccessful) {
             val errorBody = response.body?.string() ?: "Unknown error"
-            throw IllegalStateException("OpenAI API error: ${response.code} - $errorBody")
+            error("OpenAI API error: ${response.code} - $errorBody")
         }
 
         val responseBody =
             response.body?.string()
-                ?: throw IllegalStateException("Empty response body")
+                ?: error("Empty response body")
 
         val embeddingResponse = json.decodeFromString<EmbeddingResponse>(responseBody)
 
         if (embeddingResponse.data.isEmpty()) {
-            throw IllegalStateException("No embedding data returned")
+            error("No embedding data returned")
         }
 
         val embedding = embeddingResponse.data.first().embedding
         if (embedding.size != DIMENSION) {
-            throw IllegalStateException(
+            error(
                 "Unexpected embedding dimension for model $model: ${embedding.size} (expected $DIMENSION)",
             )
         }
@@ -195,35 +195,35 @@ class OpenAIEmbeddingService(
 
         if (!response.isSuccessful) {
             val errorBody = response.body?.string() ?: "Unknown error"
-            throw IllegalStateException("OpenAI API error: ${response.code} - $errorBody")
+            error("OpenAI API error: ${response.code} - $errorBody")
         }
 
         val responseBody =
             response.body?.string()
-                ?: throw IllegalStateException("Empty response body")
+                ?: error("Empty response body")
 
         val embeddingResponse = json.decodeFromString<EmbeddingResponse>(responseBody)
 
         if (embeddingResponse.data.isEmpty()) {
-            throw IllegalStateException("No embedding data returned")
+            error("No embedding data returned")
         }
 
         Log.d(TAG, "Generated ${embeddingResponse.data.size} embeddings in batch")
 
         val orderedData = embeddingResponse.data.sortedBy { it.index }
         if (orderedData.size != texts.size) {
-            throw IllegalStateException(
+            error(
                 "Embedding response count mismatch: expected ${texts.size}, received ${orderedData.size}",
             )
         }
         if (orderedData.any { it.embedding.size != DIMENSION }) {
             val dimensions = orderedData.map { it.embedding.size }.distinct()
-            throw IllegalStateException(
+            error(
                 "Unexpected embedding dimensions for model $model: $dimensions (expected $DIMENSION)",
             )
         }
         if (orderedData.map { it.index }.distinct().size != orderedData.size) {
-            throw IllegalStateException("Embedding response contains duplicate input indices")
+            error("Embedding response contains duplicate input indices")
         }
 
         return orderedData.map { data ->
