@@ -151,7 +151,7 @@ jobs:
           echo "QNN_SDK_ROOT=$qnn_root" >> "$GITHUB_ENV"
           license_dir="$GITHUB_WORKSPACE/app/src/main/assets/licenses/qualcomm-qairt"
           mkdir -p "$license_dir"
-          find "$qnn_root" -maxdepth 2 -type f \\( -iname 'LICENSE*' -o -iname 'EULA*' -o -iname 'NOTICE*' \\) -print0 |
+          find "$qnn_root" -maxdepth 2 -type f \( -iname 'LICENSE*' -o -iname 'EULA*' -o -iname 'NOTICE*' \) -print0 |
             while IFS= read -r -d '' license_file; do
               cp "$license_file" "$license_dir/$(basename "$license_file")"
             done
