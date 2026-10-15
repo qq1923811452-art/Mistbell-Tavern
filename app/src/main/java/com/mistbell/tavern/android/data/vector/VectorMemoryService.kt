@@ -46,6 +46,7 @@ class VectorMemoryService(
         private const val EMBEDDING_CACHE_LOAD_FACTOR = 0.75f
         private const val EMBEDDING_CACHE_MAX_ENTRIES = 512
         private const val EMBEDDING_CACHE_STRIPE_COUNT = 32
+        private const val VECTOR_WRITE_STRIPE_COUNT = 32
         // Keep explicit legacy reindex requests bounded to limit peak memory and API batch cost.
         private const val LEGACY_REINDEX_BATCH_SIZE = 32
         private const val HEX_BYTE_WIDTH = 2
@@ -77,6 +78,9 @@ class VectorMemoryService(
     // Per-key hashing stripes preserve same-text single-flight while allowing unrelated
     // embedding requests (including remote API calls) to proceed concurrently.
     private val embeddingCacheMutexes = Array(EMBEDDING_CACHE_STRIPE_COUNT) { Mutex() }
+
+    // Serialize read/reuse/embed/write for the same stable vector ID while keeping unrelated writes concurrent.
+    private val vectorWriteMutexes = Array(VECTOR_WRITE_STRIPE_COUNT) { Mutex() }
 
     private val _storageError = MutableStateFlow<String?>(null)
 
@@ -149,35 +153,37 @@ class VectorMemoryService(
         try {
             val identity = VectorIdentity(ownerId, characterId, sessionId, messageId, contentType, embeddingModelId)
             val vectorId = generateVectorId(identity)
-            val existing = vectorStore.get(vectorId)
-            if (
-                existing?.metadata?.get("content") == content &&
-                existing.metadata["embedding_model"] == embeddingModelId
-            ) {
-                Log.d(TAG, "Reused persisted embedding for message: $messageId")
-                return vectorId
+            val writeMutex = vectorWriteMutexes[Math.floorMod(vectorId.hashCode(), vectorWriteMutexes.size)]
+            return writeMutex.withLock {
+                val existing = vectorStore.get(vectorId)
+                if (
+                    existing?.metadata?.get("content") == content &&
+                    existing.metadata["embedding_model"] == embeddingModelId
+                ) {
+                    Log.d(TAG, "Reused persisted embedding for message: $messageId")
+                    return@withLock vectorId
+                }
+
+                // Generate only when this exact message/model version is not already persisted.
+                val embedding = embedCached(content, "EMBEDDING_STORE_${contentType.uppercase()}")
+                val metadata =
+                    mapOf(
+                        "owner_id" to ownerId,
+                        "character_id" to characterId,
+                        "session_id" to sessionId,
+                        "message_id" to messageId,
+                        "content_type" to contentType,
+                        "content" to content,
+                        "embedding_model" to embeddingModelId,
+                        "created_at" to System.currentTimeMillis().toString(),
+                    )
+
+                // Stable IDs plus a per-ID write stripe make repeated concurrent writes idempotent.
+                vectorStore.add(vectorId, embedding, metadata)
+
+                Log.d(TAG, "Stored message vector: $messageId -> $vectorId")
+                vectorId
             }
-
-            // Generate only when this exact message/model version is not already persisted.
-            val embedding = embedCached(content, "EMBEDDING_STORE_${contentType.uppercase()}")
-            val metadata =
-                mapOf(
-                    "owner_id" to ownerId,
-                    "character_id" to characterId,
-                    "session_id" to sessionId,
-                    "message_id" to messageId,
-                    "content_type" to contentType,
-                    "content" to content,
-                    "embedding_model" to embeddingModelId,
-                    "created_at" to System.currentTimeMillis().toString(),
-                )
-
-            // Stable IDs make repeated writes idempotent instead of accumulating duplicates.
-            vectorStore.add(vectorId, embedding, metadata)
-
-            Log.d(TAG, "Stored message vector: $messageId -> $vectorId")
-
-            return vectorId
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
