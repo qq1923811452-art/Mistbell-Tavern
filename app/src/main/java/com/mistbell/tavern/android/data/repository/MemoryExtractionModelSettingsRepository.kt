@@ -20,22 +20,21 @@ data class MemoryExtractionModelSettings(
     /** Return a safe, user-facing reason when this endpoint must not be used. */
     fun endpointRejectionReason(): String? {
         val normalizedBaseUrl = baseUrl.trim().trimEnd('/')
-        if (normalizedBaseUrl.isBlank()) return "API 基础地址不能为空"
         val endpoint = runCatching { URI(normalizedBaseUrl) }.getOrNull()
-            ?: return "API 基础地址格式无效"
-        val scheme = endpoint.scheme?.lowercase()
-        val host = endpoint.host?.lowercase()
-        if (scheme !in setOf("http", "https") || host.isNullOrBlank()) {
-            return "API 基础地址必须是有效的 HTTP 或 HTTPS URL"
-        }
-        if (!endpoint.rawUserInfo.isNullOrBlank()) {
-            return "API 基础地址不能包含用户名或密码"
-        }
+        val scheme = endpoint?.scheme?.lowercase()
+        val host = endpoint?.host?.lowercase()
         val loopback = host in setOf("localhost", "127.0.0.1", "::1", "[::1]")
-        if (scheme == "http" && !loopback) {
-            return "远程 API 必须使用 HTTPS；HTTP 仅允许本机回环地址"
+
+        return when {
+            normalizedBaseUrl.isBlank() -> "API 基础地址不能为空"
+            endpoint == null -> "API 基础地址格式无效"
+            scheme !in setOf("http", "https") || host.isNullOrBlank() ->
+                "API 基础地址必须是有效的 HTTP 或 HTTPS URL"
+            !endpoint.rawUserInfo.isNullOrBlank() -> "API 基础地址不能包含用户名或密码"
+            scheme == "http" && !loopback ->
+                "远程 API 必须使用 HTTPS；HTTP 仅允许本机回环地址"
+            else -> null
         }
-        return null
     }
 
     /** Remote endpoints require a key; a blank key is accepted only for loopback endpoints. */
