@@ -9,7 +9,7 @@ The `feature` branch is a legacy/diverged work line. PR #31 (memory/embedding pi
 For ongoing work that continues the consolidated PR #29 line, use:
 
 - **Canonical integration branch:** `codex/full-project-audit-pr29-2026-10-14` (the source branch of PR #29)
-- **Follow-up staging branch:** `codex/pr29-followup-integration-2026-10-15` (temporary branch for review before its changes are integrated into PR #29)
+- **Follow-up staging branch:** Use the active staging branch identified in the relevant pull request; do not hard-code temporary branch names in long-lived contributor guidance.
 - **PR #29:** https://github.com/qq1923811452-art/Mistbell-Tavern/pull/29
 
 ## Rules
