@@ -185,6 +185,18 @@ class ChatProtocolTest {
     }
 
     @Test
+    fun `gemini 非流式解析 cachedContentTokenCount`() {
+        val body =
+            """{"candidates":[{"content":{"parts":[{"text":"答案"}],"role":"model"},"finishReason":"STOP"}],
+               "usageMetadata":{"promptTokenCount":100,"candidatesTokenCount":5,"totalTokenCount":105,
+                   "cachedContentTokenCount":80}}"""
+        val usage = GeminiChatProtocol.parseContent(body).usage
+        assertEquals(80, usage?.reportedCacheHitTokens)
+        assertEquals(20, usage?.reportedCacheMissTokens)
+        assertTrue(usage?.cacheTelemetryAvailable == true)
+    }
+
+    @Test
     fun `gemini 流式 chunk 产出正文增量`() {
         val data =
             """{"candidates":[{"content":{"parts":[{"text":"逐字"}],"role":"model"}}]}"""
