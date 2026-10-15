@@ -45,6 +45,13 @@ interface VectorStore {
     suspend fun get(id: String): VectorEntry?
 
     /**
+     * Snapshot all persisted entries for explicit maintenance operations such as legacy reindexing.
+     * Implementations that cannot provide a reliable snapshot must fail explicitly.
+     */
+    suspend fun getAllEntries(): List<VectorEntry> =
+        throw UnsupportedOperationException("Vector store does not support entry snapshots")
+
+    /**
      * 根据 ID 删除向量
      */
     suspend fun delete(id: String)
