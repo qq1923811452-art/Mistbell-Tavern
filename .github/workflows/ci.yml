@@ -19,8 +19,7 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      # GitHub 托管的 ubuntu-latest runner 已预装 Android SDK，
-      # 不再调用 setup-android 安装旧的 "tools" 包，避免 sdkmanager 报错。
+      # Routine CI deliberately avoids APK packaging; APK/device validation is a final-stage task.
 
       - name: Set up Gradle（缓存与校验）
         uses: gradle/actions/setup-gradle@v4
@@ -29,22 +28,12 @@ jobs:
         run: chmod +x gradlew
 
       - name: Apply Kotlin formatting
-        # Keep CI formatting behavior aligned with the verified APK workflow.
-        # The ktlintCheck task below remains a required gate after formatting.
+        # Keep the repository's existing formatter-first quality gate; APK packaging remains deferred.
         run: ./gradlew :app:ktlintFormat --rerun-tasks --no-daemon || echo "Formatting reported baseline/style issues; continuing to the required ktlintCheck gate."
 
-      - name: Build & Verify
-        # Build + unit tests + detekt + ktlint + license guard; no quality checks are skipped.
-        run: ./gradlew :app:assembleDebug :app:testDebugUnitTest :app:detekt :app:ktlintCheck licenseGuard --continue --no-daemon
-
-      - name: Upload debug APK
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: mistbell-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
-          if-no-files-found: error
-          retention-days: 14
+      - name: Compile, test, and verify
+        # Compile + unit tests + detekt + ktlint + license guard. APK packaging is deferred to final validation.
+        run: ./gradlew :app:compileDebugKotlin :app:testDebugUnitTest :app:detekt :app:ktlintCheck licenseGuard --continue --no-daemon --no-parallel
 
       - name: Upload reports (on failure)
         if: failure()
