@@ -7,6 +7,7 @@ import com.mistbell.tavern.android.data.api.model.WorldBook
 import com.mistbell.tavern.android.data.api.model.WorldBookEntry
 import com.mistbell.tavern.android.data.local.entity.WorldBookEntity
 import com.mistbell.tavern.android.data.local.entity.WorldBookEntryEntity
+import com.mistbell.tavern.android.data.local.entity.SettingsEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -119,6 +120,41 @@ class WorldBookRepository(private val context: Context) {
         withContext(Dispatchers.IO) {
             db.worldBookDao().deleteEntryById(entryId)
         }
+    }
+
+    // Global recursive World Info settings use the existing settings KV table; no Room migration is needed.
+    fun observeRecursiveScanEnabled(): Flow<Boolean> =
+        db.settingsDao().observeValue(KEY_RECURSIVE_SCAN_ENABLED).map { it != "0" }
+
+    fun observeRecursiveScanDepth(): Flow<Int> =
+        db.settingsDao().observeValue(KEY_RECURSIVE_SCAN_DEPTH).map {
+            it?.toIntOrNull()?.coerceIn(MIN_RECURSION_DEPTH, MAX_RECURSION_DEPTH)
+                ?: DEFAULT_RECURSION_DEPTH
+        }
+
+    suspend fun setRecursiveScanEnabled(enabled: Boolean) {
+        withContext(Dispatchers.IO) {
+            db.settingsDao().upsert(SettingsEntity(KEY_RECURSIVE_SCAN_ENABLED, if (enabled) "1" else "0"))
+        }
+    }
+
+    suspend fun setRecursiveScanDepth(depth: Int) {
+        withContext(Dispatchers.IO) {
+            db.settingsDao().upsert(
+                SettingsEntity(
+                    KEY_RECURSIVE_SCAN_DEPTH,
+                    depth.coerceIn(MIN_RECURSION_DEPTH, MAX_RECURSION_DEPTH).toString(),
+                ),
+            )
+        }
+    }
+
+    companion object {
+        const val KEY_RECURSIVE_SCAN_ENABLED = "worldbook_recursive_scan_enabled"
+        const val KEY_RECURSIVE_SCAN_DEPTH = "worldbook_recursive_scan_depth"
+        const val MIN_RECURSION_DEPTH = 1
+        const val MAX_RECURSION_DEPTH = 5
+        const val DEFAULT_RECURSION_DEPTH = 3
     }
 
     suspend fun exportWorldBook(): JsonElement? {
