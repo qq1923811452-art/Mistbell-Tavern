@@ -729,7 +729,10 @@ private fun writeBytesAtomically(
     } catch (e: java.io.IOException) {
         output?.let { runCatching { atomicFile.failWrite(it) } }
         throw e
-    } catch (e: RuntimeException) {
+    } catch (e: SecurityException) {
+        output?.let { runCatching { atomicFile.failWrite(it) } }
+        throw e
+    } catch (e: IllegalStateException) {
         output?.let { runCatching { atomicFile.failWrite(it) } }
         throw e
     }
