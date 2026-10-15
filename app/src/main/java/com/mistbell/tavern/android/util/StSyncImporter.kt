@@ -346,13 +346,13 @@ object StSyncImporter {
         return report
     }
 
-    /** 读文档树文件为 UTF-8 文本（去 BOM）；打不开返回 null（坏字节成 U+FFFD 由解析失败兜住，不致命） */
+    /** 读文档树文件为 UTF-8 文本（去 BOM）；打不开或超过大小上限返回 null（由解析失败兜住，不致命） */
     private fun readText(
         context: Context,
         uri: Uri,
     ): String? =
         context.contentResolver.openInputStream(uri)?.use { stream ->
-            String(stream.readBytes(), Charsets.UTF_8)
+            runCatching { BoundedRead.text(stream, label = "文档树文件 ") }.getOrNull()
         }?.removePrefix("\uFEFF")
 
     /**

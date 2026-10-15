@@ -434,7 +434,7 @@ object CharacterImporter {
     ): CharacterImportResult? {
         return try {
             val inputStream: InputStream? = context.contentResolver.openInputStream(uri)
-            val jsonString = inputStream?.bufferedReader()?.use { it.readText() } ?: return null
+            val jsonString = inputStream?.use { BoundedRead.text(it, label = "角色卡 JSON ") } ?: return null
             CardParser.parse(jsonString)
         } catch (e: Exception) {
             android.util.Log.e("CharacterImporter", "读取 JSON 文件失败", e)
@@ -455,7 +455,7 @@ object CharacterImporter {
     ): CharacterImportResult? {
         return try {
             val bytes =
-                context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                context.contentResolver.openInputStream(uri)?.use { BoundedRead.bytes(it, label = "角色卡 PNG ") }
                     ?: return null
             val chunkText = PngCard.readTextChunk(bytes) ?: return null
             // v1 卡兜底：chunk 值不是 base64 但以 { 开头时按裸 JSON 处理
