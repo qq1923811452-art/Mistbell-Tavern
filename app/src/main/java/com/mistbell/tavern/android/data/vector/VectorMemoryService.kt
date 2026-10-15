@@ -35,6 +35,7 @@ private fun recordVectorStorageFailure(
  * 1. 存储消息到向量数据库
  * 2. 语义检索相关记忆
  */
+@Suppress("TooManyFunctions")
 class VectorMemoryService(
     private val vectorStore: VectorStore,
     private val embeddingService: EmbeddingService,
