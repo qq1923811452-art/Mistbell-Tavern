@@ -188,6 +188,7 @@ fun ChatScreen(
     val groupMode by viewModel.groupMode.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
     val isOnline by viewModel.isOnline.collectAsStateWithLifecycle()
+    val embeddingRuntimeStatus by viewModel.embeddingRuntimeStatus.collectAsStateWithLifecycle()
     // 项目②：会话级 API 实测用量聚合（顶栏命中率）与最近一条实测（调试面板对照）
     val usageSummary by viewModel.usageSummary.collectAsStateWithLifecycle()
     val latestAssistantUsage by viewModel.latestAssistantUsage.collectAsStateWithLifecycle()
@@ -439,6 +440,7 @@ fun ChatScreen(
                         usageRounds = usageSummary.messageCount,
                         usageTotalTokens = usageSummary.totalTokens,
                         usageCacheHitRate = usageSummary.cacheHitRate,
+                        embeddingRuntimeStatus = embeddingRuntimeStatus,
                     )
                 },
                 snackbarHost = { SnackbarHost(snackbarHostState) },
