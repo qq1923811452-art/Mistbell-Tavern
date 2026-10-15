@@ -12,9 +12,9 @@ import com.mistbell.tavern.android.data.prompt.PromptBuilder.PromptTrace
 import com.mistbell.tavern.android.data.repository.ChatRepository
 import com.mistbell.tavern.android.data.repository.ChatSettingsResolver
 import com.mistbell.tavern.android.data.repository.ThemePackRepository
-import com.mistbell.tavern.android.data.vector.EmbeddingRuntimeStatus
 import com.mistbell.tavern.android.data.theme.ThemeSupport
 import com.mistbell.tavern.android.data.theme.ThemeTokens
+import com.mistbell.tavern.android.data.vector.EmbeddingRuntimeStatus
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi

@@ -14,6 +14,5 @@ internal object EmbeddingGemma2InputPolicy {
     fun format(
         text: String,
         isQuery: Boolean,
-    ): String =
-        (if (isQuery) QUERY_PREFIX else DOCUMENT_PREFIX) + text.trim()
+    ): String = (if (isQuery) QUERY_PREFIX else DOCUMENT_PREFIX) + text.trim()
 }

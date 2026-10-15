@@ -455,10 +455,11 @@ class OpenAIEmbeddingService(
 
         val orderedIndexes =
             validateEmbeddingResponseOrder(embeddingResponse.data.map { it.index }, texts.size)
-        val embeddings = orderedIndexes.map { index ->
-            val embedding = embeddingResponse.data[index].embedding
-            FloatArray(embedding.size) { i -> embedding[i].toFloat() }
-        }
+        val embeddings =
+            orderedIndexes.map { index ->
+                val embedding = embeddingResponse.data[index].embedding
+                FloatArray(embedding.size) { i -> embedding[i].toFloat() }
+            }
         val dimensions = embeddings.map { it.size }.distinct()
         val expectedDimension = lastKnownDimension
         check(

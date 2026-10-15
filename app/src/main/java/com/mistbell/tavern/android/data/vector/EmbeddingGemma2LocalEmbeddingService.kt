@@ -11,14 +11,14 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.job
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.job
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
@@ -133,9 +133,10 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
                 temporaryFile.delete()
                 val call = httpClient.newCall(Request.Builder().url(COMPAT_MODEL_URL).get().build())
                 val coroutineContext = currentCoroutineContext()
-                val cancellationHandle = coroutineContext.job.invokeOnCompletion { cause ->
-                    if (cause is CancellationException) call.cancel()
-                }
+                val cancellationHandle =
+                    coroutineContext.job.invokeOnCompletion { cause ->
+                        if (cause is CancellationException) call.cancel()
+                    }
                 try {
                     call.execute().use { response ->
                         if (!response.isSuccessful) {
@@ -371,9 +372,8 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
                 }
             }
         }
-        private fun createCompatibleEngine(
-            modelPath: String,
-        ): EmbeddingGemma2LocalEmbeddingService {
+
+        private fun createCompatibleEngine(modelPath: String): EmbeddingGemma2LocalEmbeddingService {
             var gpuFailure: Throwable? = null
             var gpuEngine: EmbeddingEngine? = null
             try {
@@ -430,24 +430,28 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
 
     private val inferenceMutex = Mutex()
 
-    override fun modelId(): String =
-        "local:embeddinggemma-2-text-270m-litertlm:$modelVariant:$EXPECTED_DIMENSION"
+    override fun modelId(): String = "local:embeddinggemma-2-text-270m-litertlm:$modelVariant:$EXPECTED_DIMENSION"
 
     override fun supportsLegacyVectors(): Boolean = false
 
     override fun getDimension(): Int = EXPECTED_DIMENSION
 
-    override suspend fun embed(text: String): FloatArray =
-        embedDocument(text, "LOCAL_GEMMA_UNSPECIFIED")
+    override suspend fun embed(text: String): FloatArray = embedDocument(text, "LOCAL_GEMMA_UNSPECIFIED")
 
-    override suspend fun embed(text: String, source: String): FloatArray =
-        embedDocument(text, source)
+    override suspend fun embed(
+        text: String,
+        source: String,
+    ): FloatArray = embedDocument(text, source)
 
-    override suspend fun embedDocument(text: String, source: String): FloatArray =
-        embedWithRole(text, source, isQuery = false)
+    override suspend fun embedDocument(
+        text: String,
+        source: String,
+    ): FloatArray = embedWithRole(text, source, isQuery = false)
 
-    override suspend fun embedQuery(text: String, source: String): FloatArray =
-        embedWithRole(text, source, isQuery = true)
+    override suspend fun embedQuery(
+        text: String,
+        source: String,
+    ): FloatArray = embedWithRole(text, source, isQuery = true)
 
     private suspend fun embedWithRole(
         text: String,
@@ -466,10 +470,11 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
             try {
                 val normalizedText = text.trim()
                 val input = InputData.Text(EmbeddingGemma2InputPolicy.format(normalizedText, isQuery))
-                val vector = inferenceMutex.withLock {
-                    val embedding = engine.computeEmbedding(listOf(input)).embedding
-                    FloatArray(embedding.size) { embedding[it].toFloat() }
-                }
+                val vector =
+                    inferenceMutex.withLock {
+                        val embedding = engine.computeEmbedding(listOf(input)).embedding
+                        FloatArray(embedding.size) { embedding[it].toFloat() }
+                    }
                 require(vector.isNotEmpty() && vector.all { it.isFinite() }) {
                     "EmbeddingGemma 2 returned an empty or non-finite vector"
                 }
@@ -517,11 +522,12 @@ class EmbeddingGemma2LocalEmbeddingService private constructor(
 
     // LiteRT-LM's input list represents one multimodal embedding, not independent batch rows.
     // Process each document separately; cancellation throws before a partial list can be returned.
-    override suspend fun embedBatch(texts: List<String>): List<FloatArray> =
-        embedBatch(texts, "LOCAL_GEMMA_BATCH")
+    override suspend fun embedBatch(texts: List<String>): List<FloatArray> = embedBatch(texts, "LOCAL_GEMMA_BATCH")
 
-    override suspend fun embedBatch(texts: List<String>, source: String): List<FloatArray> =
-        texts.map { embedDocument(it, source) }
+    override suspend fun embedBatch(
+        texts: List<String>,
+        source: String,
+    ): List<FloatArray> = texts.map { embedDocument(it, source) }
 
     override fun close() {
         engine.close()

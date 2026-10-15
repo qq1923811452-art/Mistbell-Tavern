@@ -50,9 +50,15 @@ interface EmbeddingService {
     ): FloatArray = embed(text)
 
     /** Explicit role hooks; asymmetric embedding models can apply the correct task instruction. */
-    suspend fun embedQuery(text: String, source: String): FloatArray = embed(text, source)
+    suspend fun embedQuery(
+        text: String,
+        source: String,
+    ): FloatArray = embed(text, source)
 
-    suspend fun embedDocument(text: String, source: String): FloatArray = embed(text, source)
+    suspend fun embedDocument(
+        text: String,
+        source: String,
+    ): FloatArray = embed(text, source)
 
     /**
      * 批量转换文本为向量
