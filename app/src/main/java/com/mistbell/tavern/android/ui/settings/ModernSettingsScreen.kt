@@ -176,6 +176,8 @@ fun ModernSettingsScreen(
 
                     MemorySettingsSection(viewModel, advanced = true)
 
+                    MemoryExtractionModelSettingsSection()
+
                     SamplingPresetSection(viewModel)
 
                     AdvancedSamplingSection(viewModel)
