@@ -242,63 +242,68 @@ object CharxImporter {
     }
 
     /**
-     * 保存 CHARX 资源到本地存储
-     * @return 资源文件路径映射
+     * 资材落盘结果。
+     *
+     * 之所以不直接返回路径映射：旧实现把异常整个吞掉后返回**部分**映射，
+     * 调用方只能看到「已保存 N 个资源」，无法得知另外几个**写失败了** ——
+     * 对用户是「看起来成功、实际缺文件」。失败项必须能传到 UI。
+     */
+    data class AssetSaveResult(
+        val paths: Map<String, String>,
+        val failures: List<String>,
+    )
+
+    /**
+     * 保存 CHARX 资源到本地存储。
+     *
+     * 单个资材写入失败**不影响其余资材**，也不会中断角色导入（资材是次要的），
+     * 但每个失败都会被记录进 [AssetSaveResult.failures]，由调用方如实上报。
      */
     fun saveAssets(
         context: Context,
         characterId: String,
         assets: CharxAssets,
-    ): Map<String, String> {
+    ): AssetSaveResult {
         val assetPaths = mutableMapOf<String, String>()
+        val failures = mutableListOf<String>()
         val baseDir = File(context.filesDir, "character_assets/$characterId")
 
-        try {
-            // 创建目录
-            baseDir.mkdirs()
-
-            // 保存头像
-            assets.avatar?.let { data ->
-                val file = File(baseDir, "avatar.png")
-                AtomicWrite.bytes(file, data)
-                assetPaths["avatar"] = file.absolutePath
-            }
-
-            // 保存表情立绘
-            if (assets.expressions.isNotEmpty()) {
-                val expressionsDir = File(baseDir, "expressions")
-                expressionsDir.mkdirs()
-
-                assets.expressions.forEach { (name, data) ->
-                    val file = File(expressionsDir, "$name.png")
-                    AtomicWrite.bytes(file, data)
-                    assetPaths["expression_$name"] = file.absolutePath
-                }
-            }
-
-            // 保存背景图
-            assets.background?.let { data ->
-                val file = File(baseDir, "background.png")
-                AtomicWrite.bytes(file, data)
-                assetPaths["background"] = file.absolutePath
-            }
-
-            // 保存音频文件
-            if (assets.audioFiles.isNotEmpty()) {
-                val audioDir = File(baseDir, "audio")
-                audioDir.mkdirs()
-
-                assets.audioFiles.forEach { (fileName, data) ->
-                    val file = File(audioDir, fileName)
-                    AtomicWrite.bytes(file, data)
-                    assetPaths["audio_$fileName"] = file.absolutePath
-                }
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
+        fun save(
+            file: File,
+            label: String,
+            data: ByteArray,
+        ) {
+            runCatching { AtomicWrite.bytes(file, data) }
+                .onSuccess { assetPaths[label] = file.absolutePath }
+                .onFailure { failures += "$label（${it.message ?: it.javaClass.simpleName}）" }
         }
 
-        return assetPaths
+        // 创建目录
+        baseDir.mkdirs()
+
+        // 保存头像
+        assets.avatar?.let { save(File(baseDir, "avatar.png"), "avatar", it) }
+
+        // 保存表情立绘
+        if (assets.expressions.isNotEmpty()) {
+            val expressionsDir = File(baseDir, "expressions")
+            expressionsDir.mkdirs()
+            assets.expressions.forEach { (name, data) ->
+                save(File(expressionsDir, "$name.png"), "expression_$name", data)
+            }
+        }
+
+        // 保存背景图
+        assets.background?.let { save(File(baseDir, "background.png"), "background", it) }
+
+        // 保存音频文件
+        if (assets.audioFiles.isNotEmpty()) {
+            val audioDir = File(baseDir, "audio")
+            audioDir.mkdirs()
+            assets.audioFiles.forEach { (fileName, data) -> save(File(audioDir, fileName), "audio_$fileName", data) }
+        }
+
+        return AssetSaveResult(assetPaths, failures)
     }
 
     /**
