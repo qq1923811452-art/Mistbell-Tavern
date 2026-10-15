@@ -397,8 +397,9 @@ class VectorMemoryServiceInstrumentedTest {
 
             assertTrue("Recovery should run only after explicit invocation", store.recoverCorruptStorage())
 
+            val quarantineDirectory = File(context.filesDir, "vector_store_quarantine")
             val quarantined =
-                context.filesDir.listFiles()?.firstOrNull {
+                quarantineDirectory.listFiles()?.firstOrNull {
                     it.name.startsWith("vector_store.corrupt-") && it.name.endsWith(".json")
                 }
             assertNotNull("The original corrupt file must be preserved", quarantined)
