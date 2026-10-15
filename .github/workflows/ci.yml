@@ -171,9 +171,11 @@ jobs:
           cp "$qnn_lib_dir/libQnnSystem.so" "$native_dir/"
           cp "$qnn_lib_dir/libQnnHtpPrepare.so" "$native_dir/"
           find "$qnn_lib_dir" -maxdepth 1 -type f -name 'libQnnHtpV75*.so' -exec cp {} "$native_dir/" \\;
-          skel_library="$(find "$QNN_SDK_ROOT" -type f -name 'libQnnHtpV75Skel.so' -print -quit)"
-          test -n "$skel_library"
-          cp "$skel_library" "$native_dir/"
+          skel_libraries="$(find "$QNN_SDK_ROOT" -type f -name 'libQnnHtpV75*Skel.so' -print)"
+          test -n "$skel_libraries"
+          while IFS= read -r skel_library; do
+            cp "$skel_library" "$native_dir/"
+          done <<< "$skel_libraries"
           for library in libLiteRtDispatch_Qualcomm.so libQnnHtp.so libQnnSystem.so libQnnHtpPrepare.so libQnnHtpV75Stub.so libQnnHtpV75Skel.so; do
             test -s "$native_dir/$library"
           done
