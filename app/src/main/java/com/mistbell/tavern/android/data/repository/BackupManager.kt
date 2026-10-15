@@ -811,19 +811,6 @@ private fun auxiliaryRestoreWarning(error: Exception): List<String> {
     return listOf("数据已恢复，但部分资材文件未写入；请检查附件是否完整。")
 }
 
-
-/** Add the config ID to Keystore failures so a failed restore is diagnosable. */
-internal fun wrapRestoredApiKey(
-    id: String,
-    plainApiKey: String,
-    wrap: (String) -> String,
-): String =
-    try {
-        wrap(plainApiKey)
-    } catch (e: IllegalStateException) {
-        throw IllegalStateException("无法加密备份中 API 配置 $id 的密钥，已中止恢复", e)
-    }
-
 /** Reject ambiguous duplicate primary keys in imported tables before the merge transaction. */
 internal fun <T> requireUniqueBackupIds(
     entries: List<T>,
