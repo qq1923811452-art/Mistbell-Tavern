@@ -2,6 +2,8 @@ package com.mistbell.tavern.android.service
 
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -81,6 +83,30 @@ class TemporalMemoryFactPolicyTest {
         assertEquals("2026-10-15T12:00:00Z", decoded["valid_to"])
         assertEquals("20", decoded["superseded_by"])
         assertEquals("Alice", decoded["object"])
+    }
+
+    @Test
+    fun `temporal updates preserve non-string structured fields`() {
+        val original =
+            """{"subject":"user","relation":"name","object":"Alice","confidence":0.95,"aliases":["A","Al"],"extra":{"source":"chat"}}"""
+
+        val updated = TemporalMemoryFactPolicy.markHistorical(original, "2026-10-15T12:00:00Z", 20L)
+        val decoded = Json.parseToJsonElement(updated).jsonObject
+
+        assertEquals("Alice", decoded["object"]?.jsonPrimitive?.content)
+        assertEquals("0.95", decoded["confidence"]?.jsonPrimitive?.content)
+        assertEquals("""["A","Al"]""", decoded["aliases"].toString())
+        assertEquals("""{"source":"chat"}""", decoded["extra"].toString())
+        assertEquals("historical", decoded["status"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun `malformed legacy structured data is preserved during temporal update`() {
+        val updated = TemporalMemoryFactPolicy.markHistorical("not-json", "2026-10-15T12:00:00Z", 20L)
+        val decoded = Json.parseToJsonElement(updated).jsonObject
+
+        assertEquals("not-json", decoded["legacy_raw"]?.jsonPrimitive?.content)
+        assertEquals("historical", decoded["status"]?.jsonPrimitive?.content)
     }
 
     @Test
