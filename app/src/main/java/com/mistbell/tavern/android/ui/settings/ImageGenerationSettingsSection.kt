@@ -37,11 +37,11 @@ import com.mistbell.tavern.android.data.image.ImageGenerationConfig
 import com.mistbell.tavern.android.data.image.ImageGenerationService
 import com.mistbell.tavern.android.data.local.entity.SettingsEntity
 import com.mistbell.tavern.android.ui.common.ModernSettingsGroup
+import com.mistbell.tavern.android.util.ApiEndpointPolicy
 import com.mistbell.tavern.android.util.SecureStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
 
 private const val IMAGE_API_BASE_URL = "image_api_base_url"
 private const val IMAGE_API_KEY = "image_api_key"
@@ -59,6 +59,7 @@ fun ImageGenerationSettingsSection() {
     val scope = rememberCoroutineScope()
     var baseUrl by remember { mutableStateOf("") }
     var apiKey by remember { mutableStateOf("") }
+    var apiKeyUnreadable by remember { mutableStateOf(false) }
     var model by remember { mutableStateOf("") }
     var prompt by remember { mutableStateOf("") }
     var width by remember { mutableStateOf(DEFAULT_IMAGE_DIMENSION.toString()) }
@@ -68,17 +69,23 @@ fun ImageGenerationSettingsSection() {
     var generatedPath by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
-        val values =
+        val loaded =
             withContext(Dispatchers.IO) {
-                listOf(
-                    settingsDao.getValue(IMAGE_API_BASE_URL).orEmpty(),
-                    SecureStore.unwrap(settingsDao.getValue(IMAGE_API_KEY).orEmpty()),
-                    settingsDao.getValue(IMAGE_API_MODEL).orEmpty(),
+                val storedKey = settingsDao.getValue(IMAGE_API_KEY).orEmpty()
+                val decryptedKey = SecureStore.unwrapOrNull(storedKey)
+                Pair(
+                    listOf(
+                        settingsDao.getValue(IMAGE_API_BASE_URL).orEmpty(),
+                        decryptedKey.orEmpty(),
+                        settingsDao.getValue(IMAGE_API_MODEL).orEmpty(),
+                    ),
+                    decryptedKey == null,
                 )
             }
-        baseUrl = values[0]
-        apiKey = values[1]
-        model = values[2]
+        baseUrl = loaded.first[0]
+        apiKey = loaded.first[1]
+        model = loaded.first[2]
+        apiKeyUnreadable = loaded.second
     }
 
     ModernSettingsGroup(title = "🖼️ 独立生图 API") {
@@ -101,7 +108,11 @@ fun ImageGenerationSettingsSection() {
             )
             OutlinedTextField(
                 value = apiKey,
-                onValueChange = { apiKey = it; status = null },
+                onValueChange = {
+                    apiKey = it
+                    apiKeyUnreadable = it.isBlank()
+                    status = null
+                },
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text("独立生图 API Key（可留空）") },
                 visualTransformation = PasswordVisualTransformation(),
@@ -149,6 +160,15 @@ fun ImageGenerationSettingsSection() {
                             busy = true
                             status = null
                             try {
+                                val endpointError = ApiEndpointPolicy.writeRejectionReason(baseUrl)
+                                if (endpointError != null) {
+                                    status = endpointError
+                                    return@launch
+                                }
+                                if (apiKeyUnreadable) {
+                                    status = "旧生图 API Key 无法解密；请重新输入密钥后再保存，原密文不会被覆盖。"
+                                    return@launch
+                                }
                                 withContext(Dispatchers.IO) {
                                     settingsDao.upsert(SettingsEntity(IMAGE_API_BASE_URL, baseUrl.trim()))
                                     settingsDao.upsert(SettingsEntity(IMAGE_API_KEY, SecureStore.wrap(apiKey.trim())))
@@ -162,7 +182,7 @@ fun ImageGenerationSettingsSection() {
                             }
                         }
                     },
-                    enabled = !busy,
+                    enabled = !busy && !apiKeyUnreadable,
                 ) { Text("保存配置") }
                 Button(
                     onClick = {
@@ -191,7 +211,7 @@ fun ImageGenerationSettingsSection() {
                             }
                         }
                     },
-                    enabled = !busy && prompt.isNotBlank() && baseUrl.isNotBlank() && model.isNotBlank(),
+                    enabled = !busy && !apiKeyUnreadable && prompt.isNotBlank() && baseUrl.isNotBlank() && model.isNotBlank(),
                 ) {
                     if (busy) {
                         CircularProgressIndicator(
