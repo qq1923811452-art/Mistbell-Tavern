@@ -293,11 +293,13 @@ class BackupManager(private val context: Context) {
          * per-row salvage behavior when at least one record remains decodable.
          */
         internal fun <T> decodeBackupList(
-            text: String?,
+            files: Map<String, String>,
+            manifest: BackupManifest,
             entryName: String,
-            expectedCount: Int?,
             serializer: KSerializer<T>,
         ): List<T> {
+            val text = files[entryName]
+            val expectedCount = manifest.counts[entryName]
             if (text == null) {
                 require(expectedCount == null || expectedCount == 0) {
                     "备份文件损坏：清单声明 $entryName 有 $expectedCount 条数据，但缺少该文件"
@@ -483,86 +485,86 @@ class BackupManager(private val context: Context) {
         Tables(
             characters =
                 decodeBackupList(
-                    files[CHARACTERS],
+                    files,
+                    manifest,
                     CHARACTERS,
-                    manifest.counts[CHARACTERS],
                     CharacterEntity.serializer(),
                 ),
             sessions =
                 decodeBackupList(
-                    files[SESSIONS],
+                    files,
+                    manifest,
                     SESSIONS,
-                    manifest.counts[SESSIONS],
                     SessionEntity.serializer(),
                 ),
             messages =
                 decodeBackupList(
-                    files[MESSAGES],
+                    files,
+                    manifest,
                     MESSAGES,
-                    manifest.counts[MESSAGES],
                     MessageEntity.serializer(),
                 ),
             memories =
                 decodeBackupList(
-                    files[MEMORIES],
+                    files,
+                    manifest,
                     MEMORIES,
-                    manifest.counts[MEMORIES],
                     MemoryEntity.serializer(),
                 ),
             worldBooks =
                 decodeBackupList(
-                    files[WORLD_BOOKS],
+                    files,
+                    manifest,
                     WORLD_BOOKS,
-                    manifest.counts[WORLD_BOOKS],
                     WorldBookEntity.serializer(),
                 ),
             worldBookEntries =
                 decodeBackupList(
-                    files[WORLD_BOOK_ENTRIES],
+                    files,
+                    manifest,
                     WORLD_BOOK_ENTRIES,
-                    manifest.counts[WORLD_BOOK_ENTRIES],
                     WorldBookEntryEntity.serializer(),
                 ),
             settings =
                 decodeBackupList(
-                    files[SETTINGS],
+                    files,
+                    manifest,
                     SETTINGS,
-                    manifest.counts[SETTINGS],
                     SettingsBackupEntry.serializer(),
                 ),
             structuredMemories =
                 decodeBackupList(
-                    files[STRUCTURED_MEMORY],
+                    files,
+                    manifest,
                     STRUCTURED_MEMORY,
-                    manifest.counts[STRUCTURED_MEMORY],
                     StructuredMemoryEntity.serializer(),
                 ),
             vectorMemories =
                 decodeBackupList(
-                    files[VECTOR_MEMORY],
+                    files,
+                    manifest,
                     VECTOR_MEMORY,
-                    manifest.counts[VECTOR_MEMORY],
                     VectorMemoryEntity.serializer(),
                 ),
             themePacks =
                 decodeBackupList(
-                    files[THEME_PACKS],
+                    files,
+                    manifest,
                     THEME_PACKS,
-                    manifest.counts[THEME_PACKS],
                     ThemePackEntity.serializer(),
                 ),
             apiConfigs =
                 decodeBackupList(
-                    files[API_CONFIGS],
+                    files,
+                    manifest,
                     API_CONFIGS,
-                    manifest.counts[API_CONFIGS],
                     ApiConfigBackupEntry.serializer(),
                 ),
             customPrompts =
                 decodeBackupList(
-                    files[CUSTOM_PROMPTS],
+                    files,
+                    manifest,
                     CUSTOM_PROMPTS,
-                    manifest.counts[CUSTOM_PROMPTS],
                     CustomPromptBackupEntry.serializer(),
                 ),
         )
