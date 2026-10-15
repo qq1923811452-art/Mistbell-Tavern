@@ -14,7 +14,9 @@ import com.mistbell.tavern.android.data.vector.VectorCacheStatistics
 import com.mistbell.tavern.android.data.vector.VectorMemoryService
 import com.mistbell.tavern.android.data.vector.VectorStore
 import com.mistbell.tavern.android.util.SecureStore
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.flow.StateFlow
 
 /**
