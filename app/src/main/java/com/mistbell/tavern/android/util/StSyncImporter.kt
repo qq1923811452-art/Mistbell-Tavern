@@ -370,7 +370,8 @@ object StSyncImporter {
         uri: Uri,
     ): String? =
         context.contentResolver.openInputStream(uri)?.use { stream ->
-            runCatching { BoundedRead.text(stream, label = "文档树文件 ") }.getOrNull()
+            // Let size-limit/read failures reach the per-file catch so SyncReport explains the failure.
+            BoundedRead.text(stream, label = "文档树文件 ")
         }?.removePrefix("\uFEFF")
 
     /**
