@@ -5,11 +5,13 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
 
 class LegacyVectorReindexTest {
     @Test
-    fun `reindexes legacy entry and removes it only after replacement is stored`() = runBlocking {
+    fun `reindexes legacy entry and removes it only after replacement is stored`() =
+        runBlocking {
         val store = FakeVectorStore(
             VectorStore.VectorEntry(
                 id = "legacy-vector",
@@ -128,7 +130,11 @@ class LegacyVectorReindexTest {
     ) : VectorStore {
         val entries = linkedMapOf(initial.id to initial)
 
-        override suspend fun add(id: String, vector: FloatArray, metadata: Map<String, Any>) {
+        override suspend fun add(
+            id: String,
+            vector: FloatArray,
+            metadata: Map<String, Any>,
+        ) {
             entries[id] = VectorStore.VectorEntry(id, vector, metadata)
         }
 
@@ -142,7 +148,8 @@ class LegacyVectorReindexTest {
             filters: Map<String, Any>,
         ): List<VectorStore.SearchResult> = emptyList()
 
-        override suspend fun get(id: String): VectorStore.VectorEntry? = entries[id]
+        override suspend fun get(id: String): VectorStore.VectorEntry? =
+            entries[id]
 
         override suspend fun getAllEntries(): List<VectorStore.VectorEntry> = entries.values.toList()
 
