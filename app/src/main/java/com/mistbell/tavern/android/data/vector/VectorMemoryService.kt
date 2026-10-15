@@ -482,6 +482,23 @@ class VectorMemoryService(
     private suspend fun reindexLegacyBatch(
         batch: List<LegacyVectorCandidate>,
     ): LegacyBatchResult {
+        // Reindexing shares stable IDs with normal writes. Hold the bounded stripe set across
+        // recheck/embed/persist/delete so a newer message cannot be overwritten between steps.
+        val acquiredLocks = mutableListOf<Mutex>()
+        try {
+            vectorWriteMutexes.forEach { mutex ->
+                mutex.lock()
+                acquiredLocks += mutex
+            }
+            return reindexLegacyBatchLocked(batch)
+        } finally {
+            acquiredLocks.asReversed().forEach { mutex -> mutex.unlock() }
+        }
+    }
+
+    private suspend fun reindexLegacyBatchLocked(
+        batch: List<LegacyVectorCandidate>,
+    ): LegacyBatchResult {
         // Recheck target IDs immediately before embedding. Another writer may have stored
         // a newer version after the initial snapshot; never overwrite that version blindly.
         val readyBatch = mutableListOf<LegacyVectorCandidate>()
