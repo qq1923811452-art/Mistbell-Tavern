@@ -419,6 +419,7 @@ jobs:
               raw_findings_count = len(findings)
               # Match complete 1-3 line excerpts within the finding's own diff file.
               diff_lines_by_file = {}
+              current_source_lines_by_file = {}
               current_file = None
               for raw_line in diff_for_model.splitlines():
                   if raw_line.startswith("diff --git "):
