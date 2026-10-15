@@ -9,6 +9,17 @@ plugins {
 }
 
 android {
+    // Optional Qualcomm QAIRT/LiteRT-LM dispatch libraries for local SM8650 NPU builds.
+    // Pass -PqualcommNpuLibDir=/path/to/jniLibs where the directory contains arm64-v8a/*.so.
+    def qualcommNpuLibDir = project.findProperty("qualcommNpuLibDir")
+    if (qualcommNpuLibDir != null && !qualcommNpuLibDir.toString().trim().isEmpty()) {
+        sourceSets {
+            main {
+                jniLibs.srcDir(file(qualcommNpuLibDir.toString()))
+            }
+        }
+    }
+
     namespace "com.mistbell.tavern.android"
     compileSdk 37
 
