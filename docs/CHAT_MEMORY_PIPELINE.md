@@ -43,6 +43,13 @@ Persist completed user/assistant turn
 
 Extraction must not delay the chat response. The settings screen now supports an independent memory-LLM base URL, API key and model ID (the key is wrapped with the existing SecureStore helper). When the endpoint and model are configured, background extraction prefers this provider; otherwise the current session/chat provider fallback remains unchanged. The extractor still applies its low-temperature, bounded-output and no-thinking policy. Timeout and retry settings currently use the existing LlmClient defaults; independent timeout/retry controls are not yet exposed. A persistent processed-message watermark/idempotency queue remains follow-up work: the current three-turn buffer is process-local, so process death can still lose a not-yet-dispatched batch.
 
+## Temporal fact policy
+
+- Temporal metadata is stored in the existing `structured_data` JSON, without a Room schema migration: `status`, `valid_from`, `valid_to`, `supersedes_ids`, `previous_values`, and `superseded_by`.
+- Single-valued relations (`name`, `role_is`, `located_at`, `title_is`) can supersede an older current fact when the value changes. Multi-valued relations such as `likes` remain additive unless the extracted content explicitly says the fact changed.
+- Superseded memories remain searchable as historical facts, are labeled in content/tags, and have their recall priority reduced. Historical records are excluded from current-fact deduplication so a user can later return to an earlier value.
+- The replacement fact is inserted and its predecessor is marked historical in the same Room database transaction. Vector-index synchronization runs after commit and is best-effort, so a vector failure must not be treated as a rollback of the authoritative database state.
+
 ## Embedding and index invariants
 
 - Embedding model identity is part of vector metadata and the retrieval filter. Equal dimensions do not imply compatible semantic spaces.
@@ -76,4 +83,4 @@ Extraction must not delay the chat response. The settings screen now supports an
 
 ## Current scope of this branch
 
-This branch hardens vector-cache correctness, model isolation, atomic runtime source refresh, mock-vector avoidance, idempotent vector writes, and batch embedding response validation. It does not yet implement a dedicated memory-LLM settings screen, persistent extraction queue/watermark, or legacy-vector reindex UI. Those should be added as explicit follow-up work rather than hidden behind the current Embedding settings.
+This branch builds on independent memory-LLM settings and adds temporal fact conflict handling without changing the Room schema. A persistent extraction queue/watermark and a legacy-vector reindex UI remain follow-up work. The current three-turn extraction buffer is still process-local, so process death can lose a not-yet-dispatched batch.
