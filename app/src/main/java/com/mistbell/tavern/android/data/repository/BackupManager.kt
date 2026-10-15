@@ -490,9 +490,17 @@ class BackupManager(private val context: Context) {
             val summary = mergeTables(tables)
 
             // 文件写入在事务提交之后（文件系统不可回滚，不参与原子性）：
-            // 主题包资产仅在目录缺失时铺入；向量库仅当本地不存在时铺入（避免覆盖更健康的本地索引）
-            writeAuxiliaryFiles(files, tables.themePacks)
-            summary.copy(warnings = tables.decodeWarnings)
+            // 主题包资产仅在目录缺失时铺入；向量库仅当本地不存在时铺入（避免覆盖更健康的本地索引）。
+            //
+            // ⚠️ 走到这里数据库**已经提交**，所以资材写入失败**不能**当作整次恢复失败：
+            // 那会让调用方报「恢复失败」，而实际上数据已完整合并进库——用户会以为白恢复了。
+            // 因此降级为 warning，让 UI 如实呈现「数据已恢复，但部分资材未写入」。
+            val assetWarnings =
+                runCatching { writeAuxiliaryFiles(files, tables.themePacks) }
+                    .exceptionOrNull()
+                    ?.let { listOf("数据已恢复，但部分资材文件未写入（${it.message ?: it.javaClass.simpleName}）") }
+                    .orEmpty()
+            summary.copy(warnings = tables.decodeWarnings + assetWarnings)
         }
 
     private fun decodeTables(
