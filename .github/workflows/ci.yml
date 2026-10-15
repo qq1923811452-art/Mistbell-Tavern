@@ -12,8 +12,10 @@ jobs:
     outputs:
       tested_sha: ${{ steps.source_sha.outputs.sha }}
     steps:
-      - name: Checkout
+      - name: Checkout exact source commit
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Set up JDK 17
         uses: actions/setup-java@v5
