@@ -93,15 +93,15 @@ class LiteRtLmEmbeddingGemma2Engine(
                     logInfo("embedding.initialize.succeeded", "backend=${backend.name}; fallback=${fallbackReason != null}")
                     return@withLock
                 } catch (cancelled: CancellationException) {
-                    if (candidate.isInitialized()) candidate.close()
+                    if (candidate.isInitialized()) runCatching { candidate.close() }
                     throw cancelled
                 } catch (error: Exception) {
-                    if (candidate.isInitialized()) candidate.close()
+                    if (candidate.isInitialized()) runCatching { candidate.close() }
                     val reason = "${backend.name}: ${error.message ?: error::class.java.simpleName}".take(180)
                     failures += reason
                     logWarn("embedding.backend.initialize.failed", reason)
                 } catch (error: LinkageError) {
-                    if (candidate.isInitialized()) candidate.close()
+                    if (candidate.isInitialized()) runCatching { candidate.close() }
                     val reason = "${backend.name}: native runtime unavailable (${error::class.java.simpleName})"
                     failures += reason
                     logWarn("embedding.backend.initialize.failed", reason)
