@@ -59,6 +59,24 @@ class MemoryExtractionQueueRunnerTest {
         assertEquals("Extraction attempt failed.", failed.lastSafeError)
     }
 
+    @Test fun transientInputReadFailureSchedulesRetryInsteadOfPermanentFailure() {
+        val repository = repository()
+        repository.enqueue(job("temporary-source-read"))
+        val runner = MemoryExtractionQueueRunner(repository) { 10_000L }
+        var dispatched = false
+
+        runner.runNext(
+            buildInput = { throw MemoryExtractionQueueRunner.RetryableInputException() },
+            execute = { _, _, _ -> dispatched = true },
+        )
+
+        assertTrue(!dispatched)
+        val failed = repository.list().single()
+        assertEquals(MemoryExtractionJob.State.RETRY_WAIT, failed.state)
+        assertEquals("Extraction attempt failed.", failed.lastSafeError)
+        assertEquals(40_000L, failed.nextAttemptAtEpochMillis)
+    }
+
     @Test fun cancellationDuringInputBuildIsRetriedAndPropagated() {
         val repository = repository()
         repository.enqueue(job("cancel-input"))
