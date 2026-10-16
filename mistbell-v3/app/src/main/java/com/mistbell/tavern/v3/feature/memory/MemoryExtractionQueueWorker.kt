@@ -73,7 +73,7 @@ class MemoryExtractionQueueWorker(
                             )
                             Triple(input, profile, handle)
                         },
-                        execute = { job, prepared, complete ->
+                        execute = { _, prepared, complete ->
                             val (input, profile, handle) = prepared
                             val providers = ProviderProfileSet(
                                 profiles = listOf(profile),
@@ -110,16 +110,15 @@ class MemoryExtractionQueueWorker(
                                 MemoryExtractionQueueRunner.Result.Idle ->
                                     if (continuation.isActive) continuation.resume(false)
                                 is MemoryExtractionQueueRunner.Result.Finished -> {
-                                    if (result.state == MemoryExtractionJob.State.COMPLETED) {
-                                        successTurnByJobId.remove(result.jobId)?.let { turnId ->
-                                            applicationContext.getSharedPreferences(
-                                                "mistbell-v3-settings",
-                                                Context.MODE_PRIVATE,
-                                            ).edit().putString(
-                                                "memory_extraction_last_success_turn_id",
-                                                turnId,
-                                            ).apply()
-                                        }
+                                    val turnId = successTurnByJobId.remove(result.jobId)
+                                    if (result.state == MemoryExtractionJob.State.COMPLETED && turnId != null) {
+                                        applicationContext.getSharedPreferences(
+                                            "mistbell-v3-settings",
+                                            Context.MODE_PRIVATE,
+                                        ).edit().putString(
+                                            "memory_extraction_last_success_turn_id",
+                                            turnId,
+                                        ).apply()
                                     }
                                     if (continuation.isActive) continuation.resume(true)
                                 }
