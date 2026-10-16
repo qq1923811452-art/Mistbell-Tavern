@@ -1,5 +1,6 @@
 package com.mistbell.tavern.v3.feature.embedding
 
+import com.mistbell.tavern.v3.core.inference.BackendEvidence
 import com.mistbell.tavern.v3.core.inference.InferenceBackend
 import com.mistbell.tavern.v3.core.inference.InferencePhase
 import com.mistbell.tavern.v3.core.inference.InferenceRuntimeStatus
@@ -27,6 +28,7 @@ class EmbeddingOutputValidatorTest {
             modelId = model.modelId,
             backend = backend,
             runtimeId = runtime.runtimeId,
+            backendEvidence = BackendEvidence.RUNTIME_REPORTED,
         ),
     )
 
