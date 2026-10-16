@@ -1,5 +1,6 @@
 package com.mistbell.tavern.v3.feature.memory
 
+import java.util.concurrent.CancellationException
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
@@ -78,6 +79,9 @@ class MemoryExtractionQueueRunner(
 
         val input = try {
             buildInput(job)
+        } catch (cancelled: CancellationException) {
+            finish(ExecutionResult.Failure(safeCategory = "cancelled"))
+            throw cancelled
         } catch (_: Exception) {
             finish(ExecutionResult.Failure(permanent = true))
             return synchronousResult.get() ?: Result.Started(job.id)
@@ -85,6 +89,9 @@ class MemoryExtractionQueueRunner(
 
         try {
             execute(job, input, ::finish)
+        } catch (cancelled: CancellationException) {
+            finish(ExecutionResult.Failure(safeCategory = "cancelled"))
+            throw cancelled
         } catch (_: Exception) {
             finish(ExecutionResult.Failure())
         }
