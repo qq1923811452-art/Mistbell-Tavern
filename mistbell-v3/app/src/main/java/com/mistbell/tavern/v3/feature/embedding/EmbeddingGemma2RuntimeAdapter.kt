@@ -26,6 +26,9 @@ class EmbeddingGemma2RuntimeAdapter(
             "Unsupported EmbeddingGemma 2 output dimension."
         }
         require(engine.runtimeId.isNotBlank()) { "Engine runtime ID must not be blank." }
+        require(configuredBatchSize in 1..MAX_CONFIGURED_BATCH_SIZE) {
+            "Configured embedding batch size must be between 1 and $MAX_CONFIGURED_BATCH_SIZE."
+        }
     }
 
     override val model = EmbeddingModelSpec(
