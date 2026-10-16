@@ -7,6 +7,7 @@ import com.google.ai.edge.litertlm.EmbeddingEngineConfig
 import com.google.ai.edge.litertlm.EmbeddingOptions
 import com.google.ai.edge.litertlm.InputData
 import com.mistbell.tavern.v3.core.diagnostics.DiagnosticLogStore
+import com.mistbell.tavern.v3.core.inference.BackendEvidence
 import com.mistbell.tavern.v3.core.inference.InferenceBackend
 import com.mistbell.tavern.v3.core.inference.InferencePhase
 import com.mistbell.tavern.v3.core.inference.InferenceRuntimeStatus
@@ -137,6 +138,7 @@ class LiteRtLmEmbeddingGemma2Engine(
                     modelId = EmbeddingGemma2TextPolicy.MODEL_ID,
                     backend = selectedBackend,
                     runtimeId = runtimeId,
+                    backendEvidence = BackendEvidence.CONFIGURED_ONLY,
                     acceleratorName = selectedBackend.name,
                     fallbackReason = fallbackReason,
                     lastExecutionMillis = elapsedMillis,
@@ -172,6 +174,7 @@ class LiteRtLmEmbeddingGemma2Engine(
             modelId = EmbeddingGemma2TextPolicy.MODEL_ID,
             backend = selectedBackend,
             runtimeId = runtimeId,
+            backendEvidence = BackendEvidence.CONFIGURED_ONLY,
             acceleratorName = selectedBackend.name,
             fallbackReason = fallbackReason,
             lastError = lastError,
