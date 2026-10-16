@@ -20,7 +20,7 @@ object VectorMemoryPromptComposer {
         if (userIndex < 0) return messages
 
         val memories = (memoryResult as? VectorMemoryContextResult.Ready)?.memories
-            ?.filter(RetrievedMemory::textIsUsable)
+            ?.filter { it.textIsUsable() }
             .orEmpty()
         if (memories.isEmpty()) return messages
 
