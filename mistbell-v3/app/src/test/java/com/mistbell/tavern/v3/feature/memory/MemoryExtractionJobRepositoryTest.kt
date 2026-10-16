@@ -1,6 +1,5 @@
 package com.mistbell.tavern.v3.feature.memory
 
-import android.content.ContextWrapper
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -111,10 +110,7 @@ class MemoryExtractionJobRepositoryTest {
 
     private fun repository(): MemoryExtractionJobRepository {
         val root = folder.newFolder()
-        val context = object : ContextWrapper(null) {
-            override fun getFilesDir() = root
-        }
-        return MemoryExtractionJobRepository(MemoryExtractionJobStore(context))
+        return MemoryExtractionJobRepository(MemoryExtractionJobStore(root))
     }
 
     private fun job(
