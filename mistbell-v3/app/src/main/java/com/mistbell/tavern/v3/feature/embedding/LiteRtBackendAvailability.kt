@@ -26,6 +26,7 @@ data class LiteRtBackendAvailability private constructor(
             "libQnnHtpPrepare.so",
             "libQnnHtpV75Stub.so",
             "libQnnHtpV75Skel.so",
+            "libQnnHtpV75CalculatorStub.so",
         )
 
         /** The current AAR's JNI alone does not package these accelerator plugins. */
