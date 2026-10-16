@@ -16,8 +16,7 @@ import com.mistbell.tavern.v3.feature.chat.ChatHistoryLoadResult
 import com.mistbell.tavern.v3.feature.chat.ChatHistoryStore
 import com.mistbell.tavern.v3.feature.chat.MemoryExtractionBatchInputFactory
 import java.util.concurrent.TimeUnit
-import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlin.coroutines.resume
+import kotlinx.coroutines.CompletableDeferred
 
 /**
  * Process-resilient queue consumer. The queue and source history are both persisted privately;
@@ -38,8 +37,8 @@ class MemoryExtractionQueueWorker(
             var processedJobs = 0
             val successTurnByJobId = mutableMapOf<String, String>()
             while (!isStopped && processedJobs < MAX_JOBS_PER_RUN) {
-                val hasJob = suspendCancellableCoroutine { continuation ->
-                    runner.runNext(
+                val completion = CompletableDeferred<Boolean>()
+                runner.runNext(
                         buildInput = { job ->
                             successTurnByJobId[job.id] = job.turnIds.last()
                             val handle = requireNotNull(job.credentialHandle) {
@@ -107,8 +106,7 @@ class MemoryExtractionQueueWorker(
                         },
                         observer = { result ->
                             when (result) {
-                                MemoryExtractionQueueRunner.Result.Idle ->
-                                    if (continuation.isActive) continuation.resume(false)
+                                MemoryExtractionQueueRunner.Result.Idle -> completion.complete(false)
                                 is MemoryExtractionQueueRunner.Result.Finished -> {
                                     val turnId = successTurnByJobId.remove(result.jobId)
                                     if (result.state == MemoryExtractionJob.State.COMPLETED && turnId != null) {
@@ -120,17 +118,17 @@ class MemoryExtractionQueueWorker(
                                             turnId,
                                         ).apply()
                                     }
-                                    if (continuation.isActive) continuation.resume(true)
+                                    completion.complete(true)
                                 }
                                 is MemoryExtractionQueueRunner.Result.PersistenceFailure ->
-                                    if (continuation.isActive) continuation.resumeWith(
-                                        kotlin.Result.failure(IllegalStateException("Queue state could not be persisted.")),
+                                    completion.completeExceptionally(
+                                        IllegalStateException("Queue state could not be persisted."),
                                     )
                                 is MemoryExtractionQueueRunner.Result.Started -> Unit
                             }
                         },
                     )
-                }
+                val hasJob = completion.await()
                 if (!hasJob) break
                 processedJobs += 1
             }
