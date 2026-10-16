@@ -1,5 +1,6 @@
 package com.mistbell.tavern.v3.feature.embedding
 
+import com.mistbell.tavern.v3.core.inference.BackendEvidence
 import com.mistbell.tavern.v3.core.inference.InferenceBackend
 import com.mistbell.tavern.v3.core.inference.InferencePhase
 import com.mistbell.tavern.v3.core.inference.InferenceRuntimeStatus
@@ -15,6 +16,7 @@ class EmbeddingGemma2RuntimeAdapterTest {
         modelId = EmbeddingGemma2TextPolicy.MODEL_ID,
         backend = InferenceBackend.CPU,
         runtimeId = "fake-litert-engine",
+        backendEvidence = BackendEvidence.RUNTIME_REPORTED,
     )
 
     private fun engine(
