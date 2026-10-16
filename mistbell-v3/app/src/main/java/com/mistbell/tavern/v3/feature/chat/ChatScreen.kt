@@ -614,7 +614,48 @@ fun ChatScreen(onBack: () -> Unit) {
                                             vectorSnapshotStore.load(memoryRuntime.modelId, memoryRuntime.dimensions)
                                         }
                                     ) {
-                                        is VectorSnapshotLoadResult.Loaded -> Unit
+                                        is VectorSnapshotLoadResult.Loaded -> {
+                                            when (val sourceTexts = withContext(Dispatchers.IO) { memoryTextStore.load() }) {
+                                                MemoryTextLoadResult.Missing -> Unit
+                                                is MemoryTextLoadResult.Corrupt -> {
+                                                    diagnosticStore.warn(
+                                                        "memory.index.refresh_skipped",
+                                                        "reason=source_text_store_corrupt",
+                                                    )
+                                                    indexMaintenanceMessage = "记忆文本存储校验失败，保留现有向量索引，未自动覆盖。"
+                                                }
+                                                is MemoryTextLoadResult.Loaded -> {
+                                                    val currentHashes = sourceTexts.records.map { it.sourceTextSha256 }.toSet()
+                                                    val indexedHashes = existingSnapshot.snapshot.records.map { it.sourceTextSha256 }.toSet()
+                                                    if (currentHashes != indexedHashes) {
+                                                        status = "检测到记忆事实已更新，正在刷新本地向量索引……"
+                                                        val rebuildResult = withContext(Dispatchers.IO) {
+                                                            MemoryIndexRebuilder(
+                                                                runtime = memoryRuntime,
+                                                                saveSourceTexts = memoryTextStore::save,
+                                                                saveSnapshot = vectorSnapshotStore::save,
+                                                            ).rebuild(sourceTexts.records)
+                                                        }
+                                                        when (rebuildResult) {
+                                                            is MemoryIndexRebuildResult.Success -> {
+                                                                diagnosticStore.info(
+                                                                    "memory.index.refresh_succeeded",
+                                                                    "records=${rebuildResult.indexedRecords}; dimensions=${rebuildResult.dimensions}",
+                                                                )
+                                                                indexMaintenanceMessage = "索引已刷新：${rebuildResult.indexedRecords} 条，${rebuildResult.dimensions} 维。"
+                                                            }
+                                                            is MemoryIndexRebuildResult.Failed -> {
+                                                                diagnosticStore.warn(
+                                                                    "memory.index.refresh_failed",
+                                                                    "stage=${rebuildResult.stage}; reason=${rebuildResult.reason}",
+                                                                )
+                                                                indexMaintenanceMessage = "索引刷新失败（${rebuildResult.stage}）；保留可用数据并允许下次重试。"
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
                                         is VectorSnapshotLoadResult.Corrupt -> {
                                             diagnosticStore.warn(
                                                 "memory.index.rebuild_skipped",
