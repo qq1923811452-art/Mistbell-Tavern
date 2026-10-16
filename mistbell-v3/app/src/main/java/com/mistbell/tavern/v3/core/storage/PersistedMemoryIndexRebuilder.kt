@@ -24,7 +24,7 @@ class PersistedMemoryIndexRebuilder(
         clockMillis = clockMillis,
     )
 
-    fun rebuildCurrentIndex(): MemoryIndexRebuildResult {
+    suspend fun rebuildCurrentIndex(): MemoryIndexRebuildResult {
         val currentRecords = when (val loaded = textStore.load()) {
             MemoryTextLoadResult.Missing -> emptyList()
             is MemoryTextLoadResult.Loaded -> loaded.records
@@ -38,6 +38,6 @@ class PersistedMemoryIndexRebuilder(
         return rebuilder.rebuild(currentRecords)
     }
 
-    fun rebuild(records: List<MemoryTextRecord>): MemoryIndexRebuildResult =
+    suspend fun rebuild(records: List<MemoryTextRecord>): MemoryIndexRebuildResult =
         rebuilder.rebuild(records)
 }
