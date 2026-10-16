@@ -24,6 +24,7 @@ class EmbeddingGemma2RuntimeAdapter(
 ) : LocalEmbeddingRuntime {
     companion object {
         const val MAX_CONFIGURED_BATCH_SIZE = 256
+        const val MAX_FORMATTED_INPUT_BYTES = 4096
     }
 
     init {
@@ -67,7 +68,15 @@ class EmbeddingGemma2RuntimeAdapter(
             throw EmbeddingOutputException("Input batch exceeds the configured limit.")
         }
         if (texts.any(String::isBlank)) throw EmbeddingOutputException("Input text must not be blank.")
-        val raw = engine.infer(texts.mapIndexed { index, text -> formatter(text, index) })
+        val formattedInputs = texts.mapIndexed { index, text -> formatter(text, index) }
+        formattedInputs.forEachIndexed { index, formatted ->
+            if (formatted.toByteArray(Charsets.UTF_8).size > MAX_FORMATTED_INPUT_BYTES) {
+                throw EmbeddingOutputException(
+                    "Formatted input $index exceeds the $MAX_FORMATTED_INPUT_BYTES-byte model input limit; split the text into smaller passages.",
+                )
+            }
+        }
+        val raw = engine.infer(formattedInputs)
         if (raw.vectors.size != texts.size ||
             raw.vectors.any { it.size != EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS }
         ) {
