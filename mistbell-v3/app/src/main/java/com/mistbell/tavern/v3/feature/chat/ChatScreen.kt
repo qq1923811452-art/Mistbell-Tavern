@@ -76,10 +76,10 @@ fun ChatScreen(onBack: () -> Unit) {
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("填写模型 ID 和 API 配置后即可测试聊天。") }
     val history = remember { mutableStateListOf<ChatLine>() }
-    val historyStore = remember(context) { ChatHistoryStore(context.applicationContext) }
     val listState = rememberLazyListState()
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
     val context = LocalContext.current
+    val historyStore = remember(context) { ChatHistoryStore(context.applicationContext) }
     val coroutineScope = rememberCoroutineScope()
     val diagnosticStore = remember(context) { DiagnosticLogStore(context.applicationContext.filesDir) }
 
