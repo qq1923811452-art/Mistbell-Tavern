@@ -84,6 +84,24 @@ class TemporalFactLedgerTest {
         assertNotEquals(TemporalFactLedger.stableId(first), TemporalFactLedger.stableId(second))
     }
 
+    @Test
+    fun stableIdentityIsUnambiguousWhenIdentifiersContainNul() {
+        val first = observation(
+            turn = "turn",
+            conversation = "conversation\\u0000part",
+            value = "tea",
+            at = 100L,
+        )
+        val second = observation(
+            turn = "part\\u0000turn",
+            conversation = "conversation",
+            value = "tea",
+            at = 100L,
+        )
+
+        assertNotEquals(TemporalFactLedger.stableId(first), TemporalFactLedger.stableId(second))
+    }
+
     private fun observation(
         turn: String,
         conversation: String = "conversation-1",
