@@ -5,6 +5,9 @@ enum class InferenceBackend { CPU, GPU, NPU, UNKNOWN }
 
 enum class InferencePhase { NOT_INITIALIZED, LOADING_MODEL, READY, RUNNING, FALLBACK, FAILED }
 
+/** Evidence level for a backend label; a configured delegate is not proof of hardware execution. */
+enum class BackendEvidence { NOT_AVAILABLE, CONFIGURED_ONLY, RUNTIME_REPORTED, DEVICE_VERIFIED }
+
 data class RuntimeProbe(
     val runtimeId: String,
     val available: Boolean,
@@ -24,6 +27,7 @@ data class InferenceRuntimeStatus(
     val modelId: String?,
     val backend: InferenceBackend,
     val runtimeId: String?,
+    val backendEvidence: BackendEvidence = BackendEvidence.NOT_AVAILABLE,
     val acceleratorName: String? = null,
     val fallbackReason: String? = null,
     val lastError: String? = null,
