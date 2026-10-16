@@ -45,7 +45,9 @@ object LegacyCharacterCardImporter {
             version = data.optString("character_version", data.optString("version", "1")),
         )
         val book = data.optJSONObject("character_book") ?: root.optJSONObject("character_book")
-        val worldbook = book?.let { LegacyWorldbookImporter.import(it.toString()) }
+        // Valid cards may carry an empty metadata-only book object; do not reject the card.
+        val worldbook = book?.takeIf { it.has("entries") }
+            ?.let { LegacyWorldbookImporter.import(it.toString()) }
         return CharacterCardImportResult(card, worldbook)
     }
 
