@@ -258,12 +258,26 @@ fun ChatScreen(onBack: () -> Unit) {
                         coroutineScope.launch {
                             try {
                                 val modelAssets = EmbeddingGemma2ModelAssetManager(File(context.filesDir, "models"))
-                                val installedModel = runCatching { withContext(Dispatchers.IO) { modelAssets.verifyInstalled() } }.getOrNull()
+                                val installedModelResult = runCatching {
+                                    withContext(Dispatchers.IO) { modelAssets.verifyInstalled() }
+                                }
+                                val installedModel = installedModelResult.getOrNull()
                                 val configuredDimensions = context.getSharedPreferences(
                                     "mistbell-v3-settings",
                                     Context.MODE_PRIVATE,
                                 ).getInt("embedding_output_dimensions", 768)
                                 if (installedModel == null || configuredDimensions !in listOf(128, 256, 512, 768)) {
+                                    if (installedModel == null) {
+                                        diagnosticStore.warn(
+                                            "chat.embedding.unavailable",
+                                            if (installedModelResult.isFailure) "reason=model_asset_verification_failed" else "reason=model_not_installed",
+                                        )
+                                    } else {
+                                        diagnosticStore.warn(
+                                            "chat.embedding.unavailable",
+                                            "reason=unsupported_dimension; dimensions=$configuredDimensions",
+                                        )
+                                    }
                                     status = if (installedModel == null) {
                                         "本地模型未安装或校验失败，继续普通聊天；向量记忆暂不可用。"
                                     } else {
@@ -278,6 +292,11 @@ fun ChatScreen(onBack: () -> Unit) {
                                     )
                                     memoryEngine = engine
                                     engine.initialize()
+                                    val backendStatus = engine.currentStatus()
+                                    diagnosticStore.info(
+                                        "chat.embedding.backend_initialized",
+                                        "phase=${backendStatus.phase}; backend=${backendStatus.backend}; evidence=${backendStatus.backendEvidence}",
+                                    )
                                     val adapter = EmbeddingGemma2RuntimeAdapter(
                                         engine = engine,
                                         outputDimensions = configuredDimensions,
@@ -292,10 +311,14 @@ fun ChatScreen(onBack: () -> Unit) {
                                         embeddings = memoryRuntime,
                                         textProvider = AtomicMemoryTextStore(context),
                                     )
-                                    status = "本地记忆检索已接入；没有可用索引时仍会正常聊天。"
+                                    status = "本地记忆检索已接入；后端=${backendStatus.backend}，证据=${backendStatus.backendEvidence}。配置状态不等于芯片级 NPU 实测。"
                                     MemoryAwareChatRequest(client, memoryContext).stream(messages, observer)
                                 }
                             } catch (error: Exception) {
+                                diagnosticStore.warn(
+                                    "chat.embedding.fallback",
+                                    "reason=${error::class.java.simpleName}",
+                                )
                                 memoryEngine?.close()
                                 memoryEngine = null
                                 status = "本地记忆不可用，已尝试回退普通聊天：${error.message?.take(120) ?: error::class.java.simpleName}"
