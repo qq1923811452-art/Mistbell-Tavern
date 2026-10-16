@@ -59,6 +59,23 @@ class TemporalFactTextSynchronizerTest {
     }
 
     @Test
+    fun missingFactLedgerRemovesStaleFactProjectionButKeepsManualMemories() {
+        val staleFact = MemoryTextRecord(id = "fact:old-ledger-fact", text = "Stale fact.")
+        val unrelated = MemoryTextRecord(id = "note:manual", text = "Keep me.")
+        val textStore = FakeMemoryTextStore(listOf(staleFact, unrelated))
+        val synchronizer = TemporalFactTextSynchronizer(
+            FakeTemporalFactStore(TemporalFactLoadResult.Missing),
+            textStore,
+        )
+
+        val result = synchronizer.synchronize()
+
+        assertTrue(result is TemporalFactTextSyncResult.Synchronized)
+        assertTrue((result as TemporalFactTextSyncResult.Synchronized).changed)
+        assertEquals(listOf(unrelated), textStore.records)
+    }
+
+    @Test
     fun corruptFactLedgerDoesNotTouchExistingMemoryTexts() {
         val existing = MemoryTextRecord(id = "note:manual", text = "Keep me.")
         val textStore = FakeMemoryTextStore(listOf(existing))
