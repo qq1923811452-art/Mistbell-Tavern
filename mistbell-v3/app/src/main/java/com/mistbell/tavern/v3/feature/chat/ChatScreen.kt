@@ -435,15 +435,6 @@ fun ChatScreen(onBack: () -> Unit) {
                             modelId = modelId.trim(),
                             credentialHandle = if (apiKey.isBlank()) null else "session-chat-key",
                         )
-                        val providers = try {
-                            ProviderProfileSet(
-                                profiles = listOf(profile),
-                                selectedProfileIds = mapOf(ProviderKind.CHAT to profile.id),
-                            )
-                        } catch (_: IllegalArgumentException) {
-                            status = "API 配置无效，请检查 Base URL 和模型 ID。"
-                            return@Button
-                        }
                         val secretForThisRequest = apiKey
                         val memorySecretForThisRequest = memoryApiKey
                         val memoryProfile = memoryModelId.trim().takeIf(String::isNotBlank)?.let { configuredMemoryModel ->
@@ -625,8 +616,8 @@ fun ChatScreen(onBack: () -> Unit) {
                                                     indexMaintenanceMessage = "记忆文本存储校验失败，保留现有向量索引，未自动覆盖。"
                                                 }
                                                 is MemoryTextLoadResult.Loaded -> {
-                                                    val currentHashes = sourceTexts.records.map { it.sourceTextSha256 }.toSet()
-                                                    val indexedHashes = existingSnapshot.snapshot.records.map { it.sourceTextSha256 }.toSet()
+                                                    val currentHashes = sourceTexts.records.map { it.sourceTextSha256 }.sorted()
+                                                    val indexedHashes = existingSnapshot.snapshot.records.map { it.sourceTextSha256 }.sorted()
                                                     if (currentHashes != indexedHashes) {
                                                         status = "检测到记忆事实已更新，正在刷新本地向量索引……"
                                                         val rebuildResult = withContext(Dispatchers.IO) {
