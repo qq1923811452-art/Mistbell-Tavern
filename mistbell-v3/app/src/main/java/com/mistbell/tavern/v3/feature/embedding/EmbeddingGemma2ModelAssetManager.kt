@@ -98,6 +98,8 @@ class EmbeddingGemma2ModelAssetManager(
             throw error
         } finally {
             connection.disconnect()
+            temporaryFile.delete()
+            temporaryDigestFile.delete()
         }
     }
 
