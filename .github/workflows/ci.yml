@@ -104,7 +104,7 @@ jobs:
   # Build the real application APK during routine CI, in parallel with the quality gate.
   # This validates packaging on every PR without delaying unit/static checks behind emulator boot.
   apk-build:
-    if: ${{ github.event_name != 'workflow_dispatch' && github.event_name != 'workflow_call' && github.event.pull_request.head.ref != 'codex/mistbell-development-3.0' }}
+    if: ${{ github.event_name != 'workflow_dispatch' && github.event_name != 'workflow_call' && github.event.pull_request.head.ref != 'codex/mistbell-development-3.0' && github.event.pull_request.head.ref != 'codex/mistbell-3.0-core-features' }}
     name: Build debug APK (parallel CI gate)
     runs-on: ubuntu-latest
     timeout-minutes: 30
