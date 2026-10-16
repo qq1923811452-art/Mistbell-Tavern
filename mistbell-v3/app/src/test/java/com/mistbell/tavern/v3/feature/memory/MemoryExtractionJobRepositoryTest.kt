@@ -45,7 +45,7 @@ class MemoryExtractionJobRepositoryTest {
         assertEquals("interrupted", repository.claimDue(500L)?.id)
     }
 
-    @Test fun retryDelayGrowsExponentiallyAndCapsAtSixHours() {
+    @Test fun retryDelayGrowsExponentiallyAndSaturatesTimestampOnOverflow() {
         val repository = repository()
         assertTrue(repository.enqueue(job("retry", createdAt = 1_000L)))
         repository.claimDue(1_000L)
