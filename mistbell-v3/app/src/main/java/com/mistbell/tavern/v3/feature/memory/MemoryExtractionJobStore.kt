@@ -12,17 +12,14 @@ sealed interface MemoryExtractionJobLoadResult {
 }
 
 /** App-private atomic persistence; corrupt queue data is reported, never silently replaced. */
-class MemoryExtractionJobStore(
-    context: Context,
-    fileName: String = DEFAULT_FILE_NAME,
-) {
-    private val file: AtomicFile
+class MemoryExtractionJobStore private constructor(targetFile: File, @Suppress("UNUSED_PARAMETER") marker: Unit) {
+    private val file = AtomicFile(targetFile)
 
-    init {
-        require(fileName.isNotBlank() && fileName != "." && fileName != ".." &&
-            '/' !in fileName && '\\' !in fileName)
-        file = AtomicFile(File(context.filesDir, fileName))
-    }
+    constructor(context: Context, fileName: String = DEFAULT_FILE_NAME) :
+        this(File(context.filesDir, validatedFileName(fileName)), Unit)
+
+    /** Directory-based constructor keeps JVM persistence tests independent of Android Context internals. */
+    constructor(directory: File) : this(File(directory, DEFAULT_FILE_NAME), Unit)
 
     @Synchronized
     fun save(jobs: List<MemoryExtractionJob>) {
@@ -58,5 +55,13 @@ class MemoryExtractionJobStore(
 
     companion object {
         const val DEFAULT_FILE_NAME = "mistbell-v3-memory-extraction-queue.bin"
+
+        private fun validatedFileName(fileName: String): String {
+            require(
+                fileName.isNotBlank() && fileName != "." && fileName != ".." &&
+                    '/' !in fileName && '\\' !in fileName,
+            ) { "Queue file name must be a simple file name." }
+            return fileName
+        }
     }
 }
