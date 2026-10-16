@@ -7,6 +7,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class EmbeddingGemma2ModelAssetManagerTest {
@@ -37,6 +38,22 @@ class EmbeddingGemma2ModelAssetManagerTest {
 
             assertEquals(bytes.size.toLong(), imported.sizeBytes)
             assertEquals(imported.sha256, manager.verifyInstalled()!!.sha256)
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+    @Test
+    fun rejectsUnrelatedLitertlmFilename() = runBlocking {
+        val directory = createTempDir(prefix = "embedding-model-import-test")
+        try {
+            assertThrows(IllegalArgumentException::class.java) {
+                runBlocking {
+                    EmbeddingGemma2ModelAssetManager(directory).importModel(
+                        "unrelated-model.litertlm",
+                        ByteArrayInputStream("not-embeddinggemma".toByteArray()),
+                    )
+                }
+            }
         } finally {
             directory.deleteRecursively()
         }
