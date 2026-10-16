@@ -1,0 +1,125 @@
+package com.mistbell.tavern.v3.feature.embedding
+
+import java.io.File
+import java.io.FileOutputStream
+import java.net.HttpURLConnection
+import java.net.URL
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
+import java.security.MessageDigest
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+
+data class DownloadedEmbeddingModel(
+    val file: File,
+    val sizeBytes: Long,
+    val sha256: String,
+)
+
+class EmbeddingGemma2ModelAssetManager(
+    private val modelDirectory: File,
+) {
+    private val modelFile = File(modelDirectory, MODEL_FILE_NAME)
+    private val digestFile = File(modelDirectory, "$MODEL_FILE_NAME.sha256")
+
+    suspend fun download(
+        onProgress: (downloadedBytes: Long, totalBytes: Long?) -> Unit = { _, _ -> },
+    ): DownloadedEmbeddingModel = withContext(Dispatchers.IO) {
+        check(modelDirectory.isDirectory || modelDirectory.mkdirs()) {
+            "Model directory could not be created."
+        }
+        val temporaryFile = File(modelDirectory, "$MODEL_FILE_NAME.download")
+        if (temporaryFile.exists() && !temporaryFile.delete()) {
+            throw IllegalStateException("An incomplete model download could not be removed.")
+        }
+        val connection = (URL(MODEL_DOWNLOAD_URL).openConnection() as HttpURLConnection).apply {
+            connectTimeout = CONNECT_TIMEOUT_MS
+            readTimeout = READ_TIMEOUT_MS
+            instanceFollowRedirects = true
+            requestMethod = "GET"
+            setRequestProperty("User-Agent", "Mistbell-Tavern-3.0")
+        }
+        try {
+            connection.connect()
+            check(connection.url.protocol.equals("https", ignoreCase = true)) {
+                "Model download redirected to a non-HTTPS URL."
+            }
+            val code = connection.responseCode
+            check(code == HttpURLConnection.HTTP_OK) {
+                "Model download failed with HTTP $code."
+            }
+            val totalBytes = connection.contentLengthLong.takeIf { it > 0L }
+            require(totalBytes == null || totalBytes <= MAX_MODEL_BYTES) {
+                "Model download exceeds the configured size limit."
+            }
+            var downloadedBytes = 0L
+            val digest = MessageDigest.getInstance("SHA-256")
+            connection.inputStream.use { input ->
+                FileOutputStream(temporaryFile).use { output ->
+                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        downloadedBytes += count
+                        require(downloadedBytes <= MAX_MODEL_BYTES) {
+                            "Model download exceeds the configured size limit."
+                        }
+                        digest.update(buffer, 0, count)
+                        output.write(buffer, 0, count)
+                        onProgress(downloadedBytes, totalBytes)
+                    }
+                    output.fd.sync()
+                }
+            }
+            check(downloadedBytes > 0L) { "Model download returned an empty file." }
+            if (totalBytes != null) {
+                check(downloadedBytes == totalBytes) {
+                    "Model download size mismatch: expected $totalBytes bytes, received $downloadedBytes."
+                }
+            }
+            val sha256 = digest.digest().toHex()
+            Files.move(
+                temporaryFile.toPath(),
+                modelFile.toPath(),
+                StandardCopyOption.REPLACE_EXISTING,
+                StandardCopyOption.ATOMIC_MOVE,
+            )
+            digestFile.writeText("$sha256  $MODEL_FILE_NAME\n", Charsets.UTF_8)
+            DownloadedEmbeddingModel(modelFile, downloadedBytes, sha256)
+        } catch (error: Exception) {
+            temporaryFile.delete()
+            throw error
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    suspend fun verifyInstalled(): DownloadedEmbeddingModel? = withContext(Dispatchers.IO) {
+        if (!modelFile.isFile || !digestFile.isFile) return@withContext null
+        val expected = digestFile.readText(Charsets.UTF_8).trim().substringBefore(' ').trim()
+        if (!expected.matches(Regex("[0-9a-fA-F]{64}"))) return@withContext null
+        val digest = MessageDigest.getInstance("SHA-256")
+        modelFile.inputStream().buffered().use { input ->
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                digest.update(buffer, 0, count)
+            }
+        }
+        val actual = digest.digest().toHex()
+        if (!actual.equals(expected, ignoreCase = true)) return@withContext null
+        DownloadedEmbeddingModel(modelFile, modelFile.length(), actual)
+    }
+
+    companion object {
+        const val MODEL_FILE_NAME = "embeddinggemma-2-740m.litertlm"
+        const val MODEL_DOWNLOAD_URL =
+            "https://huggingface.co/litert-community/embeddinggemma-2-740m-litert-lm/resolve/main/embeddinggemma-2-740m.litertlm"
+        const val MAX_MODEL_BYTES = 2L * 1024L * 1024L * 1024L
+        const val CONNECT_TIMEOUT_MS = 30_000
+        const val READ_TIMEOUT_MS = 120_000
+
+        private fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it) }
+    }
+}
