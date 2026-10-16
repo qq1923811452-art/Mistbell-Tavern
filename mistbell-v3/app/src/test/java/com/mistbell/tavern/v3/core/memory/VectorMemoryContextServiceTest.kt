@@ -17,7 +17,7 @@ class VectorMemoryContextServiceTest {
     @Test
     fun embedsQueryAndReturnsValidatedRelevantMemory() {
         val service = service(
-            snapshotResult = VectorSnapshotLoadResult.Loaded(snapshot),
+            snapshotResult = VectorSnapshotReadResult.Loaded(snapshot),
             embedding = QueryEmbeddingProvider { listOf(1f, 0f) },
             texts = MemoryTextProvider { listOf(text) },
         )
@@ -32,7 +32,7 @@ class VectorMemoryContextServiceTest {
     fun missingSnapshotDoesNotCallEmbeddingRuntime() {
         var called = false
         val service = service(
-            snapshotResult = VectorSnapshotLoadResult.Missing,
+            snapshotResult = VectorSnapshotReadResult.Missing,
             embedding = QueryEmbeddingProvider {
                 called = true
                 listOf(1f, 0f)
@@ -54,7 +54,7 @@ class VectorMemoryContextServiceTest {
     @Test
     fun invalidEmbeddingOutputFailsClosed() {
         val service = service(
-            snapshotResult = VectorSnapshotLoadResult.Loaded(snapshot),
+            snapshotResult = VectorSnapshotReadResult.Loaded(snapshot),
             embedding = QueryEmbeddingProvider { listOf(Float.NaN, 0f) },
             texts = MemoryTextProvider { listOf(text) },
         )
@@ -70,7 +70,7 @@ class VectorMemoryContextServiceTest {
     @Test
     fun runtimeFailureIsExplicitAndDoesNotUseRemoteFallback() {
         val service = service(
-            snapshotResult = VectorSnapshotLoadResult.Loaded(snapshot),
+            snapshotResult = VectorSnapshotReadResult.Loaded(snapshot),
             embedding = QueryEmbeddingProvider { error("local runtime unavailable") },
             texts = MemoryTextProvider { listOf(text) },
         )
@@ -84,7 +84,7 @@ class VectorMemoryContextServiceTest {
     }
 
     private fun service(
-        snapshotResult: VectorSnapshotLoadResult,
+        snapshotResult: VectorSnapshotReadResult,
         embedding: QueryEmbeddingProvider,
         texts: MemoryTextProvider,
     ) = VectorMemoryContextService(
