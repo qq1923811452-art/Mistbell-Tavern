@@ -45,6 +45,7 @@ class LiteRtLmEmbeddingGemma2Engine(
         nativeLibraryDir = File(appContext.applicationInfo.nativeLibraryDir),
         isArm64 = Build.SUPPORTED_ABIS.any { it == "arm64-v8a" },
         npuModelCompatible = npuModelCompatible,
+        npuRuntimeValidated = appContext.hasVerifiedNpuRuntimeManifest(),
     )
     private val backendOrder = preferredBackends
         .filter { it != InferenceBackend.UNKNOWN && backendAvailability.isAvailable(it) }
@@ -270,6 +271,20 @@ class LiteRtLmEmbeddingGemma2Engine(
     private fun logInfo(event: String, detail: String = "") { runCatching { diagnostics.info(event, detail) } }
     private fun logWarn(event: String, detail: String = "") { runCatching { diagnostics.warn(event, detail) } }
     private fun logError(event: String, detail: String = "") { runCatching { diagnostics.error(event, detail) } }
+
+    private fun Context.hasVerifiedNpuRuntimeManifest(): Boolean = runCatching {
+        assets.open("native-runtime/qualcomm-sm8650.properties").bufferedReader().useLines { source ->
+            val fields = source.mapNotNull { line ->
+                val separator = line.indexOf('=')
+                if (separator <= 0) null else line.substring(0, separator).trim() to line.substring(separator + 1).trim()
+            }.toMap()
+            fields["status"] == "verified" &&
+                fields["target_soc"] == "SM8650" &&
+                fields["litertlm_android"] == "0.18.0" &&
+                fields["qairt_abi"] == "verified" &&
+                fields["dispatch_abi"] == "verified"
+        }
+    }.getOrDefault(false)
 
     private fun InferenceBackend.toLiteRtBackend(): Backend = when (this) {
         InferenceBackend.NPU -> Backend.NPU(nativeLibraryDir = appContext.applicationInfo.nativeLibraryDir)
