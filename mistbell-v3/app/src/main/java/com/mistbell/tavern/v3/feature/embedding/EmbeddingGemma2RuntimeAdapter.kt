@@ -6,7 +6,8 @@ import com.mistbell.tavern.v3.core.inference.InferencePhase
 
 /**
  * Narrow engine boundary for a real local EmbeddingGemma 2 implementation.
- * Implementations must return native 768-dimensional outputs and runtime-observed status.
+ * Implementations must return native 768-dimensional outputs and an explicit backend evidence level.
+ * A configured backend label alone must not be presented as proof of device-level execution.
  */
 interface EmbeddingGemma2InferenceEngine {
     val runtimeId: String
@@ -93,7 +94,7 @@ class EmbeddingGemma2RuntimeAdapter(
             raw.status.backend == InferenceBackend.UNKNOWN ||
             raw.status.backendEvidence == BackendEvidence.NOT_AVAILABLE
         ) {
-            throw EmbeddingOutputException("Engine did not report a verified runtime and backend.")
+            throw EmbeddingOutputException("Engine did not report a runtime ID and backend evidence.")
         }
         if (raw.status.phase != InferencePhase.READY &&
             raw.status.phase != InferencePhase.RUNNING &&
