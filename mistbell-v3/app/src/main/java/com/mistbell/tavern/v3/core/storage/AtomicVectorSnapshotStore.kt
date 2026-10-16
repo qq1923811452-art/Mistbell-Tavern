@@ -49,8 +49,9 @@ class AtomicVectorSnapshotStore(
         require(expectedModelId.isNotBlank())
         require(expectedDimensions > 0)
         val file = atomicFile.baseFile
-        if (!file.exists()) return VectorSnapshotLoadResult.Missing
-        if (file.length() > VectorSnapshotCodec.MAX_SNAPSHOT_BYTES) {
+        val backup = File(file.path + ".bak")
+        if (!file.exists() && !backup.exists()) return VectorSnapshotLoadResult.Missing
+        if (maxOf(file.length(), backup.length()) > VectorSnapshotCodec.MAX_SNAPSHOT_BYTES) {
             return VectorSnapshotLoadResult.Corrupt("Vector snapshot exceeds the size limit.")
         }
 
