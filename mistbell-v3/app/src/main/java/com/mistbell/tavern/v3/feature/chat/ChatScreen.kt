@@ -291,8 +291,9 @@ fun ChatScreen(onBack: () -> Unit) {
                                         diagnostics = DiagnosticLogStore(context.applicationContext.filesDir),
                                     )
                                     memoryEngine = engine
-                                    engine.initialize()
-                                    val backendStatus = engine.currentStatus()
+                                    // Native model loading can block; never initialize the runtime on Compose's main thread.
+                                    withContext(Dispatchers.IO) { engine.initialize() }
+                                    val backendStatus = withContext(Dispatchers.IO) { engine.currentStatus() }
                                     diagnosticStore.info(
                                         "chat.embedding.backend_initialized",
                                         "phase=${backendStatus.phase}; backend=${backendStatus.backend}; evidence=${backendStatus.backendEvidence}",
