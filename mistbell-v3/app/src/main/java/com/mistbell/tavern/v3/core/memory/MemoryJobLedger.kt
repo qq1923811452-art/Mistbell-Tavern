@@ -92,6 +92,21 @@ data class MemoryJobLedger(val jobs: List<MemoryExtractionJob> = emptyList()) {
         return replace(completed)
     }
 
+    fun failPermanently(planId: String, safeError: String): MemoryJobLedger {
+        require(safeError.isNotBlank() && safeError.length <= MemoryExtractionJob.MAX_ERROR_LENGTH)
+        val job = requireJob(planId)
+        require(job.status == MemoryJobStatus.PROCESSING) {
+            "Only a processing job can be marked as permanently failed."
+        }
+        return replace(
+            job.copy(
+                status = MemoryJobStatus.PERMANENT_FAILURE,
+                nextAttemptAtEpochMillis = 0,
+                lastSafeError = safeError,
+            ),
+        )
+    }
+
     fun retry(
         planId: String,
         nowEpochMillis: Long,
