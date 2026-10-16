@@ -27,6 +27,9 @@ class MemoryExtractionQueueRunner(
         data class PersistenceFailure(val jobId: String) : Result
     }
 
+    /** A source could not be read for a transient reason; leave the job retryable. */
+    class RetryableInputException(cause: Throwable? = null) : Exception("Extraction input is temporarily unavailable.", cause)
+
     sealed interface ExecutionResult {
         data object Success : ExecutionResult
         data class Failure(
@@ -82,6 +85,9 @@ class MemoryExtractionQueueRunner(
         } catch (cancelled: CancellationException) {
             finish(ExecutionResult.Failure(safeCategory = "cancelled"))
             throw cancelled
+        } catch (retryable: RetryableInputException) {
+            finish(ExecutionResult.Failure(safeCategory = "source_unavailable", permanent = false))
+            return synchronousResult.get() ?: Result.Started(job.id)
         } catch (_: Exception) {
             finish(ExecutionResult.Failure(permanent = true))
             return synchronousResult.get() ?: Result.Started(job.id)
