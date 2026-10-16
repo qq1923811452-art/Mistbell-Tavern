@@ -500,7 +500,9 @@ jobs:
                       + f"（另有 {rejected_evidence_count} 条候选问题因证据无法匹配而被丢弃。）"
                   )
           except Exception as exc:
-              print("Could not validate structured AI response:", type(exc).__name__)
+              # Keep diagnostics actionable without logging the model's raw response.
+              detail = str(exc).replace("\r", " ").replace("\n", " ")[:240]
+              print("Could not validate structured AI response:", type(exc).__name__, detail)
               raise SystemExit(1)
 
           allowed_severities = {"critical", "high", "medium", "low"}
