@@ -1,6 +1,5 @@
 package com.mistbell.tavern.v3.core.storage
 
-import com.mistbell.tavern.v3.core.memory.VectorMemoryContextService
 import com.mistbell.tavern.v3.core.memory.VectorSnapshotProvider
 import com.mistbell.tavern.v3.core.memory.VectorSnapshotReadResult
 
