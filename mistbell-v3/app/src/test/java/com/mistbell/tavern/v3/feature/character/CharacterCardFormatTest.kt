@@ -52,6 +52,16 @@ class CharacterCardFormatTest {
     }
 
     @Test
+    fun emptyEmbeddedCharacterBookDoesNotRejectOtherwiseValidCard() {
+        val result = LegacyCharacterCardImporter.import(
+            """{"name":"Mira","character_book":{"name":"Empty book"}}""",
+        )
+
+        assertEquals("Mira", result.card.name)
+        assertNull(result.embeddedWorldbook)
+    }
+
+    @Test
     fun importsV1RootFieldsWithoutInventingAnEmbeddedWorldbook() {
         val result = LegacyCharacterCardImporter.import(
             """{"name":"Rowan","description":"A ranger.","first_mes":"Stay close.","mes_example":"{{char}}: Ready.","tags":[]}""",
