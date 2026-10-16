@@ -52,8 +52,8 @@ class EmbeddingGemma2ModelAssetManager(
         check(modelDirectory.isDirectory || modelDirectory.mkdirs()) {
             "Model directory could not be created."
         }
-        val temporaryFile = File(modelDirectory, "$MODEL_FILE_NAME.download")
-        val temporaryDigestFile = File(modelDirectory, "$MODEL_FILE_NAME.sha256.tmp")
+        val temporaryFile = File(modelDirectory, "$selectedModelFileName.download")
+        val temporaryDigestFile = File(modelDirectory, "$selectedModelFileName.sha256.tmp")
         if (temporaryDigestFile.exists() && !temporaryDigestFile.delete()) {
             throw IllegalStateException("An incomplete model digest could not be removed.")
         }
@@ -106,7 +106,7 @@ class EmbeddingGemma2ModelAssetManager(
                 "Downloaded model checksum does not match the pinned model for the selected runtime profile; refusing to install it."
             }
             FileOutputStream(temporaryDigestFile).use { output ->
-                output.write("$sha256  $MODEL_FILE_NAME\n".toByteArray(Charsets.UTF_8))
+                output.write("$sha256  $selectedModelFileName\n".toByteArray(Charsets.UTF_8))
                 output.fd.sync()
             }
             Files.move(
@@ -159,8 +159,8 @@ class EmbeddingGemma2ModelAssetManager(
             check(modelDirectory.isDirectory || modelDirectory.mkdirs()) {
                 "Model directory could not be created."
             }
-            val temporaryFile = File(modelDirectory, "$MODEL_FILE_NAME.import")
-            val temporaryDigestFile = File(modelDirectory, "$MODEL_FILE_NAME.sha256.tmp")
+            val temporaryFile = File(modelDirectory, "$selectedModelFileName.import")
+            val temporaryDigestFile = File(modelDirectory, "$selectedModelFileName.sha256.tmp")
             if (temporaryFile.exists() && !temporaryFile.delete()) {
                 throw IllegalStateException("An incomplete model import could not be removed.")
             }
@@ -202,7 +202,7 @@ class EmbeddingGemma2ModelAssetManager(
                     }
                 }
                 FileOutputStream(temporaryDigestFile).use { output ->
-                    output.write("$sha256  $MODEL_FILE_NAME\n".toByteArray(Charsets.UTF_8))
+                    output.write("$sha256  $selectedModelFileName\n".toByteArray(Charsets.UTF_8))
                     output.fd.sync()
                 }
                 Files.move(
