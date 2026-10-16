@@ -1,7 +1,6 @@
 package com.mistbell.tavern.v3.feature.memory
 
 import com.mistbell.tavern.v3.core.memory.EligibleConversationTurn
-import com.mistbell.tavern.v3.core.memory.FactStatus
 import com.mistbell.tavern.v3.core.memory.MemoryBatchPlan
 import com.mistbell.tavern.v3.core.memory.MemoryFact
 import com.mistbell.tavern.v3.core.memory.MemoryJobLedger
@@ -61,6 +60,24 @@ class MemoryExtractionPipelineTest {
         assertTrue(second is MemoryPipelineResult.Completed)
         assertEquals(1, factStore.history().size)
         assertEquals(MemoryJobStatus.COMPLETED, ledgerStore.ledger().jobs.single().status)
+    }
+
+    @Test
+    fun missingSourceTextIsPermanentlyClassified() {
+        val ledgerStore = InMemoryLedger()
+        ledgerStore.save(MemoryJobLedger().enqueue(plan()))
+        val worker = MemoryExtractionWorker(
+            ledgerStore = ledgerStore,
+            factStore = InMemoryFacts(),
+            extractor = ImmediateExtractor(emptyList()),
+            textSource = MemoryTurnTextSource { _, _ -> null },
+            nowEpochMillis = { 1_000L },
+        )
+        var result: MemoryPipelineResult? = null
+        worker.processNext { result = it }
+
+        assertTrue(result is MemoryPipelineResult.Failed)
+        assertEquals(MemoryJobStatus.PERMANENT_FAILURE, ledgerStore.ledger().jobs.single().status)
     }
 
     @Test
