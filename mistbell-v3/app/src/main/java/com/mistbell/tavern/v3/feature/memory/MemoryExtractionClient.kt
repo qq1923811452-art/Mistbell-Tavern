@@ -23,6 +23,10 @@ fun interface MemoryCredentialResolver {
     fun resolve(handle: String): String?
 }
 
+/** Formats one completed chat pair for extraction while preserving the user/assistant boundary. */
+fun formatMemoryExtractionTurn(userText: String, assistantText: String): String =
+    ("User: $userText\nAssistant: $assistantText").take(MemoryExtractionInput.MAX_TURN_TEXT_CHARS)
+
 data class MemoryExtractionInput(
     val conversationId: String,
     val turns: List<EligibleConversationTurn>,
