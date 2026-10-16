@@ -225,7 +225,7 @@ fun ChatScreen(onBack: () -> Unit) {
             EligibleConversationTurn(id = pair.first.id, ordinal = (ordinal + 1).toLong())
         }
         val textByTurnId = batch.associate { (user, assistant) ->
-            user.id to ("User: " + user.content + "\\nAssistant: " + assistant.content)
+            user.id to ("User: " + user.content + "\nAssistant: " + assistant.content)
                 .take(MemoryExtractionInput.MAX_TURN_TEXT_CHARS)
         }
         val input = runCatching {
@@ -267,6 +267,8 @@ fun ChatScreen(onBack: () -> Unit) {
                             )
                             status = "记忆整理完成：本批提取 ${outcome.extractedFacts} 条事实，当前有效 ${outcome.currentFacts} 条。" +
                                 (outcome.indexingWarning?.let { " $it" } ?: "")
+                            // Drain additional complete batches immediately; otherwise >20 pending turns can stall until another chat reply.
+                            scheduleMemoryExtractionIfDue(providers, memorySecret)
                         }
                     }
                 }
