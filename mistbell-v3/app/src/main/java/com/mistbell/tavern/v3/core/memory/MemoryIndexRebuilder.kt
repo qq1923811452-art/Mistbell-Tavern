@@ -9,6 +9,9 @@ import kotlinx.coroutines.CancellationException
 interface PassageEmbeddingRuntime : QueryEmbeddingProvider {
     val modelId: String
     val dimensions: Int
+
+    /** Uses document/passage formatting, which can differ from query formatting for retrieval models. */
+    suspend fun embedPassage(text: String): List<Float> = embed(text)
 }
 
 /** Result of rebuilding the durable source-text/vector pair. */
@@ -78,7 +81,7 @@ class MemoryIndexRebuilder(
 
         val snapshotRecords = try {
             records.sortedBy(MemoryTextRecord::id).map { record ->
-                val vector = runtime.embed(record.text)
+                val vector = runtime.embedPassage(record.text)
                 require(vector.size == dimensions) {
                     "Embedding dimension does not match the loaded model."
                 }
