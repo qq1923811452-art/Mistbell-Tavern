@@ -3,8 +3,6 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
-import org.jetbrains.kotlin.gradle.dsl.JvmTarget
-
 android {
     namespace = "com.mistbell.tavern.v3"
     compileSdk = 37
@@ -35,7 +33,7 @@ android {
 
 kotlin {
     compilerOptions {
-        jvmTarget.set(JvmTarget.JVM_17)
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
     }
 }
 
