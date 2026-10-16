@@ -54,6 +54,7 @@ class EmbeddingGemma2ModelAssetManager(
                 "Model download exceeds the configured size limit."
             }
             var downloadedBytes = 0L
+            var lastProgressBytes = 0L
             val digest = MessageDigest.getInstance("SHA-256")
             connection.inputStream.use { input ->
                 FileOutputStream(temporaryFile).use { output ->
@@ -67,7 +68,12 @@ class EmbeddingGemma2ModelAssetManager(
                         }
                         digest.update(buffer, 0, count)
                         output.write(buffer, 0, count)
-                        onProgress(downloadedBytes, totalBytes)
+                        if (downloadedBytes - lastProgressBytes >= PROGRESS_INTERVAL_BYTES ||
+                            (totalBytes != null && downloadedBytes == totalBytes)
+                        ) {
+                            onProgress(downloadedBytes, totalBytes)
+                            lastProgressBytes = downloadedBytes
+                        }
                     }
                     output.fd.sync()
                 }
@@ -124,6 +130,7 @@ class EmbeddingGemma2ModelAssetManager(
         const val MODEL_DOWNLOAD_URL =
             "https://huggingface.co/litert-community/embeddinggemma-2-740m-litert-lm/resolve/main/embeddinggemma-2-740m.litertlm"
         const val MAX_MODEL_BYTES = 2L * 1024L * 1024L * 1024L
+        const val PROGRESS_INTERVAL_BYTES = 1024L * 1024L
         const val CONNECT_TIMEOUT_MS = 30_000
         const val READ_TIMEOUT_MS = 120_000
 
