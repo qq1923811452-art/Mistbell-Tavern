@@ -77,3 +77,10 @@ Implemented in the clean-room source tree (not yet final-acceptance complete):
 Not yet implemented or verified: production database integration and durable pending-memory jobs; actual EmbeddingGemma 2 model packaging/tokenization and LiteRT-LM adapter; runtime-backed CPU/GPU/NPU probes on Redmi K70 Pro; vector similarity retrieval and full rebuild; dedicated image API; new worldbook/character parsers and import fixtures; end-to-end security/backup flows; UI motion/performance measurements.
 
 Validation rule: do not mark a feature complete until the latest commit's focused tests pass and its data, cancellation, error, persistence and privacy paths have been reviewed. Routine CI must not package an APK; APK/emulator/instrumented and physical-device checks are reserved for final acceptance.
+
+
+### Memory extraction queue (development status)
+
+The clean-room project now has a deterministic job lifecycle model for memory extraction, including stable plan IDs, attempt counts, retry scheduling, permanent-failure classification and recovery of interrupted work. The ledger has a bounded, versioned, checksummed codec and an app-private `AtomicFile` store. Unit tests cover state transitions, retry timing, crash recovery, round-trip encoding and checksum/truncation rejection.
+
+This is a persistence foundation, not yet an end-to-end completed memory pipeline: the chat-turn completion path must enqueue and persist plans, a worker must claim jobs and call the isolated extraction client, accepted facts must be committed atomically to durable fact history, and ledger completion must happen only after that commit. Those integration and crash-window tests remain required.
