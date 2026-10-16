@@ -19,18 +19,33 @@ class MemoryExtractionJobRepository(private val store: MemoryExtractionJobStore)
     fun claimDue(now: Long): MemoryExtractionJob? {
         require(now >= 0L)
         val jobs = read()
-        val index = jobs.indices.filter { i ->
-            val job = jobs[i]
+        // Expire every due job whose retry budget is exhausted before selecting work.
+        // Returning null immediately after expiring one job used to strand other due jobs
+        // until an unrelated future scheduler invocation.
+        var changed = false
+        val eligible = jobs.map { job ->
+            val due = (job.state == MemoryExtractionJob.State.PENDING ||
+                job.state == MemoryExtractionJob.State.RETRY_WAIT) &&
+                job.nextAttemptAtEpochMillis <= now
+            if (due && job.attemptCount >= MemoryExtractionJob.MAX_ATTEMPTS) {
+                changed = true
+                job.copy(
+                    state = MemoryExtractionJob.State.PERMANENT_FAILURE,
+                    lastSafeError = job.lastSafeError ?: "Retry limit reached.",
+                )
+            } else {
+                job
+            }
+        }
+        if (changed) store.save(eligible)
+        val index = eligible.indices.filter { i ->
+            val job = eligible[i]
             (job.state == MemoryExtractionJob.State.PENDING ||
                 job.state == MemoryExtractionJob.State.RETRY_WAIT) && job.nextAttemptAtEpochMillis <= now
-        }.minByOrNull { jobs[it].createdAtEpochMillis } ?: return null
-        val job = jobs[index]
-        if (job.attemptCount >= MemoryExtractionJob.MAX_ATTEMPTS) {
-            store.save(jobs.toMutableList().also { it[index] = job.copy(state = MemoryExtractionJob.State.PERMANENT_FAILURE) })
-            return null
-        }
+        }.minByOrNull { eligible[it].createdAtEpochMillis } ?: return null
+        val job = eligible[index]
         val claimed = job.copy(state = MemoryExtractionJob.State.RUNNING, attemptCount = job.attemptCount + 1)
-        store.save(jobs.toMutableList().also { it[index] = claimed })
+        store.save(eligible.toMutableList().also { it[index] = claimed })
         return claimed
     }
 
