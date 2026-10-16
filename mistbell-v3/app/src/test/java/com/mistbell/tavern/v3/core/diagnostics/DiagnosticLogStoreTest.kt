@@ -10,7 +10,7 @@ import org.junit.Test
 class DiagnosticLogStoreTest {
     @Test
     fun redactsCredentialsAndExportsReadableLog() {
-        val directory = createTempDir(prefix = "mistbell-diagnostics-test")
+        val directory = kotlin.io.path.createTempDirectory(prefix = "mistbell-diagnostics-test").toFile()
         try {
             val store = DiagnosticLogStore(directory) { Instant.parse("2026-10-16T12:00:00Z") }
             store.info("embedding.initialize", "Bearer super-secret-token; api_key=private-key")
@@ -38,7 +38,7 @@ class DiagnosticLogStoreTest {
 
     @Test
     fun stripsLineBreaksAndBoundsEventDetails() {
-        val directory = createTempDir(prefix = "mistbell-diagnostics-test")
+        val directory = kotlin.io.path.createTempDirectory(prefix = "mistbell-diagnostics-test").toFile()
         try {
             val store = DiagnosticLogStore(directory) { Instant.EPOCH }
             store.warn("unsafe\nevent", "detail\r\nline")
