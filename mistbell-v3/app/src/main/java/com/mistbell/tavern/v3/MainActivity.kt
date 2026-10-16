@@ -1,6 +1,11 @@
 package com.mistbell.tavern.v3
 
 import android.os.Bundle
+import android.os.Build
+import android.os.Environment
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import android.provider.OpenableColumns
@@ -71,23 +76,48 @@ class MainActivity : ComponentActivity() {
     private var showChat by mutableStateOf(true)
     private val embeddingDimensionOptions = listOf(128, 256, 512, 768, 1024, 1536, 2048)
     private var selectedEmbeddingDimensions by mutableStateOf(768)
+    private var qualcommModelSelected by mutableStateOf(false)
+
+    private fun publicModelDirectory(): File =
+        File(Environment.getExternalStorageDirectory(), "Download/向量模型")
+
+    private fun hasPublicModelStorageAccess(): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.R || Environment.isExternalStorageManager()
+
+    private fun createModelAssetManager(qualcomm: Boolean) =
+        EmbeddingGemma2ModelAssetManager(
+            modelDirectory = publicModelDirectory(),
+            preferQualcommSm8650Model = qualcomm,
+        )
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         diagnostics = DiagnosticLogStore(filesDir)
-        selectedEmbeddingDimensions = getSharedPreferences("mistbell-v3-settings", MODE_PRIVATE)
+        val settings = getSharedPreferences("mistbell-v3-settings", MODE_PRIVATE)
+        selectedEmbeddingDimensions = settings
             .getInt("embedding_output_dimensions", 768)
             .takeIf { it in embeddingDimensionOptions } ?: 768
-        modelAssets = EmbeddingGemma2ModelAssetManager(File(filesDir, "models"))
+        qualcommModelSelected = settings.getBoolean("embedding_qualcomm_sm8650_model", false)
+        modelAssets = createModelAssetManager(qualcommModelSelected)
         diagnostics.info("app.started", "build=3.0.0-dev")
         lifecycleScope.launch {
-            val installed = withContext(Dispatchers.IO) { modelAssets.verifyInstalled() }
-            if (!operationBusy) operationMessage = if (installed == null) {
-                "本地模型未安装，需先下载 EmbeddingGemma 2。"
+            val installed = if (hasPublicModelStorageAccess()) {
+                withContext(Dispatchers.IO) { modelAssets.verifyInstalled() }
             } else {
-                "本地模型已校验：${installed.sizeBytes} bytes；SHA-256 一致。"
+                null
             }
-            diagnostics.info("embedding.model.startup.check", "installed=${installed != null}")
+            if (!operationBusy) operationMessage = when {
+                !hasPublicModelStorageAccess() ->
+                    "需要允许“所有文件访问”后，模型才能保存到 /storage/emulated/0/Download/向量模型/"
+                installed == null ->
+                    "所选模型尚未安装或校验失败。下载位置：/storage/emulated/0/Download/向量模型/"
+                else ->
+                    "本地模型已校验：${installed.sizeBytes} bytes；SHA-256 一致。位置：${installed.file.absolutePath}"
+            }
+            diagnostics.info(
+                "embedding.model.startup.check",
+                "installed=${installed != null}; publicStorageAccess=${hasPublicModelStorageAccess()}",
+            )
         }
         val importModel = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
             if (uri == null) {
@@ -177,6 +207,8 @@ class MainActivity : ComponentActivity() {
                             onOpenChat = { showChat = true },
                             onDownloadModel = ::downloadEmbeddingModel,
                             onImportModel = { importModel.launch(arrayOf("*/*")) },
+                            qualcommModelSelected = qualcommModelSelected,
+                            onSelectModelProfile = ::selectModelProfile,
                             selectedEmbeddingDimensions = selectedEmbeddingDimensions,
                             onCycleEmbeddingDimensions = ::cycleEmbeddingDimensions,
                             onRunEmbeddingTest = ::runEmbeddingSelfTest,
@@ -188,10 +220,44 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun selectModelProfile(qualcomm: Boolean) {
+        if (operationBusy || qualcommModelSelected == qualcomm) return
+        activeEmbeddingEngine?.close()
+        activeEmbeddingEngine = null
+        qualcommModelSelected = qualcomm
+        modelAssets = createModelAssetManager(qualcomm)
+        getSharedPreferences("mistbell-v3-settings", MODE_PRIVATE).edit()
+            .putBoolean("embedding_qualcomm_sm8650_model", qualcomm)
+            .apply()
+        diagnostics.info(
+            "embedding.model.profile.selected",
+            "profile=${if (qualcomm) "QUALCOMM_SM8650" else "PORTABLE"}",
+        )
+        operationMessage = if (qualcomm) {
+            "已选择 Qualcomm SM8650 专用模型。注意：选择专用模型不代表 NPU 运行库已就绪；下载后仍需实测。"
+        } else {
+            "已选择通用模型，适合先进行 CPU/GPU 兼容性测试。"
+        }
+    }
+
     private fun downloadEmbeddingModel() {
         if (operationBusy) return
+        if (!hasPublicModelStorageAccess()) {
+            operationMessage = "要将模型写入公共下载目录，需要开启“所有文件访问”。授权后请返回应用并再次点击下载。"
+            diagnostics.warn("embedding.model.storage_permission.required")
+            val intent = Intent(
+                Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                Uri.parse("package:$packageName"),
+            )
+            try {
+                startActivity(intent)
+            } catch (_: Exception) {
+                startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
+            }
+            return
+        }
         operationBusy = true
-        operationMessage = "开始下载模型；请保持应用在前台并连接稳定网络。"
+        operationMessage = "开始下载模型到 ${publicModelDirectory().absolutePath}；请保持应用在前台并连接稳定网络。"
         diagnostics.info("embedding.model.download.started", "source=official-model-host")
         lifecycleScope.launch {
             try {
@@ -204,7 +270,7 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 }
-                operationMessage = "模型下载完成，SHA-256：${downloaded.sha256}"
+                operationMessage = "模型下载完成：${downloaded.file.absolutePath}\nSHA-256：${downloaded.sha256}"
                 diagnostics.info(
                     "embedding.model.download.succeeded",
                     "bytes=${downloaded.sizeBytes}; sha256=${downloaded.sha256}",
@@ -323,6 +389,8 @@ private fun DevelopmentHome(
     onOpenChat: () -> Unit,
     onDownloadModel: () -> Unit,
     onImportModel: () -> Unit,
+    qualcommModelSelected: Boolean,
+    onSelectModelProfile: (Boolean) -> Unit,
     selectedEmbeddingDimensions: Int,
     onCycleEmbeddingDimensions: () -> Unit,
     onRunEmbeddingTest: () -> Unit,
@@ -377,6 +445,31 @@ private fun DevelopmentHome(
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text("本地模型与实测", style = MaterialTheme.typography.titleMedium)
                         Spacer(Modifier.height(6.dp))
+                        Text("模型保存位置：/storage/emulated/0/Download/向量模型/", style = MaterialTheme.typography.bodyMedium)
+                        Spacer(Modifier.height(4.dp))
+                        Text("请选择要下载的模型版本：", style = MaterialTheme.typography.bodyMedium)
+                        Spacer(Modifier.height(6.dp))
+                        Button(
+                            onClick = { onSelectModelProfile(false) },
+                            enabled = !operationBusy,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(if (!qualcommModelSelected) "✓ 已选：通用版（约 485 MB）" else "选择通用版（约 485 MB）")
+                        }
+                        Spacer(Modifier.height(6.dp))
+                        Button(
+                            onClick = { onSelectModelProfile(true) },
+                            enabled = !operationBusy,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(if (qualcommModelSelected) "✓ 已选：Qualcomm SM8650 专用版（约 563 MB）" else "选择 Qualcomm SM8650 专用版（约 563 MB）")
+                        }
+                        Text(
+                            "专用版针对骁龙 8 Gen 3/SM8650；NPU 是否可用仍取决于 APK 中的运行库与真机验证。首次下载需要授予“所有文件访问”，这样模型才会出现在公共下载目录中。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(Modifier.height(8.dp))
                         Text("向量维度档位：${selectedEmbeddingDimensions} 维", style = MaterialTheme.typography.bodyMedium)
                         Spacer(Modifier.height(6.dp))
                         Button(onClick = onCycleEmbeddingDimensions, enabled = !operationBusy, modifier = Modifier.fillMaxWidth()) {
