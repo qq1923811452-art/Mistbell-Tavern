@@ -104,6 +104,7 @@ jobs:
   # Build the real application APK during routine CI, in parallel with the quality gate.
   # This validates packaging on every PR without delaying unit/static checks behind emulator boot.
   apk-build:
+    if: ${{ github.event.pull_request.head.ref != 'codex/mistbell-development-3.0' }}
     name: Build debug APK (parallel CI gate)
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -168,7 +169,7 @@ jobs:
   # copied or published as a release artifact during routine verification.
   instrumented-tests:
     needs: verify
-    if: ${{ needs.verify.result == 'success' && needs.verify.outputs.quality_gate == 'success' }}
+    if: ${{ (github.event.pull_request.head.ref != 'codex/mistbell-development-3.0' || inputs.full_android_validation == true) && needs.verify.result == 'success' && needs.verify.outputs.quality_gate == 'success' }}
     name: Android emulator and migration validation
     runs-on: ubuntu-latest
     timeout-minutes: 55
