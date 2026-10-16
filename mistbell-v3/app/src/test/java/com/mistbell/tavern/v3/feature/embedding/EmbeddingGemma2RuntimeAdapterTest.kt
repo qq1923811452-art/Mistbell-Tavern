@@ -6,6 +6,7 @@ import com.mistbell.tavern.v3.core.inference.InferenceRuntimeStatus
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class EmbeddingGemma2RuntimeAdapterTest {
@@ -73,6 +74,19 @@ class EmbeddingGemma2RuntimeAdapterTest {
         assertThrows(EmbeddingOutputException::class.java) {
             runBlocking { wrongModel.embedDocuments(listOf("document")) }
         }
+    }
+
+    @Test
+    fun rejectsInvalidConfiguredBatchSizes() {
+        assertTrue(runCatching {
+            EmbeddingGemma2RuntimeAdapter(engine = engine { error("Must not infer") }, configuredBatchSize = 0)
+        }.isFailure)
+        assertTrue(runCatching {
+            EmbeddingGemma2RuntimeAdapter(
+                engine = engine { error("Must not infer") },
+                configuredBatchSize = EmbeddingGemma2RuntimeAdapter.MAX_CONFIGURED_BATCH_SIZE + 1,
+            )
+        }.isFailure)
     }
 
     @Test
