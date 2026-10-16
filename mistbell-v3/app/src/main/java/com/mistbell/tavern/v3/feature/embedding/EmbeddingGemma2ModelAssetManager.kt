@@ -7,6 +7,7 @@ import java.net.URL
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
+import java.util.concurrent.locks.ReentrantLock
 import java.util.concurrent.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -22,10 +23,13 @@ class EmbeddingGemma2ModelAssetManager(
 ) {
     private val modelFile = File(modelDirectory, MODEL_FILE_NAME)
     private val digestFile = File(modelDirectory, "$MODEL_FILE_NAME.sha256")
+    private val downloadLock = ReentrantLock()
 
     suspend fun download(
         onProgress: (downloadedBytes: Long, totalBytes: Long?) -> Unit = { _, _ -> },
     ): DownloadedEmbeddingModel = withContext(Dispatchers.IO) {
+        downloadLock.lock()
+        try {
         check(modelDirectory.isDirectory || modelDirectory.mkdirs()) {
             "Model directory could not be created."
         }
@@ -100,6 +104,9 @@ class EmbeddingGemma2ModelAssetManager(
             connection.disconnect()
             temporaryFile.delete()
             temporaryDigestFile.delete()
+        }
+        } finally {
+            downloadLock.unlock()
         }
     }
 
