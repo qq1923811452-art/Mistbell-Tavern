@@ -121,18 +121,28 @@ data class MemoryJobLedger(val jobs: List<MemoryExtractionJob> = emptyList()) {
         return replace(next)
     }
 
-    fun recoverInterruptedProcessing(safeError: String = DEFAULT_INTERRUPTED_ERROR): MemoryJobLedger {
+    fun recoverInterruptedProcessing(
+        safeError: String = DEFAULT_INTERRUPTED_ERROR,
+        maxAttempts: Int = DEFAULT_MAX_ATTEMPTS,
+    ): MemoryJobLedger {
         require(safeError.isNotBlank() && safeError.length <= MemoryExtractionJob.MAX_ERROR_LENGTH)
+        require(maxAttempts > 0) { "Maximum attempts must be positive." }
         return copy(
             jobs = jobs.map { job ->
-                if (job.status == MemoryJobStatus.PROCESSING) {
+                if (job.status != MemoryJobStatus.PROCESSING) {
+                    job
+                } else if (job.attemptCount >= maxAttempts) {
+                    job.copy(
+                        status = MemoryJobStatus.PERMANENT_FAILURE,
+                        nextAttemptAtEpochMillis = 0,
+                        lastSafeError = safeError,
+                    )
+                } else {
                     job.copy(
                         status = MemoryJobStatus.RETRY_WAIT,
                         nextAttemptAtEpochMillis = 0,
                         lastSafeError = safeError,
                     )
-                } else {
-                    job
                 }
             },
         )
