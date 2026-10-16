@@ -53,6 +53,33 @@ class VectorMemoryContextServiceTest {
     }
 
     @Test
+    fun sameDimensionFromDifferentModelRejectsSnapshotBeforeEmbedding() = runBlocking {
+        var called = false
+        val runtime = object : IdentifiedQueryEmbeddingProvider {
+            override val modelId = "different-model"
+            override val dimensions = 2
+
+            override suspend fun embed(text: String): List<Float> {
+                called = true
+                return listOf(1f, 0f)
+            }
+        }
+        val service = service(
+            snapshotResult = VectorSnapshotReadResult.Loaded(snapshot),
+            embedding = runtime,
+            texts = MemoryTextProvider { listOf(text) },
+        )
+
+        assertEquals(
+            VectorMemoryContextResult.Unavailable(
+                VectorMemoryContextResult.Reason.SNAPSHOT_INCOMPATIBLE,
+            ),
+            service.retrieveForQuery("query"),
+        )
+        assertTrue(!called)
+    }
+
+    @Test
     fun invalidEmbeddingOutputFailsClosed() = runBlocking {
         val service = service(
             snapshotResult = VectorSnapshotReadResult.Loaded(snapshot),
