@@ -37,7 +37,7 @@ class MemoryIndexRebuilder(
     private val saveSnapshot: (VectorSnapshot) -> Unit,
     private val clockMillis: () -> Long = System::currentTimeMillis,
 ) {
-    fun rebuild(records: List<MemoryTextRecord>): MemoryIndexRebuildResult {
+    suspend fun rebuild(records: List<MemoryTextRecord>): MemoryIndexRebuildResult {
         val modelId = runtime.modelId
         val dimensions = runtime.dimensions
         if (modelId.isBlank() ||
