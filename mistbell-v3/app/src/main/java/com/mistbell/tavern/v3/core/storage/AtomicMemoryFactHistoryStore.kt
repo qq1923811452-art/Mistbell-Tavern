@@ -16,6 +16,7 @@ sealed interface MemoryFactHistoryLoadResult {
 interface MemoryFactHistoryPersistence {
     fun save(history: List<MemoryFact>)
     fun load(): MemoryFactHistoryLoadResult
+    fun update(transform: (List<MemoryFact>) -> List<MemoryFact>): List<MemoryFact>
 }
 
 /** App-private atomic fact-history storage. Invalid data is never silently replaced. */
@@ -44,6 +45,18 @@ class AtomicMemoryFactHistoryStore(
             atomicFile.failWrite(stream)
             throw failure
         }
+    }
+
+    @Synchronized
+    override fun update(transform: (List<MemoryFact>) -> List<MemoryFact>): List<MemoryFact> {
+        val current = when (val loaded = load()) {
+            MemoryFactHistoryLoadResult.Missing -> emptyList()
+            is MemoryFactHistoryLoadResult.Loaded -> loaded.history
+            is MemoryFactHistoryLoadResult.Corrupt -> throw IllegalStateException(loaded.safeReason)
+        }
+        val updated = transform(current)
+        if (updated != current) save(updated)
+        return updated
     }
 
     @Synchronized
