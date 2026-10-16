@@ -84,9 +84,9 @@ class MemoryAwareChatRequestTest {
         val captured = server.takeRequest(1, TimeUnit.SECONDS)!!
         val messages = JSONObject(captured.body.readUtf8()).getJSONArray("messages")
         assertEquals(5, messages.length())
-        assertEquals("system", messages.getJSONObject(1).getString("role"))
+        assertEquals("system", messages.getJSONObject(3).getString("role"))
         assertTrue(
-            messages.getJSONObject(1).getString("content")
+            messages.getJSONObject(3).getString("content")
                 .contains("The user prefers concise answers."),
         )
         assertEquals("user", messages.getJSONObject(4).getString("role"))
