@@ -69,6 +69,9 @@ object EmbeddingOutputValidator {
             if (vector.any { !it.isFinite() }) {
                 throw EmbeddingOutputException("Vector $index contains a non-finite value.")
             }
+            if (vector.all { it == 0f }) {
+                throw EmbeddingOutputException("Vector $index is a zero vector.")
+            }
         }
         if (output.status.modelId != runtime.model.modelId) {
             throw EmbeddingOutputException("Runtime status model ID does not match the configured model.")
