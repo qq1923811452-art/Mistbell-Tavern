@@ -65,6 +65,7 @@ import com.mistbell.tavern.v3.core.model.ProviderProfileSet
 import com.mistbell.tavern.v3.feature.memory.MemoryCredentialResolver
 import com.mistbell.tavern.v3.feature.memory.MemoryExtractionClient
 import com.mistbell.tavern.v3.feature.memory.MemoryExtractionInput
+import com.mistbell.tavern.v3.feature.memory.formatMemoryExtractionTurn
 import com.mistbell.tavern.v3.feature.memory.TemporalFactTextSynchronizer
 import com.mistbell.tavern.v3.feature.memory.TemporalFactTextSyncResult
 import com.mistbell.tavern.v3.feature.memory.TemporalFactExtractionPipeline
@@ -225,8 +226,7 @@ fun ChatScreen(onBack: () -> Unit) {
             EligibleConversationTurn(id = pair.first.id, ordinal = (ordinal + 1).toLong())
         }
         val textByTurnId = batch.associate { (user, assistant) ->
-            user.id to ("User: " + user.content + "\nAssistant: " + assistant.content)
-                .take(MemoryExtractionInput.MAX_TURN_TEXT_CHARS)
+            user.id to formatMemoryExtractionTurn(user.content, assistant.content)
         }
         val input = runCatching {
             MemoryExtractionInput(
