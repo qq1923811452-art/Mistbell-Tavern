@@ -1,7 +1,6 @@
 package com.mistbell.tavern.v3.feature.chat
 
 import kotlinx.coroutines.runBlocking
-
 import com.mistbell.tavern.v3.core.memory.MemoryTextProvider
 import com.mistbell.tavern.v3.core.memory.MemoryTextRecord
 import com.mistbell.tavern.v3.core.memory.QueryEmbeddingProvider
