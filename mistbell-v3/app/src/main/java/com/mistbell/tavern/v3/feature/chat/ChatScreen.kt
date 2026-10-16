@@ -656,7 +656,7 @@ fun ChatScreen(onBack: () -> Unit) {
                             }
 
                             override fun onFailure(failure: ChatStreamFailure) {
-                                memoryEngine?.close()
+                                closeTrackedMemoryEngine(memoryEngine)
                                 memoryEngine = null
                                 mainHandler.post {
                                     busy = false
@@ -862,7 +862,7 @@ fun ChatScreen(onBack: () -> Unit) {
                                     "chat.embedding.fallback",
                                     "reason=${error::class.java.simpleName}",
                                 )
-                                memoryEngine?.close()
+                                closeTrackedMemoryEngine(memoryEngine)
                                 memoryEngine = null
                                 status = "本地记忆不可用，已尝试回退普通聊天：${error.message?.take(120) ?: error::class.java.simpleName}"
                                 try {
