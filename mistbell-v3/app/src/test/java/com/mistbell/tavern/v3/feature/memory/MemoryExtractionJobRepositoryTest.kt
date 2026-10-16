@@ -20,6 +20,54 @@ class MemoryExtractionJobRepositoryTest {
         assertEquals("Extraction attempt failed.", repository.list().single().lastSafeError)
     }
 
+    @Test fun enqueueIsIdempotentForSameJobAndRejectsIdCollision() {
+        val repository = repository()
+        val original = job("same-id", createdAt = 100L)
+        assertTrue(repository.enqueue(original))
+        org.junit.Assert.assertFalse(repository.enqueue(original))
+        val conflicting = original.copy(conversationId = "different-conversation")
+        org.junit.Assert.assertThrows(IllegalArgumentException::class.java) {
+            repository.enqueue(conflicting)
+        }
+        assertEquals(1, repository.list().size)
+    }
+
+    @Test fun interruptedRunningJobReturnsToDueRetryWait() {
+        val repository = repository()
+        assertTrue(repository.enqueue(job("interrupted", createdAt = 100L)))
+        assertEquals("interrupted", repository.claimDue(100L)?.id)
+
+        assertEquals(1, repository.recoverInterrupted(500L))
+
+        val recovered = repository.list().single()
+        assertEquals(MemoryExtractionJob.State.RETRY_WAIT, recovered.state)
+        assertEquals(500L, recovered.nextAttemptAtEpochMillis)
+        assertEquals("Previous attempt was interrupted.", recovered.lastSafeError)
+        assertEquals("interrupted", repository.claimDue(500L)?.id)
+    }
+
+    @Test fun retryDelayGrowsExponentiallyAndCapsAtSixHours() {
+        val repository = repository()
+        assertTrue(repository.enqueue(job("retry", createdAt = 1_000L)))
+        repository.claimDue(1_000L)
+        repository.fail("retry", 2_000L, "network")
+        assertEquals(32_000L, repository.list().single().nextAttemptAtEpochMillis)
+
+        repository.claimDue(32_000L)
+        repository.fail("retry", 40_000L, "timeout")
+        assertEquals(100_000L, repository.list().single().nextAttemptAtEpochMillis)
+
+        val overflowRepository = repository()
+        val overflowJob = job(
+            id = "overflow",
+            createdAt = 1L,
+            attemptCount = MemoryExtractionJob.MAX_ATTEMPTS - 1,
+            state = MemoryExtractionJob.State.RUNNING,
+        )
+        assertTrue(overflowRepository.enqueue(overflowJob))
+        assertTrue(overflowRepository.fail("overflow", Long.MAX_VALUE - 1L, "network"))
+        assertEquals(Long.MAX_VALUE, overflowRepository.list().single().nextAttemptAtEpochMillis)
+    }
     @Test fun exhaustedDueJobDoesNotBlockAnotherDueJob() {
         val repository = repository()
         val exhausted = job(
