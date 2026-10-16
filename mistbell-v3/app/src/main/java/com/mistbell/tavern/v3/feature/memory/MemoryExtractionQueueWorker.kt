@@ -1,0 +1,135 @@
+package com.mistbell.tavern.v3.feature.memory
+
+import android.content.Context
+import androidx.work.CoroutineWorker
+import androidx.work.ExistingWorkPolicy
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
+import androidx.work.WorkerParameters
+import com.mistbell.tavern.v3.core.model.ProviderKind
+import com.mistbell.tavern.v3.core.model.ProviderProfile
+import com.mistbell.tavern.v3.core.model.ProviderProfileSet
+import com.mistbell.tavern.v3.core.security.AndroidKeystoreMemoryCredentialStore
+import com.mistbell.tavern.v3.core.storage.AtomicMemoryTextStore
+import com.mistbell.tavern.v3.core.storage.AtomicTemporalFactStore
+import com.mistbell.tavern.v3.feature.chat.ChatHistoryLoadResult
+import com.mistbell.tavern.v3.feature.chat.ChatHistoryStore
+import com.mistbell.tavern.v3.feature.chat.MemoryExtractionBatchInputFactory
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
+
+/**
+ * Process-resilient queue consumer. The queue and source history are both persisted privately;
+ * API credentials are resolved from Android Keystore using the opaque handle stored in the job.
+ */
+class MemoryExtractionQueueWorker(
+    appContext: Context,
+    params: WorkerParameters,
+) : CoroutineWorker(appContext, params) {
+    override suspend fun doWork(): Result {
+        val repository = MemoryExtractionJobRepository(MemoryExtractionJobStore(applicationContext))
+        val runner = MemoryExtractionQueueRunner(repository)
+        return try {
+            runner.recoverInterrupted()
+            val credentialStore = AndroidKeystoreMemoryCredentialStore(applicationContext)
+            val historyStore = ChatHistoryStore(applicationContext)
+            val inputFactory = MemoryExtractionBatchInputFactory()
+            while (!isStopped) {
+                val hasJob = suspendCancellableCoroutine { continuation ->
+                    runner.runNext(
+                        buildInput = { job ->
+                            val handle = requireNotNull(job.credentialHandle) {
+                                "Durable queue jobs require a saved credential handle."
+                            }
+                            require(credentialStore.contains(handle)) {
+                                "Saved memory credential is unavailable."
+                            }
+                            val preferences = applicationContext.getSharedPreferences(
+                                "mistbell-v3-settings",
+                                Context.MODE_PRIVATE,
+                            )
+                            val modelId = preferences.getString("memory_model_id", null)
+                                ?.trim()?.takeIf(String::isNotEmpty)
+                                ?: error("Memory extraction model is no longer configured.")
+                            val baseUrl = preferences.getString("memory_api_base_url", null)
+                                ?.trim()?.takeIf(String::isNotEmpty)
+                                ?: error("Memory extraction endpoint is no longer configured.")
+                            val history = when (val loaded = historyStore.load()) {
+                                is ChatHistoryLoadResult.Loaded -> loaded.messages
+                                ChatHistoryLoadResult.Missing -> error("Persisted source chat history is missing.")
+                                ChatHistoryLoadResult.Corrupt -> error("Persisted source chat history is corrupt.")
+                            }
+                            val input = inputFactory.create(job, history)
+                            val profile = ProviderProfile(
+                                id = job.providerProfileId,
+                                kind = ProviderKind.MEMORY_EXTRACTION,
+                                baseUrl = baseUrl,
+                                modelId = modelId,
+                                credentialHandle = handle,
+                            )
+                            Triple(input, profile, handle)
+                        },
+                        execute = { job, prepared, complete ->
+                            val (input, profile, handle) = prepared
+                            val providers = ProviderProfileSet(
+                                profiles = listOf(profile),
+                                selectedProfileIds = mapOf(ProviderKind.MEMORY_EXTRACTION to profile.id),
+                            )
+                            val pipeline = TemporalFactExtractionPipeline(
+                                client = MemoryExtractionClient(
+                                    providers = providers,
+                                    credentials = MemoryCredentialResolver(credentialStore::resolve),
+                                ),
+                                factStore = AtomicTemporalFactStore(applicationContext),
+                                memoryTextStore = AtomicMemoryTextStore(applicationContext),
+                            )
+                            pipeline.extractAndPersist(input) { outcome ->
+                                when (outcome) {
+                                    is TemporalFactPipelineOutcome.Saved ->
+                                        complete(MemoryExtractionQueueRunner.ExecutionResult.Success)
+                                    is TemporalFactPipelineOutcome.Failed ->
+                                        complete(
+                                            MemoryExtractionQueueRunner.ExecutionResult.Failure(
+                                                safeCategory = when {
+                                                    outcome.safeMessage.contains("timed out", ignoreCase = true) -> "timeout"
+                                                    outcome.safeMessage.contains("HTTP 429", ignoreCase = true) -> "rate_limit"
+                                                    outcome.safeMessage.contains("HTTP 5", ignoreCase = true) -> "server"
+                                                    else -> "network"
+                                                },
+                                            ),
+                                        )
+                                }
+                            }
+                        },
+                        observer = { result ->
+                            when (result) {
+                                MemoryExtractionQueueRunner.Result.Idle -> if (continuation.isActive) continuation.resume(false)
+                                is MemoryExtractionQueueRunner.Result.Finished -> if (continuation.isActive) continuation.resume(true)
+                                is MemoryExtractionQueueRunner.Result.Started -> Unit
+                            }
+                        },
+                    )
+                }
+                if (!hasJob) break
+            }
+            Result.success()
+        } catch (_: Exception) {
+            Result.retry()
+        }
+    }
+
+    companion object {
+        private const val UNIQUE_WORK_NAME = "mistbell-memory-extraction-queue"
+
+        fun enqueue(context: Context) {
+            val request = OneTimeWorkRequestBuilder<MemoryExtractionQueueWorker>()
+                .addTag(UNIQUE_WORK_NAME)
+                .build()
+            WorkManager.getInstance(context.applicationContext).enqueueUniqueWork(
+                UNIQUE_WORK_NAME,
+                ExistingWorkPolicy.APPEND_OR_REPLACE,
+                request,
+            )
+        }
+    }
+}
