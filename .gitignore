@@ -37,3 +37,7 @@ RELEASE_DESCRIPTION_*.md
 # 调研草稿（_research_*）不入库
 _research_*/
 /app/debug/
+
+# Python
+__pycache__/
+*.pyc

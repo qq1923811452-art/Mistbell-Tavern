@@ -1,0 +1,840 @@
+# Mistbell-Tavern 协作契约（Machine-readable collaboration contract）
+#
+# 本文件是「协作基础设施」的一部分，与 App 功能代码工作线分离（见 MT-007）。
+# 它只声明规则与证据要求，不声明任何功能已经实现。
+#
+# 权威来源：「Mistbell-Tavern 3.0 完整项目总清单」（用户附件 pasted_text_1792110248661.txt）
+# 生成/核对时间：2026-10-16T08:33+08:00（Asia/Shanghai）
+# 状态：新增文件，尚未入库；未被任何 CI 调用。
+
+contract_version: 1
+contract_status: DRAFT_NOT_WIRED
+
+baseline:
+  branch: codex/mistbell-development-3.0
+  # 约束绑定的是提交身份，不是分支名（MT-001）
+  commit: ba2ae9b3099fa7282ab58b35b2128f9bca89b1ee
+  source_pr: 29
+  source_pr_head_ref: codex/full-project-audit-pr29-2026-10-14
+  source_pr_head_sha: ba2ae9b3099fa7282ab58b35b2128f9bca89b1ee
+  base_branch_of_pr29: mistbell-2.0
+  verified_at: "2026-10-16T08:33+08:00"
+  verified_by: "REPOSITORY_CHECK: git ls-remote + fetch + GitHub REST API (read-only)"
+  note: "3.0 基线与 PR #29 HEAD 当前为同一提交；新 HEAD 不自动触发重基（MT-002）。"
+
+# PR 状态约定（MT-003 / MT-004 / MT-005）
+pull_request_policy:
+  pr29:
+    required_state: open
+    required_draft: true
+    merge_forbidden: true
+    close_forbidden: true
+    ready_for_review_forbidden: true
+  pr26:
+    rule: "不得成为当前交付门槛"
+    observed_state: closed
+    observed_merged: true
+    observed_at: "2026-10-16T08:33+08:00"
+  pr30:
+    rule: "暂缓项，不得擅自推进为交付门槛"
+    observed_state: closed
+    observed_at: "2026-10-16T08:33+08:00"
+  pr31:
+    rule: "只能逐项核对后选择性移植，禁止整体合并"
+    observed_state: open
+    observed_draft: true
+    observed_head_sha: 8e85bdf07901ef79a538157b0fc91b2e416eb191
+    observed_base: feature
+    observed_at: "2026-10-16T08:33+08:00"
+
+# 强制类型定义（来自阶段 1 提取）
+enforcement_types:
+  METADATA_GATE: "检查冻结字段、结构化记录、版本绑定和授权记录。"
+  REPOSITORY_CHECK: "读取实际仓库、差量、工作流或 GitHub 状态后检查。"
+  AUTOMATED_TEST: "依赖行为测试、故障注入、数据库或集成测试。"
+  DEVICE_EVIDENCE: "依赖目标真机、实际模型或真实服务的执行证据。"
+  HUMAN_REVIEW: "需要核对语义、必要性、兼容性或用户裁决。"
+
+# 判定档位：本文件与 collaboration-gate.py 当前能覆盖到哪一档，必须逐条声明。
+#   METADATA_AUTOMATED        —— 结构+冻结字段一致性，gate 可直接判定
+#   METADATA_STRUCTURAL_ONLY  —— 只能核对字段/记录是否齐全，不能证明行为
+#   REPO_AUTOMATED            —— 需要 git 本地状态（SHA、文件、diff），gate --mode repo 可判定
+#   NEEDS_TEST                —— 必须由自动化测试/故障注入提供证据
+#   NEEDS_DEVICE              —— 必须由真机/真实服务提供证据
+#   NEEDS_HUMAN               —— 必须人工裁决
+adjudication_levels: [METADATA_AUTOMATED, METADATA_STRUCTURAL_ONLY, REPO_AUTOMATED, NEEDS_TEST, NEEDS_DEVICE, NEEDS_HUMAN]
+
+# ---------------------------------------------------------------------------
+# 通用 RC 约束索引
+#
+# 事实声明：RC-* 规则正文在本次核查的仓库（全部 ref）与工作区中均不存在，
+# 仅在 MT 约束的 related_constraints 中被引用。因此这里只保留"引用索引"，
+# 不替它们编造正文。补全正文前，gate 只校验引用完整性，不校验语义。
+rc_registry:
+  status: TEXT_UNAVAILABLE_IN_REPO
+  verified_at: "2026-10-16T08:33+08:00"
+  evidence: "git grep -l 'RC-0' 在所有 origin ref 上均为空；工作区文档亦无命中。"
+  referenced_ids:
+    - RC-002
+    - RC-003
+    - RC-004
+    - RC-005
+    - RC-006
+    - RC-008
+    - RC-009
+    - RC-011
+    - RC-013
+    - RC-014
+    - RC-015
+    - RC-019
+    - RC-024
+    - RC-025
+    - RC-026
+    - RC-027
+    - RC-029
+    - RC-030
+    - RC-031
+    - RC-032
+    - RC-033
+    - RC-036
+    - RC-037
+    - RC-045
+    - RC-047
+    - RC-050
+
+# 功能状态枚举（MT-013）：不得越过证据升级状态
+feature_status_enum:
+  - NOT_IMPLEMENTED
+  - IN_PROGRESS
+  - CODE_COMPLETE_PENDING_VERIFICATION
+  - AUTOMATED_TEST_PASSED
+  - DEVICE_VERIFIED
+status_escalation_rule: "状态升级必须绑定提交 SHA 与对应证据；未执行的档位不得标记。"
+
+# 日常轮次与最终阶段的分界（MT-011、MT-048、MT-051）
+stage_policy:
+  DAILY:
+    default_required: [compile, unit_test, static_analysis, targeted_verification]
+    forbidden_by_default: [full_apk_packaging, final_device_acceptance]
+    requires_explicit_scope_to_escalate: true
+  FINAL:
+    required: [full_apk_provenance, real_device_acceptance_matrix, unverified_items_explicitly_marked]
+
+# ---------------------------------------------------------------------------
+# 项目专属硬约束（MT）
+#
+# 字段：id / category / source_document / source_quote / rule / trigger /
+#       action / enforcement / adjudication / mechanism / owner / related
+constraints:
+  - id: MT-001
+    category: SCOPE_CONTROL
+    source_document: "Mistbell-Tavern 3.0 完整项目总清单 §1"
+    source_quote: "新软件开发基线：`codex/mistbell-development-3.0`。"
+    rule: "3.0 新功能任务必须绑定指定开发分支及已核实的具体提交，不得以旧分支替代。"
+    trigger: "task.is_3_0_development && task.baseline_branch != 'codex/mistbell-development-3.0'"
+    action: BLOCK
+    enforcement: [METADATA_GATE, REPOSITORY_CHECK]
+    adjudication: METADATA_AUTOMATED
+    mechanism: "核对冻结的分支、提交 SHA、实际 checkout 和基线来源；分支名不能代替提交身份。"
+    owner: Lead
+    related: [RC-002, RC-030]
+
+  - id: MT-002
+    category: DELTA_DELIVERY
+    source_document: "Mistbell-Tavern 3.0 完整项目总清单 §1"
+    source_quote: "以 PR #29 的最新有效提交为基线来源。"
+    rule: "建立或更新 3.0 开发基线前，必须核实 PR #29 的最新有效提交及派生关系。"
+    trigger: "baseline.establishment_or_update_requested && !baseline.pr29_source_verified"
+    action: BLOCK
+    enforcement: [REPOSITORY_CHECK, HUMAN_REVIEW]
+    adjudication: METADATA_STRUCTURAL_ONLY
+    mechanism: "记录核查时间、PR HEAD、有效来源提交和派生关系；发现新 HEAD 不自动触发每轮重置或重基。"
+    owner: Lead
+    related: [RC-019, RC-030]
+
+  - id: MT-003
+    category: SCOPE_CONTROL
+    source_document: "Mistbell-Tavern 3.0 完整项目总清单 §1"
+    source_quote: "PR #29 保持 Open + Draft，不合并，不擅自更改状态。"
+    rule: "不得合并 PR #29，或擅自改变其 Open + Draft 状态。"
+    trigger: "operation.targets_pr29 && operation.changes_required_pr_state"
+    action: BLOCK
+    enforcement: [REPOSITORY_CHECK, HUMAN_REVIEW]
+    adjudication: METADATA_STRUCTURAL_ONLY
+    mechanism: "操作代理拒绝 merge、close、ready-for-review 等偏离约定状态的操作；检查报告记录实际状态。"
+    owner: Lead
+    related: [RC-005, RC-011]
+
+  - id: MT-004
+    category: SCOPE_CONTROL
+    source_document: "Mistbell-Tavern 3.0 完整项目总清单 §1"
+    source_quote: "PR #29 不要求再与 PR #26 合流。"
+    rule: "不得将 PR #26 合流或暂缓的 PR #30 推进擅自追加为当前交付门槛。"
+    trigger: "review.requires_pr26_convergence_or_pr30_work && !task.explicitly_authorizes_that_scope"
+    action: REJECT
+    enforcement: [METADATA_GATE, HUMAN_REVIEW]
+    adjudication: METADATA_STRUCTURAL_ONLY
+    mechanism: "对照本轮冻结条件；范围外依赖要求须另提变更，不能直接阻断本批交付。"
+    owner: Reviewer
+    related: [RC-005, RC-045]
+
+  - id: MT-005
+    category: CONTRACT_MEMORY
+    source_document: "Mistbell-Tavern 3.0 完整项目总清单 §1、§2"
+    source_quote: "只能逐项核对后选择性移植，不能直接整体合并。"
+    rule: "不得整体合并 PR #31；复用旧 PR 或其他相关 PR 前必须核对最新状态、实际差异、依赖和基线关系。"
+    trigger: "reuse.requested && (reuse.is_whole_pr31_merge || !reuse.compatibility_and_baseline_verified)"
+    action: BLOCK
+    enforcement: [REPOSITORY_CHECK, HUMAN_REVIEW]
+    adjudication: METADATA_STRUCTURAL_ONLY
+    mechanism: "复用记录列出来源 SHA、移植项、依赖、消费者及验证；PR 编号或描述相似不算兼容证据。"
+    owner: Lead
+    related: [RC-032, RC-037]
+
+  - id: MT-006
+    category: DELTA_DELIVERY
+    source_document: "Mistbell-Tavern 3.0 完整项目总清单 §1"
+    source_quote: "不因为某个类、接口或配置已经存在，就认定功能已经落地。"
+    rule: "未核实 3.0 当前实现与端到端调用链，不得将旧实现或接口存在计为功能完成。"
+    trigger: "feature.completion_claimed && !feature.current_baseline_implementation_verified"
+    action: REJECT
+    enforcement: [REPOSITORY_CHECK, AUTOMATED_TEST, HUMAN_REVIEW]
+    adjudication: METADATA_STRUCTURAL_ONLY
+    mechanism: "逐项关联实现文件、入口、调用链、存储、错误处理和验证证据；缺失部分按实际状态登记。"
+    owner: Lead
+    related: [RC-027, RC-036]
+
+  - id: MT-007
+    category: SCOPE_CONTROL
+    source_document: "Mistbell-Tavern 3.0 完整项目总清单 §2"
+    source_quote: "不把审核工具混入软件功能代码，也不将独立双模型审核列为本清单的功能要求。"
+    rule: "审核工作流必须与 App 功能开发分开，不得将独立双模型审核追加为软件功能或验收门槛。"
+    trigger: "change.mixes_review_tooling_into_app_functionality || acceptance.requires_independent_dual_model_review"
+    action: BLOCK
+    enforcement: [METADATA_GATE, REPOSITORY_CHECK, HUMAN_REVIEW]
+    adjudication: METADATA_STRUCTURAL_ONLY
+    mechanism: "审核基础设施独立冻结和交付；禁止把双模型审核状态加入 App 功能完成条件。"
+    owner: Lead
+    related: [RC-005, RC-045]
+
+  - id: MT-008
+    category: SCOPE_CONTROL
+    source_document: "Mistbell-Tavern 3.0 完整项目总清单 §2"
+    source_quote: "不为每个小功能随意新建 PR；确有独立职责或安全隔离需求时再决定。"
+    rule: "不得仅因拆出一个小功能就自动新建 PR；新 PR 必须有明确职责或隔离依据。"
+    trigger: "operation.creates_pr && !operation.workline_or_isolation_rationale_recorded"
+    action: BLOCK
+    enforcement: [METADATA_GATE, HUMAN_REVIEW]
+    adjudication: METADATA_AUTOMATED
+    mechanism: "创建请求注明所属工作线、独立职责或安全隔离理由；职责编号不得冒充历史 PR 的实现状态。"
+    owner: Lead
+    related: [RC-004, RC-005]
+
+  - id: MT-009
+    category: DELTA_DELIVERY
+    source_document: "Mistbell-Tavern 3.0 完整项目总清单 §2"
+    source_quote: "每次报告 GitHub 状态时，核对最新 HEAD、分支、目标分支和真实状态。"
+    rule: "未核查最新远端状态，不得将缓存信息或历史记录报告为当前 GitHub 状态。"
+    trigger: "report.claims_current_github_state && !report.current_remote_state_verified"
+    action: REJECT
+    enforcement: [REPOSITORY_CHECK]
+    adjudication: METADATA_STRUCTURAL_ONLY
+    mechanism: "状态报告绑定核查时间、HEAD、源分支、目标分支和真实状态；无法访问时标为未核实。"
+    owner: Lead
+    related: [RC-024, RC-026]
+
+  - id: MT-010
+    category: CONTRACT_MEMORY
+    source_document: "Mistbell-Tavern 3.0 完整项目总清单 §3"
+    source_quote: "允许重写旧实现，但不得遗忘任何已经确定的功能目标。"
+    rule: "重写不得隐式删除或缩减已确定功能目标；目标变化必须显式提交裁决。"
+    trigger: "rewrite.removes_accepted_goal && !change.owner_approved"
+    action: BLOCK
+    enforcement: [HUMAN_REVIEW, REPOSITORY_CHECK]
+    adjudication: METADATA_STRUCTURAL_ONLY
+    mechanism: "以需求 ID 对账重写前后覆盖关系；未完成目标保留在台账中，不因实现删除而消失。"
+    owner: Lead
+    related: [RC-005, RC-006, RC-014]
+
+  - id: MT-011
+    category: SCOPE_CONTROL
+    source_document: "Mistbell-Tavern 3.0 完整项目总清单 §3、§24"
+    source_quote: "不在每轮修改后重复执行耗时的完整 APK 打包。"
+    rule: "日常轮次不得默认追加完整 APK 打包或最终真机验收门槛。"
+    trigger: "task.stage == 'DAILY' && review.requires_full_apk_or_final_device_acceptance_without_explicit_scope"
+    action: REJECT
+    enforcement: [METADATA_GATE, REPOSITORY_CHECK, HUMAN_REVIEW]
+    adjudication: METADATA_AUTOMATED
+    mechanism: "日常采用编译、单测、静态分析及定向验证；完整构建、打包、安装和实机验收安排在最终阶段。"
+    owner: Reviewer
+    related: [RC-033, RC-045, RC-050]
+
+  - id: MT-012
+    category: SEVERITY_CLASS
+    source_document: "Mistbell-Tavern 3.0 完整项目总清单 §3"
+    source_quote: "不通过删除必要测试、隐藏错误或使用破坏性迁移来制造表面上的成功。"
+    rule: "不得通过删除必要测试、隐藏错误或破坏性迁移制造通过结果。"
+    trigger: "change.manufactures_success_by_removing_required_checks_or_hiding_failures_or_destroying_data"
+    action: BLOCK
+    enforcement: [REPOSITORY_CHECK, AUTOMATED_TEST, HUMAN_REVIEW]
+    adjudication: METADATA_STRUCTURAL_ONLY
+    mechanism: "核查测试删改、异常吞噬、迁移与数据保留行为；表面全绿不能豁免。"
+    owner: Worker
+    related: [RC-014, RC-047]
+
+  - id: MT-013
+    category: DELTA_DELIVERY
+    source_document: "Mistbell-Tavern 3.0 完整项目总清单 §3、§25"
+    source_quote: "状态必须区分未实现、实现中、代码完成待验证、自动化测试通过、真机验证通过。"
+    rule: "功能状态必须使用可区分的实现和验证阶段，不得越过证据升级状态。"
+    trigger: "feature.reported_state_exceeds_available_evidence"
+    action: REJECT
+    enforcement: [METADATA_GATE, HUMAN_REVIEW]
+    adjudication: METADATA_AUTOMATED
+    mechanism: "状态枚举分别记录实现、自动化与真机结果，并关联提交及证据；未执行不得标为完成。"
+    owner: Lead
+    related: [RC-024, RC-026, RC-027]
+
+  - id: MT-014
+    category: SCOPE_CONTROL
+    source_document: "Mistbell-Tavern 3.0 完整项目总清单 §3"
+    source_quote: "不因为一个模块被阻塞，就停止其他没有依赖关系的模块开发。"
+    rule: "阻塞范围不得扩展到依赖图之外的独立模块。"
+    trigger: "pause.includes_modules_outside_blocked_dependency_closure"
+    action: REJECT
+    enforcement: [METADATA_GATE, HUMAN_REVIEW]
+    adjudication: METADATA_STRUCTURAL_ONLY
+    mechanism: "暂停清单逐项关联依赖原因；独立任务继续执行。"
+    owner: Lead
+    related: [RC-008, RC-009]
+
+  - id: MT-015
+    category: DELTA_DELIVERY
+    source_document: "Mistbell-Tavern 3.0 完整项目总清单 §4、§5、§9"
+    source_quote: "不把真机运行成功等同于 NPU 已经工作。"
+    rule: "模型加载、设备识别、框架可用或真机运行成功，不得代替 NPU 实际执行证据。"
+    trigger: "hardware.npu_execution_claimed && !hardware.actual_backend_evidence_available"
+    action: REJECT
+    enforcement: [DEVICE_EVIDENCE, HUMAN_REVIEW]
+    adjudication: NEEDS_DEVICE
+    mechanism: "记录手机、系统、模型、框架、驱动和实际后端；无可靠证据时标为未知，不显示虚假加速成功。"
+    owner: Worker
+    related: [RC-024, RC-026, RC-027]
+
+  - id: MT-016
+    category: COMPATIBILITY_CHECK
+    source_document: "Mistbell-Tavern 3.0 完整项目总清单 §4、§19、§20、§26"
+    source_quote: "以真实设备的稳定性和交互体验作为验收依据。"
+    rule: "Redmi K70 Pro 专项和最终设备验收不得以预览、模拟器或编译结果代替。"
+    trigger: "acceptance.claims_target_device_pass && !acceptance.redmi_k70_pro_evidence_available"
+    action: BLOCK
+    enforcement: [DEVICE_EVIDENCE]
+    adjudication: NEEDS_DEVICE
+    mechanism: "按验收项记录安装、升级、数据保留、动画、长对话、并发后台任务和模型运行证据。"
+    owner: Lead
+    related: [RC-027, RC-037]
+
+  - id: MT-017
+    category: COMPATIBILITY_CHECK
+    source_document: "Mistbell-Tavern 3.0 完整项目总清单 §5"
+    source_quote: "状态来自真实执行路径和可验证的推理框架信息。"
+    rule: "本地 AI 状态必须反映真实后端、错误和回退，不得用配置意图代替实际执行状态。"
+    trigger: "ui.hardware_status_not_supported_by_actual_execution"
+    action: BLOCK
+    enforcement: [AUTOMATED_TEST, DEVICE_EVIDENCE]
+    adjudication: NEEDS_TEST
+    mechanism: "覆盖加载、CPU、GPU、NPU、混合、错误和回退状态转换；无法识别后端时明确显示未知。"
+    owner: Worker
+    related: [RC-031, RC-047]
+
+  - id: MT-018
+    category: CONTRACT_MEMORY
+    source_document: "Mistbell-Tavern 3.0 完整项目总清单 §6、§12、§18、§21"
+    source_quote: "不将聊天 API 配置与记忆整理、生图或其他模块的专用配置混为一谈。"
+    rule: "聊天、记忆整理、生图配置及凭据必须按模块解析，不得静默误用其他模块的 Key 或模型。"
+    trigger: "api_call.uses_wrong_module_configuration_or_undocumented_fallback"
+    action: BLOCK
+    enforcement: [REPOSITORY_CHECK, AUTOMATED_TEST]
+    adjudication: NEEDS_TEST
+    mechanism: "对配置完整、缺失、失效、切换和回退路径测试实际目标、模型与凭据来源。"
+    owner: Worker
+    related: [RC-032, RC-047]
+
+  - id: MT-019
+    category: COMPATIBILITY_CHECK
+    source_document: "Mistbell-Tavern 3.0 完整项目总清单 §6、§18"
+    source_quote: "模型 ID 以中转站实际支持的名称为准，不硬编码未经验证的型号。"
+    rule: "不得将未经验证的模型 ID 或服务能力标记为当前服务商可用功能。"
+    trigger: "capability.claimed_supported && !capability.provider_support_verified"
+    action: REJECT
+    enforcement: [AUTOMATED_TEST, HUMAN_REVIEW]
+    adjudication: NEEDS_TEST
+    mechanism: "绑定服务地址、模型 ID、接口类型和实际响应证据；图生图等高级能力仅在接口支持时提供。"
+    owner: Worker
+    related: [RC-026, RC-027]
+
+  - id: MT-020
+    category: COMPATIBILITY_CHECK
+    source_document: "Mistbell-Tavern 3.0 完整项目总清单 §6、§7、§12"
+    source_quote: "按错误类型执行有界重试，避免重复扣费或重复生成。"
+    rule: "外部调用重试必须有界并按错误分类；不得因无限重试或非幂等重复提交制造重复任务。"
+    trigger: "api.retry_unbounded_or_unclassified || api.retry_repeats_nonidempotent_work_without_safeguard"
+    action: BLOCK
+    enforcement: [REPOSITORY_CHECK, AUTOMATED_TEST]
+    adjudication: NEEDS_TEST
+    mechanism: "测试超时、取消、断网、限流、服务器错误及未知完成状态；记录重试上限和重复提交防护。"
+    owner: Worker
+    related: [RC-031, RC-047]
+
+  - id: MT-021
+    category: DELTA_DELIVERY
+    source_document: "Mistbell-Tavern 3.0 完整项目总清单 §7"
+    source_quote: "而不只是检查聊天页面。"
+    rule: "未覆盖后台、共享客户端、备用和间接模型调用，不得宣称全软件 API 调用清点完成。"
+    trigger: "audit.claims_complete_api_inventory && !audit.all_call_paths_accounted_for"
+    action: REJECT
+    enforcement: [REPOSITORY_CHECK, HUMAN_REVIEW]
+    adjudication: METADATA_STRUCTURAL_ONLY
+    mechanism: "调用台账记录模块、目标地址、模型、凭据来源、输入输出、持久化、取消、重试、费用与隐私路径。"
+    owner: Lead
+    related: [RC-013, RC-029, RC-032]
+
+  - id: MT-022
+    category: DELTA_DELIVERY
+    source_document: "Mistbell-Tavern 3.0 完整项目总清单 §8"
+    source_quote: "只记录服务商实际提供的指标。"
+    rule: "不得将推算或缺失的 Token、缓存和费用指标冒充服务商实际返回值。"
+    trigger: "metric.reported_as_provider_measured && !metric.provider_evidence_available"
+    action: REJECT
+    enforcement: [AUTOMATED_TEST, HUMAN_REVIEW]
+    adjudication: METADATA_STRUCTURAL_ONLY
+    mechanism: "区分实际返回、独立测量、估算和不可用；不得将缺失指标填零后当成实测。"
+    owner: Worker
+    related: [RC-024, RC-026]
+
+  - id: MT-023
+    category: COMPATIBILITY_CHECK
+    source_document: "Mistbell-Tavern 3.0 完整项目总清单 §8、§15、§17"
+    source_quote: "不以单次请求或理论估算作为优化成功的证据。"
+    rule: "Token 或缓存优化成功声明必须有目标模型的前后对照，且不能牺牲必要设定、事实或行为约束。"
+    trigger: "optimization.success_claimed && (!optimization.comparative_evidence_available || optimization.breaks_required_content)"
+    action: REJECT
+    enforcement: [AUTOMATED_TEST, HUMAN_REVIEW]
+    adjudication: NEEDS_TEST
+    mechanism: "分别核对目标模型的 Token、缓存、延迟及可获得费用，并验证角色一致性和事实召回。"
+    owner: Reviewer
+    related: [RC-031, RC-032]
+
+  - id: MT-024
+    category: COMPATIBILITY_CHECK
+    source_document: "Mistbell-Tavern 3.0 完整项目总清单 §8、§16"
+    source_quote: "不能复用过期上下文。"
+    rule: "模型、API 配置、世界书设置或相关输入变化后，必须按依赖关系失效客户端、快照、缓存和检索结果。"
+    trigger: "runtime.reuses_context_or_configuration_invalidated_by_input_change"
+    action: BLOCK
+    enforcement: [AUTOMATED_TEST]
+    adjudication: NEEDS_TEST
+    mechanism: "对配置切换、内容更新、会话变化和设置即时生效进行缓存失效测试。"
+    owner: Worker
+    related: [RC-015, RC-032]
+
+  - id: MT-025
+    category: SCOPE_CONTROL
+    source_document: "Mistbell-Tavern 3.0 完整项目总清单 §9、§21"
+    source_quote: "不得未经用户明确允许，静默将本地 Embedding 切换为云端 API。"
+    rule: "本地 Embedding 失败不得未经用户明确授权回退云端。"
+    trigger: "embedding.cloud_fallback_requested && !authorization.explicitly_allows_cloud_embedding"
+    action: BLOCK
+    enforcement: [AUTOMATED_TEST, HUMAN_REVIEW]
+    adjudication: NEEDS_TEST
+    mechanism: "本地失败、超时和模型缺失测试断言不发出未授权云端请求；授权须覆盖发送数据及服务目标。"
+    owner: Worker
+    related: [RC-011, RC-047]
+
+  - id: MT-026
+    category: SCOPE_CONTROL
+    source_document: "Mistbell-Tavern 3.0 完整项目总清单 §9"
+    source_quote: "不能无限期阻塞其他开发。"
+    rule: "NPU 实验必须有测试与判定条件，不得无限阻塞其他开发。"
+    trigger: "npu_experiment.blocks_independent_work || npu_experiment.has_no_exit_criteria"
+    action: REJECT
+    enforcement: [METADATA_GATE, HUMAN_REVIEW]
+    adjudication: METADATA_STRUCTURAL_ONLY
+    mechanism: "冻结实验目标、退出条件及 GPU、CPU 后续路径；未成功如实记录，不冒充 NPU 完成。"
+    owner: Lead
+    related: [RC-002, RC-008]
+
+  - id: MT-027
+    category: DELTA_DELIVERY
+    source_document: "Mistbell-Tavern 3.0 完整项目总清单 §9、§27"
+    source_quote: "核实模型名称、真实版本、许可证、模型格式和依赖，不混淆不同版本。"
+    rule: "EmbeddingGemma 2 及其他候选模型必须核实真实身份与可用性；无法核实时不得用其他版本冒名交付。"
+    trigger: "model.identity_or_license_unverified && model.claimed_as_confirmed_target"
+    action: REJECT
+    enforcement: [REPOSITORY_CHECK, DEVICE_EVIDENCE, HUMAN_REVIEW]
+    adjudication: NEEDS_DEVICE
+    mechanism: "记录权威来源、精确版本、文件校验、许可证、格式、框架和运行证据；无法取得目标模型时登记缺口并请求取舍。"
+    owner: Lead
+    related: [RC-025, RC-026]
+
+  - id: MT-028
+    category: CONTRACT_MEMORY
+    source_document: "Mistbell-Tavern 3.0 完整项目总清单 §10、§13"
+    source_quote: "向量数据必须本地持久保存，不能依赖 API 厂商临时缓存的有效期。"
+    rule: "向量、事实历史及必要关联信息不得仅存在内存、提示词或服务商临时缓存中。"
+    trigger: "feature.claims_persistent_memory && !feature.local_restart_safe_persistence_verified"
+    action: BLOCK
+    enforcement: [AUTOMATED_TEST, DEVICE_EVIDENCE]
+    adjudication: NEEDS_TEST
+    mechanism: "验证写入、重启后读取检索、模型元数据和事实来源关联。"
+    owner: Worker
+    related: [RC-031, RC-047]
+
+  - id: MT-029
+    category: COMPATIBILITY_CHECK
+    source_document: "Mistbell-Tavern 3.0 完整项目总清单 §10"
+    source_quote: "不同模型或不同向量空间的数据不得直接混合检索。"
+    rule: "检索必须隔离不兼容的向量模型、维度和向量空间。"
+    trigger: "retrieval.mixes_incompatible_vector_spaces"
+    action: BLOCK
+    enforcement: [AUTOMATED_TEST]
+    adjudication: NEEDS_TEST
+    mechanism: "向量记录和查询携带模型及空间标识；测试模型切换、维度不符和索引对应关系。"
+    owner: Worker
+    related: [RC-032, RC-047]
+
+  - id: MT-030
+    category: COMPATIBILITY_CHECK
+    source_document: "Mistbell-Tavern 3.0 完整项目总清单 §10、§23"
+    source_quote: "新向量确认生成并持久保存前，不删除旧向量。"
+    rule: "替换或重建必须先确认新数据可靠持久化，再删除旧数据；失败不得破坏原始记忆。"
+    trigger: "replacement.deletes_old_data_before_new_data_verified || rebuild.destroys_original_memory"
+    action: BLOCK
+    enforcement: [AUTOMATED_TEST]
+    adjudication: NEEDS_TEST
+    mechanism: "故障注入覆盖生成失败、写入失败、进程中断、断点恢复和切换提交点。"
+    owner: Worker
+    related: [RC-003, RC-047]
+
+  - id: MT-031
+    category: COMPATIBILITY_CHECK
+    source_document: "Mistbell-Tavern 3.0 完整项目总清单 §11"
+    source_quote: "排除不相关、已失效、已被替代或不属于当前角色的记忆。"
+    rule: "上下文检索不得注入越过角色边界或已失效、已替代的记忆；历史查询须按明确语义处理。"
+    trigger: "context.includes_wrong_role_or_invalid_memory"
+    action: BLOCK
+    enforcement: [AUTOMATED_TEST, HUMAN_REVIEW]
+    adjudication: NEEDS_TEST
+    mechanism: "测试角色和会话隔离、替代关系、时间有效性、来源及历史检索。"
+    owner: Worker
+    related: [RC-031, RC-047]
+
+  - id: MT-032
+    category: COMPATIBILITY_CHECK
+    source_document: "Mistbell-Tavern 3.0 完整项目总清单 §10、§11、§12、§18"
+    source_quote: "整理失败不能导致聊天失败或原始消息丢失。"
+    rule: "向量检索、记忆整理或生图失败不得破坏原始消息或使聊天主流程整体失效。"
+    trigger: "auxiliary_failure.causes_chat_failure_or_source_message_loss"
+    action: BLOCK
+    enforcement: [AUTOMATED_TEST, DEVICE_EVIDENCE]
+    adjudication: NEEDS_TEST
+    mechanism: "测试异常隔离、可用上下文回退、异步执行、取消和后台资源释放。"
+    owner: Worker
+    related: [RC-031, RC-037, RC-047]
+
+  - id: MT-033
+    category: CONTRACT_MEMORY
+    source_document: "Mistbell-Tavern 3.0 完整项目总清单 §12"
+    source_quote: "保留每三轮对话触发整理的既定目标。"
+    rule: "不得擅自改变每三轮整理目标；未满三轮的结束、切换和退出必须有明确处理规则。"
+    trigger: "memory_schedule.changes_three_turn_target_without_approval || memory_schedule.pending_batch_behavior_undefined"
+    action: BLOCK
+    enforcement: [METADATA_GATE, AUTOMATED_TEST]
+    adjudication: NEEDS_TEST
+    mechanism: "测试三轮触发及不足三轮的生命周期路径；批次和处理规则写入契约。"
+    owner: Worker
+    related: [RC-005, RC-015]
+
+  - id: MT-034
+    category: COMPATIBILITY_CHECK
+    source_document: "Mistbell-Tavern 3.0 完整项目总清单 §12"
+    source_quote: "应用进程被系统回收、崩溃或重启后，任务能够恢复。"
+    rule: "记忆整理队列必须持久化并支持恢复和幂等处理，不得重复整理或重复写入同一批消息。"
+    trigger: "memory_queue.loses_pending_work_after_restart || memory_queue.reprocesses_batch_without_idempotency"
+    action: BLOCK
+    enforcement: [AUTOMATED_TEST, DEVICE_EVIDENCE]
+    adjudication: NEEDS_TEST
+    mechanism: "验证任务状态、处理游标、重复投递、崩溃窗口、重试、取消与恢复。"
+    owner: Worker
+    related: [RC-003, RC-015, RC-047]
+
+  - id: MT-035
+    category: CONTRACT_MEMORY
+    source_document: "Mistbell-Tavern 3.0 完整项目总清单 §13"
+    source_quote: "不把模型推断未经确认就提升为确定事实。"
+    rule: "事实存储必须区分确认、推断、待确认、冲突、短期状态和历史；不得无据提升事实确定性。"
+    trigger: "memory.promotes_unconfirmed_inference_or_temporary_context_to_confirmed_long_term_fact"
+    action: BLOCK
+    enforcement: [AUTOMATED_TEST, HUMAN_REVIEW]
+    adjudication: NEEDS_TEST
+    mechanism: "测试事实状态转换、来源保留、用户纠正、单值历史和多值更新语义。"
+    owner: Worker
+    related: [RC-013, RC-026, RC-047]
+
+  - id: MT-036
+    category: COMPATIBILITY_CHECK
+    source_document: "Mistbell-Tavern 3.0 完整项目总清单 §13、§23"
+    source_quote: "事实持久化成功后，再同步相关向量、缓存与检索索引。"
+    rule: "事实更新必须保持事务一致性；派生向量或缓存同步失败不得撤销或丢失已保存事实。"
+    trigger: "fact_update.breaks_transaction_consistency || derived_sync_failure.loses_persisted_fact"
+    action: BLOCK
+    enforcement: [AUTOMATED_TEST]
+    adjudication: NEEDS_TEST
+    mechanism: "核对提交顺序并注入数据库、向量和缓存故障；验证删除、纠错和最终派生状态一致。"
+    owner: Worker
+    related: [RC-003, RC-015, RC-047]
+
+  - id: MT-037
+    category: CONTRACT_MEMORY
+    source_document: "Mistbell-Tavern 3.0 完整项目总清单 §14、§17"
+    source_quote: "必须兼容旧版世界书和角色卡的读取。"
+    rule: "专属新格式不得破坏旧版世界书与角色卡读取；不要求因此复制其他软件内部实现。"
+    trigger: "format_change.breaks_required_legacy_reading"
+    action: BLOCK
+    enforcement: [AUTOMATED_TEST, HUMAN_REVIEW]
+    adjudication: NEEDS_TEST
+    mechanism: "维护版本识别、旧格式合法样例、新格式样例、无效输入及消费者兼容测试。"
+    owner: Worker
+    related: [RC-031, RC-032]
+
+  - id: MT-038
+    category: COMPATIBILITY_CHECK
+    source_document: "Mistbell-Tavern 3.0 完整项目总清单 §14"
+    source_quote: "避免转换失败损坏原始内容。"
+    rule: "格式导入、转换或升级失败不得损坏原始数据；新引擎未接入软件不得宣称格式功能完成。"
+    trigger: "conversion_failure.damages_original || format.completion_claimed_without_runtime_integration"
+    action: BLOCK
+    enforcement: [AUTOMATED_TEST, REPOSITORY_CHECK]
+    adjudication: NEEDS_TEST
+    mechanism: "验证损坏文件、未知字段、缺失字段、重复 ID、无效引用、回滚及真实导入保存链。"
+    owner: Worker
+    related: [RC-027, RC-031, RC-032]
+
+  - id: MT-039
+    category: CONTRACT_MEMORY
+    source_document: "Mistbell-Tavern 3.0 完整项目总清单 §15、§17"
+    source_quote: "保留用户明确要求始终生效的规则。"
+    rule: "世界书或角色卡优化不得删除必须常驻的规则，或让记忆与背景资料覆盖角色核心约束。"
+    trigger: "optimization.removes_required_always_on_rule || context.overrides_core_character_rule"
+    action: BLOCK
+    enforcement: [AUTOMATED_TEST, HUMAN_REVIEW]
+    adjudication: NEEDS_TEST
+    mechanism: "冻结优先级与常驻规则 ID，比较优化前后的注入内容及行为；不得用盲目截断代替优化。"
+    owner: Worker
+    related: [RC-014, RC-031, RC-032]
+
+  - id: MT-040
+    category: CONTRACT_MEMORY
+    source_document: "Mistbell-Tavern 3.0 完整项目总清单 §16"
+    source_quote: "支持递归深度 1–5，默认值为 3。"
+    rule: "递归深度必须为 1–5、默认 3；关闭递归仍执行第一轮必要关键词扫描。"
+    trigger: "worldbook.depth_outside_1_to_5 || worldbook.default_depth != 3 || worldbook.disabled_recursion_skips_initial_scan"
+    action: BLOCK
+    enforcement: [AUTOMATED_TEST]
+    adjudication: NEEDS_TEST
+    mechanism: "覆盖默认、边界、关闭、持久化及 UI 到 PromptBuilder 的实际配置一致性。"
+    owner: Worker
+    related: [RC-015, RC-032]
+
+  - id: MT-041
+    category: COMPATIBILITY_CHECK
+    source_document: "Mistbell-Tavern 3.0 完整项目总清单 §15、§16"
+    source_quote: "设置扫描深度、总扫描量、激活数量和 Token 预算上限。"
+    rule: "世界书触发必须有深度、工作量、激活数及 Token 上限，并防止循环和重复注入。"
+    trigger: "worldbook.scan_unbounded_or_reinjects_duplicates"
+    action: BLOCK
+    enforcement: [AUTOMATED_TEST]
+    adjudication: NEEDS_TEST
+    mechanism: "对循环引用、高扇出、大规模条目和重复激活测试终止性、预算及去重。"
+    owner: Worker
+    related: [RC-015, RC-031]
+
+  - id: MT-042
+    category: COMPATIBILITY_CHECK
+    source_document: "Mistbell-Tavern 3.0 完整项目总清单 §18"
+    source_quote: "图片保存应支持应用重启后的正常访问。"
+    rule: "生图完成必须验证图片完整性与可保存访问；仅收到临时 URL 不等于持久保存成功。"
+    trigger: "image.persistence_claimed && !image.validated_and_restart_accessible"
+    action: REJECT
+    enforcement: [AUTOMATED_TEST, DEVICE_EVIDENCE]
+    adjudication: NEEDS_TEST
+    mechanism: "验证 URL、Base64 或文件响应的类型、大小、损坏处理、保存及重启读取。"
+    owner: Worker
+    related: [RC-027, RC-031]
+
+  - id: MT-043
+    category: SEVERITY_CLASS
+    source_document: "Mistbell-Tavern 3.0 完整项目总清单 §18、§21"
+    source_quote: "不将密钥写入 Git、普通调试日志、崩溃报告或测试快照。"
+    rule: "凭据及含凭据链接不得明文进入代码仓库、普通日志、崩溃报告或测试快照。"
+    trigger: "artifact.exposes_secret_in_prohibited_destination"
+    action: BLOCK
+    enforcement: [REPOSITORY_CHECK, AUTOMATED_TEST, HUMAN_REVIEW]
+    adjudication: NEEDS_TEST
+    mechanism: "检查存储、错误、URL、重定向和日志脱敏路径；发现泄露时阻止受影响交付，并按实际泄露范围处理凭据。"
+    owner: Worker
+    related: [RC-047]
+
+  - id: MT-044
+    category: SCOPE_CONTROL
+    source_document: "Mistbell-Tavern 3.0 完整项目总清单 §7、§21"
+    source_quote: "不将私人聊天内容无必要地发送给外部 API。"
+    rule: "外部请求必须具有明确用途和数据边界，不得无必要地发送私人聊天、角色卡或世界书内容。"
+    trigger: "external_request.includes_unnecessary_private_content"
+    action: BLOCK
+    enforcement: [REPOSITORY_CHECK, AUTOMATED_TEST, HUMAN_REVIEW]
+    adjudication: NEEDS_HUMAN
+    mechanism: "按调用台账核查实际请求体、目标、重定向与授权；测试快照必须脱敏。"
+    owner: Worker
+    related: [RC-011, RC-047]
+
+  - id: MT-045
+    category: COMPATIBILITY_CHECK
+    source_document: "Mistbell-Tavern 3.0 完整项目总清单 §2、§22"
+    source_quote: "Schema 生成结果必须与当前源码对应，不能使用旧分支的 JSON 代替当前版本。"
+    rule: "数据库版本、实体、默认值、索引、迁移注册和 Schema 必须与对应源码一致；不得用旧分支 JSON 冒充当前生成结果。"
+    trigger: "database.claims_schema_alignment && !database.source_schema_migration_alignment_verified"
+    action: BLOCK
+    enforcement: [REPOSITORY_CHECK, AUTOMATED_TEST]
+    adjudication: NEEDS_TEST
+    mechanism: "绑定源码 SHA 与生成结果，验证 26、27 及实际版本的来源、迁移链、索引和默认值；历史原件仅在证实对应关系后复用。"
+    owner: Worker
+    related: [RC-030, RC-032, RC-033]
+
+  - id: MT-046
+    category: COMPATIBILITY_CHECK
+    source_document: "Mistbell-Tavern 3.0 完整项目总清单 §22"
+    source_quote: "验证空数据库创建和旧版本升级两种路径。"
+    rule: "仅新建数据库通过不足以接受迁移；必须验证约定旧版本升级、数据保留与失败一致性。"
+    trigger: "migration.acceptance_requested && !migration.required_creation_upgrade_and_preservation_tests_passed"
+    action: BLOCK
+    enforcement: [AUTOMATED_TEST, DEVICE_EVIDENCE]
+    adjudication: NEEDS_TEST
+    mechanism: "校验迁移后聊天、角色、世界书、配置和记忆完整；覆盖中途失败及实际升级安装。"
+    owner: Worker
+    related: [RC-031, RC-033, RC-047]
+
+  - id: MT-047
+    category: COMPATIBILITY_CHECK
+    source_document: "Mistbell-Tavern 3.0 完整项目总清单 §23"
+    source_quote: "不将成功创建 ZIP 文件等同于备份可恢复。"
+    rule: "备份成功必须有恢复验证，且明确敏感字段、向量策略、版本和引用关系处理。"
+    trigger: "backup.restorability_claimed && !backup.restore_integrity_verified"
+    action: REJECT
+    enforcement: [AUTOMATED_TEST, DEVICE_EVIDENCE]
+    adjudication: NEEDS_TEST
+    mechanism: "覆盖损坏、缺字段、不兼容、重复导入和恢复中断；恢复后核对数据库、事实、向量及引用。"
+    owner: Worker
+    related: [RC-019, RC-027, RC-031]
+
+  - id: MT-048
+    category: COMPATIBILITY_CHECK
+    source_document: "Mistbell-Tavern 3.0 完整项目总清单 §24"
+    source_quote: "重要功能同时覆盖正常路径、失败路径、并发路径和恢复路径。"
+    rule: "重要功能不得仅凭正常路径测试宣称验证完成；适用的失败、并发和恢复路径必须有证据。"
+    trigger: "feature.validation_complete_claimed && !feature.applicable_risk_paths_verified"
+    action: REJECT
+    enforcement: [AUTOMATED_TEST, HUMAN_REVIEW]
+    adjudication: METADATA_STRUCTURAL_ONLY
+    mechanism: "按本轮影响和阶段维护必跑矩阵；不适用项注明理由，不由此自动增加每轮全量门禁。"
+    owner: Reviewer
+    related: [RC-031, RC-033, RC-050]
+
+  - id: MT-049
+    category: DELTA_DELIVERY
+    source_document: "Mistbell-Tavern 3.0 完整项目总清单 §2、§25"
+    source_quote: "防止将旧版本的通过结果套用到新版本。"
+    rule: "代码、数据库或调用链变化后，旧测试结果不得自动作为新版本的通过证据。"
+    trigger: "verification.claim_reuses_old_result_without_version_and_impact_justification"
+    action: REJECT
+    enforcement: [METADATA_GATE, REPOSITORY_CHECK, HUMAN_REVIEW]
+    adjudication: METADATA_AUTOMATED
+    mechanism: "证据绑定源码 SHA、命令、CI run 和测试范围；受影响项重新验证，历史证据明确标注。"
+    owner: Reviewer
+    related: [RC-024, RC-030, RC-033]
+
+  - id: MT-050
+    category: SEVERITY_CLASS
+    source_document: "Mistbell-Tavern 3.0 完整项目总清单 §26"
+    source_quote: "最终 APK 对应明确的源码提交 SHA。"
+    rule: "最终交付必须建立 APK、源码 SHA、构建日志、测试结果和 APK SHA-256 的对应关系。"
+    trigger: "delivery.claims_final_apk && !delivery.artifact_provenance_complete"
+    action: BLOCK
+    enforcement: [METADATA_GATE, REPOSITORY_CHECK]
+    adjudication: METADATA_AUTOMATED
+    mechanism: "记录构建所用源码及配置、产物位置和校验值；校验值必须来自实际产物。"
+    owner: Lead
+    related: [RC-019, RC-024, RC-027]
+
+  - id: MT-051
+    category: SEVERITY_CLASS
+    source_document: "Mistbell-Tavern 3.0 完整项目总清单 §26"
+    source_quote: "所有未实测项目都明确标注，不以编译通过代替功能验收。"
+    rule: "最终完整验收必须具备规定的实际服务、持久化、恢复和真机证据；缺失项不得标为通过。"
+    trigger: "acceptance.claims_full_final_completion && acceptance.has_unverified_required_items"
+    action: BLOCK
+    enforcement: [AUTOMATED_TEST, DEVICE_EVIDENCE, HUMAN_REVIEW]
+    adjudication: NEEDS_DEVICE
+    mechanism: "逐项对账最终验收矩阵；未完成项保留未验证状态，除非用户显式调整目标，不得宣称全部完成。"
+    owner: Lead
+    related: [RC-006, RC-026, RC-027, RC-037]
+
+  - id: MT-052
+    category: COMPATIBILITY_CHECK
+    source_document: "Mistbell-Tavern 3.0 完整项目总清单 §27"
+    source_quote: "对复用代码核实许可证和兼容性。"
+    rule: "复用代码、新增库和模型在许可证及相关兼容性未核实前，不得作为已确认可发布依赖交付。"
+    trigger: "dependency.release_use_requested && !dependency.license_and_compatibility_verified"
+    action: BLOCK
+    enforcement: [REPOSITORY_CHECK, AUTOMATED_TEST, HUMAN_REVIEW]
+    adjudication: METADATA_STRUCTURAL_ONLY
+    mechanism: "记录来源、版本、许可证、分发义务及 Android 兼容性；生产可用声明另需真实设备证据。"
+    owner: Lead
+    related: [RC-025, RC-026, RC-032]
+
+# ---------------------------------------------------------------------------
+# 受保护资源（依据 3.0 基线实际目录核实，2026-10-16）
+# 注意：数据库导出目录实际为 app/schemas（点号），不是 __schema__；
+#      此处按实际路径声明，不得用模式名推测保护范围。
+protected_paths:
+  repo_root_verified_at: "2026-10-16T08:33+08:00"
+  schema_export_dir: "app/schemas/com.mistbell.tavern.android.data.local.AppDatabase"
+  schema_versions_present: [14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27]
+  schema_alignment_test: "app/src/test/java/com/mistbell/tavern/android/data/local/MigrationSchemaAlignmentTest.kt"
+  read_only_paths:
+    - "app/schemas/**"
+    - ".github/workflows/**"
+    - "gradle/wrapper/**"
+  requires_explicit_authorization:
+    - "app/schemas/**"
+
+# ---------------------------------------------------------------------------
+# 门禁接入点（尚未接入；接入前不得宣称已自动运行）
+gate_hooks:
+  pre_review:
+    status: NOT_WIRED
+    intended_command: "python3 lint/collaboration-gate.py --phase pre-review --mode metadata --contract .cq/collaboration-contract.yaml"
+    intended_trigger: "PR 打开/更新前，由 Worker 或 Review 流程显式调用"
+    intended_enforcement: "结构缺失即失败；不读取网络，不执行构建"
+  post_review:
+    status: NOT_WIRED
+    intended_command: "python3 lint/collaboration-gate.py --phase post-review --mode metadata --contract .cq/collaboration-contract.yaml"
+    intended_trigger: "证据汇总完成后调用"
+    intended_enforcement: "核对证据字段与状态档位；不把字段齐全当作行为通过"
+  repo_mode:
+    status: NOT_WIRED
+    intended_command: "python3 lint/collaboration-gate.py --mode repo --repo ."
+    intended_enforcement: "只读 git 查询：基线 SHA、受保护目录、schema 版本文件存在性"
+  ci_integration:
+    status: NOT_WIRED
+    note: "3.0 基线现有工作流：ai-pr-audit.yml、ai-pr-audit-fork-notice.yml、build-apk.yml、ci.yml、relay-code-style.yml、relay-task.yml。均未调用本门禁；接入需单独冻结一轮任务。"

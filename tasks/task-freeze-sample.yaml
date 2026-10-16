@@ -1,0 +1,38 @@
+# 冻结样例（可执行）：用门禁验证 tasks/task-template.md 的字段约定
+#
+# 本文件是**协作基础设施工作线**自身的一轮任务，用于自检门禁是否可跑：
+#   python3 lint/collaboration-gate.py --phase pre-review --mode repo \
+#     --repo . --freeze tasks/task-freeze-sample.yaml
+#
+# 注意：本样例不代表任何 App 功能已经完成。
+
+task_id: T-2026-10-16-cq-01
+stage: DAILY
+
+baseline_branch: codex/mistbell-development-3.0
+baseline_commit: ba2ae9b3099fa7282ab58b35b2128f9bca89b1ee
+baseline_source_pr: 29
+
+workline: collaboration-infrastructure
+
+scope_included:
+  - 新增协作契约、门禁脚本、两份章程与任务模板
+scope_excluded:
+  - 不推进 PR #30
+  - 不把 PR #26 合流作为门槛
+  - 不做完整 APK 打包
+  - 不做真机验收
+
+creates_pr: false
+isolation_rationale: "审核基础设施与 App 功能代码分离（MT-007）"
+
+requires_full_apk: false
+requires_final_device_acceptance: false
+explicit_scope_authorization: false
+requires_independent_dual_model_review: false
+
+claimed_feature_status: IN_PROGRESS
+source_sha: null
+evidence:
+  automated_test: null
+  device: null
