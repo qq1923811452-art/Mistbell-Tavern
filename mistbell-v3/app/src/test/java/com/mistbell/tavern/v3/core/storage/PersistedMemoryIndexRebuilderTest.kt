@@ -1,7 +1,6 @@
 package com.mistbell.tavern.v3.core.storage
 
 import kotlinx.coroutines.runBlocking
-
 import com.mistbell.tavern.v3.core.memory.MemoryIndexRebuildResult
 import com.mistbell.tavern.v3.core.memory.MemoryTextRecord
 import com.mistbell.tavern.v3.core.memory.PassageEmbeddingRuntime
