@@ -64,7 +64,7 @@ jobs:
   # This job is normally a no-op. A one-time marker file enables APK packaging
   # only after the exact same commit passes the compile-and-test quality gate.
   device-test-apk:
-    if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'codex/mistbell-3.0-core-features' && needs.compile-and-test.result == 'success' }}
+    if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'codex/mistbell-3.0-core-features' && github.event.pull_request.head.repo.full_name == github.repository && needs.compile-and-test.result == 'success' }}
     needs: compile-and-test
     name: Optional final 3.0 device-test APK
     runs-on: ubuntu-latest
