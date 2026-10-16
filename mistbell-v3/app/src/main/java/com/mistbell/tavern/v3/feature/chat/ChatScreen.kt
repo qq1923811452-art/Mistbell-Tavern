@@ -88,6 +88,7 @@ private data class ChatLine(
 fun ChatScreen(onBack: () -> Unit) {
     var baseUrl by remember { mutableStateOf("https://api.odys.work/v1") }
     var modelId by remember { mutableStateOf("") }
+    val context = LocalContext.current
     var apiKey by remember { mutableStateOf("") }
     var memoryBaseUrl by remember { mutableStateOf("https://api.odys.work/v1") }
     var memoryModelId by remember { mutableStateOf("") }
@@ -107,7 +108,6 @@ fun ChatScreen(onBack: () -> Unit) {
     val history = remember { mutableStateListOf<ChatLine>() }
     val listState = rememberLazyListState()
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
-    val context = LocalContext.current
     val historyStore = remember(context) { ChatHistoryStore(context.applicationContext) }
     val coroutineScope = rememberCoroutineScope()
     val diagnosticStore = remember(context) { DiagnosticLogStore(context.applicationContext.filesDir) }
@@ -210,7 +210,7 @@ fun ChatScreen(onBack: () -> Unit) {
                 preferences.edit().putString("memory_extraction_conversation_id", it).apply()
             }
         val turns = batch.mapIndexed { ordinal, pair ->
-            EligibleConversationTurn(id = pair.first.id, ordinal = ordinal + 1)
+            EligibleConversationTurn(id = pair.first.id, ordinal = (ordinal + 1).toLong())
         }
         val textByTurnId = batch.associate { (user, assistant) ->
             user.id to ("User: " + user.content + "\\nAssistant: " + assistant.content)
