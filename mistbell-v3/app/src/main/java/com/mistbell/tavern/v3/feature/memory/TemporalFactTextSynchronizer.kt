@@ -24,6 +24,11 @@ class TemporalFactTextSynchronizer(
             is TemporalFactLoadResult.Loaded -> loaded.facts
         }
         val currentFacts = facts.filter { it.isCurrent }
+        val previous = when (val loaded = memoryTextStore.load()) {
+            MemoryTextLoadResult.Missing -> emptyList()
+            is MemoryTextLoadResult.Loaded -> loaded.records
+            is MemoryTextLoadResult.Corrupt -> return TemporalFactTextSyncResult.Skipped(loaded.safeReason)
+        }
         return try {
             val updated = memoryTextStore.update { existingTexts ->
                 val unrelated = existingTexts.filterNot { it.id.startsWith(FACT_TEXT_ID_PREFIX) }
@@ -34,10 +39,6 @@ class TemporalFactTextSynchronizer(
                     )
                 }
                 (unrelated + factTexts).distinctBy(MemoryTextRecord::id)
-            }
-            val previous = when (val loaded = memoryTextStore.load()) {
-                is MemoryTextLoadResult.Loaded -> loaded.records
-                else -> emptyList()
             }
             TemporalFactTextSyncResult.Synchronized(
                 currentFacts = currentFacts.size,
