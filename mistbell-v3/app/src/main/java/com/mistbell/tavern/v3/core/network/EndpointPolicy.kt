@@ -1,6 +1,7 @@
 package com.mistbell.tavern.v3.core.network
 
 import java.net.URI
+import java.net.URISyntaxException
 import java.util.Locale
 
 data class EndpointValidation(
@@ -18,7 +19,7 @@ object EndpointPolicy {
 
         val uri = try {
             URI(value).normalize()
-        } catch (_: IllegalArgumentException) {
+        } catch (_: URISyntaxException) {
             return EndpointValidation(isAllowed = false, reason = "Base URL is malformed.")
         }
 
