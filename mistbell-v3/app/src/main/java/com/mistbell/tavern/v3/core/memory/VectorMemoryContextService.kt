@@ -15,6 +15,12 @@ fun interface QueryEmbeddingProvider {
     suspend fun embed(text: String): List<Float>
 }
 
+/** Optional metadata contract for runtimes that can identify the loaded model and vector size. */
+interface IdentifiedQueryEmbeddingProvider : QueryEmbeddingProvider {
+    val modelId: String
+    val dimensions: Int
+}
+
 /** Supplies the current source passages corresponding to stored vector content hashes. */
 fun interface MemoryTextProvider {
     fun loadMemoryTexts(): List<MemoryTextRecord>
@@ -78,6 +84,16 @@ class VectorMemoryContextService(
                 VectorMemoryContextResult.Reason.SNAPSHOT_INCOMPATIBLE,
             )
             is VectorSnapshotReadResult.Loaded -> loaded.snapshot
+        }
+
+        val identifiedRuntime = embeddings as? IdentifiedQueryEmbeddingProvider
+        if (identifiedRuntime != null &&
+            (identifiedRuntime.modelId != snapshot.modelId ||
+                identifiedRuntime.dimensions != snapshot.dimensions)
+        ) {
+            return VectorMemoryContextResult.Unavailable(
+                VectorMemoryContextResult.Reason.SNAPSHOT_INCOMPATIBLE,
+            )
         }
 
         val queryVector = try {
