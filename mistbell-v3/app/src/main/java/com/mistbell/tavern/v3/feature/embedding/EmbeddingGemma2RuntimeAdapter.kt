@@ -39,7 +39,7 @@ class EmbeddingGemma2RuntimeAdapter(
     override suspend fun embed(texts: List<String>): EmbeddingBatch = embedDocuments(texts)
 
     suspend fun embedQueries(queries: List<String>): EmbeddingBatch =
-        inferAndValidate(queries, EmbeddingGemma2TextPolicy::formatSearchQuery)
+        inferAndValidate(queries) { text, _ -> EmbeddingGemma2TextPolicy.formatSearchQuery(text) }
 
     suspend fun embedDocuments(texts: List<String>, titles: List<String?>? = null): EmbeddingBatch {
         if (titles != null && titles.size != texts.size) {
@@ -59,7 +59,7 @@ class EmbeddingGemma2RuntimeAdapter(
             throw EmbeddingOutputException("Input batch exceeds the configured limit.")
         }
         if (texts.any(String::isBlank)) throw EmbeddingOutputException("Input text must not be blank.")
-        val raw = engine.infer(texts.mapIndexed(formatter))
+        val raw = engine.infer(texts.mapIndexed { index, text -> formatter(text, index) })
         if (raw.vectors.size != texts.size ||
             raw.vectors.any { it.size != EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS }
         ) {
