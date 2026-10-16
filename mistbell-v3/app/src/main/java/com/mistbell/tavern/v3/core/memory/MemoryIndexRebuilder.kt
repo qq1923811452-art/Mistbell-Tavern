@@ -6,10 +6,7 @@ import kotlinx.coroutines.CancellationException
  * The configured local embedding runtime. Metadata must describe the model actually loaded,
  * not a desired model or a hard-coded guess.
  */
-interface PassageEmbeddingRuntime : QueryEmbeddingProvider {
-    val modelId: String
-    val dimensions: Int
-
+interface PassageEmbeddingRuntime : IdentifiedQueryEmbeddingProvider {
     /** Uses document/passage formatting, which can differ from query formatting for retrieval models. */
     suspend fun embedPassage(text: String): List<Float> = embed(text)
 }
