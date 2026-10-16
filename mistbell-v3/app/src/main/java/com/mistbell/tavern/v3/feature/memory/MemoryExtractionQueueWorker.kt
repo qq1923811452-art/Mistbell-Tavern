@@ -129,11 +129,16 @@ class MemoryExtractionQueueWorker(
     }
 
     private fun scheduleNextRetry(repository: MemoryExtractionJobRepository) {
-        val nextTime = repository.list()
-            .filter {
-                it.state == MemoryExtractionJob.State.PENDING ||
-                    it.state == MemoryExtractionJob.State.RETRY_WAIT
-            }
+        val active = repository.list().filter {
+            it.state == MemoryExtractionJob.State.PENDING ||
+                it.state == MemoryExtractionJob.State.RUNNING ||
+                it.state == MemoryExtractionJob.State.RETRY_WAIT
+        }
+        // Only the oldest outstanding batch in each conversation may run. If that batch is
+        // waiting for retry, do not spin on later batches whose due time is already in the past.
+        val nextTime = active.groupBy(MemoryExtractionJob::conversationId)
+            .values
+            .mapNotNull { jobs -> jobs.minByOrNull(MemoryExtractionJob::createdAtEpochMillis) }
             .minOfOrNull(MemoryExtractionJob::nextAttemptAtEpochMillis) ?: return
         val delay = (nextTime - System.currentTimeMillis()).coerceAtLeast(0L)
         val request = OneTimeWorkRequestBuilder<MemoryExtractionQueueWorker>()
