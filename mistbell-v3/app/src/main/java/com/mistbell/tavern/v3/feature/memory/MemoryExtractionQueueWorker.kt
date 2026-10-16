@@ -113,8 +113,14 @@ class MemoryExtractionQueueWorker(
                         },
                         observer = { result ->
                             when (result) {
-                                MemoryExtractionQueueRunner.Result.Idle -> if (continuation.isActive) continuation.resume(false)
-                                is MemoryExtractionQueueRunner.Result.Finished -> if (continuation.isActive) continuation.resume(true)
+                                MemoryExtractionQueueRunner.Result.Idle ->
+                                    if (continuation.isActive) continuation.resume(false)
+                                is MemoryExtractionQueueRunner.Result.Finished ->
+                                    if (continuation.isActive) continuation.resume(true)
+                                is MemoryExtractionQueueRunner.Result.PersistenceFailure ->
+                                    if (continuation.isActive) continuation.resumeWith(
+                                        Result.failure(IllegalStateException("Queue state could not be persisted.")),
+                                    )
                                 is MemoryExtractionQueueRunner.Result.Started -> Unit
                             }
                         },
