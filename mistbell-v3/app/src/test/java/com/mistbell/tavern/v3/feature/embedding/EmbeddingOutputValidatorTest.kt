@@ -26,7 +26,7 @@ class EmbeddingOutputValidatorTest {
             phase = InferencePhase.READY,
             modelId = model.modelId,
             backend = backend,
-            runtimeId = "test-runtime",
+            runtimeId = runtime.runtimeId,
         ),
     )
 
