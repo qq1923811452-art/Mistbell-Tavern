@@ -7,6 +7,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -855,8 +856,10 @@ fun ChatScreen(onBack: () -> Unit) {
                                     )
                                     status = "本地记忆检索已接入；后端=${backendStatus.backend}，证据=${backendStatus.backendEvidence}。配置状态不等于芯片级 NPU 实测。" +
                                         if (indexMaintenanceMessage.isBlank()) "" else " $indexMaintenanceMessage"
-                                    MemoryAwareChatRequest(client, memoryContext).stream(messages, observer)
-                                }
+                                    MemoryAwareChatRequest(client, memoryContext).stream(messag                            } catch (cancelled: CancellationException) {
+                                closeTrackedMemoryEngine(memoryEngine)
+                                memoryEngine = null
+                                throw cancelled
                             } catch (error: Exception) {
                                 diagnosticStore.warn(
                                     "chat.embedding.fallback",
@@ -867,6 +870,8 @@ fun ChatScreen(onBack: () -> Unit) {
                                 status = "本地记忆不可用，已尝试回退普通聊天：${error.message?.take(120) ?: error::class.java.simpleName}"
                                 try {
                                     client.stream(messages, observer)
+                                } catch (chatCancelled: CancellationException) {
+                                    throw chatCancelled
                                 } catch (chatError: Exception) {
                                     busy = false
                                     status = chatError.message?.take(180) ?: "聊天请求配置失败。"
@@ -878,6 +883,8 @@ fun ChatScreen(onBack: () -> Unit) {
                                         )
                                     }
                                     persistHistory()
+                                }
+                            }
                                 }
                             }
                         }
