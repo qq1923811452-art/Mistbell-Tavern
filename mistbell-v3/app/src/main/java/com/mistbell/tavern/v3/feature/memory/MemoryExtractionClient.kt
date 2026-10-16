@@ -163,7 +163,7 @@ class MemoryExtractionClient(
                     }
                     val responseBuffer = okio.Buffer()
                     val source = body.source()
-                    while (responseBuffer.size <= MAX_RESPONSE_BYTES) {
+                    while (responseBuffer.size < MAX_RESPONSE_BYTES + 1) {
                         val remainingWithOverflowByte = MAX_RESPONSE_BYTES + 1 - responseBuffer.size
                         val read = source.read(responseBuffer, minOf(8192L, remainingWithOverflowByte))
                         if (read == -1L) break
