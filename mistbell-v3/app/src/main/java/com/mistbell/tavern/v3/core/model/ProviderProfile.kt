@@ -9,7 +9,8 @@ enum class ProviderKind {
 
 /**
  * Provider settings contain only an opaque credential handle, never the API key itself.
- * Each capability resolves its own profile; callers must not silently fall back to CHAT.
+ * A user may save multiple profiles per capability, but each capability resolves only
+ * the explicitly selected profile. There is no implicit fallback from one capability to another.
  */
 data class ProviderProfile(
     val id: String,
@@ -20,19 +21,30 @@ data class ProviderProfile(
     val enabled: Boolean = true,
 )
 
-class ProviderProfileSet(profiles: Collection<ProviderProfile>) {
-    private val profilesByKind: Map<ProviderKind, ProviderProfile>
+class ProviderProfileSet(
+    profiles: Collection<ProviderProfile>,
+    selectedProfileIds: Map<ProviderKind, String> = emptyMap(),
+) {
+    private val profilesById: Map<String, ProviderProfile>
+    private val selectedIds = selectedProfileIds.toMap()
 
     init {
-        require(profiles.map(ProviderProfile::kind).distinct().size == profiles.size) {
-            "Only one active profile per provider capability is supported."
-        }
         require(profiles.map(ProviderProfile::id).distinct().size == profiles.size) {
             "Provider profile IDs must be unique."
         }
-        profilesByKind = profiles.associateBy(ProviderProfile::kind)
+        profilesById = profiles.associateBy(ProviderProfile::id)
+        selectedIds.forEach { (kind, id) ->
+            val profile = requireNotNull(profilesById[id]) {
+                "Selected provider profile '$id' does not exist."
+            }
+            require(profile.kind == kind) {
+                "Selected provider profile '$id' does not belong to $kind."
+            }
+        }
     }
 
     fun profileFor(kind: ProviderKind): ProviderProfile? =
-        profilesByKind[kind]?.takeIf(ProviderProfile::enabled)
+        selectedIds[kind]
+            ?.let(profilesById::get)
+            ?.takeIf(ProviderProfile::enabled)
 }
