@@ -16,11 +16,18 @@ class EmbeddingGemma2RuntimeAdapterTest {
         runtimeId = "fake-litert-engine",
     )
 
+    private fun engine(
+        inference: suspend (List<String>) -> EmbeddingBatch,
+    ) = object : EmbeddingGemma2InferenceEngine {
+        override val runtimeId = "fake-litert-engine"
+        override suspend fun infer(formattedInputs: List<String>) = inference(formattedInputs)
+    }
+
     @Test
     fun queryAndDocumentUseDifferentFormatsAndNormalizedOutput() = runBlocking {
         val seen = mutableListOf<List<String>>()
         val adapter = EmbeddingGemma2RuntimeAdapter(
-            engine = EmbeddingGemma2InferenceEngine { inputs ->
+            engine = engine { inputs ->
                 seen += inputs
                 EmbeddingBatch(
                     vectors = inputs.map { List(EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS) { 1f } },
@@ -44,7 +51,7 @@ class EmbeddingGemma2RuntimeAdapterTest {
     @Test
     fun rejectsUnknownBackendAndWrongModel() = runBlocking {
         val unknownBackend = EmbeddingGemma2RuntimeAdapter(
-            engine = EmbeddingGemma2InferenceEngine {
+            engine = engine {
                 EmbeddingBatch(
                     vectors = listOf(List(EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS) { 1f }),
                     status = rawStatus.copy(backend = InferenceBackend.UNKNOWN),
@@ -56,7 +63,7 @@ class EmbeddingGemma2RuntimeAdapterTest {
         }
 
         val wrongModel = EmbeddingGemma2RuntimeAdapter(
-            engine = EmbeddingGemma2InferenceEngine {
+            engine = engine {
                 EmbeddingBatch(
                     vectors = listOf(List(EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS) { 1f }),
                     status = rawStatus.copy(modelId = "another-model"),
@@ -71,9 +78,7 @@ class EmbeddingGemma2RuntimeAdapterTest {
     @Test
     fun rejectsTitleCountMismatch() = runBlocking {
         val adapter = EmbeddingGemma2RuntimeAdapter(
-            engine = EmbeddingGemma2InferenceEngine {
-                error("Engine must not run when title count is invalid.")
-            },
+            engine = engine { error("Engine must not run when title count is invalid.") },
         )
         assertThrows(EmbeddingOutputException::class.java) {
             runBlocking { adapter.embedDocuments(listOf("a", "b"), listOf("only one")) }

@@ -7,7 +7,8 @@ import com.mistbell.tavern.v3.core.inference.InferencePhase
  * Narrow engine boundary for a real local EmbeddingGemma 2 implementation.
  * Implementations must return native 768-dimensional outputs and runtime-observed status.
  */
-fun interface EmbeddingGemma2InferenceEngine {
+interface EmbeddingGemma2InferenceEngine {
+    val runtimeId: String
     suspend fun infer(formattedInputs: List<String>): EmbeddingBatch
 }
 
@@ -18,21 +19,22 @@ fun interface EmbeddingGemma2InferenceEngine {
 class EmbeddingGemma2RuntimeAdapter(
     private val engine: EmbeddingGemma2InferenceEngine,
     private val outputDimensions: Int = EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS,
-    private val configuredBatchSize: Int = 16,
+    configuredBatchSize: Int = 16,
 ) : LocalEmbeddingRuntime {
+    init {
+        require(outputDimensions in EmbeddingGemma2TextPolicy.supportedDimensions) {
+            "Unsupported EmbeddingGemma 2 output dimension."
+        }
+        require(engine.runtimeId.isNotBlank()) { "Engine runtime ID must not be blank." }
+    }
+
     override val model = EmbeddingModelSpec(
         modelId = EmbeddingGemma2TextPolicy.MODEL_ID,
         dimensions = outputDimensions,
         maxBatchSize = configuredBatchSize,
         localOnly = true,
     )
-    override val runtimeId: String = "embeddinggemma2:${engineRuntimeId()}"
-    
-    private fun engineRuntimeId(): String {
-        // The engine's observed runtime identity is supplied by its first valid result.
-        // A stable adapter ID is used for the contract; backend truth is checked per invocation.
-        return "engine"
-    }
+    override val runtimeId: String = engine.runtimeId
 
     override suspend fun embed(texts: List<String>): EmbeddingBatch = embedDocuments(texts)
 
@@ -43,22 +45,21 @@ class EmbeddingGemma2RuntimeAdapter(
         if (titles != null && titles.size != texts.size) {
             throw EmbeddingOutputException("Document title count must match input count.")
         }
-        return inferAndValidate(texts) { text ->
-            val index = texts.indexOfFirst { it === text }
+        return inferAndValidate(texts) { text, index ->
             EmbeddingGemma2TextPolicy.formatDocument(text, titles?.getOrNull(index))
         }
     }
 
     private suspend fun inferAndValidate(
         texts: List<String>,
-        formatter: (String) -> String,
+        formatter: (String, Int) -> String,
     ): EmbeddingBatch {
         if (texts.isEmpty()) throw EmbeddingOutputException("Input batch must not be empty.")
         if (texts.size > model.maxBatchSize) {
             throw EmbeddingOutputException("Input batch exceeds the configured limit.")
         }
         if (texts.any(String::isBlank)) throw EmbeddingOutputException("Input text must not be blank.")
-        val raw = engine.infer(texts.map(formatter))
+        val raw = engine.infer(texts.mapIndexed(formatter))
         if (raw.vectors.size != texts.size ||
             raw.vectors.any { it.size != EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS }
         ) {
@@ -67,7 +68,10 @@ class EmbeddingGemma2RuntimeAdapter(
         if (raw.status.modelId != EmbeddingGemma2TextPolicy.MODEL_ID) {
             throw EmbeddingOutputException("Engine status does not identify EmbeddingGemma 2.")
         }
-        if (raw.status.runtimeId.isNullOrBlank() || raw.status.backend == InferenceBackend.UNKNOWN) {
+        if (raw.status.runtimeId != engine.runtimeId ||
+            raw.status.runtimeId.isNullOrBlank() ||
+            raw.status.backend == InferenceBackend.UNKNOWN
+        ) {
             throw EmbeddingOutputException("Engine did not report a verified runtime and backend.")
         }
         if (raw.status.phase != InferencePhase.READY &&
@@ -79,6 +83,6 @@ class EmbeddingGemma2RuntimeAdapter(
         val vectors = raw.vectors.map {
             EmbeddingGemma2TextPolicy.truncateAndNormalize(it, outputDimensions)
         }
-        return EmbeddingBatch(vectors, raw.status.copy(runtimeId = runtimeId))
+        return EmbeddingBatch(vectors, raw.status)
     }
 }
