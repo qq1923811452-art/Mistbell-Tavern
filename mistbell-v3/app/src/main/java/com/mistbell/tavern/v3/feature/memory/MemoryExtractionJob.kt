@@ -27,4 +27,8 @@ data class MemoryExtractionJob(
         require(attemptCount in 0..100)
         require(lastSafeError == null || lastSafeError.length <= 512)
     }
+    companion object {
+        const val MAX_ATTEMPTS = 5
+        const val MAX_ERROR_CHARS = 512
+    }
 }
