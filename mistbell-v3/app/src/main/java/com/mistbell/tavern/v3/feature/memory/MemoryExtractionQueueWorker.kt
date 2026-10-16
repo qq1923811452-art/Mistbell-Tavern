@@ -6,7 +6,6 @@ import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
-import java.util.concurrent.TimeUnit
 import com.mistbell.tavern.v3.core.model.ProviderKind
 import com.mistbell.tavern.v3.core.model.ProviderProfile
 import com.mistbell.tavern.v3.core.model.ProviderProfileSet
@@ -16,6 +15,7 @@ import com.mistbell.tavern.v3.core.storage.AtomicTemporalFactStore
 import com.mistbell.tavern.v3.feature.chat.ChatHistoryLoadResult
 import com.mistbell.tavern.v3.feature.chat.ChatHistoryStore
 import com.mistbell.tavern.v3.feature.chat.MemoryExtractionBatchInputFactory
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 
@@ -35,7 +35,8 @@ class MemoryExtractionQueueWorker(
             val credentialStore = AndroidKeystoreMemoryCredentialStore(applicationContext)
             val historyStore = ChatHistoryStore(applicationContext)
             val inputFactory = MemoryExtractionBatchInputFactory()
-            while (!isStopped) {
+            var processedJobs = 0
+            while (!isStopped && processedJobs < MAX_JOBS_PER_RUN) {
                 val hasJob = suspendCancellableCoroutine { continuation ->
                     runner.runNext(
                         buildInput = { job ->
@@ -120,6 +121,7 @@ class MemoryExtractionQueueWorker(
                     )
                 }
                 if (!hasJob) break
+                processedJobs += 1
             }
             scheduleNextRetry(repository)
             Result.success()
@@ -154,6 +156,7 @@ class MemoryExtractionQueueWorker(
 
     companion object {
         private const val UNIQUE_WORK_NAME = "mistbell-memory-extraction-queue"
+        private const val MAX_JOBS_PER_RUN = 10
 
         fun enqueue(context: Context) {
             val request = OneTimeWorkRequestBuilder<MemoryExtractionQueueWorker>()
