@@ -258,6 +258,7 @@ class MainActivity : ComponentActivity() {
                 val initializedRuntime = LiteRtLmEmbeddingGemma2Engine(
                     context = applicationContext,
                     modelFile = asset.file,
+                    npuModelCompatible = asset.isQualcommSm8650Optimized,
                     diagnostics = diagnostics,
                 )
                 runtime = initializedRuntime
