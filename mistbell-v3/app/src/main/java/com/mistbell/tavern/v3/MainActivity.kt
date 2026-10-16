@@ -94,8 +94,12 @@ class MainActivity : ComponentActivity() {
                                 if (cursor.moveToFirst() && column >= 0) cursor.getString(column) else null
                             }
                         } ?: throw IllegalStateException("无法读取所选文件名。")
-                        require(sourceName.endsWith(".litertlm", ignoreCase = true)) {
-                            "请选择扩展名为 .litertlm 的模型文件。"
+                        require(
+                            sourceName.endsWith(".litertlm", ignoreCase = true) &&
+                                (sourceName.contains("embeddinggemma", ignoreCase = true) ||
+                                    sourceName.contains("embedding-gemma", ignoreCase = true)),
+                        ) {
+                            "请选择文件名标明 EmbeddingGemma 的 .litertlm 模型文件。"
                         }
                         val input = withContext(Dispatchers.IO) { contentResolver.openInputStream(uri) }
                             ?: throw IllegalStateException("所选文件无法打开。")
