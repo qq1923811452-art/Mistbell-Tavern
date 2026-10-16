@@ -68,6 +68,25 @@ class MemoryExtractionJobRepositoryTest {
         assertTrue(overflowRepository.fail("overflow", Long.MAX_VALUE - 1L, "network"))
         assertEquals(Long.MAX_VALUE, overflowRepository.list().single().nextAttemptAtEpochMillis)
     }
+    @Test fun laterBatchInSameConversationWaitsForEarlierRetry() {
+        val repository = repository()
+        val earlier = job("earlier", createdAt = 100L).copy(
+            attemptCount = 1,
+            state = MemoryExtractionJob.State.RETRY_WAIT,
+            nextAttemptAtEpochMillis = 2_000L,
+        )
+        val later = job("later", createdAt = 200L)
+        assertTrue(repository.enqueue(earlier))
+        assertTrue(repository.enqueue(later))
+
+        assertEquals(null, repository.claimDue(1_000L))
+        assertEquals(
+            MemoryExtractionJob.State.PENDING,
+            repository.list().first { it.id == "later" }.state,
+        )
+        assertEquals("earlier", repository.claimDue(2_000L)?.id)
+    }
+
     @Test fun exhaustedDueJobDoesNotBlockAnotherDueJob() {
         val repository = repository()
         val exhausted = job(
