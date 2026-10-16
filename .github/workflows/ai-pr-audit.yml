@@ -297,7 +297,7 @@ jobs:
               "stream": False,
           }
           relay_data = None
-          for attempt in range(2):
+          for attempt in range(3):
               request = urllib.request.Request(
                   api_base_url + "/chat/completions",
                   data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
@@ -311,15 +311,15 @@ jobs:
                   with urllib.request.urlopen(request, timeout=240) as response:
                       response_body = response.read().decode("utf-8", errors="replace")
               except urllib.error.HTTPError as exc:
-                  if attempt == 0 and exc.code in {429, 500, 502, 503, 504}:
+                  if attempt < 2 and exc.code in {429, 500, 502, 503, 504}:
                       try:
                           exc.read(4096)
                       except Exception:
                           pass
                       finally:
                           exc.close()
-                      print(f"AI relay returned retryable HTTP {exc.code}; response closed; retrying once.")
-                      time.sleep(2)
+                      print(f"AI relay returned retryable HTTP {exc.code}; response closed; retry {attempt + 1}/2.")
+                      time.sleep(2 if attempt == 0 else 5)
                       continue
                   try:
                       err_body = exc.read().decode("utf-8", errors="replace")[:500]
@@ -337,11 +337,11 @@ jobs:
                   print(f"AI relay request failed with HTTP {exc.code}: {err_body}")
                   raise SystemExit(1)
               except Exception as exc:
-                  if attempt == 0:
-                      print("AI relay request failed transiently:", type(exc).__name__, "; retrying once.")
-                      time.sleep(2)
+                  if attempt < 2:
+                      print("AI relay request failed transiently:", type(exc).__name__, f"; retry {attempt + 1}/2.")
+                      time.sleep(2 if attempt == 0 else 5)
                       continue
-                  print("AI relay request failed after retry:", type(exc).__name__)
+                  print("AI relay request failed after retries:", type(exc).__name__)
                   raise SystemExit(1)
 
               try:
@@ -350,11 +350,11 @@ jobs:
                       raise ValueError("relay response is not a JSON object")
                   break
               except (json.JSONDecodeError, ValueError) as exc:
-                  if attempt == 0:
-                      print("AI relay returned an invalid JSON envelope; retrying once.")
-                      time.sleep(2)
+                  if attempt < 2:
+                      print("AI relay returned an invalid JSON envelope; retry", f"{attempt + 1}/2.")
+                      time.sleep(2 if attempt == 0 else 5)
                       continue
-                  print("AI relay response remained invalid after retry:", type(exc).__name__)
+                  print("AI relay response remained invalid after retries:", type(exc).__name__)
                   raise SystemExit(1)
 
           try:
