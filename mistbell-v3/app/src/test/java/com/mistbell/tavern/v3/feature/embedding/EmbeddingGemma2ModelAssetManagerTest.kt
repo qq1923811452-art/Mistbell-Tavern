@@ -1,5 +1,6 @@
 package com.mistbell.tavern.v3.feature.embedding
 
+import java.io.ByteArrayInputStream
 import java.io.File
 import java.security.MessageDigest
 import kotlinx.coroutines.runBlocking
@@ -23,6 +24,23 @@ class EmbeddingGemma2ModelAssetManagerTest {
         }
     }
 
+    @Test
+    fun importsLocalLitertlmAndWritesVerifiableDigest() = runBlocking {
+        val directory = createTempDir(prefix = "embedding-model-import-test")
+        try {
+            val bytes = "local-litertlm-bundle".toByteArray()
+            val manager = EmbeddingGemma2ModelAssetManager(directory)
+            val imported = manager.importModel(
+                "embeddinggemma-2-740m.litertlm",
+                ByteArrayInputStream(bytes),
+            )
+
+            assertEquals(bytes.size.toLong(), imported.sizeBytes)
+            assertEquals(imported.sha256, manager.verifyInstalled()!!.sha256)
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
     @Test
     fun rejectsInstalledModelWhenBytesChangeAfterDownload() = runBlocking {
         val directory = createTempDir(prefix = "embedding-model-test")
