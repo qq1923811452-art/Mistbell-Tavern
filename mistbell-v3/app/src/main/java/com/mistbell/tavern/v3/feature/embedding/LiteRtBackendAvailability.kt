@@ -38,6 +38,7 @@ data class LiteRtBackendAvailability private constructor(
             nativeLibraryDir: File,
             isArm64: Boolean,
             npuModelCompatible: Boolean,
+            npuRuntimeValidated: Boolean = false,
         ): LiteRtBackendAvailability {
             val missingNpu = SM8650_NPU_REQUIRED_LIBRARIES.filterNot { nativeLibraryDir.hasNonEmptyLibrary(it) }
             val missingGpu = GPU_REQUIRED_LIBRARIES.filterNot { nativeLibraryDir.hasNonEmptyLibrary(it) }
@@ -46,6 +47,8 @@ data class LiteRtBackendAvailability private constructor(
                     "installed model SHA-256 does not match the pinned Qualcomm SM8650 model"
                 !isArm64 ->
                     "device ABI does not include arm64-v8a"
+                !npuRuntimeValidated ->
+                    "no validated LiteRT-LM 0.18.0 / QAIRT runtime manifest is packaged; refusing to risk native initialization"
                 missingNpu.isNotEmpty() ->
                     "missing or empty Qualcomm runtime libraries: ${missingNpu.joinToString(",")}"
                 else -> null
