@@ -2,6 +2,7 @@ package com.mistbell.tavern.v3.feature.chat
 
 import com.mistbell.tavern.v3.core.memory.VectorMemoryContextResult
 import com.mistbell.tavern.v3.core.memory.VectorMemoryContextService
+import kotlinx.coroutines.CancellationException
 import okhttp3.Call
 
 /**
@@ -15,7 +16,7 @@ class MemoryAwareChatRequest(
     private val chatClient: OpenAiCompatibleChatClient,
     private val memoryContext: VectorMemoryContextService,
 ) {
-    fun stream(
+    suspend fun stream(
         messages: List<PromptMessage>,
         observer: ChatStreamObserver,
     ): Call {
@@ -25,6 +26,8 @@ class MemoryAwareChatRequest(
         } else {
             try {
                 memoryContext.retrieveForQuery(latestUserMessage)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (_: Exception) {
                 // A storage/runtime adapter failure must not prevent ordinary chat from working.
                 VectorMemoryContextResult.Unavailable(
