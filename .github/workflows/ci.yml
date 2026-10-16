@@ -104,7 +104,8 @@ jobs:
   # Build the real application APK during routine CI, in parallel with the quality gate.
   # This validates packaging on every PR without delaying unit/static checks behind emulator boot.
   apk-build:
-    name: Build debug APK (parallel CI gate)
+    if: ${{ inputs.full_android_validation == true }}
+    name: Build debug APK (final validation only)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -168,7 +169,7 @@ jobs:
   # copied or published as a release artifact during routine verification.
   instrumented-tests:
     needs: verify
-    if: ${{ needs.verify.result == 'success' && needs.verify.outputs.quality_gate == 'success' }}
+    if: ${{ inputs.full_android_validation == true && needs.verify.result == 'success' && needs.verify.outputs.quality_gate == 'success' }}
     name: Android emulator and migration validation
     runs-on: ubuntu-latest
     timeout-minutes: 55
