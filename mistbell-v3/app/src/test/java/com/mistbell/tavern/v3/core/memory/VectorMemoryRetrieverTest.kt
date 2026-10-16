@@ -69,7 +69,7 @@ class VectorMemoryRetrieverTest {
     }
 
     @Test
-    fun doesNotReplaceHigherScoringOverBudgetMemoryWithLowerScoringShortMemory() {
+    fun skipsOverBudgetMemoryAndContinuesToShorterRelevantMemory() {
         val longText = MemoryTextRecord("long", "highly relevant")
         val shortText = MemoryTextRecord("short", "ok")
         val rankedSnapshot = VectorSnapshot(
@@ -88,7 +88,7 @@ class VectorMemoryRetrieverTest {
             maxCharacters = 5,
         )
 
-        assertTrue(result.isEmpty())
+        assertEquals(listOf(shortText.id), result.map(RetrievedMemory::id))
     }
 
     @Test
