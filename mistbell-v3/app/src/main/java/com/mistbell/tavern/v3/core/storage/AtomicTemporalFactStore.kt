@@ -13,11 +13,16 @@ sealed interface TemporalFactLoadResult {
     data class Corrupt(val safeReason: String) : TemporalFactLoadResult
 }
 
+interface TemporalFactPersistence {
+    fun save(facts: List<TemporalMemoryFact>)
+    fun load(): TemporalFactLoadResult
+}
+
 /** App-private atomic storage. Corrupt originals are reported, never silently replaced. */
 class AtomicTemporalFactStore(
     context: Context,
     fileName: String = DEFAULT_FILE_NAME,
-) {
+) : TemporalFactPersistence {
     private val atomicFile: AtomicFile
 
     init {
@@ -29,7 +34,7 @@ class AtomicTemporalFactStore(
     }
 
     @Synchronized
-    fun save(facts: List<TemporalMemoryFact>) {
+    override fun save(facts: List<TemporalMemoryFact>) {
         val bytes = TemporalFactCodec.encode(facts)
         val stream = atomicFile.startWrite()
         try {
@@ -42,7 +47,7 @@ class AtomicTemporalFactStore(
     }
 
     @Synchronized
-    fun load(): TemporalFactLoadResult {
+    override fun load(): TemporalFactLoadResult {
         val baseFile = atomicFile.baseFile
         val backup = File(baseFile.path + ".bak")
         if (!baseFile.exists() && !backup.exists()) return TemporalFactLoadResult.Missing
