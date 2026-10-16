@@ -633,10 +633,7 @@ fun ChatScreen(onBack: () -> Unit) {
                                         )
                                     }
                                     persistHistory()
-                                    scheduleMemoryExtractionIfDue(
-                                        providers = providersForRequest,
-                                        memorySecret = memorySecretForThisRequest,
-                                    )
+                                    scheduleMemoryExtractionIfDue(providersForRequest)
                                 }
                             }
 
