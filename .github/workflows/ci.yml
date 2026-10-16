@@ -169,7 +169,7 @@ jobs:
   # copied or published as a release artifact during routine verification.
   instrumented-tests:
     needs: verify
-    if: ${{ ((github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call') && inputs.full_android_validation == true || (github.event_name == 'pull_request' && github.event.pull_request.head.ref != 'codex/mistbell-development-3.0' && github.event.pull_request.head.ref != 'codex/mistbell-3.0-core-features') || (github.event_name == 'push' && github.ref_name != 'codex/mistbell-development-3.0')) && needs.verify.result == 'success' && needs.verify.outputs.quality_gate == 'success' }}
+    if: ${{ ((github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call') && inputs.full_android_validation == true || (github.event_name == 'pull_request' && github.event.pull_request.head.ref != 'codex/mistbell-development-3.0' && github.event.pull_request.head.ref != 'codex/mistbell-3.0-core-features') || (github.event_name == 'push' && github.ref_name != 'codex/mistbell-development-3.0' && github.ref_name != 'codex/mistbell-3.0-core-features')) && needs.verify.result == 'success' && needs.verify.outputs.quality_gate == 'success' }}
     name: Android emulator and migration validation
     runs-on: ubuntu-latest
     timeout-minutes: 55
