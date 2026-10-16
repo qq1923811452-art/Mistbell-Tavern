@@ -24,6 +24,7 @@ import com.mistbell.tavern.v3.core.storage.VectorSnapshotLoadResult
 import com.mistbell.tavern.v3.feature.embedding.EmbeddingGemma2MemoryRuntime
 import com.mistbell.tavern.v3.feature.embedding.EmbeddingGemma2ModelAssetManager
 import com.mistbell.tavern.v3.feature.embedding.EmbeddingGemma2RuntimeAdapter
+import com.mistbell.tavern.v3.feature.embedding.EmbeddingGemma2TextPolicy
 import com.mistbell.tavern.v3.feature.embedding.LiteRtLmEmbeddingGemma2Engine
 import java.io.File
 import java.util.UUID
@@ -585,7 +586,7 @@ fun ChatScreen(onBack: () -> Unit) {
                                     "mistbell-v3-settings",
                                     Context.MODE_PRIVATE,
                                 ).getInt("embedding_output_dimensions", 768)
-                                if (installedModel == null || configuredDimensions !in CHAT_EMBEDDING_DIMENSION_OPTIONS || configuredDimensions > 768) {
+                                if (installedModel == null || configuredDimensions !in CHAT_EMBEDDING_DIMENSION_OPTIONS || configuredDimensions > EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS) {
                                     if (installedModel == null) {
                                         diagnosticStore.warn(
                                             "chat.embedding.unavailable",
