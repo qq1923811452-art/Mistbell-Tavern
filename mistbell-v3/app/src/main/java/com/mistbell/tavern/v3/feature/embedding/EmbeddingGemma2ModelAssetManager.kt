@@ -79,16 +79,16 @@ class EmbeddingGemma2ModelAssetManager(
                 }
             }
             val sha256 = digest.digest().toHex()
+            FileOutputStream(temporaryDigestFile).use { output ->
+                output.write("$sha256  $MODEL_FILE_NAME\n".toByteArray(Charsets.UTF_8))
+                output.fd.sync()
+            }
             Files.move(
                 temporaryFile.toPath(),
                 modelFile.toPath(),
                 StandardCopyOption.REPLACE_EXISTING,
                 StandardCopyOption.ATOMIC_MOVE,
             )
-            FileOutputStream(temporaryDigestFile).use { output ->
-                output.write("$sha256  $MODEL_FILE_NAME\n".toByteArray(Charsets.UTF_8))
-                output.fd.sync()
-            }
             Files.move(
                 temporaryDigestFile.toPath(),
                 digestFile.toPath(),
