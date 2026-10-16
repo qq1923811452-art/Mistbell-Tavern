@@ -122,13 +122,20 @@ object TemporalFactLedger {
     }
 
     fun stableId(observation: TemporalFactObservation): String {
-        val canonical = listOf(
+        val fields = listOf(
             observation.conversationId,
             observation.sourceTurnId,
             normalize(observation.subject),
             normalize(observation.predicate),
             normalize(observation.value),
-        ).joinToString("\u0000")
+        )
+        // Length-prefix each field so embedded separators (including NUL) cannot make two
+        // different field tuples produce the same canonical byte sequence.
+        val canonical = buildString {
+            fields.forEach { field ->
+                append(field.length).append(':').append(field)
+            }
+        }
         return sha256(canonical)
     }
 
