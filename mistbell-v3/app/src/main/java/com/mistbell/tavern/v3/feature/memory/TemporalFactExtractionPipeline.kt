@@ -3,7 +3,7 @@ package com.mistbell.tavern.v3.feature.memory
 import com.mistbell.tavern.v3.core.memory.MemoryTextRecord
 import com.mistbell.tavern.v3.core.memory.TemporalFactLedger
 import com.mistbell.tavern.v3.core.memory.TemporalFactObservation
-import com.mistbell.tavern.v3.core.storage.AtomicMemoryTextStore
+import com.mistbell.tavern.v3.core.storage.MemoryTextPersistence
 import com.mistbell.tavern.v3.core.storage.TemporalFactPersistence
 import com.mistbell.tavern.v3.core.storage.TemporalFactLoadResult
 import okhttp3.Call
@@ -26,7 +26,7 @@ sealed interface TemporalFactPipelineOutcome {
 class TemporalFactExtractionPipeline(
     private val client: MemoryExtractionClient,
     private val factStore: TemporalFactPersistence,
-    private val memoryTextStore: AtomicMemoryTextStore,
+    private val memoryTextStore: MemoryTextPersistence,
     private val clockMillis: () -> Long = System::currentTimeMillis,
 ) {
     fun extractAndPersist(
