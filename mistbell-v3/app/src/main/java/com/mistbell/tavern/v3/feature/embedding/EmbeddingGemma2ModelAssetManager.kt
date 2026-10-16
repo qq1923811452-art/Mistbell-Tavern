@@ -7,6 +7,7 @@ import java.net.URL
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
+import java.util.concurrent.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -95,21 +96,27 @@ class EmbeddingGemma2ModelAssetManager(
     }
 
     suspend fun verifyInstalled(): DownloadedEmbeddingModel? = withContext(Dispatchers.IO) {
-        if (!modelFile.isFile || !digestFile.isFile) return@withContext null
-        val expected = digestFile.readText(Charsets.UTF_8).trim().substringBefore(' ').trim()
-        if (!expected.matches(Regex("[0-9a-fA-F]{64}"))) return@withContext null
-        val digest = MessageDigest.getInstance("SHA-256")
-        modelFile.inputStream().buffered().use { input ->
-            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-            while (true) {
-                val count = input.read(buffer)
-                if (count < 0) break
-                digest.update(buffer, 0, count)
+        try {
+            if (!modelFile.isFile || !digestFile.isFile) return@withContext null
+            val expected = digestFile.readText(Charsets.UTF_8).trim().substringBefore(' ').trim()
+            if (!expected.matches(Regex("[0-9a-fA-F]{64}"))) return@withContext null
+            val digest = MessageDigest.getInstance("SHA-256")
+            modelFile.inputStream().buffered().use { input ->
+                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                while (true) {
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    digest.update(buffer, 0, count)
+                }
             }
+            val actual = digest.digest().toHex()
+            if (!actual.equals(expected, ignoreCase = true)) return@withContext null
+            DownloadedEmbeddingModel(modelFile, modelFile.length(), actual)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            null
         }
-        val actual = digest.digest().toHex()
-        if (!actual.equals(expected, ignoreCase = true)) return@withContext null
-        DownloadedEmbeddingModel(modelFile, modelFile.length(), actual)
     }
 
     companion object {
