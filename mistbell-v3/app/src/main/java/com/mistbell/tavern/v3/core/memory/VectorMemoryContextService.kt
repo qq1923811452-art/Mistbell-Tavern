@@ -1,5 +1,7 @@
 package com.mistbell.tavern.v3.core.memory
 
+import kotlinx.coroutines.CancellationException
+
 /** Storage adapter result for loading a validated vector snapshot. */
 sealed interface VectorSnapshotReadResult {
     data object Missing : VectorSnapshotReadResult
@@ -10,7 +12,7 @@ sealed interface VectorSnapshotReadResult {
 
 /** The local embedding runtime implementation must report failures instead of returning fake vectors. */
 fun interface QueryEmbeddingProvider {
-    fun embed(text: String): List<Float>
+    suspend fun embed(text: String): List<Float>
 }
 
 /** Supplies the current source passages corresponding to stored vector content hashes. */
@@ -59,7 +61,7 @@ class VectorMemoryContextService(
         require(maxCharacters in 1..VectorMemoryRetriever.MAX_CHARACTERS)
     }
 
-    fun retrieveForQuery(query: String): VectorMemoryContextResult {
+    suspend fun retrieveForQuery(query: String): VectorMemoryContextResult {
         if (query.isBlank()) return VectorMemoryContextResult.Unavailable(
             VectorMemoryContextResult.Reason.INVALID_QUERY_VECTOR,
         )
@@ -79,6 +81,8 @@ class VectorMemoryContextService(
 
         val queryVector = try {
             embeddings.embed(query)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (_: Exception) {
             return VectorMemoryContextResult.Unavailable(
                 VectorMemoryContextResult.Reason.EMBEDDING_FAILED,
@@ -96,6 +100,8 @@ class VectorMemoryContextService(
 
         val texts = try {
             textProvider.loadMemoryTexts()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (_: Exception) {
             return VectorMemoryContextResult.Unavailable(
                 VectorMemoryContextResult.Reason.SOURCE_TEXT_UNAVAILABLE,
