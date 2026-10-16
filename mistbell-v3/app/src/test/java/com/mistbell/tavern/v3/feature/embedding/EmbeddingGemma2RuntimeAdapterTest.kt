@@ -52,6 +52,22 @@ class EmbeddingGemma2RuntimeAdapterTest {
     }
 
     @Test
+    fun rejectsHigherDimensionsBeforeRunningEmbeddingGemma2() {
+        var calls = 0
+        val error = assertThrows(IllegalArgumentException::class.java) {
+            EmbeddingGemma2RuntimeAdapter(
+                engine = engine {
+                    calls++
+                    error("The engine must not run for unsupported dimensions.")
+                },
+                outputDimensions = 1024,
+            )
+        }
+        assertTrue(error.message!!.contains("natively outputs 768 dimensions"))
+        assertEquals(0, calls)
+    }
+
+    @Test
     fun rejectsUnknownBackendAndWrongModel(): Unit = runBlocking {
         val unknownBackend = EmbeddingGemma2RuntimeAdapter(
             engine = engine {
