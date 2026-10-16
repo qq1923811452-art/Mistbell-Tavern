@@ -2,6 +2,7 @@ package com.mistbell.tavern.v3.feature.embedding
 
 import java.io.File
 import java.io.FileOutputStream
+import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.nio.file.Files
@@ -105,6 +106,84 @@ class EmbeddingGemma2ModelAssetManager(
             temporaryFile.delete()
             temporaryDigestFile.delete()
         }
+        } finally {
+            downloadLock.unlock()
+        }
+    }
+
+    /** Imports a user-selected .litertlm bundle without requiring a public model download URL. */
+    suspend fun importModel(
+        sourceName: String,
+        input: InputStream,
+        onProgress: (downloadedBytes: Long, totalBytes: Long?) -> Unit = { _, _ -> },
+    ): DownloadedEmbeddingModel = withContext(Dispatchers.IO) {
+        downloadLock.lock()
+        try {
+            require(sourceName.endsWith(".litertlm", ignoreCase = true)) {
+                "Selected file must have a .litertlm extension."
+            }
+            check(modelDirectory.isDirectory || modelDirectory.mkdirs()) {
+                "Model directory could not be created."
+            }
+            val temporaryFile = File(modelDirectory, "$MODEL_FILE_NAME.import")
+            val temporaryDigestFile = File(modelDirectory, "$MODEL_FILE_NAME.sha256.tmp")
+            if (temporaryFile.exists() && !temporaryFile.delete()) {
+                throw IllegalStateException("An incomplete model import could not be removed.")
+            }
+            if (temporaryDigestFile.exists() && !temporaryDigestFile.delete()) {
+                throw IllegalStateException("An incomplete model digest could not be removed.")
+            }
+            try {
+                var importedBytes = 0L
+                var lastProgressBytes = 0L
+                val digest = MessageDigest.getInstance("SHA-256")
+                input.use { source ->
+                    FileOutputStream(temporaryFile).use { output ->
+                        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                        while (true) {
+                            val count = source.read(buffer)
+                            if (count < 0) break
+                            importedBytes += count
+                            require(importedBytes <= MAX_MODEL_BYTES) {
+                                "Selected model exceeds the configured size limit."
+                            }
+                            digest.update(buffer, 0, count)
+                            output.write(buffer, 0, count)
+                            if (importedBytes - lastProgressBytes >= PROGRESS_INTERVAL_BYTES) {
+                                onProgress(importedBytes, null)
+                                lastProgressBytes = importedBytes
+                            }
+                        }
+                        output.fd.sync()
+                    }
+                }
+                check(importedBytes > 0L) { "Selected model file is empty." }
+                val sha256 = digest.digest().toHex()
+                FileOutputStream(temporaryDigestFile).use { output ->
+                    output.write("$sha256  $MODEL_FILE_NAME\n".toByteArray(Charsets.UTF_8))
+                    output.fd.sync()
+                }
+                Files.move(
+                    temporaryFile.toPath(),
+                    modelFile.toPath(),
+                    StandardCopyOption.REPLACE_EXISTING,
+                    StandardCopyOption.ATOMIC_MOVE,
+                )
+                Files.move(
+                    temporaryDigestFile.toPath(),
+                    digestFile.toPath(),
+                    StandardCopyOption.REPLACE_EXISTING,
+                    StandardCopyOption.ATOMIC_MOVE,
+                )
+                DownloadedEmbeddingModel(modelFile, importedBytes, sha256)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                throw error
+            } finally {
+                temporaryFile.delete()
+                temporaryDigestFile.delete()
+            }
         } finally {
             downloadLock.unlock()
         }
