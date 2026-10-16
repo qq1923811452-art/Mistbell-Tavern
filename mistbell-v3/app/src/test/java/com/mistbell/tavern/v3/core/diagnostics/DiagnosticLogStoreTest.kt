@@ -16,7 +16,7 @@ class DiagnosticLogStoreTest {
             store.info("embedding.initialize", "Bearer super-secret-token; api_key=private-key")
             store.warn(
                 "network.error",
-                "Authorization: Basic dXNlcjpwYXNz; X-Api-Key=api-secret; https://example.test/?token=query-secret; hf_abcdefghijklmnopqrstuvwxyz",
+                "Authorization: Basic dXNlcjpwYXNz; X-Api-Key=api-secret; https://example.test/?token=query-secret; hf_abcdefghijklmnopqrstuvwxyz; \"token\": \"json-secret\"",
             )
             val output = ByteArrayOutputStream()
             store.exportTo(output)
@@ -30,6 +30,7 @@ class DiagnosticLogStoreTest {
             assertFalse(exported.contains("api-secret"))
             assertFalse(exported.contains("query-secret"))
             assertFalse(exported.contains("hf_abcdefghijklmnopqrstuvwxyz"))
+            assertFalse(exported.contains("json-secret"))
         } finally {
             directory.deleteRecursively()
         }
