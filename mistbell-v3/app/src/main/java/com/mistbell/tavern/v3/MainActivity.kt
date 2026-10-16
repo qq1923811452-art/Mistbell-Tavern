@@ -68,7 +68,7 @@ class MainActivity : ComponentActivity() {
     private var inferenceStatus by mutableStateOf(InferenceRuntimeStatus.idle())
     private var operationMessage by mutableStateOf("正在检查本地模型……")
     private var operationBusy by mutableStateOf(false)
-    private var showChat by mutableStateOf(false)
+    private var showChat by mutableStateOf(true)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
