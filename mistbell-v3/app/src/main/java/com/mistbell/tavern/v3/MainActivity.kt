@@ -197,8 +197,11 @@ class MainActivity : ComponentActivity() {
         modelAssets = createModelAssetManager(qualcommModelSelected)
         diagnostics.info("app.started", "build=3.0.0-dev")
         lifecycleScope.launch {
-            restorePublicModelIfPresent(qualcommModelSelected)
-            val installed = withContext(Dispatchers.IO) { modelAssets.verifyInstalled() }
+            var installed = withContext(Dispatchers.IO) { modelAssets.verifyInstalled() }
+            if (installed == null) {
+                restorePublicModelIfPresent(qualcommModelSelected)
+                installed = withContext(Dispatchers.IO) { modelAssets.verifyInstalled() }
+            }
             if (!operationBusy) operationMessage = if (installed == null) {
                 "所选模型尚未安装或校验失败。下载位置：${publicModelDirectoryLabel()}"
             } else {
@@ -325,6 +328,15 @@ class MainActivity : ComponentActivity() {
             "已选择 Qualcomm SM8650 专用模型。注意：选择专用模型不代表 NPU 运行库已就绪；下载后仍需实测。"
         } else {
             "已选择通用模型，适合先进行 CPU/GPU 兼容性测试。"
+        }
+        lifecycleScope.launch {
+            restorePublicModelIfPresent(qualcomm)
+            val installed = withContext(Dispatchers.IO) { modelAssets.verifyInstalled() }
+            if (installed != null) {
+                operationMessage = "所选模型已从公共目录恢复并校验：${publicModelDirectoryLabel()}"
+            } else {
+                operationMessage += " 尚未找到已安装的此版本，可点击下载。"
+            }
         }
     }
 
@@ -540,7 +552,7 @@ private fun DevelopmentHome(
                             Text(if (qualcommModelSelected) "✓ 已选：Qualcomm SM8650 专用版（约 563 MB）" else "选择 Qualcomm SM8650 专用版（约 563 MB）")
                         }
                         Text(
-                            "专用版针对骁龙 8 Gen 3/SM8650；NPU 是否可用仍取决于 APK 中的运行库与真机验证。首次下载需要授予“所有文件访问”，这样模型才会出现在公共下载目录中。",
+                            "专用版针对骁龙 8 Gen 3/SM8650；NPU 是否可用仍取决于 APK 中的运行库与真机验证。应用会在校验后将模型发布到公共下载目录，无需授予“所有文件访问”权限。",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
