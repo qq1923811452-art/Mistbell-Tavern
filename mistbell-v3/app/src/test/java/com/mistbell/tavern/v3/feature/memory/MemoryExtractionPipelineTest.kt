@@ -41,11 +41,10 @@ class MemoryExtractionPipelineTest {
 
     @Test
     fun retryAfterFactCommitDoesNotDuplicateHistory() {
-        val ledgerStore = InMemoryLedger()
+        val ledgerStore = InMemoryLedger(failCompletedSaveOnce = true)
         val plan = plan()
         ledgerStore.save(MemoryJobLedger().enqueue(plan))
         val factStore = InMemoryFacts()
-        factStore.seedSave()
         var now = 1_000L
         val worker = worker(ledgerStore, factStore, now = { now })
         var first: MemoryPipelineResult? = null
@@ -123,9 +122,10 @@ class MemoryExtractionPipelineTest {
         }
     }
 
-    private class InMemoryLedger : MemoryJobLedgerPersistence {
+    private class InMemoryLedger(
+        private var failCompletedSaveOnce: Boolean = false,
+    ) : MemoryJobLedgerPersistence {
         private var value: MemoryJobLedgerLoadResult = MemoryJobLedgerLoadResult.Missing
-        private var failCompletedSaveOnce = true
 
         override fun save(ledger: MemoryJobLedger) {
             if (failCompletedSaveOnce && ledger.jobs.any { it.status == MemoryJobStatus.COMPLETED }) {
@@ -143,7 +143,6 @@ class MemoryExtractionPipelineTest {
 
     private class InMemoryFacts : MemoryFactHistoryPersistence {
         private var value: MemoryFactHistoryLoadResult = MemoryFactHistoryLoadResult.Missing
-        private var seeded = false
 
         override fun save(history: List<MemoryFact>) {
             value = MemoryFactHistoryLoadResult.Loaded(history.toList())
@@ -154,8 +153,5 @@ class MemoryExtractionPipelineTest {
         fun history(): List<MemoryFact> =
             (value as? MemoryFactHistoryLoadResult.Loaded)?.history.orEmpty()
 
-        fun seedSave() {
-            seeded = true
-        }
     }
 }
