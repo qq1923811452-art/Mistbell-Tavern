@@ -1,5 +1,7 @@
 package com.mistbell.tavern.v3.core.storage
 
+import kotlinx.coroutines.runBlocking
+
 import com.mistbell.tavern.v3.core.memory.MemoryIndexRebuildResult
 import com.mistbell.tavern.v3.core.memory.MemoryTextRecord
 import com.mistbell.tavern.v3.core.memory.PassageEmbeddingRuntime
@@ -10,7 +12,7 @@ import org.junit.Test
 
 class PersistedMemoryIndexRebuilderTest {
     @Test
-    fun rebuildCurrentIndexReadsDurableTextsAndSavesMatchingSnapshot() {
+    fun rebuildCurrentIndexReadsDurableTextsAndSavesMatchingSnapshot() = runBlocking {
         val source = listOf(MemoryTextRecord("m1", "A persisted fact"))
         val textStore = FakeTextStore(MemoryTextLoadResult.Loaded(source))
         var savedSnapshot: VectorSnapshot? = null
@@ -30,7 +32,7 @@ class PersistedMemoryIndexRebuilderTest {
     }
 
     @Test
-    fun refusesToOverwriteCorruptSourceStore() {
+    fun refusesToOverwriteCorruptSourceStore() = runBlocking {
         val textStore = FakeTextStore(MemoryTextLoadResult.Corrupt("corrupt"))
         var savedSnapshot: VectorSnapshot? = null
         val result = PersistedMemoryIndexRebuilder(
@@ -71,6 +73,6 @@ class PersistedMemoryIndexRebuilderTest {
     private class FakeRuntime : PassageEmbeddingRuntime {
         override val modelId: String = "loaded-model"
         override val dimensions: Int = 2
-        override fun embed(text: String): List<Float> = listOf(0.8f, 0.2f)
+        override suspend fun embed(text: String): List<Float> = listOf(0.8f, 0.2f)
     }
 }
