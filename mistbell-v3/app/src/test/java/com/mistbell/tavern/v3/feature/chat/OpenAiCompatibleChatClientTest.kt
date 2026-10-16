@@ -83,6 +83,7 @@ class OpenAiCompatibleChatClientTest {
     fun redirectsAreNotFollowedAndBearerKeyIsNotForwarded() {
         val secondServer = MockWebServer()
         try {
+            secondServer.start()
             secondServer.enqueue(MockResponse().setResponseCode(200).setBody("unexpected"))
             server.enqueue(
                 MockResponse()
@@ -90,7 +91,6 @@ class OpenAiCompatibleChatClientTest {
                     .setHeader("Location", secondServer.url("/steal").toString()),
             )
             server.start()
-            secondServer.start()
             val observer = RecordingObserver()
             clientFor(server, apiKey = "test-chat-key")
                 .stream(listOf(PromptMessage(PromptRole.USER, "Hi")), observer)

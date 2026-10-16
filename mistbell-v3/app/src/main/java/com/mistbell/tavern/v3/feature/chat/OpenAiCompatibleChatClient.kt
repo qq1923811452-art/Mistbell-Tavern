@@ -16,6 +16,7 @@ import org.json.JSONObject
 import java.io.IOException
 import java.net.URI
 import java.util.Locale
+import java.util.concurrent.TimeUnit
 
 fun interface CredentialResolver {
     /** Resolve an opaque encrypted-store handle. Never log or persist the returned secret here. */
@@ -59,6 +60,8 @@ class OpenAiCompatibleChatClient(
     private val httpClient = client.newBuilder()
         .followRedirects(false)
         .followSslRedirects(false)
+        // Some providers spend longer than OkHttp's default read timeout thinking before a token.
+        .readTimeout(0, TimeUnit.MILLISECONDS)
         .build()
 
     fun stream(messages: List<PromptMessage>, observer: ChatStreamObserver): Call {
