@@ -3,13 +3,9 @@ package com.mistbell.tavern.v3.feature.memory
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
-import org.junit.Rule
 import org.junit.Test
-import org.junit.rules.TemporaryFolder
 
 class MemoryExtractionJobRepositoryTest {
-    @get:Rule val folder = TemporaryFolder()
-
     @Test fun failedJobStoresOnlySafeFailureCategory() {
         val repository = repository()
         val job = job("job-1", createdAt = 100L)
@@ -108,9 +104,19 @@ class MemoryExtractionJobRepositoryTest {
         assertEquals("Retry limit reached.", byId.getValue("exhausted").lastSafeError)
     }
 
-    private fun repository(): MemoryExtractionJobRepository {
-        val root = folder.newFolder()
-        return MemoryExtractionJobRepository(MemoryExtractionJobStore(root))
+    private fun repository(): MemoryExtractionJobRepository =
+        MemoryExtractionJobRepository(InMemoryJobStore())
+
+    private class InMemoryJobStore : MemoryExtractionJobPersistence {
+        private var savedJobs: List<MemoryExtractionJob>? = null
+
+        override fun save(jobs: List<MemoryExtractionJob>) {
+            savedJobs = jobs.toList()
+        }
+
+        override fun load(): MemoryExtractionJobLoadResult =
+            savedJobs?.let(MemoryExtractionJobLoadResult::Loaded)
+                ?: MemoryExtractionJobLoadResult.Missing
     }
 
     private fun job(
