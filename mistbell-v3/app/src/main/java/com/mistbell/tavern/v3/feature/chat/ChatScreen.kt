@@ -85,17 +85,17 @@ fun ChatScreen(onBack: () -> Unit) {
     val diagnosticStore = remember(context) { DiagnosticLogStore(context.applicationContext.filesDir) }
 
     fun persistHistory() {
-        val snapshot = history.map { line ->
-            PersistedChatMessage(
-                id = line.id,
-                role = line.role,
-                content = line.content,
-                createdAtEpochMillis = line.createdAtEpochMillis,
-                deliveryState = line.deliveryState,
-            )
-        }
         coroutineScope.launch {
             runCatching {
+                val snapshot = history.map { line ->
+                    PersistedChatMessage(
+                        id = line.id,
+                        role = line.role,
+                        content = line.content,
+                        createdAtEpochMillis = line.createdAtEpochMillis,
+                        deliveryState = line.deliveryState,
+                    )
+                }
                 withContext(Dispatchers.IO) { historyStore.save(snapshot) }
             }.onFailure { error ->
                 diagnosticStore.warn(
