@@ -5,9 +5,9 @@
 ## 测试步骤
 
 1. 安装专门的 3.0 开发 APK，并保持网络可用。
-2. 优先打开“下载 / 重新下载 EmbeddingGemma 2 模型”。模型较大，请预留充足存储空间并使用稳定网络；应用会显示下载进度。如果官方模型下载地址返回 401/403/404，或网络不可达，请先从可访问的官方模型来源取得 `.litertlm` 文件，再用“从文件导入 .litertlm 模型”按钮导入。
+2. 优先打开“下载 / 重新下载 EmbeddingGemma 2 模型”。当前默认下载的是官方针对 Redmi K70 Pro 芯片 SM8650 的 Qualcomm 专用包（约 563 MB），并固定到已核对的模型版本和发布 SHA-256；下载完成后会校验发布哈希，不匹配就拒绝安装。请预留充足存储空间并使用稳定网络。如果官方模型地址不可达，可导入其他 EmbeddingGemma `.litertlm` 文件进行 CPU/GPU 兼容性测试，但只有内容 SHA-256 精确匹配官方 SM8650 模型时才会标记为该 NPU 专用模型。
 3. 下载结束后点击“初始化后执行真实向量测试”。测试使用应用内固定的诊断短句，不会调用聊天 API。
-4. 检查“本地 Embedding / NPU 状态”和操作结果：
+4. 检查“本地 Embedding / NPU 状态”和操作结果。当前 APK 若没有打包完整、经过版本匹配验证的加速库，会自动跳过对应后端并使用可用的安全后备（CPU 优先保证测试可运行），同时在日志中写明缺少哪些文件；不会仅因芯片型号或模型名称就尝试 NPU。
    - **已就绪 / 真实本地推理成功**：模型初始化并成功返回向量。
    - **已回退**：首选后端初始化或推理失败，另一个配置后端成功返回向量；查看回退原因。
    - **初始化/推理失败**：检查错误摘要并导出日志。
@@ -18,6 +18,8 @@
 
 - 诊断日志不应包含聊天正文、完整提示词、API 密钥或 HTTP 请求/响应正文。
 - 模型下载后会保存 SHA-256 sidecar，用于检测本地文件之后是否被改动。该 sidecar 是下载时生成的本地摘要，不是模型发布者签名或独立可信校验和。
+- 当前仓库中的 LiteRT-LM 0.18.0 AAR 只在 APK 内看到 `liblitertlm_jni.so`，没有打包 Qualcomm dispatch/QNN 库，也没有 LiteRT GPU accelerator 插件。因此，在这些库及其 ABI 兼容性未验证前，NPU/GPU 后端会被预检禁用；这轮 APK 可用于验证模型下载/哈希校验、CPU 本地推理、向量记忆与日志链路，但不能作为 NPU/GPU 性能测试结果。
+- 启用 SM8650 NPU 还必须把与该 LiteRT-LM 版本兼容的 `libLiteRtDispatch_Qualcomm.so`、QAIRT/QNN HTP 运行库和 Hexagon V75 组件放入 `app/src/main/jniLibs/arm64-v8a/`，并完成设备验证。只有实际验证后才能加入 `app/src/main/assets/native-runtime/qualcomm-sm8650.properties`，内容须包含 `status=verified`、`target_soc=SM8650`、`litertlm_android=0.18.0`、`qairt_abi=verified` 和 `dispatch_abi=verified`；不能只因文件存在就标记已验证。
 - 若要确认 Redmi K70 Pro 的 NPU 是否真正执行，还需要结合设备/系统级运行日志或可观测的后端遥测；不能只依据手机型号、后端配置或“初始化成功”下结论。
 - 最终用户实测需记录设备型号、Android 版本、结果状态、耗时、是否回退和导出的诊断日志。
 ## APK 说明
