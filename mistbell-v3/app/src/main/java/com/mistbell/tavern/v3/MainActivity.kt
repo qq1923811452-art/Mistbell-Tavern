@@ -5,6 +5,10 @@ import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import android.provider.OpenableColumns
 import androidx.activity.compose.setContent
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -320,11 +324,13 @@ private fun DevelopmentHome(
             }
             item { InferenceStatusCard(inferenceStatus) }
             item {
-                Card(modifier = Modifier.fillMaxWidth()) {
+                Card(modifier = Modifier.fillMaxWidth().animateContentSize(animationSpec = tween(durationMillis = 240, easing = FastOutSlowInEasing))) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text("本地模型与实测", style = MaterialTheme.typography.titleMedium)
                         Spacer(Modifier.height(6.dp))
-                        Text(operationMessage, style = MaterialTheme.typography.bodyMedium)
+                        AnimatedContent(targetState = operationMessage, label = "operation-message") { message ->
+                            Text(message, style = MaterialTheme.typography.bodyMedium)
+                        }
                         Spacer(Modifier.height(10.dp))
                         Button(onClick = onDownloadModel, enabled = !operationBusy, modifier = Modifier.fillMaxWidth()) {
                             Text("下载 / 重新下载 EmbeddingGemma 2 模型")
@@ -341,7 +347,7 @@ private fun DevelopmentHome(
                 }
             }
             item {
-                Card(modifier = Modifier.fillMaxWidth()) {
+                Card(modifier = Modifier.fillMaxWidth().animateContentSize(animationSpec = tween(durationMillis = 240, easing = FastOutSlowInEasing))) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text("诊断与故障排查", style = MaterialTheme.typography.titleMedium)
                         Spacer(Modifier.height(6.dp))
@@ -391,7 +397,7 @@ private fun InferenceStatusCard(status: InferenceRuntimeStatus) {
         InferencePhase.FAILED -> "初始化/推理失败"
     }
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().animateContentSize(animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing)),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.secondaryContainer,
         ),
