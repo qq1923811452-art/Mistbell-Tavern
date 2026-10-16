@@ -1,6 +1,5 @@
 package com.mistbell.tavern.v3.feature.image
 
-import com.mistbell.tavern.v3.core.network.EndpointPolicy
 import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
