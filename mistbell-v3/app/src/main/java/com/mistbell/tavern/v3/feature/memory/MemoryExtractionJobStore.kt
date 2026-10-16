@@ -11,8 +11,15 @@ sealed interface MemoryExtractionJobLoadResult {
     data class Corrupt(val safeReason: String) : MemoryExtractionJobLoadResult
 }
 
+/** Persistence boundary allows repository state-machine tests to run without Android framework stubs. */
+interface MemoryExtractionJobPersistence {
+    fun save(jobs: List<MemoryExtractionJob>)
+    fun load(): MemoryExtractionJobLoadResult
+}
+
 /** App-private atomic persistence; corrupt queue data is reported, never silently replaced. */
-class MemoryExtractionJobStore private constructor(targetFile: File, @Suppress("UNUSED_PARAMETER") marker: Unit) {
+class MemoryExtractionJobStore private constructor(targetFile: File, @Suppress("UNUSED_PARAMETER") marker: Unit) :
+    MemoryExtractionJobPersistence {
     private val file = AtomicFile(targetFile)
 
     constructor(context: Context, fileName: String = DEFAULT_FILE_NAME) :
@@ -22,7 +29,7 @@ class MemoryExtractionJobStore private constructor(targetFile: File, @Suppress("
     constructor(directory: File) : this(File(directory, DEFAULT_FILE_NAME), Unit)
 
     @Synchronized
-    fun save(jobs: List<MemoryExtractionJob>) {
+    override fun save(jobs: List<MemoryExtractionJob>) {
         val bytes = MemoryExtractionJobCodec.encode(jobs)
         val stream = file.startWrite()
         try {
@@ -35,7 +42,7 @@ class MemoryExtractionJobStore private constructor(targetFile: File, @Suppress("
     }
 
     @Synchronized
-    fun load(): MemoryExtractionJobLoadResult {
+    override fun load(): MemoryExtractionJobLoadResult {
         val base = file.baseFile
         val backup = File(base.path + ".bak")
         if (!base.exists() && !backup.exists()) return MemoryExtractionJobLoadResult.Missing
