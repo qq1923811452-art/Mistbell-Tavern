@@ -1,6 +1,6 @@
 package com.mistbell.tavern.v3.core.inference
 
-/** Backend actually reported by the runtime for a completed operation. */
+/** Backend selected/reported by the adapter; consult backendEvidence before inferring hardware execution. */
 enum class InferenceBackend { CPU, GPU, NPU, UNKNOWN }
 
 enum class InferencePhase { NOT_INITIALIZED, LOADING_MODEL, READY, RUNNING, FALLBACK, FAILED }
@@ -67,7 +67,7 @@ data class InferenceRuntimeStatus(
     }
 }
 
-/** Preference order never implies availability; adapters must report their observed backend. */
+/** Preference order never implies availability; probes must identify their evidence level before claiming hardware execution. */
 object InferenceBackendSelection {
     fun select(preferredOrder: List<InferenceBackend>, probes: List<RuntimeProbe>): RuntimeProbe? {
         require(preferredOrder.isNotEmpty()) { "At least one backend preference is required." }
