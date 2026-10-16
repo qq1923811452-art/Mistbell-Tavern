@@ -1,5 +1,6 @@
 package com.mistbell.tavern.v3.core.diagnostics
 
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.OutputStream
 import java.nio.charset.StandardCharsets
@@ -38,20 +39,28 @@ class DiagnosticLogStore(
     }
 
     fun exportTo(output: OutputStream) {
-        synchronized(lock) {
-            output.write("Mistbell Tavern 3.0 diagnostic log\n".toByteArray(StandardCharsets.UTF_8))
-            output.write("Exported: ${clock()}\n".toByteArray(StandardCharsets.UTF_8))
-            output.write("Privacy: prompts, chat content, and API keys are not intentionally logged.\n\n"
-                .toByteArray(StandardCharsets.UTF_8))
-            if (logFile.isFile) {
-                logFile.inputStream().use { input -> input.copyTo(output) }
-            } else {
-                output.write("No diagnostic events recorded yet.\n".toByteArray(StandardCharsets.UTF_8))
-            }
-            output.flush()
+        val snapshot = synchronized(lock) {
+            ByteArrayOutputStream().apply {
+                write("Mistbell Tavern 3.0 diagnostic log\n".toByteArray(StandardCharsets.UTF_8))
+                write("Exported: ${clock()}\n".toByteArray(StandardCharsets.UTF_8))
+                write("Privacy: prompts, chat content, and API keys are not intentionally logged.\n\n"
+                    .toByteArray(StandardCharsets.UTF_8))
+                val rotatedFile = File(directory, "$LOG_FILE_NAME.1")
+                var hasEvents = false
+                if (rotatedFile.isFile) {
+                    rotatedFile.inputStream().use { it.copyTo(this) }
+                    hasEvents = true
+                }
+                if (logFile.isFile) {
+                    logFile.inputStream().use { it.copyTo(this) }
+                    hasEvents = true
+                }
+                if (!hasEvents) write("No diagnostic events recorded yet.\n".toByteArray(StandardCharsets.UTF_8))
+            }.toByteArray()
         }
+        output.write(snapshot)
+        output.flush()
     }
-
     private fun rotateIfNeeded() {
         if (!logFile.exists() || logFile.length() < MAX_LOG_BYTES) return
         val previous = File(directory, "$LOG_FILE_NAME.1")
