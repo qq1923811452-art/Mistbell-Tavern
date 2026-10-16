@@ -73,14 +73,14 @@ class MemoryExtractionClient(
     private val providers: ProviderProfileSet,
     private val credentials: MemoryCredentialResolver,
     client: OkHttpClient = OkHttpClient(),
-) {
+) : MemoryFactExtractor {
     private val httpClient = client.newBuilder()
         .followRedirects(false)
         .followSslRedirects(false)
         .callTimeout(90, TimeUnit.SECONDS)
         .build()
 
-    fun extract(input: MemoryExtractionInput, observer: MemoryExtractionObserver): Call {
+    override fun extract(input: MemoryExtractionInput, observer: MemoryExtractionObserver): Call {
         val profile = providers.profileFor(ProviderKind.MEMORY_EXTRACTION)
             ?: throw IllegalStateException("No enabled memory-extraction provider is explicitly selected.")
         val validation = EndpointPolicy.validateBaseUrl(profile.baseUrl)
