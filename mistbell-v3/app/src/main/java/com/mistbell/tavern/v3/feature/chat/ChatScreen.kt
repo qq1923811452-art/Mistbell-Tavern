@@ -550,7 +550,7 @@ fun ChatScreen(onBack: () -> Unit) {
                                 when (handle) {
                                     "session-chat-key" -> secretForThisRequest
                                     "session-memory-key" -> memorySecretForThisRequest
-                                    else -> memoryCredentialStore.resolve(handle)
+                                    else -> null
                                 }
                             },
                         )
