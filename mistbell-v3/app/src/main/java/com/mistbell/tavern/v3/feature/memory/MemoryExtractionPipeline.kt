@@ -5,7 +5,7 @@ import com.mistbell.tavern.v3.core.memory.FactHistoryReducer
 import com.mistbell.tavern.v3.core.memory.MemoryBatchPolicy
 import com.mistbell.tavern.v3.core.memory.MemoryBatchPlan
 import com.mistbell.tavern.v3.core.memory.MemoryFact
-import com.mistbell.tavern.v3.core.memory.MemoryFactHistory
+import com.mistbell.tavern.v3.core.memory.MemoryExtractionJob
 import com.mistbell.tavern.v3.core.memory.MemoryJobLedger
 import com.mistbell.tavern.v3.core.memory.MemoryJobStatus
 import com.mistbell.tavern.v3.core.storage.MemoryFactHistoryLoadResult
@@ -88,8 +88,14 @@ class MemoryExtractionWorker(
     private val textSource: MemoryTurnTextSource,
     private val nowEpochMillis: () -> Long = System::currentTimeMillis,
 ) {
+    private var activeJobId: String? = null
+
     @Synchronized
     fun processNext(observer: (MemoryPipelineResult) -> Unit): Call? {
+        if (activeJobId != null) {
+            observer(MemoryPipelineResult.NoWork)
+            return null
+        }
         val ledger = when (val loaded = ledgerStore.load()) {
             MemoryJobLedgerLoadResult.Missing -> {
                 observer(MemoryPipelineResult.NoWork)
@@ -108,6 +114,7 @@ class MemoryExtractionWorker(
         }
         try {
             ledgerStore.save(claimedLedger)
+            activeJobId = job.plan.id
         } catch (_: Exception) {
             observer(MemoryPipelineResult.Failed("Memory job claim could not be saved."))
             return null
@@ -121,7 +128,9 @@ class MemoryExtractionWorker(
                 null
             }
             if (text.isNullOrBlank()) {
-                observer(failJob(job.plan.id, "A source conversation turn is unavailable."))
+                val failure = failJob(job.plan.id, "A source conversation turn is unavailable.")
+                synchronized(this) { activeJobId = null }
+                observer(failure)
                 return null
             }
             texts[turn.id] = text
@@ -135,14 +144,20 @@ class MemoryExtractionWorker(
                     textByTurnId = texts,
                 ),
             ) { outcome ->
-                val result = when (outcome) {
-                    is MemoryExtractionOutcome.Failure -> failJob(job.plan.id, outcome.safeMessage)
-                    is MemoryExtractionOutcome.Success -> finishJob(job.plan, outcome.result)
+                val result = try {
+                    when (outcome) {
+                        is MemoryExtractionOutcome.Failure -> failJob(job.plan.id, outcome.safeMessage)
+                        is MemoryExtractionOutcome.Success -> finishJob(job.plan, outcome.result)
+                    }
+                } finally {
+                    synchronized(this) { activeJobId = null }
                 }
                 observer(result)
             }
         } catch (_: Exception) {
-            observer(failJob(job.plan.id, "Memory-extraction request could not be started."))
+            val failure = failJob(job.plan.id, "Memory-extraction request could not be started.")
+            synchronized(this) { activeJobId = null }
+            observer(failure)
             null
         }
     }
@@ -206,7 +221,7 @@ class MemoryExtractionWorker(
             if (job.status != MemoryJobStatus.PROCESSING) {
                 return MemoryPipelineResult.Failed("Memory job is not in a processing state.")
             }
-            val boundedMessage = safeMessage.take(MemoryFact.MAX_SAFE_ERROR_LENGTH)
+            val boundedMessage = safeMessage.take(MemoryExtractionJob.MAX_ERROR_LENGTH)
                 .ifBlank { "Memory extraction failed." }
             val attempt = (job.attemptCount - 1).coerceIn(0, 10)
             val delay = minOf(30_000L * (1L shl attempt), MAX_RETRY_DELAY_MILLIS)
