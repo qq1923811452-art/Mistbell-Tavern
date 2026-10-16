@@ -56,11 +56,18 @@ class LiteRtLmEmbeddingGemma2Engine(
     suspend fun initialize() = withContext(Dispatchers.IO) {
         lock.withLock {
             check(engine == null) { "EmbeddingGemma 2 engine is already initialized." }
-            check(modelFile.isFile && modelFile.canRead()) {
-                "EmbeddingGemma 2 model bundle is missing or unreadable."
-            }
-            check(cacheDirectory.isDirectory || cacheDirectory.mkdirs()) {
-                "LiteRT-LM cache directory could not be created."
+            try {
+                check(modelFile.isFile && modelFile.canRead()) {
+                    "EmbeddingGemma 2 model bundle is missing or unreadable."
+                }
+                check(cacheDirectory.isDirectory || cacheDirectory.mkdirs()) {
+                    "LiteRT-LM cache directory could not be created."
+                }
+            } catch (error: Exception) {
+                lastError = "${error::class.java.simpleName}: ${error.message ?: "runtime initialization failed"}"
+                    .take(InferenceRuntimeStatus.MAX_DETAIL_LENGTH)
+                logError("embedding.initialize.preflight.failed", lastError.orEmpty())
+                throw error
             }
 
             val failures = mutableListOf<String>()
@@ -167,6 +174,7 @@ class LiteRtLmEmbeddingGemma2Engine(
             runtimeId = runtimeId,
             acceleratorName = selectedBackend.name,
             fallbackReason = fallbackReason,
+            lastError = lastError,
         )
     }
 
