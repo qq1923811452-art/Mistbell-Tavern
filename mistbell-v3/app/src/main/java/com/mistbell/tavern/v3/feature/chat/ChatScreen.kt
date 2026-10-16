@@ -204,6 +204,10 @@ fun ChatScreen(onBack: () -> Unit) {
                 diagnosticStore.warn("chat.history.load_failed", "reason=corrupt_or_unsupported_format")
                 status = "聊天记录文件损坏或版本不兼容；为避免覆盖原文件，未自动清空记录。"
             }
+            ChatHistoryLoadResult.Unavailable -> {
+                diagnosticStore.warn("chat.history.load_failed", "reason=temporarily_unavailable")
+                status = "聊天记录暂时无法读取；原文件未修改，请稍后重试。"
+            }
         }
         historyReady = true
         val pendingQueue = withContext(Dispatchers.IO) {
