@@ -24,33 +24,18 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.mistbell.tavern.v3.core.inference.InferenceBackend
+import com.mistbell.tavern.v3.core.inference.InferencePhase
+import com.mistbell.tavern.v3.core.inference.InferenceRuntimeStatus
 
-private data class BuildStage(
-    val title: String,
-    val detail: String,
-)
+private data class BuildStage(val title: String, val detail: String)
 
 private val initialStages = listOf(
-    BuildStage(
-        title = "聊天与 API 核心",
-        detail = "尚未实现：先建立独立的请求、流式响应、取消与错误处理链路。",
-    ),
-    BuildStage(
-        title = "世界书与角色卡",
-        detail = "尚未实现：定义 Mistbell 3.0 专属格式，并为旧格式编写独立导入器。",
-    ),
-    BuildStage(
-        title = "记忆与本地向量",
-        detail = "尚未实现：独立记忆整理 API、事实历史、持久化向量与重建。",
-    ),
-    BuildStage(
-        title = "本地推理与硬件状态",
-        detail = "尚未验证：评估 EmbeddingGemma 2 / LiteRT-LM，并报告真实后端与回退原因。",
-    ),
-    BuildStage(
-        title = "生图、安全与备份",
-        detail = "尚未实现：独立生图 API、凭据隔离、事务式备份恢复与隐私保护。",
-    ),
+    BuildStage("聊天与 API 核心", "已建立独立流式聊天客户端与提示词组装基础；端到端集成仍需继续验证。"),
+    BuildStage("世界书与角色卡", "按 3.0 专属格式重新实现，并为旧格式编写独立导入器；尚未完成。"),
+    BuildStage("记忆与本地向量", "已建立事实历史、批处理策略和向量快照基础；数据库接入、召回与重建仍需继续。"),
+    BuildStage("本地推理与硬件状态", "已建立推理运行状态与 Embedding 输出校验契约；EmbeddingGemma 2 / LiteRT-LM 真机后端尚未验证。"),
+    BuildStage("生图、安全与备份", "独立生图 API、凭据隔离、事务式备份恢复仍待实现。"),
 )
 
 class MainActivity : ComponentActivity() {
@@ -72,6 +57,9 @@ class MainActivity : ComponentActivity() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun DevelopmentHome() {
+    // This is deliberately an idle status until a real runtime adapter reports execution.
+    // The UI must never infer NPU/GPU use from the phone model or a requested delegate.
+    val inferenceStatus = InferenceRuntimeStatus.idle()
     Scaffold(
         topBar = {
             TopAppBar(
@@ -89,24 +77,20 @@ private fun DevelopmentHome() {
         },
     ) { innerPadding ->
         LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding),
+            modifier = Modifier.fillMaxSize().padding(innerPadding),
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item {
-                Text(
-                    text = "从零构建，不复用旧应用实现",
-                    style = MaterialTheme.typography.headlineSmall,
-                )
+                Text("从零构建，不复用旧应用实现", style = MaterialTheme.typography.headlineSmall)
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    text = "此页面仅表示新工程已建立。下列功能均未宣称完成；每项都要经过独立实现与验证。",
+                    text = "这是独立的 3.0 工程。状态只反映已实现与已验证的内容，不把计划或依赖安装视为功能完成。",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+            item { InferenceStatusCard(inferenceStatus) }
             items(initialStages, key = BuildStage::title) { stage ->
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -115,17 +99,60 @@ private fun DevelopmentHome() {
                     ),
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
-                        Text(
-                            text = stage.title,
-                            style = MaterialTheme.typography.titleMedium,
-                        )
+                        Text(stage.title, style = MaterialTheme.typography.titleMedium)
                         Spacer(Modifier.height(6.dp))
-                        Text(
-                            text = stage.detail,
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
+                        Text(stage.detail, style = MaterialTheme.typography.bodyMedium)
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun InferenceStatusCard(status: InferenceRuntimeStatus) {
+    val backendLabel = when (status.backend) {
+        InferenceBackend.NPU -> "NPU"
+        InferenceBackend.GPU -> "GPU"
+        InferenceBackend.CPU -> "CPU"
+        InferenceBackend.UNKNOWN -> "未验证"
+    }
+    val phaseLabel = when (status.phase) {
+        InferencePhase.NOT_INITIALIZED -> "尚未初始化"
+        InferencePhase.LOADING_MODEL -> "正在加载模型"
+        InferencePhase.READY -> "已就绪"
+        InferencePhase.RUNNING -> "正在推理"
+        InferencePhase.FALLBACK -> "已回退"
+        InferencePhase.FAILED -> "初始化/推理失败"
+    }
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+        ),
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text("本地 Embedding / NPU 状态", style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(6.dp))
+            Text("$phaseLabel · 后端：$backendLabel", style = MaterialTheme.typography.bodyMedium)
+            val details = listOfNotNull(
+                status.modelId?.let { "模型：$it" },
+                status.acceleratorName?.let { "设备：$it" },
+                status.lastExecutionMillis?.let { "最近耗时：$it ms" },
+                status.fallbackReason?.let { "回退原因：$it" },
+                status.lastError?.let { "错误：$it" },
+            )
+            details.forEach { detail ->
+                Spacer(Modifier.height(4.dp))
+                Text(detail, style = MaterialTheme.typography.bodySmall)
+            }
+            if (status.phase == InferencePhase.NOT_INITIALIZED) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "当前没有运行中的推理后端；不会虚报 NPU 已调用。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }
