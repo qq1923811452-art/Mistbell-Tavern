@@ -23,7 +23,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: mistbell-v3-ci-${{ github.event.pull_request.number || github.ref }}
+  group: mistbell-v3-ci-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
