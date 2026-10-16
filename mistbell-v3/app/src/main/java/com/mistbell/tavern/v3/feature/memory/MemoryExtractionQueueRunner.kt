@@ -21,6 +21,9 @@ class MemoryExtractionQueueRunner(
             val state: MemoryExtractionJob.State,
         ) : Result
         data class Started(val jobId: String) : Result
+
+        /** Queue-state persistence failed; the caller must stop this worker attempt and retry later. */
+        data class PersistenceFailure(val jobId: String) : Result
     }
 
     sealed interface ExecutionResult {
@@ -42,28 +45,35 @@ class MemoryExtractionQueueRunner(
         execute: (MemoryExtractionJob, T, (ExecutionResult) -> Unit) -> Unit,
         observer: (Result) -> Unit = {},
     ): Result {
-        val job = repository.claimDue(now()) ?: return Result.Idle.also(observer)
+        val safeObserver: (Result) -> Unit = { result -> runCatching { observer(result) } }
+        val job = repository.claimDue(now()) ?: return Result.Idle.also(safeObserver)
         val finished = AtomicBoolean(false)
         // Inline callbacks can finish before runNext returns; asynchronous callbacks still return Started.
-        val synchronousResult = AtomicReference<Result.Finished?>(null)
+        val synchronousResult = AtomicReference<Result?>(null)
 
         fun finish(result: ExecutionResult) {
             if (!finished.compareAndSet(false, true)) return
             val currentTime = runCatching(::now).getOrElse { job.createdAtEpochMillis }
-            when (result) {
-                ExecutionResult.Success -> repository.complete(job.id)
-                is ExecutionResult.Failure -> repository.fail(
-                    id = job.id,
-                    now = currentTime,
-                    safeError = result.safeCategory,
-                    permanent = result.permanent,
-                )
+            val terminal: Result = try {
+                when (result) {
+                    ExecutionResult.Success -> repository.complete(job.id)
+                    is ExecutionResult.Failure -> repository.fail(
+                        id = job.id,
+                        now = currentTime,
+                        safeError = result.safeCategory,
+                        permanent = result.permanent,
+                    )
+                }
+                val state = repository.list().firstOrNull { it.id == job.id }?.state
+                    ?: MemoryExtractionJob.State.PERMANENT_FAILURE
+                Result.Finished(job.id, state)
+            } catch (_: Exception) {
+                // Do not claim success when the durable state transition failed. The job may
+                // remain RUNNING; the next worker invocation recovers it to RETRY_WAIT.
+                Result.PersistenceFailure(job.id)
             }
-            val state = repository.list().firstOrNull { it.id == job.id }?.state
-                ?: MemoryExtractionJob.State.PERMANENT_FAILURE
-            val terminal = Result.Finished(job.id, state)
             synchronousResult.set(terminal)
-            observer(terminal)
+            safeObserver(terminal)
         }
 
         val input = try {
