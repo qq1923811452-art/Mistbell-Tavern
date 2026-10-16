@@ -50,6 +50,33 @@ class TemporalFactLedgerTest {
     }
 
     @Test
+    fun factsFromDifferentConversationsDoNotCloseEachOthersHistory() {
+        val firstConversation = observation(
+            turn = "turn-1",
+            conversation = "conversation-1",
+            value = "tea",
+            at = 100L,
+        )
+        val secondConversation = observation(
+            turn = "turn-2",
+            conversation = "conversation-2",
+            value = "coffee",
+            at = 200L,
+        )
+
+        val facts = TemporalFactLedger.apply(
+            TemporalFactLedger.apply(emptyList(), listOf(firstConversation)),
+            listOf(secondConversation),
+        )
+
+        assertEquals(2, facts.size)
+        assertTrue(facts.all { it.isCurrent })
+        assertEquals(setOf("conversation-1", "conversation-2"), facts.map { it.conversationId }.toSet())
+        assertNull(facts.single { it.conversationId == "conversation-1" }.validUntilEpochMillis)
+        assertNull(facts.single { it.conversationId == "conversation-2" }.validUntilEpochMillis)
+    }
+
+    @Test
     fun sourceTurnContributesToStableIdentity() {
         val first = observation(turn = "turn-1", value = "tea", at = 100L)
         val second = observation(turn = "turn-2", value = "tea", at = 100L)
@@ -59,12 +86,13 @@ class TemporalFactLedgerTest {
 
     private fun observation(
         turn: String,
+        conversation: String = "conversation-1",
         subject: String = "user",
         predicate: String = "likes",
         value: String,
         at: Long,
     ) = TemporalFactObservation(
-        conversationId = "conversation-1",
+        conversationId = conversation,
         sourceTurnId = turn,
         subject = subject,
         predicate = predicate,
