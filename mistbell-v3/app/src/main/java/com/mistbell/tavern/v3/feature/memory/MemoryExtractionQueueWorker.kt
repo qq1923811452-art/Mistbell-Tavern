@@ -36,10 +36,12 @@ class MemoryExtractionQueueWorker(
             val historyStore = ChatHistoryStore(applicationContext)
             val inputFactory = MemoryExtractionBatchInputFactory()
             var processedJobs = 0
+            val successTurnByJobId = mutableMapOf<String, String>()
             while (!isStopped && processedJobs < MAX_JOBS_PER_RUN) {
                 val hasJob = suspendCancellableCoroutine { continuation ->
                     runner.runNext(
                         buildInput = { job ->
+                            successTurnByJobId[job.id] = job.turnIds.last()
                             val handle = requireNotNull(job.credentialHandle) {
                                 "Durable queue jobs require a saved credential handle."
                             }
@@ -87,16 +89,8 @@ class MemoryExtractionQueueWorker(
                             )
                             pipeline.extractAndPersist(input) { outcome ->
                                 when (outcome) {
-                                    is TemporalFactPipelineOutcome.Saved -> {
-                                        applicationContext.getSharedPreferences(
-                                            "mistbell-v3-settings",
-                                            Context.MODE_PRIVATE,
-                                        ).edit().putString(
-                                            "memory_extraction_last_success_turn_id",
-                                            job.turnIds.last(),
-                                        ).apply()
+                                    is TemporalFactPipelineOutcome.Saved ->
                                         complete(MemoryExtractionQueueRunner.ExecutionResult.Success)
-                                    }
                                     is TemporalFactPipelineOutcome.Failed ->
                                         complete(
                                             MemoryExtractionQueueRunner.ExecutionResult.Failure(
@@ -115,8 +109,20 @@ class MemoryExtractionQueueWorker(
                             when (result) {
                                 MemoryExtractionQueueRunner.Result.Idle ->
                                     if (continuation.isActive) continuation.resume(false)
-                                is MemoryExtractionQueueRunner.Result.Finished ->
+                                is MemoryExtractionQueueRunner.Result.Finished -> {
+                                    if (result.state == MemoryExtractionJob.State.COMPLETED) {
+                                        successTurnByJobId.remove(result.jobId)?.let { turnId ->
+                                            applicationContext.getSharedPreferences(
+                                                "mistbell-v3-settings",
+                                                Context.MODE_PRIVATE,
+                                            ).edit().putString(
+                                                "memory_extraction_last_success_turn_id",
+                                                turnId,
+                                            ).apply()
+                                        }
+                                    }
                                     if (continuation.isActive) continuation.resume(true)
+                                }
                                 is MemoryExtractionQueueRunner.Result.PersistenceFailure ->
                                     if (continuation.isActive) continuation.resumeWith(
                                         kotlin.Result.failure(IllegalStateException("Queue state could not be persisted.")),
