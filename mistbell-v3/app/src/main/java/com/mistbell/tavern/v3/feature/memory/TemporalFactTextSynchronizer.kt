@@ -18,10 +18,17 @@ class TemporalFactTextSynchronizer(
     private val memoryTextStore: MemoryTextPersistence,
 ) {
     fun synchronize(): TemporalFactTextSyncResult {
+        val ledgerWasMissing: Boolean
         val facts = when (val loaded = factStore.load()) {
-            TemporalFactLoadResult.Missing -> return TemporalFactTextSyncResult.NoFacts
+            TemporalFactLoadResult.Missing -> {
+                ledgerWasMissing = true
+                emptyList()
+            }
             is TemporalFactLoadResult.Corrupt -> return TemporalFactTextSyncResult.Skipped(loaded.safeReason)
-            is TemporalFactLoadResult.Loaded -> loaded.facts
+            is TemporalFactLoadResult.Loaded -> {
+                ledgerWasMissing = false
+                loaded.facts
+            }
         }
         val currentFacts = facts.filter { it.isCurrent }
         val previous = when (val loaded = memoryTextStore.load()) {
@@ -40,10 +47,15 @@ class TemporalFactTextSynchronizer(
                 }
                 (unrelated + factTexts).distinctBy(MemoryTextRecord::id)
             }
-            TemporalFactTextSyncResult.Synchronized(
-                currentFacts = currentFacts.size,
-                changed = updated != previous,
-            )
+            val changed = updated != previous
+            if (ledgerWasMissing && currentFacts.isEmpty() && !changed) {
+                TemporalFactTextSyncResult.NoFacts
+            } else {
+                TemporalFactTextSyncResult.Synchronized(
+                    currentFacts = currentFacts.size,
+                    changed = changed,
+                )
+            }
         } catch (_: Exception) {
             TemporalFactTextSyncResult.Skipped(
                 "Temporal facts are safe, but vector source text could not be synchronized.",
