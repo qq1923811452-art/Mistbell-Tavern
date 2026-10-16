@@ -11,6 +11,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.mistbell.tavern.v3.core.diagnostics.DiagnosticLogStore
+import com.mistbell.tavern.v3.core.security.AndroidKeystoreMemoryCredentialStore
 import com.mistbell.tavern.v3.core.memory.MemoryIndexRebuilder
 import com.mistbell.tavern.v3.core.memory.MemoryIndexRebuildResult
 import com.mistbell.tavern.v3.core.memory.EligibleConversationTurn
@@ -106,6 +107,14 @@ fun ChatScreen(onBack: () -> Unit) {
         mutableStateOf(settings.getString("memory_model_id", "") ?: "")
     }
     var memoryApiKey by remember { mutableStateOf("") }
+    var hasSavedMemoryCredential by remember(settings) {
+        mutableStateOf(
+            settings.getString("memory_api_credential_handle", null)?.let { handle ->
+                runCatching { AndroidKeystoreMemoryCredentialStore(context.applicationContext).contains(handle) }
+                    .getOrDefault(false)
+            } ?: false,
+        )
+    }
     var draft by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var historyReady by remember { mutableStateOf(false) }
@@ -122,6 +131,7 @@ fun ChatScreen(onBack: () -> Unit) {
     val listState = rememberLazyListState()
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
     val historyStore = remember(context) { ChatHistoryStore(context.applicationContext) }
+    val memoryCredentialStore = remember(context) { AndroidKeystoreMemoryCredentialStore(context.applicationContext) }
     val coroutineScope = rememberCoroutineScope()
     val diagnosticStore = remember(context) { DiagnosticLogStore(context.applicationContext.filesDir) }
     val memoryExtractionInFlight = remember { mutableSetOf<String>() }
@@ -244,7 +254,7 @@ fun ChatScreen(onBack: () -> Unit) {
             client = MemoryExtractionClient(
                 providers = providers,
                 credentials = MemoryCredentialResolver { handle ->
-                    if (handle == "session-memory-key") memorySecret else null
+                    if (handle == "session-memory-key") memorySecret else memoryCredentialStore.resolve(handle)
                 },
             ),
             factStore = AtomicTemporalFactStore(context.applicationContext),
@@ -370,8 +380,49 @@ fun ChatScreen(onBack: () -> Unit) {
                         singleLine = true,
                         visualTransformation = PasswordVisualTransformation(),
                     )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(
+                            onClick = {
+                                if (memoryApiKey.isBlank()) {
+                                    status = "请先输入记忆整理 API Key，再保存到 Android Keystore。"
+                                } else {
+                                    runCatching {
+                                        val newHandle = memoryCredentialStore.put(memoryApiKey)
+                                        val oldHandle = settings.getString("memory_api_credential_handle", null)
+                                        settings.edit().putString("memory_api_credential_handle", newHandle).commit()
+                                        if (!oldHandle.isNullOrBlank() && oldHandle != newHandle) {
+                                            memoryCredentialStore.delete(oldHandle)
+                                        }
+                                        memoryApiKey = ""
+                                        hasSavedMemoryCredential = true
+                                        status = "记忆整理 API Key 已加密保存；设置中只保存凭据句柄。"
+                                        diagnosticStore.info("memory.credential.saved")
+                                    }.onFailure { error ->
+                                        status = "记忆 API Key 保存失败：${error::class.java.simpleName}"
+                                        diagnosticStore.warn("memory.credential.save_failed", "reason=${error::class.java.simpleName}")
+                                    }
+                                }
+                            },
+                        ) { Text("安全保存密钥") }
+                        Button(
+                            onClick = {
+                                val handle = settings.getString("memory_api_credential_handle", null)
+                                if (!handle.isNullOrBlank()) memoryCredentialStore.delete(handle)
+                                settings.edit().remove("memory_api_credential_handle").commit()
+                                hasSavedMemoryCredential = false
+                                status = "已删除保存的记忆 API 密钥。"
+                                diagnosticStore.info("memory.credential.deleted")
+                            },
+                            enabled = hasSavedMemoryCredential,
+                        ) { Text("删除已保存密钥") }
+                    }
                     Text(
-                        "与聊天 API 分开配置。Base URL 和模型 ID 会保存在本机；密钥仅在当前页面内存中。每累计 3 轮已完成对话后异步整理，失败不会撤销聊天回复。",
+                        "与聊天 API 分开配置。Base URL 和模型 ID 保存在本机；密钥可仅本次使用，或通过 Android Keystore 加密保存。每累计 3 轮已完成对话后异步整理，失败不会撤销聊天回复。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        if (hasSavedMemoryCredential) "已保存加密密钥；不会显示或回填明文。" else "尚未保存记忆 API 密钥。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -471,7 +522,11 @@ fun ChatScreen(onBack: () -> Unit) {
                                 kind = ProviderKind.MEMORY_EXTRACTION,
                                 baseUrl = memoryBaseUrl.trim(),
                                 modelId = configuredMemoryModel,
-                                credentialHandle = if (memoryApiKey.isBlank()) null else "session-memory-key",
+                                credentialHandle = when {
+                            memoryApiKey.isNotBlank() -> "session-memory-key"
+                            else -> settings.getString("memory_api_credential_handle", null)
+                                ?.takeIf(memoryCredentialStore::contains)
+                        },
                             )
                         }
                         val providersForRequest = try {
@@ -492,7 +547,7 @@ fun ChatScreen(onBack: () -> Unit) {
                                 when (handle) {
                                     "session-chat-key" -> secretForThisRequest
                                     "session-memory-key" -> memorySecretForThisRequest
-                                    else -> null
+                                    else -> memoryCredentialStore.resolve(handle)
                                 }
                             },
                         )
