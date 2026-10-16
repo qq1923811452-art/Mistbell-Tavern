@@ -4,6 +4,8 @@ import android.os.Handler
 import android.os.Looper
 import android.content.Context
 import androidx.compose.ui.platform.LocalContext
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -70,6 +72,26 @@ fun ChatScreen(onBack: () -> Unit) {
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+    val diagnosticStore = remember(context) { DiagnosticLogStore(context.applicationContext.filesDir) }
+    val exportLogLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("text/plain"),
+    ) { uri ->
+        if (uri != null) {
+            coroutineScope.launch {
+                val result = runCatching {
+                    withContext(Dispatchers.IO) {
+                        context.contentResolver.openOutputStream(uri)?.use(diagnosticStore::exportTo)
+                            ?: throw IllegalStateException("无法创建日志文件。")
+                    }
+                }
+                status = if (result.isSuccess) {
+                    "诊断日志已导出。日志不主动包含聊天正文或 API 密钥。"
+                } else {
+                    "诊断日志导出失败：${result.exceptionOrNull()?.message?.take(100) ?: "文件写入失败"}"
+                }
+            }
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -299,6 +321,12 @@ fun ChatScreen(onBack: () -> Unit) {
                     },
                     enabled = !busy && history.isNotEmpty(),
                 ) { Text("清空会话") }
+                Button(
+                    onClick = {
+                        exportLogLauncher.launch("mistbell-diagnostics.txt")
+                    },
+                    enabled = !busy,
+                ) { Text("导出诊断日志") }
             }
         }
     }
