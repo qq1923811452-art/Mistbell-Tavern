@@ -187,7 +187,7 @@ class OpenAiCompatibleChatClient(
                     } catch (_: IOException) {
                         observer.onFailure(
                             ChatStreamFailure(
-                                if (call.isCanceled()) ChatFailureKind.CANCELLED else ChatFailureKind.NETWORK,
+                                kind = if (call.isCanceled()) ChatFailureKind.CANCELLED else ChatFailureKind.NETWORK,
                                 safeMessage = if (call.isCanceled()) {
                                     "Generation was cancelled."
                                 } else {
