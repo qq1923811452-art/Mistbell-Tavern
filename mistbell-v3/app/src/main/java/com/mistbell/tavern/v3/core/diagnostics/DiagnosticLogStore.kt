@@ -4,7 +4,6 @@ import java.io.File
 import java.io.OutputStream
 import java.nio.charset.StandardCharsets
 import java.time.Instant
-import java.util.Locale
 
 /**
  * Small, bounded, local-only diagnostic log. Callers must log events and error summaries, never
