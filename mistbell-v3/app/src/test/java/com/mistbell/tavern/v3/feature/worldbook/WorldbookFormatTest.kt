@@ -34,6 +34,15 @@ class WorldbookFormatTest {
     }
 
     @Test
+    fun nullLegacyUidUsesStableFallbackId() {
+        val imported = LegacyWorldbookImporter.import(
+            """{"entries":{"fallback":{"uid":null,"comment":"No ID","content":"Preserve this entry.","constant":true}}}""",
+        )
+
+        assertEquals("fallback", imported.entries.single().id)
+    }
+
+    @Test
     fun keywordActivationIsCaseInsensitiveAndDisabledEntriesStayOut() {
         val document = WorldbookDocument(
             entries = listOf(
