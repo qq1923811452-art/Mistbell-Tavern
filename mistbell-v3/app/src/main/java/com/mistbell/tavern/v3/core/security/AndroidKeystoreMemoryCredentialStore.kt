@@ -20,8 +20,8 @@ import javax.crypto.spec.GCMParameterSpec
  * provider data and cryptographic exception text.
  */
 class AndroidKeystoreMemoryCredentialStore(context: Context) : MemoryCredentialResolver {
-    private val preferences = context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
     private val appContext = context.applicationContext
+    private val preferences = appContext.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
 
     @Synchronized
     fun put(secret: String): String {
