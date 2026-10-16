@@ -30,6 +30,8 @@ concurrency:
 
 jobs:
   compile-and-test:
+    outputs:
+      tested_sha: ${{ steps.source.outputs.sha }}
     name: Compile and focused JVM tests (no APK)
     runs-on: ubuntu-latest
     timeout-minutes: 35
@@ -75,7 +77,7 @@ jobs:
       - name: Checkout exact verified source
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ needs.compile-and-test.outputs.tested_sha }}
           fetch-depth: 0
 
       - name: Check one-time packaging request
@@ -107,7 +109,7 @@ jobs:
         if: ${{ steps.request.outputs.enabled == 'true' }}
         shell: bash
         env:
-          VERIFIED_SHA: ${{ github.event.pull_request.head.sha }}
+          VERIFIED_SHA: ${{ needs.compile-and-test.outputs.tested_sha }}
         run: test "$(git rev-parse HEAD)" = "$VERIFIED_SHA"
 
       - name: Package debug APK after quality gate only
