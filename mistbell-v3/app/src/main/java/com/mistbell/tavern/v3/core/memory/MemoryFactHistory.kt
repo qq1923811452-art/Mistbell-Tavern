@@ -61,7 +61,15 @@ object FactHistoryReducer {
 
         val existingById = history.firstOrNull { it.id == incoming.id }
         if (existingById != null) {
-            require(existingById == incoming) {
+            // A retry after the fact-history commit may arrive with a later timestamp, and a
+            // subsequent fact may already have superseded this record. Treat the same stable ID
+            // and semantic payload as an idempotent replay without reverting historical status.
+            require(
+                existingById.subject == incoming.subject &&
+                    existingById.predicate == incoming.predicate &&
+                    existingById.value == incoming.value &&
+                    existingById.sourceTurnId == incoming.sourceTurnId,
+            ) {
                 "Fact ID '${incoming.id}' already exists with different content."
             }
             return FactHistoryUpdate(history.toList(), inserted = false, supersededFactIds = emptyList())
