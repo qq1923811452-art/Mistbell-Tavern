@@ -12,7 +12,7 @@ import org.junit.Test
 
 class EmbeddingGemma2ModelAssetManagerTest {
     @Test
-    fun acceptsInstalledModelWhenStoredDigestMatches() = runBlocking {
+    fun acceptsInstalledModelWhenStoredDigestMatches(): Unit = runBlocking {
         val directory = kotlin.io.path.createTempDirectory(prefix = "embedding-model-test").toFile()
         try {
             writeModelAndDigest(directory, "valid-model-bundle".toByteArray())
@@ -26,7 +26,7 @@ class EmbeddingGemma2ModelAssetManagerTest {
     }
 
     @Test
-    fun importsLocalLitertlmAndWritesVerifiableDigest() = runBlocking {
+    fun importsLocalLitertlmAndWritesVerifiableDigest(): Unit = runBlocking {
         val directory = kotlin.io.path.createTempDirectory(prefix = "embedding-model-import-test").toFile()
         try {
             val bytes = "local-litertlm-bundle".toByteArray()
@@ -43,7 +43,7 @@ class EmbeddingGemma2ModelAssetManagerTest {
         }
     }
     @Test
-    fun rejectsUnrelatedLitertlmFilename() = runBlocking {
+    fun rejectsUnrelatedLitertlmFilename(): Unit = runBlocking {
         val directory = kotlin.io.path.createTempDirectory(prefix = "embedding-model-import-test").toFile()
         try {
             assertThrows(IllegalArgumentException::class.java) {
@@ -59,7 +59,7 @@ class EmbeddingGemma2ModelAssetManagerTest {
         }
     }
     @Test
-    fun rejectsInstalledModelWhenBytesChangeAfterDownload() = runBlocking {
+    fun rejectsInstalledModelWhenBytesChangeAfterDownload(): Unit = runBlocking {
         val directory = kotlin.io.path.createTempDirectory(prefix = "embedding-model-test").toFile()
         try {
             val file = writeModelAndDigest(directory, "original-model-bundle".toByteArray())
