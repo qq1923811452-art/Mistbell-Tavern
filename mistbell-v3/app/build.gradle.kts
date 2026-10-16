@@ -8,6 +8,7 @@ android {
     compileSdk = 37
 
     defaultConfig {
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         applicationId = "com.mistbell.tavern.v3"
         minSdk = 26
         targetSdk = 37
