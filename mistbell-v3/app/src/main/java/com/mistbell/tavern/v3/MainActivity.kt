@@ -3,9 +3,9 @@ package com.mistbell.tavern.v3
 import android.os.Bundle
 import android.os.Build
 import android.os.Environment
-import android.content.Intent
+import android.content.ContentValues
 import android.net.Uri
-import android.provider.Settings
+import android.provider.MediaStore
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import android.provider.OpenableColumns
@@ -78,17 +78,113 @@ class MainActivity : ComponentActivity() {
     private var selectedEmbeddingDimensions by mutableStateOf(768)
     private var qualcommModelSelected by mutableStateOf(false)
 
-    private fun publicModelDirectory(): File =
-        File(Environment.getExternalStorageDirectory(), "Download/向量模型")
-
-    private fun hasPublicModelStorageAccess(): Boolean =
-        Build.VERSION.SDK_INT < Build.VERSION_CODES.R || Environment.isExternalStorageManager()
+    private fun publicModelDirectoryLabel(): String =
+        "/storage/emulated/0/Download/向量模型/"
 
     private fun createModelAssetManager(qualcomm: Boolean) =
         EmbeddingGemma2ModelAssetManager(
-            modelDirectory = publicModelDirectory(),
+            modelDirectory = File(filesDir, "models"),
             preferQualcommSm8650Model = qualcomm,
         )
+
+    /**
+     * Publish the verified model into the public Downloads/向量模型 folder using MediaStore.
+     * This avoids the broad MANAGE_EXTERNAL_STORAGE permission on modern Android versions.
+     */
+    private suspend fun publishModelToPublicDownloads(source: File) = withContext(Dispatchers.IO) {
+        check(Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            "Public model publishing requires Android 10 or newer."
+        }
+        val resolver = contentResolver
+        val relativePath = "${Environment.DIRECTORY_DOWNLOADS}/向量模型/"
+        val collection = MediaStore.Downloads.EXTERNAL_CONTENT_URI
+
+        fun findExisting(displayName: String): Uri? =
+            resolver.query(
+                collection,
+                arrayOf(MediaStore.MediaColumns._ID),
+                "${MediaStore.MediaColumns.DISPLAY_NAME} = ? AND ${MediaStore.MediaColumns.RELATIVE_PATH} = ?",
+                arrayOf(displayName, relativePath),
+                null,
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    Uri.withAppendedPath(collection, cursor.getLong(0).toString())
+                } else {
+                    null
+                }
+            }
+
+        fun publishFile(file: File) {
+            val values = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, file.name)
+                put(MediaStore.MediaColumns.MIME_TYPE, "application/octet-stream")
+                put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath)
+                put(MediaStore.MediaColumns.IS_PENDING, 1)
+            }
+            val existing = findExisting(file.name)
+            val uri = if (existing != null) {
+                resolver.update(existing, values, null, null)
+                existing
+            } else {
+                resolver.insert(collection, values)
+                    ?: throw IllegalStateException("Android could not create the public model file.")
+            }
+            try {
+                val output = resolver.openOutputStream(uri, "wt")
+                    ?: throw IllegalStateException("Android could not open the public model file.")
+                file.inputStream().buffered().use { input ->
+                    output.buffered().use { target -> input.copyTo(target) }
+                }
+                val ready = ContentValues().apply {
+                    put(MediaStore.MediaColumns.IS_PENDING, 0)
+                }
+                check(resolver.update(uri, ready, null, null) == 1) {
+                    "Android could not finalize the public model file."
+                }
+            } catch (error: Exception) {
+                resolver.delete(uri, null, null)
+                throw error
+            }
+        }
+
+        publishFile(source)
+        val digestSidecar = File(source.parentFile, "${source.name}.sha256")
+        if (digestSidecar.isFile) publishFile(digestSidecar)
+    }
+
+    /** Restore the public model and its digest sidecar into app-private runtime storage if needed. */
+    private suspend fun restorePublicModelIfPresent(qualcomm: Boolean) = withContext(Dispatchers.IO) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return@withContext
+        val modelName = if (qualcomm) {
+            EmbeddingGemma2ModelAssetManager.QUALCOMM_SM8650_MODEL_FILE_NAME
+        } else {
+            EmbeddingGemma2ModelAssetManager.MODEL_FILE_NAME
+        }
+        val directory = File(filesDir, "models")
+        if (!directory.isDirectory && !directory.mkdirs()) return@withContext
+        val relativePath = "${Environment.DIRECTORY_DOWNLOADS}/向量模型/"
+        val collection = MediaStore.Downloads.EXTERNAL_CONTENT_URI
+
+        fun findDownload(displayName: String): Uri? =
+            contentResolver.query(
+                collection,
+                arrayOf(MediaStore.MediaColumns._ID),
+                "${MediaStore.MediaColumns.DISPLAY_NAME} = ? AND ${MediaStore.MediaColumns.RELATIVE_PATH} = ?",
+                arrayOf(displayName, relativePath),
+                null,
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) Uri.withAppendedPath(collection, cursor.getLong(0).toString()) else null
+            }
+
+        listOf(modelName, "$modelName.sha256").forEach { name ->
+            val uri = findDownload(name) ?: return@forEach
+            val target = File(directory, name)
+            val input = contentResolver.openInputStream(uri) ?: return@forEach
+            input.use { source ->
+                target.outputStream().buffered().use { output -> source.copyTo(output) }
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -101,23 +197,14 @@ class MainActivity : ComponentActivity() {
         modelAssets = createModelAssetManager(qualcommModelSelected)
         diagnostics.info("app.started", "build=3.0.0-dev")
         lifecycleScope.launch {
-            val installed = if (hasPublicModelStorageAccess()) {
-                withContext(Dispatchers.IO) { modelAssets.verifyInstalled() }
+            restorePublicModelIfPresent(qualcommModelSelected)
+            val installed = withContext(Dispatchers.IO) { modelAssets.verifyInstalled() }
+            if (!operationBusy) operationMessage = if (installed == null) {
+                "所选模型尚未安装或校验失败。下载位置：${publicModelDirectoryLabel()}"
             } else {
-                null
+                "本地模型已校验：${installed.sizeBytes} bytes；SHA-256 一致。公共目录：${publicModelDirectoryLabel()}"
             }
-            if (!operationBusy) operationMessage = when {
-                !hasPublicModelStorageAccess() ->
-                    "需要允许“所有文件访问”后，模型才能保存到 /storage/emulated/0/Download/向量模型/"
-                installed == null ->
-                    "所选模型尚未安装或校验失败。下载位置：/storage/emulated/0/Download/向量模型/"
-                else ->
-                    "本地模型已校验：${installed.sizeBytes} bytes；SHA-256 一致。位置：${installed.file.absolutePath}"
-            }
-            diagnostics.info(
-                "embedding.model.startup.check",
-                "installed=${installed != null}; publicStorageAccess=${hasPublicModelStorageAccess()}",
-            )
+            diagnostics.info("embedding.model.startup.check", "installed=${installed != null}")
         }
         val importModel = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
             if (uri == null) {
@@ -147,7 +234,8 @@ class MainActivity : ComponentActivity() {
                         val imported = modelAssets.importModel(sourceName, input) { bytes, _ ->
                             runOnUiThread { operationMessage = "模型导入中：${bytes / (1024 * 1024)} MiB" }
                         }
-                        operationMessage = "模型导入完成，SHA-256：${imported.sha256}"
+                        publishModelToPublicDownloads(imported.file)
+                        operationMessage = "模型导入并发布到公共目录：${publicModelDirectoryLabel()}\nSHA-256：${imported.sha256}"
                         diagnostics.info("embedding.model.import.succeeded", "bytes=${imported.sizeBytes}; sha256=${imported.sha256}")
                     } catch (cancelled: CancellationException) {
                         diagnostics.warn("embedding.model.import.cancelled")
@@ -242,22 +330,8 @@ class MainActivity : ComponentActivity() {
 
     private fun downloadEmbeddingModel() {
         if (operationBusy) return
-        if (!hasPublicModelStorageAccess()) {
-            operationMessage = "要将模型写入公共下载目录，需要开启“所有文件访问”。授权后请返回应用并再次点击下载。"
-            diagnostics.warn("embedding.model.storage_permission.required")
-            val intent = Intent(
-                Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
-                Uri.parse("package:$packageName"),
-            )
-            try {
-                startActivity(intent)
-            } catch (_: Exception) {
-                startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
-            }
-            return
-        }
         operationBusy = true
-        operationMessage = "开始下载模型到 ${publicModelDirectory().absolutePath}；请保持应用在前台并连接稳定网络。"
+        operationMessage = "开始下载模型；校验后将保存到 ${publicModelDirectoryLabel()}；请保持应用在前台并连接稳定网络。"
         diagnostics.info("embedding.model.download.started", "source=official-model-host")
         lifecycleScope.launch {
             try {
@@ -270,7 +344,8 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 }
-                operationMessage = "模型下载完成：${downloaded.file.absolutePath}\nSHA-256：${downloaded.sha256}"
+                publishModelToPublicDownloads(downloaded.file)
+                operationMessage = "模型下载并校验完成，已保存到：${publicModelDirectoryLabel()}\nSHA-256：${downloaded.sha256}"
                 diagnostics.info(
                     "embedding.model.download.succeeded",
                     "bytes=${downloaded.sizeBytes}; sha256=${downloaded.sha256}",
