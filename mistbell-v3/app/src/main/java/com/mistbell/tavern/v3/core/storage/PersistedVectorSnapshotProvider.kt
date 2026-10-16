@@ -9,7 +9,7 @@ import com.mistbell.tavern.v3.core.memory.VectorSnapshotProvider
  * not from a hard-coded guess.
  */
 class PersistedVectorSnapshotProvider(
-    private val store: AtomicVectorSnapshotStore,
+    private val store: VectorSnapshotLoader,
     private val expectedModelId: () -> String?,
     private val expectedDimensions: () -> Int?,
 ) : VectorSnapshotProvider {
