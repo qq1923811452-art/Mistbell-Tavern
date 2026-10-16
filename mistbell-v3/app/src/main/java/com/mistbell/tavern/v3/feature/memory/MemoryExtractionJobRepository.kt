@@ -87,7 +87,8 @@ class MemoryExtractionJobRepository(private val store: MemoryExtractionJobStore)
         val index = jobs.indexOfFirst { it.id == id }
         if (index < 0) return false
         val next = transform(jobs[index])
-        if (next != jobs[index]) store.save(jobs.toMutableList().also { it[index] = next })
+        if (next == jobs[index]) return false
+        store.save(jobs.toMutableList().also { it[index] = next })
         return true
     }
 
