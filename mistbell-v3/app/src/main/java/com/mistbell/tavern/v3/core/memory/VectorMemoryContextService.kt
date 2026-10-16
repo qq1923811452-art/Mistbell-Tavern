@@ -1,0 +1,116 @@
+package com.mistbell.tavern.v3.core.memory
+
+/** The local embedding runtime implementation must report failures instead of returning fake vectors. */
+fun interface QueryEmbeddingProvider {
+    fun embed(text: String): List<Float>
+}
+
+/** Supplies the current source passages corresponding to stored vector content hashes. */
+fun interface MemoryTextProvider {
+    fun loadMemoryTexts(): List<MemoryTextRecord>
+}
+
+/** Loads a validated snapshot, allowing storage to report missing, corrupt, or incompatible data. */
+fun interface VectorSnapshotProvider {
+    fun loadSnapshot(): VectorSnapshotLoadResult
+}
+
+sealed interface VectorMemoryContextResult {
+    data class Ready(val memories: List<RetrievedMemory>) : VectorMemoryContextResult
+    data class Unavailable(val reason: Reason) : VectorMemoryContextResult
+    data object NoRelevantMemories : VectorMemoryContextResult
+
+    enum class Reason {
+        SNAPSHOT_MISSING,
+        SNAPSHOT_CORRUPT,
+        SNAPSHOT_INCOMPATIBLE,
+        EMBEDDING_FAILED,
+        SOURCE_TEXT_UNAVAILABLE,
+        INVALID_QUERY_VECTOR,
+    }
+}
+
+/**
+ * Coordinates query embedding, snapshot loading, semantic retrieval, and source-text validation.
+ *
+ * The class deliberately does not own a model/runtime implementation. Production wiring must
+ * inject the configured local embedding runtime and expose its actual backend status separately.
+ * No remote API fallback is attempted here.
+ */
+class VectorMemoryContextService(
+    private val snapshots: VectorSnapshotProvider,
+    private val embeddings: QueryEmbeddingProvider,
+    private val textProvider: MemoryTextProvider,
+    private val resultLimit: Int = VectorSimilaritySearch.DEFAULT_RESULT_LIMIT,
+    private val minimumScore: Double = VectorSimilaritySearch.DEFAULT_MINIMUM_SCORE,
+    private val maxCharacters: Int = VectorMemoryRetriever.DEFAULT_MAX_CHARACTERS,
+) {
+    init {
+        require(resultLimit in 1..VectorSimilaritySearch.MAX_RESULT_LIMIT)
+        require(minimumScore.isFinite() && minimumScore in -1.0..1.0)
+        require(maxCharacters in 1..VectorMemoryRetriever.MAX_CHARACTERS)
+    }
+
+    fun retrieveForQuery(query: String): VectorMemoryContextResult {
+        if (query.isBlank()) return VectorMemoryContextResult.Unavailable(
+            VectorMemoryContextResult.Reason.INVALID_QUERY_VECTOR,
+        )
+
+        val snapshot = when (val loaded = snapshots.loadSnapshot()) {
+            VectorSnapshotLoadResult.Missing -> return VectorMemoryContextResult.Unavailable(
+                VectorMemoryContextResult.Reason.SNAPSHOT_MISSING,
+            )
+            is VectorSnapshotLoadResult.Corrupt -> return VectorMemoryContextResult.Unavailable(
+                VectorMemoryContextResult.Reason.SNAPSHOT_CORRUPT,
+            )
+            is VectorSnapshotLoadResult.Incompatible -> return VectorMemoryContextResult.Unavailable(
+                VectorMemoryContextResult.Reason.SNAPSHOT_INCOMPATIBLE,
+            )
+            is VectorSnapshotLoadResult.Loaded -> loaded.snapshot
+        }
+
+        val queryVector = try {
+            embeddings.embed(query)
+        } catch (_: Exception) {
+            return VectorMemoryContextResult.Unavailable(
+                VectorMemoryContextResult.Reason.EMBEDDING_FAILED,
+            )
+        }
+        if (queryVector.size != snapshot.dimensions ||
+            queryVector.isEmpty() ||
+            queryVector.any { !it.isFinite() } ||
+            queryVector.all { it == 0f }
+        ) {
+            return VectorMemoryContextResult.Unavailable(
+                VectorMemoryContextResult.Reason.INVALID_QUERY_VECTOR,
+            )
+        }
+
+        val texts = try {
+            textProvider.loadMemoryTexts()
+        } catch (_: Exception) {
+            return VectorMemoryContextResult.Unavailable(
+                VectorMemoryContextResult.Reason.SOURCE_TEXT_UNAVAILABLE,
+            )
+        }
+        val retrieved = try {
+            VectorMemoryRetriever.retrieve(
+                snapshot = snapshot,
+                queryVector = queryVector,
+                texts = texts,
+                limit = resultLimit,
+                minimumScore = minimumScore,
+                maxCharacters = maxCharacters,
+            )
+        } catch (_: IllegalArgumentException) {
+            return VectorMemoryContextResult.Unavailable(
+                VectorMemoryContextResult.Reason.SOURCE_TEXT_UNAVAILABLE,
+            )
+        }
+        return if (retrieved.isEmpty()) {
+            VectorMemoryContextResult.NoRelevantMemories
+        } else {
+            VectorMemoryContextResult.Ready(retrieved)
+        }
+    }
+}
