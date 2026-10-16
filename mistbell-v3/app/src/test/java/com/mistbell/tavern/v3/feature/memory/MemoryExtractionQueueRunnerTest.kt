@@ -8,7 +8,7 @@ class MemoryExtractionQueueRunnerTest {
     @Test fun successfulExecutionCompletesClaimedJob() {
         val repository = repository()
         repository.enqueue(job("success"))
-        val runner = MemoryExtractionQueueRunner(repository) { 100L }
+        val runner = MemoryExtractionQueueRunner(repository) { 1_000L }
 
         val dispatch = runner.runNext(
             buildInput = { it.turnIds },
