@@ -77,8 +77,10 @@ class EmbeddingGemma2ModelAssetManagerTest {
     }
 
     @Test
-    fun defaultDownloadIsPinnedToPublishedSm8650Bundle(): Unit {
-        assertTrue(EmbeddingGemma2ModelAssetManager.MODEL_DOWNLOAD_URL.contains("embeddinggemma-2-740m_Qualcomm_SM8650.litertlm"))
+    fun portableAndSm8650DownloadsArePinnedToTheirPublishedBundles(): Unit {
+        assertTrue(EmbeddingGemma2ModelAssetManager.MODEL_DOWNLOAD_URL.contains("86b903a/embeddinggemma-2-740m.litertlm"))
+        assertEquals(64, EmbeddingGemma2ModelAssetManager.PORTABLE_MODEL_SHA256.length)
+        assertTrue(EmbeddingGemma2ModelAssetManager.QUALCOMM_SM8650_MODEL_DOWNLOAD_URL.contains("ed3f5e1/embeddinggemma-2-740m_Qualcomm_SM8650.litertlm"))
         assertEquals(64, EmbeddingGemma2ModelAssetManager.QUALCOMM_SM8650_MODEL_SHA256.length)
     }
 
