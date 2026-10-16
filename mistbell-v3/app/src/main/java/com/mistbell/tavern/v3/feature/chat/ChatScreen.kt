@@ -262,7 +262,7 @@ fun ChatScreen(onBack: () -> Unit) {
             }
         val jobs = pending.chunked(MemoryExtractionInput.MAX_TURNS)
             .filter { it.size >= 3 }
-            .map { batch ->
+            .mapIndexed { batchIndex, batch ->
                 val turnIds = batch.map { it.first.id }
                 val stableId = UUID.nameUUIDFromBytes(
                     (conversationId + "|" + turnIds.joinToString("|")).toByteArray(Charsets.UTF_8),
@@ -273,7 +273,7 @@ fun ChatScreen(onBack: () -> Unit) {
                     turnIds = turnIds,
                     providerProfileId = profile.id,
                     credentialHandle = credentialHandle,
-                    createdAtEpochMillis = System.currentTimeMillis().coerceAtLeast(0L),
+                    createdAtEpochMillis = (System.currentTimeMillis().coerceAtLeast(0L) + batchIndex).coerceAtMost(Long.MAX_VALUE),
                 )
             }
         val historySnapshot = history.map { line ->
