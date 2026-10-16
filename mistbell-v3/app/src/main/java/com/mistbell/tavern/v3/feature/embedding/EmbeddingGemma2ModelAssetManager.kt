@@ -30,6 +30,10 @@ class EmbeddingGemma2ModelAssetManager(
             "Model directory could not be created."
         }
         val temporaryFile = File(modelDirectory, "$MODEL_FILE_NAME.download")
+        val temporaryDigestFile = File(modelDirectory, "$MODEL_FILE_NAME.sha256.tmp")
+        if (temporaryDigestFile.exists() && !temporaryDigestFile.delete()) {
+            throw IllegalStateException("An incomplete model digest could not be removed.")
+        }
         if (temporaryFile.exists() && !temporaryFile.delete()) {
             throw IllegalStateException("An incomplete model download could not be removed.")
         }
@@ -91,10 +95,20 @@ class EmbeddingGemma2ModelAssetManager(
                 StandardCopyOption.REPLACE_EXISTING,
                 StandardCopyOption.ATOMIC_MOVE,
             )
-            digestFile.writeText("$sha256  $MODEL_FILE_NAME\n", Charsets.UTF_8)
+            FileOutputStream(temporaryDigestFile).use { output ->
+                output.write("$sha256  $MODEL_FILE_NAME\n".toByteArray(Charsets.UTF_8))
+                output.fd.sync()
+            }
+            Files.move(
+                temporaryDigestFile.toPath(),
+                digestFile.toPath(),
+                StandardCopyOption.REPLACE_EXISTING,
+                StandardCopyOption.ATOMIC_MOVE,
+            )
             DownloadedEmbeddingModel(modelFile, downloadedBytes, sha256)
         } catch (error: Exception) {
             temporaryFile.delete()
+            temporaryDigestFile.delete()
             throw error
         } finally {
             connection.disconnect()
