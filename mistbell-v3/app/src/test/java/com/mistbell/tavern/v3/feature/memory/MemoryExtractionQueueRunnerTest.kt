@@ -1,6 +1,8 @@
 package com.mistbell.tavern.v3.feature.memory
 
+import java.util.concurrent.CancellationException
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -55,6 +57,42 @@ class MemoryExtractionQueueRunnerTest {
         val failed = repository.list().single()
         assertEquals(MemoryExtractionJob.State.PERMANENT_FAILURE, failed.state)
         assertEquals("Extraction attempt failed.", failed.lastSafeError)
+    }
+
+    @Test fun cancellationDuringInputBuildIsRetriedAndPropagated() {
+        val repository = repository()
+        repository.enqueue(job("cancel-input"))
+        val runner = MemoryExtractionQueueRunner(repository) { 10_000L }
+
+        assertThrows(CancellationException::class.java) {
+            runner.runNext(
+                buildInput = { throw CancellationException("worker stopped") },
+                execute = { _, _, _ -> error("Cancelled input must not be dispatched.") },
+            )
+        }
+
+        val cancelled = repository.list().single()
+        assertEquals(MemoryExtractionJob.State.RETRY_WAIT, cancelled.state)
+        assertEquals("Extraction attempt failed.", cancelled.lastSafeError)
+        assertEquals(40_000L, cancelled.nextAttemptAtEpochMillis)
+    }
+
+    @Test fun cancellationDuringExecutionIsRetriedAndPropagated() {
+        val repository = repository()
+        repository.enqueue(job("cancel-execute"))
+        val runner = MemoryExtractionQueueRunner(repository) { 10_000L }
+
+        assertThrows(CancellationException::class.java) {
+            runner.runNext(
+                buildInput = { it.id },
+                execute = { _, _, _ -> throw CancellationException("worker stopped") },
+            )
+        }
+
+        val cancelled = repository.list().single()
+        assertEquals(MemoryExtractionJob.State.RETRY_WAIT, cancelled.state)
+        assertEquals("Extraction attempt failed.", cancelled.lastSafeError)
+        assertEquals(40_000L, cancelled.nextAttemptAtEpochMillis)
     }
 
     @Test fun duplicateCompletionCallbackCannotCompleteOrFailTwice() {
