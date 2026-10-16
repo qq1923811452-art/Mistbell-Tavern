@@ -69,7 +69,7 @@ class MainActivity : ComponentActivity() {
     private var operationMessage by mutableStateOf("正在检查本地模型……")
     private var operationBusy by mutableStateOf(false)
     private var showChat by mutableStateOf(true)
-    private val embeddingDimensionOptions = listOf(128, 256, 512, 768)
+    private val embeddingDimensionOptions = listOf(128, 256, 512, 768, 1024, 1536, 2048)
     private var selectedEmbeddingDimensions by mutableStateOf(768)
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -242,6 +242,11 @@ class MainActivity : ComponentActivity() {
 
     private fun runEmbeddingSelfTest() {
         if (operationBusy) return
+        if (selectedEmbeddingDimensions > com.mistbell.tavern.v3.feature.embedding.EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS) {
+            operationMessage = "当前 EmbeddingGemma 2 原生最高支持 768 维；已保留 ${selectedEmbeddingDimensions} 维选项，但需要切换到原生支持该维度的模型后才能测试。未启动不兼容的推理任务。"
+            diagnostics.warn("embedding.selftest.unsupported_dimension_for_model", "model=EmbeddingGemma2; nativeDimensions=768; selectedDimensions=$selectedEmbeddingDimensions")
+            return
+        }
         operationBusy = true
         operationMessage = "正在准备本地 EmbeddingGemma 2 推理……"
         lifecycleScope.launch {
@@ -374,9 +379,9 @@ private fun DevelopmentHome(
                         Text("向量维度档位：${selectedEmbeddingDimensions} 维", style = MaterialTheme.typography.bodyMedium)
                         Spacer(Modifier.height(6.dp))
                         Button(onClick = onCycleEmbeddingDimensions, enabled = !operationBusy, modifier = Modifier.fillMaxWidth()) {
-                            Text("切换向量维度（128 → 256 → 512 → 768）")
+                            Text("切换向量维度（128 → 256 → 512 → 768 → 1024 → 1536 → 2048）")
                         }
-                        Text("此设置会保存到本机；只影响 Embedding 输出维度，不会改变模型原生维度。切换后需要重建旧向量索引。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("EmbeddingGemma 2 原生最高为 768 维，768 档可直接使用；1024 / 1536 / 2048 档为未来兼容更高维模型预留，当前选择这些档位时会明确提示模型不兼容，不会伪造高维向量。设置保存在本机；更换维度后需要重建旧向量索引。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.height(6.dp))
                         AnimatedContent(targetState = operationMessage, label = "operation-message") { message ->
                             Text(message, style = MaterialTheme.typography.bodyMedium)
