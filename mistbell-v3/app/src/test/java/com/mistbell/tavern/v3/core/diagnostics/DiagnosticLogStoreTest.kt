@@ -1,0 +1,44 @@
+package com.mistbell.tavern.v3.core.diagnostics
+
+import java.io.ByteArrayOutputStream
+import java.io.File
+import java.time.Instant
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class DiagnosticLogStoreTest {
+    @Test
+    fun redactsCredentialsAndExportsReadableLog() {
+        val directory = createTempDir(prefix = "mistbell-diagnostics-test")
+        try {
+            val store = DiagnosticLogStore(directory) { Instant.parse("2026-10-16T12:00:00Z") }
+            store.info("embedding.initialize", "Bearer super-secret-token; api_key=private-key")
+            val output = ByteArrayOutputStream()
+            store.exportTo(output)
+            val exported = output.toString(Charsets.UTF_8.name())
+
+            assertTrue(exported.contains("embedding.initialize"))
+            assertTrue(exported.contains("[REDACTED]"))
+            assertFalse(exported.contains("super-secret-token"))
+            assertFalse(exported.contains("private-key"))
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun stripsLineBreaksAndBoundsEventDetails() {
+        val directory = createTempDir(prefix = "mistbell-diagnostics-test")
+        try {
+            val store = DiagnosticLogStore(directory) { Instant.EPOCH }
+            store.warn("unsafe\nevent", "detail\r\nline")
+            val text = File(directory, DiagnosticLogStore.LOG_FILE_NAME).readText()
+
+            assertTrue(text.contains("unsafe event - detail line"))
+            assertFalse(text.contains("unsafe\nevent"))
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+}
