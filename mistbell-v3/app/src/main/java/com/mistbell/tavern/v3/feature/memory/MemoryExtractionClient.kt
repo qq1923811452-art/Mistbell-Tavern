@@ -161,8 +161,24 @@ class MemoryExtractionClient(
                         observer.onFinished(MemoryExtractionOutcome.Failure("Memory-extraction response is empty or too large."))
                         return
                     }
+                    val responseBuffer = okio.Buffer()
+                    val source = body.source()
+                    while (responseBuffer.size <= MAX_RESPONSE_BYTES) {
+                        val remainingWithOverflowByte = MAX_RESPONSE_BYTES + 1 - responseBuffer.size
+                        val read = source.read(responseBuffer, minOf(8192L, remainingWithOverflowByte))
+                        if (read == -1L) break
+                    }
+                    if (responseBuffer.size > MAX_RESPONSE_BYTES) {
+                        observer.onFinished(MemoryExtractionOutcome.Failure("Memory-extraction response is empty or too large."))
+                        return
+                    }
+                    val responseText = responseBuffer.readUtf8()
+                    if (responseText.isBlank()) {
+                        observer.onFinished(MemoryExtractionOutcome.Failure("Memory-extraction response is empty or too large."))
+                        return
+                    }
                     val parsed = try {
-                        val envelope = JSONObject(body.string())
+                        val envelope = JSONObject(responseText)
                         val choices = envelope.optJSONArray("choices")
                             ?: throw JSONException("Missing choices")
                         val content = choices.optJSONObject(0)?.optJSONObject("message")
