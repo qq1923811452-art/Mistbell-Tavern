@@ -92,6 +92,30 @@ class ImageGenerationClientTest {
     }
 
     @Test
+    fun rejectsFewerImagesThanRequested() {
+        MockWebServer().use { server ->
+            server.enqueue(
+                MockResponse()
+                    .setHeader("Content-Type", "application/json")
+                    .setBody("""{"data":[{"b64_json":"aGVsbG8="}]}"""),
+            )
+            server.start()
+            val client = ImageGenerationClient(
+                baseUrl = server.url("/v1").toString().trimEnd('/'),
+                apiKeyProvider = { "image-only-secret" },
+            )
+
+            val error = assertThrows(ImageGenerationException::class.java) {
+                client.generate(
+                    ImageGenerationRequest(prompt = "Two lanterns", model = "image-model", count = 2),
+                )
+            }
+
+            assertTrue(error.message!!.contains("unexpected number of images"))
+        }
+    }
+
+    @Test
     fun requestRejectsBlankPromptsAndInvalidCounts() {
         assertThrows(IllegalArgumentException::class.java) {
             ImageGenerationRequest(prompt = "  ", model = "image-model")
