@@ -141,7 +141,7 @@ class ImageGenerationClient(
         }
         val data = root.optJSONArray("data")
             ?: throw ImageGenerationException(message = "Image API response is missing the data array.")
-        if (data.length() !in 1..requestedCount) {
+        if (data.length() != requestedCount) {
             throw ImageGenerationException(message = "Image API returned an unexpected number of images.")
         }
         val images = buildList {
