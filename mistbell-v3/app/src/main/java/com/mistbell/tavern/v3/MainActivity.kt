@@ -49,6 +49,7 @@ import com.mistbell.tavern.v3.core.diagnostics.DiagnosticLogStore
 import com.mistbell.tavern.v3.core.inference.InferenceBackend
 import com.mistbell.tavern.v3.core.inference.InferencePhase
 import com.mistbell.tavern.v3.core.inference.InferenceRuntimeStatus
+import com.mistbell.tavern.v3.feature.chat.ChatScreen
 
 private data class BuildStage(val title: String, val detail: String)
 
@@ -67,6 +68,7 @@ class MainActivity : ComponentActivity() {
     private var inferenceStatus by mutableStateOf(InferenceRuntimeStatus.idle())
     private var operationMessage by mutableStateOf("正在检查本地模型……")
     private var operationBusy by mutableStateOf(false)
+    private var showChat by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -160,15 +162,20 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background,
                 ) {
-                    DevelopmentHome(
-                        inferenceStatus = inferenceStatus,
-                        operationMessage = operationMessage,
-                        operationBusy = operationBusy,
-                        onDownloadModel = ::downloadEmbeddingModel,
-                        onImportModel = { importModel.launch(arrayOf("*/*")) },
-                        onRunEmbeddingTest = ::runEmbeddingSelfTest,
-                        onExportLogs = { exportDiagnostics.launch("mistbell-diagnostics.txt") },
-                    )
+                    if (showChat) {
+                        ChatScreen(onBack = { showChat = false })
+                    } else {
+                        DevelopmentHome(
+                            inferenceStatus = inferenceStatus,
+                            operationMessage = operationMessage,
+                            operationBusy = operationBusy,
+                            onOpenChat = { showChat = true },
+                            onDownloadModel = ::downloadEmbeddingModel,
+                            onImportModel = { importModel.launch(arrayOf("*/*")) },
+                            onRunEmbeddingTest = ::runEmbeddingSelfTest,
+                            onExportLogs = { exportDiagnostics.launch("mistbell-diagnostics.txt") },
+                        )
+                    }
                 }
             }
         }
@@ -287,6 +294,7 @@ private fun DevelopmentHome(
     inferenceStatus: InferenceRuntimeStatus,
     operationMessage: String,
     operationBusy: Boolean,
+    onOpenChat: () -> Unit,
     onDownloadModel: () -> Unit,
     onImportModel: () -> Unit,
     onRunEmbeddingTest: () -> Unit,
@@ -323,6 +331,19 @@ private fun DevelopmentHome(
                 )
             }
             item { InferenceStatusCard(inferenceStatus) }
+            item {
+                Card(modifier = Modifier.fillMaxWidth().animateContentSize(animationSpec = tween(durationMillis = 240, easing = FastOutSlowInEasing))) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text("聊天与 API", style = MaterialTheme.typography.titleMedium)
+                        Spacer(Modifier.height(6.dp))
+                        Text("进入独立聊天测试页面，配置 OpenAI 兼容 API 并验证流式回复。API 密钥仅保存在当前页面的内存状态中。", style = MaterialTheme.typography.bodyMedium)
+                        Spacer(Modifier.height(10.dp))
+                        Button(onClick = onOpenChat, modifier = Modifier.fillMaxWidth()) {
+                            Text("进入聊天")
+                        }
+                    }
+                }
+            }
             item {
                 Card(modifier = Modifier.fillMaxWidth().animateContentSize(animationSpec = tween(durationMillis = 240, easing = FastOutSlowInEasing))) {
                     Column(modifier = Modifier.padding(16.dp)) {
