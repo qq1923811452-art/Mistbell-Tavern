@@ -1,0 +1,62 @@
+package com.mistbell.tavern.v3.feature.memory
+
+import android.content.Context
+import android.util.AtomicFile
+import java.io.File
+import java.io.IOException
+
+sealed interface MemoryExtractionJobLoadResult {
+    data object Missing : MemoryExtractionJobLoadResult
+    data class Loaded(val jobs: List<MemoryExtractionJob>) : MemoryExtractionJobLoadResult
+    data class Corrupt(val safeReason: String) : MemoryExtractionJobLoadResult
+}
+
+/** App-private atomic persistence; corrupt queue data is reported, never silently replaced. */
+class MemoryExtractionJobStore(
+    context: Context,
+    fileName: String = DEFAULT_FILE_NAME,
+) {
+    private val file: AtomicFile
+
+    init {
+        require(fileName.isNotBlank() && fileName != "." && fileName != ".." &&
+            '/' !in fileName && '\\' !in fileName)
+        file = AtomicFile(File(context.filesDir, fileName))
+    }
+
+    @Synchronized
+    fun save(jobs: List<MemoryExtractionJob>) {
+        val bytes = MemoryExtractionJobCodec.encode(jobs)
+        val stream = file.startWrite()
+        try {
+            stream.write(bytes)
+            file.finishWrite(stream)
+        } catch (failure: Throwable) {
+            file.failWrite(stream)
+            throw failure
+        }
+    }
+
+    @Synchronized
+    fun load(): MemoryExtractionJobLoadResult {
+        val base = file.baseFile
+        val backup = File(base.path + ".bak")
+        if (!base.exists() && !backup.exists()) return MemoryExtractionJobLoadResult.Missing
+        if (maxOf(base.length(), backup.length()) > MemoryExtractionJobCodec.MAX_BYTES) {
+            return MemoryExtractionJobLoadResult.Corrupt("Memory extraction queue exceeds the size limit.")
+        }
+        return try {
+            MemoryExtractionJobLoadResult.Loaded(
+                file.openRead().use { MemoryExtractionJobCodec.decode(it.readBytes()) },
+            )
+        } catch (_: IOException) {
+            MemoryExtractionJobLoadResult.Corrupt("Memory extraction queue could not be read.")
+        } catch (_: Exception) {
+            MemoryExtractionJobLoadResult.Corrupt("Memory extraction queue failed integrity or validation checks.")
+        }
+    }
+
+    companion object {
+        const val DEFAULT_FILE_NAME = "mistbell-v3-memory-extraction-queue.bin"
+    }
+}
