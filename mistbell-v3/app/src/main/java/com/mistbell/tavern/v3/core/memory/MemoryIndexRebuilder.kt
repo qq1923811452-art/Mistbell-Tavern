@@ -1,5 +1,7 @@
 package com.mistbell.tavern.v3.core.memory
 
+import kotlinx.coroutines.CancellationException
+
 /**
  * The configured local embedding runtime. Metadata must describe the model actually loaded,
  * not a desired model or a hard-coded guess.
@@ -93,6 +95,8 @@ class MemoryIndexRebuilder(
                     values = vector.toList(),
                 )
             }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (_: Exception) {
             return MemoryIndexRebuildResult.Failed(
                 MemoryIndexRebuildResult.Stage.EMBEDDING,
