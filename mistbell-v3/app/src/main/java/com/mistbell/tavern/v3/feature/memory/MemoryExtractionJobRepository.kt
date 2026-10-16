@@ -43,7 +43,14 @@ class MemoryExtractionJobRepository(private val store: MemoryExtractionJobStore)
     @Synchronized
     fun fail(id: String, now: Long, safeError: String, permanent: Boolean = false): Boolean {
         require(now >= 0L)
-        val safe = safeError.filterNot(Char::isISOControl).take(MemoryExtractionJob.MAX_ERROR_CHARS)
+        // Never persist arbitrary exception text: it can contain request URLs, prompts, or credentials.
+        val safe = when (safeError.trim().lowercase()) {
+            "network" -> "Network request failed."
+            "timeout" -> "Request timed out."
+            "rate_limit" -> "Provider rate limit reached."
+            "server" -> "Provider server error."
+            else -> "Extraction attempt failed."
+        }
         return update(id) { job ->
             if (job.state != MemoryExtractionJob.State.RUNNING) job
             else if (permanent || job.attemptCount >= MemoryExtractionJob.MAX_ATTEMPTS) {
