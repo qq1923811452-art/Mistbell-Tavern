@@ -6,7 +6,7 @@ import org.junit.Test
 
 class ProviderProfileSetTest {
     @Test
-    fun eachCapabilityResolvesOnlyItsOwnProfile() {
+    fun resolvesOnlyTheExplicitlySelectedProfileForEachCapability() {
         val chat = ProviderProfile(
             id = "chat-main",
             kind = ProviderKind.CHAT,
@@ -14,7 +14,10 @@ class ProviderProfileSetTest {
             modelId = "chat-model",
             credentialHandle = "credential-chat",
         )
-        val profiles = ProviderProfileSet(listOf(chat))
+        val profiles = ProviderProfileSet(
+            profiles = listOf(chat),
+            selectedProfileIds = mapOf(ProviderKind.CHAT to chat.id),
+        )
 
         assertEquals(chat, profiles.profileFor(ProviderKind.CHAT))
         assertNull(profiles.profileFor(ProviderKind.MEMORY_EXTRACTION))
@@ -23,7 +26,29 @@ class ProviderProfileSetTest {
     }
 
     @Test
-    fun disabledProfileIsNotResolved() {
+    fun allowsMultipleSavedProfilesButResolvesOnlyTheSelectedOne() {
+        val first = ProviderProfile(
+            id = "chat-a",
+            kind = ProviderKind.CHAT,
+            baseUrl = "https://a.example.com/v1",
+            modelId = "model-a",
+        )
+        val second = first.copy(
+            id = "chat-b",
+            baseUrl = "https://b.example.com/v1",
+            modelId = "model-b",
+        )
+
+        val profiles = ProviderProfileSet(
+            profiles = listOf(first, second),
+            selectedProfileIds = mapOf(ProviderKind.CHAT to second.id),
+        )
+
+        assertEquals(second, profiles.profileFor(ProviderKind.CHAT))
+    }
+
+    @Test
+    fun disabledSelectedProfileIsNotResolved() {
         val profile = ProviderProfile(
             id = "memory-disabled",
             kind = ProviderKind.MEMORY_EXTRACTION,
@@ -32,19 +57,26 @@ class ProviderProfileSetTest {
             enabled = false,
         )
 
-        assertNull(ProviderProfileSet(listOf(profile)).profileFor(ProviderKind.MEMORY_EXTRACTION))
+        assertNull(
+            ProviderProfileSet(
+                profiles = listOf(profile),
+                selectedProfileIds = mapOf(ProviderKind.MEMORY_EXTRACTION to profile.id),
+            ).profileFor(ProviderKind.MEMORY_EXTRACTION),
+        )
     }
 
     @Test(expected = IllegalArgumentException::class)
-    fun duplicateCapabilityIsRejected() {
-        val first = ProviderProfile(
-            id = "chat-a",
+    fun selectedProfileMustMatchItsCapability() {
+        val chat = ProviderProfile(
+            id = "chat-only",
             kind = ProviderKind.CHAT,
-            baseUrl = "https://a.example.com/v1",
-            modelId = "model-a",
+            baseUrl = "https://chat.example.com/v1",
+            modelId = "chat-model",
         )
-        val second = first.copy(id = "chat-b", baseUrl = "https://b.example.com/v1")
 
-        ProviderProfileSet(listOf(first, second))
+        ProviderProfileSet(
+            profiles = listOf(chat),
+            selectedProfileIds = mapOf(ProviderKind.MEMORY_EXTRACTION to chat.id),
+        )
     }
 }
