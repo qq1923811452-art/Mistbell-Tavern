@@ -21,6 +21,10 @@ class EmbeddingGemma2RuntimeAdapter(
     private val outputDimensions: Int = EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS,
     configuredBatchSize: Int = 16,
 ) : LocalEmbeddingRuntime {
+    companion object {
+        const val MAX_CONFIGURED_BATCH_SIZE = 256
+    }
+
     init {
         require(outputDimensions in EmbeddingGemma2TextPolicy.supportedDimensions) {
             "Unsupported EmbeddingGemma 2 output dimension."
