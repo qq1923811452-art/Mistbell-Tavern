@@ -82,9 +82,21 @@ class MemoryJobLedgerTest {
         val pending = MemoryJobLedger().enqueue(plan())
         val (processing, _) = pending.claimNext(nowEpochMillis = 1)
         val recovered = processing.recoverInterruptedProcessing()
-        assertEquals(MemoryJobStatus.RETTRY_WAIT, recovered.jobs.single().status)
+        assertEquals(MemoryJobStatus.RETRY_WAIT, recovered.jobs.single().status)
         assertEquals(0L, recovered.jobs.single().nextAttemptAtEpochMillis)
         assertEquals(MemoryJobLedger.DEFAULT_INTERRUPTED_ERROR, recovered.jobs.single().lastSafeError)
+    }
+
+    @Test
+    fun repeatedProcessDeathEventuallyStopsRetrying() {
+        var ledger = MemoryJobLedger().enqueue(plan())
+        repeat(MemoryJobLedger.DEFAULT_MAX_ATTEMPTS) { attempt ->
+            val (processing, claimed) = ledger.claimNext(nowEpochMillis = attempt.toLong())
+            requireNotNull(claimed)
+            ledger = processing.recoverInterruptedProcessing()
+        }
+        assertEquals(MemoryJobStatus.PERMANENT_FAILURE, ledger.jobs.single().status)
+        assertEquals(MemoryJobLedger.DEFAULT_MAX_ATTEMPTS, ledger.jobs.single().attemptCount)
     }
 
     @Test
