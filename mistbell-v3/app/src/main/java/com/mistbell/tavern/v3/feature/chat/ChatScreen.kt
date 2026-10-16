@@ -74,6 +74,7 @@ fun ChatScreen(onBack: () -> Unit) {
     var apiKey by remember { mutableStateOf("") }
     var draft by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
+    var historyReady by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("填写模型 ID 和 API 配置后即可测试聊天。") }
     val history = remember { mutableStateListOf<ChatLine>() }
     val listState = rememberLazyListState()
@@ -129,6 +130,7 @@ fun ChatScreen(onBack: () -> Unit) {
                 status = "聊天记录文件损坏或版本不兼容；为避免覆盖原文件，未自动清空记录。"
             }
         }
+        historyReady = true
     }
 
     val exportLogLauncher = rememberLauncherForActivityResult(
@@ -215,7 +217,16 @@ fun ChatScreen(onBack: () -> Unit) {
                                 style = MaterialTheme.typography.labelMedium,
                             )
                             Spacer(Modifier.height(4.dp))
-                            Text(line.content.ifBlank { if (busy && line.role == "assistant") "正在生成……" else "" })
+                            Text(
+                                line.content.ifBlank {
+                                    when {
+                                        busy && line.role == "assistant" -> "正在生成……"
+                                        line.deliveryState == PersistedChatMessage.DeliveryState.PENDING ->
+                                            "上次回复未完成，可重新发送。"
+                                        else -> ""
+                                    }
+                                },
+                            )
                         }
                     }
                 }
@@ -412,28 +423,32 @@ fun ChatScreen(onBack: () -> Unit) {
                                     busy = false
                                     status = chatError.message?.take(180) ?: "聊天请求配置失败。"
                                     val last = history.lastOrNull()
-                                    if (last?.role == "assistant" && last.content.isBlank()) {
-                                        history[history.lastIndex] = last.copy(content = status)
+                                    if (last?.role == "assistant") {
+                                        history[history.lastIndex] = last.copy(
+                                            content = last.content.ifBlank { status },
+                                            deliveryState = PersistedChatMessage.DeliveryState.FAILED,
+                                        )
                                     }
+                                    persistHistory()
                                 }
                             }
                         }
                     },
-                    enabled = !busy,
-                ) { Text(if (busy) "生成中…" else "发送消息") }
+                    enabled = !busy && historyReady,
+                ) { Text(if (!historyReady) "恢复记录中…" else if (busy) "生成中…" else "发送消息") }
                 Button(
                     onClick = {
                         history.clear()
                         persistHistory()
                         status = "会话已清空。"
                     },
-                    enabled = !busy && history.isNotEmpty(),
+                    enabled = !busy && historyReady && history.isNotEmpty(),
                 ) { Text("清空会话") }
                 Button(
                     onClick = {
                         exportLogLauncher.launch("mistbell-diagnostics.txt")
                     },
-                    enabled = !busy,
+                    enabled = !busy && historyReady,
                 ) { Text("导出诊断日志") }
             }
         }
