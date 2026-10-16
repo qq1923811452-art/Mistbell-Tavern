@@ -35,7 +35,9 @@ object LegacyWorldbookImporter {
     }
 
     private fun parseEntry(fallbackId: String, source: JSONObject): WorldbookEntry {
-        val uid = source.opt("uid")?.toString()?.takeIf(String::isNotBlank) ?: fallbackId
+        val uidValue = source.opt("uid")
+        val uid = uidValue?.takeUnless { it === JSONObject.NULL }?.toString()
+            ?.takeIf { it.isNotBlank() && it != "null" } ?: fallbackId
         val title = sequenceOf("comment", "name", "title")
             .map { source.optString(it, "").trim() }
             .firstOrNull(String::isNotEmpty) ?: "Entry $uid"
@@ -66,6 +68,7 @@ object LegacyWorldbookImporter {
                 }
             }
             is String -> raw.trim().takeIf(String::isNotEmpty)?.let(::listOf) ?: emptyList()
+            null -> emptyList()
             else -> emptyList()
         }
     }
