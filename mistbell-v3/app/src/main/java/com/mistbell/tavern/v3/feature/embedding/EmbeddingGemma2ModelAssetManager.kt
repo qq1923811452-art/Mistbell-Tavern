@@ -23,9 +23,25 @@ data class DownloadedEmbeddingModel(
 
 class EmbeddingGemma2ModelAssetManager(
     private val modelDirectory: File,
+    private val preferQualcommSm8650Model: Boolean = false,
 ) {
-    private val modelFile = File(modelDirectory, MODEL_FILE_NAME)
-    private val digestFile = File(modelDirectory, "$MODEL_FILE_NAME.sha256")
+    private val selectedModelFileName = if (preferQualcommSm8650Model) {
+        QUALCOMM_SM8650_MODEL_FILE_NAME
+    } else {
+        MODEL_FILE_NAME
+    }
+    private val selectedModelSha256 = if (preferQualcommSm8650Model) {
+        QUALCOMM_SM8650_MODEL_SHA256
+    } else {
+        PORTABLE_MODEL_SHA256
+    }
+    private val selectedModelUrl = if (preferQualcommSm8650Model) {
+        QUALCOMM_SM8650_MODEL_DOWNLOAD_URL
+    } else {
+        MODEL_DOWNLOAD_URL
+    }
+    private val modelFile = File(modelDirectory, selectedModelFileName)
+    private val digestFile = File(modelDirectory, "$selectedModelFileName.sha256")
     private val downloadLock = ReentrantLock()
 
     suspend fun download(
@@ -86,8 +102,8 @@ class EmbeddingGemma2ModelAssetManager(
                 }
             }
             val sha256 = digest.digest().toHex()
-            check(sha256.equals(QUALCOMM_SM8650_MODEL_SHA256, ignoreCase = true)) {
-                "Downloaded model checksum does not match the published Qualcomm SM8650 model; refusing to install it."
+            check(sha256.equals(selectedModelSha256, ignoreCase = true)) {
+                "Downloaded model checksum does not match the pinned model for the selected runtime profile; refusing to install it."
             }
             FileOutputStream(temporaryDigestFile).use { output ->
                 output.write("$sha256  $MODEL_FILE_NAME\n".toByteArray(Charsets.UTF_8))
@@ -109,7 +125,7 @@ class EmbeddingGemma2ModelAssetManager(
                 file = modelFile,
                 sizeBytes = downloadedBytes,
                 sha256 = sha256,
-                isQualcommSm8650Optimized = true,
+                isQualcommSm8650Optimized = sha256.equals(QUALCOMM_SM8650_MODEL_SHA256, ignoreCase = true),
             )
         } catch (error: Exception) {
             temporaryFile.delete()
@@ -177,6 +193,14 @@ class EmbeddingGemma2ModelAssetManager(
                 }
                 check(importedBytes > 0L) { "Selected model file is empty." }
                 val sha256 = digest.digest().toHex()
+                val isQualcommModel = sha256.equals(QUALCOMM_SM8650_MODEL_SHA256, ignoreCase = true)
+                require(isQualcommModel == preferQualcommSm8650Model) {
+                    if (preferQualcommSm8650Model) {
+                        "The selected runtime profile requires the published Qualcomm SM8650 model bundle."
+                    } else {
+                        "The Qualcomm SM8650-specific model requires a verified NPU runtime profile; use the portable model for CPU/GPU testing."
+                    }
+                }
                 FileOutputStream(temporaryDigestFile).use { output ->
                     output.write("$sha256  $MODEL_FILE_NAME\n".toByteArray(Charsets.UTF_8))
                     output.fd.sync()
@@ -229,6 +253,8 @@ class EmbeddingGemma2ModelAssetManager(
             }
             val actual = digest.digest().toHex()
             if (!actual.equals(expected, ignoreCase = true)) return@withContext null
+            val isQualcommModel = actual.equals(QUALCOMM_SM8650_MODEL_SHA256, ignoreCase = true)
+            if (isQualcommModel != preferQualcommSm8650Model) return@withContext null
             DownloadedEmbeddingModel(
                 file = modelFile,
                 sizeBytes = modelFile.length(),
@@ -243,7 +269,7 @@ class EmbeddingGemma2ModelAssetManager(
     }
 
     private fun openSecureConnection(): HttpURLConnection {
-        var currentUrl = URL(MODEL_DOWNLOAD_URL)
+        var currentUrl = URL(selectedModelUrl)
         for (redirectCount in 0..MAX_REDIRECTS) {
             check(currentUrl.protocol.equals("https", ignoreCase = true)) {
                 "Model download redirects must use HTTPS."
@@ -285,6 +311,11 @@ class EmbeddingGemma2ModelAssetManager(
     companion object {
         const val MODEL_FILE_NAME = "embeddinggemma-2-740m.litertlm"
         const val MODEL_DOWNLOAD_URL =
+            "https://huggingface.co/litert-community/embeddinggemma-2-740m-litert-lm/resolve/86b903a/embeddinggemma-2-740m.litertlm"
+        const val PORTABLE_MODEL_SHA256 =
+            "e7a8a2204b91e0f96e92960e84a09a89212e1633dcb7575a9bf3378b4df77f4c"
+        const val QUALCOMM_SM8650_MODEL_FILE_NAME = "embeddinggemma-2-740m_Qualcomm_SM8650.litertlm"
+        const val QUALCOMM_SM8650_MODEL_DOWNLOAD_URL =
             "https://huggingface.co/litert-community/embeddinggemma-2-740m-litert-lm/resolve/ed3f5e1/embeddinggemma-2-740m_Qualcomm_SM8650.litertlm"
         const val QUALCOMM_SM8650_MODEL_SHA256 =
             "3b8a18c6d043b8132c4eda45611296e1ae455ada82cda8b591ec0ca141e041c5"
