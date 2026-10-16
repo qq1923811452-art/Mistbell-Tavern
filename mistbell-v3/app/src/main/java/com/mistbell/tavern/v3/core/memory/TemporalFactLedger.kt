@@ -73,7 +73,7 @@ object TemporalFactLedger {
                 it.value.length <= MAX_FIELD_CHARS
         })
         var facts = existing.toMutableList()
-        for (observation in observations) {
+        for (observation in observations.sortedBy(TemporalFactObservation::observedAtEpochMillis)) {
             val id = stableId(observation)
             if (facts.any { it.id == id }) continue
 
@@ -83,6 +83,10 @@ object TemporalFactLedger {
                 it.isCurrent &&
                     normalize(it.subject) == subjectKey &&
                     normalize(it.predicate) == predicateKey
+            }
+            if (currentForPredicate.any { it.validFromEpochMillis > observation.observedAtEpochMillis }) {
+                // A delayed/backdated extraction must not overwrite a newer current observation.
+                continue
             }
             if (currentForPredicate.any { normalize(it.value) == normalize(observation.value) }) {
                 // Same current fact: do not create another active duplicate for another turn.
