@@ -1,6 +1,6 @@
 package com.mistbell.tavern.v3.feature.embedding
 
-import com.mistbell.tavern.v3.core.memory.PassageEmbeddingRuntime
+import com.mistbell.tavern.v3.core.memory.IdentifiedQueryEmbeddingProvider
 
 /**
  * Adapts EmbeddingGemma 2's distinct query and document tasks to the vector-memory contracts.
@@ -11,7 +11,7 @@ import com.mistbell.tavern.v3.core.memory.PassageEmbeddingRuntime
  */
 class EmbeddingGemma2MemoryRuntime(
     private val adapter: EmbeddingGemma2RuntimeAdapter,
-) : PassageEmbeddingRuntime {
+) : IdentifiedQueryEmbeddingProvider {
     override val modelId: String
         get() = adapter.model.modelId
 
