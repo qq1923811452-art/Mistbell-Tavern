@@ -13,7 +13,7 @@ class DiagnosticLogStoreTest {
         val directory = kotlin.io.path.createTempDirectory(prefix = "mistbell-diagnostics-test").toFile()
         try {
             val store = DiagnosticLogStore(directory) { Instant.parse("2026-10-16T12:00:00Z") }
-            store.info("embedding.initialize", "Bearer super-secret-token; api_key=private-key")
+            store.info("embedding.initialize", "Bearer super-secret-token; Bearer 私密令牌; api_key=private-key")
             store.warn(
                 "network.error",
                 "Authorization: Basic dXNlcjpwYXNz; X-Api-Key=api-secret; https://example.test/?token=query-secret; hf_abcdefghijklmnopqrstuvwxyz; \"token\": \"json-secret\"",
@@ -25,6 +25,7 @@ class DiagnosticLogStoreTest {
             assertTrue(exported.contains("embedding.initialize"))
             assertTrue(exported.contains("[REDACTED]"))
             assertFalse(exported.contains("super-secret-token"))
+            assertFalse(exported.contains("私密令牌"))
             assertFalse(exported.contains("private-key"))
             assertFalse(exported.contains("dXNlcjpwYXNz"))
             assertFalse(exported.contains("api-secret"))
