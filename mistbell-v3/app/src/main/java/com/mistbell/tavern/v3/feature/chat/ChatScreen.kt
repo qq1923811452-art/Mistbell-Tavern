@@ -65,6 +65,10 @@ import com.mistbell.tavern.v3.core.model.ProviderProfile
 import com.mistbell.tavern.v3.core.model.ProviderProfileSet
 import com.mistbell.tavern.v3.feature.memory.MemoryCredentialResolver
 import com.mistbell.tavern.v3.feature.memory.MemoryExtractionClient
+import com.mistbell.tavern.v3.feature.memory.MemoryExtractionJob
+import com.mistbell.tavern.v3.feature.memory.MemoryExtractionJobRepository
+import com.mistbell.tavern.v3.feature.memory.MemoryExtractionJobStore
+import com.mistbell.tavern.v3.feature.memory.MemoryExtractionQueueWorker
 import com.mistbell.tavern.v3.feature.memory.MemoryExtractionInput
 import com.mistbell.tavern.v3.feature.memory.formatMemoryExtractionTurn
 import com.mistbell.tavern.v3.feature.memory.TemporalFactTextSynchronizer
@@ -183,6 +187,21 @@ fun ChatScreen(onBack: () -> Unit) {
             }
         }
         historyReady = true
+        val pendingQueue = withContext(Dispatchers.IO) {
+            runCatching {
+                MemoryExtractionJobRepository(
+                    MemoryExtractionJobStore(context.applicationContext),
+                ).list().any { job ->
+                    job.state == MemoryExtractionJob.State.PENDING ||
+                        job.state == MemoryExtractionJob.State.RUNNING ||
+                        job.state == MemoryExtractionJob.State.RETRY_WAIT
+                }
+            }.getOrElse {
+                diagnosticStore.warn("memory.extraction.queue_load_failed", "reason=queue_unavailable")
+                false
+            }
+        }
+        if (pendingQueue) MemoryExtractionQueueWorker.enqueue(context.applicationContext)
     }
 
     val exportLogLauncher = rememberLauncherForActivityResult(
