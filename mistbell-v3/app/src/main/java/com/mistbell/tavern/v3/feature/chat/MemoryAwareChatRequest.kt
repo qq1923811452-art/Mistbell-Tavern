@@ -31,7 +31,7 @@ class MemoryAwareChatRequest(
             } catch (_: Exception) {
                 // A storage/runtime adapter failure must not prevent ordinary chat from working.
                 VectorMemoryContextResult.Unavailable(
-                    VectorMemoryContextResult.Reason.SOURCE_TEXT_UNAVAILABLE,
+                    VectorMemoryContextResult.Reason.UNEXPECTED_FAILURE,
                 )
             }
         }
