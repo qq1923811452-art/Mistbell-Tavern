@@ -60,3 +60,77 @@ jobs:
           name: mistbell-v3-test-reports
           path: mistbell-v3/app/build/reports/
           if-no-files-found: ignore
+
+  # This job is normally a no-op. A one-time marker file enables APK packaging
+  # only after the exact same commit passes the compile-and-test quality gate.
+  device-test-apk:
+    if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'codex/mistbell-3.0-core-features' && needs.compile-and-test.result == 'success' }}
+    needs: compile-and-test
+    name: Optional final 3.0 device-test APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact verified source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Check one-time packaging request
+        id: request
+        shell: bash
+        run: |
+          if [[ -f mistbell-v3/BUILD_DEVICE_APK ]]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up JDK 17
+        if: ${{ steps.request.outputs.enabled == 'true' }}
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        if: ${{ steps.request.outputs.enabled == 'true' }}
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Ensure root Gradle wrapper is executable
+        if: ${{ steps.request.outputs.enabled == 'true' }}
+        run: chmod +x ./gradlew
+
+      - name: Confirm artifact source matches tested source
+        if: ${{ steps.request.outputs.enabled == 'true' }}
+        shell: bash
+        env:
+          VERIFIED_SHA: ${{ github.event.pull_request.head.sha }}
+        run: test "$(git rev-parse HEAD)" = "$VERIFIED_SHA"
+
+      - name: Package debug APK after quality gate only
+        if: ${{ steps.request.outputs.enabled == 'true' }}
+        run: ./gradlew -p mistbell-v3 :app:assembleDebug --no-daemon --no-parallel
+
+      - name: Generate checksum and provenance
+        if: ${{ steps.request.outputs.enabled == 'true' }}
+        shell: bash
+        env:
+          VERIFIED_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p build-artifacts
+          find mistbell-v3/app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' -exec cp {} build-artifacts/ \;
+          test -n "$(find build-artifacts -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          cd build-artifacts
+          sha256sum *.apk | tee SHA256SUMS.txt
+          printf 'source_sha=%s\nworkflow_run_id=%s\nartifact_role=3.0-device-test-debug-apk\n' "$VERIFIED_SHA" "$GITHUB_RUN_ID" > SOURCE.txt
+
+      - name: Upload final device-test APK
+        if: ${{ steps.request.outputs.enabled == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: mistbell-v3-device-test-apk-${{ github.run_number }}
+          path: build-artifacts/*
+          if-no-files-found: error
+          retention-days: 14
