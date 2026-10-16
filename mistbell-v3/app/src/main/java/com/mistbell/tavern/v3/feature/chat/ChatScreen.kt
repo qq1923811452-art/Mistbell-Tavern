@@ -2,6 +2,20 @@ package com.mistbell.tavern.v3.feature.chat
 
 import android.os.Handler
 import android.os.Looper
+import android.content.Context
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
+import com.mistbell.tavern.v3.core.diagnostics.DiagnosticLogStore
+import com.mistbell.tavern.v3.core.memory.VectorMemoryContextService
+import com.mistbell.tavern.v3.core.storage.AtomicMemoryTextStore
+import com.mistbell.tavern.v3.core.storage.AtomicVectorSnapshotStore
+import com.mistbell.tavern.v3.core.storage.PersistedVectorSnapshotProvider
+import com.mistbell.tavern.v3.feature.embedding.EmbeddingGemma2MemoryRuntime
+import com.mistbell.tavern.v3.feature.embedding.EmbeddingGemma2ModelAssetManager
+import com.mistbell.tavern.v3.feature.embedding.EmbeddingGemma2RuntimeAdapter
+import com.mistbell.tavern.v3.feature.embedding.LiteRtLmEmbeddingGemma2Engine
+import java.io.File
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -52,6 +66,8 @@ fun ChatScreen(onBack: () -> Unit) {
     val history = remember { mutableStateListOf<ChatLine>() }
     val listState = rememberLazyListState()
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
 
     Scaffold(
         topBar = {
@@ -182,41 +198,93 @@ fun ChatScreen(onBack: () -> Unit) {
                             }
                             add(PromptMessage(PromptRole.USER, userText))
                         }
-                        try {
-                            client.stream(messages, object : ChatStreamObserver {
-                                override fun onDelta(text: String) {
-                                    mainHandler.post {
-                                        val last = history.lastOrNull()
-                                        if (last?.role == "assistant") {
-                                            history[history.lastIndex] = last.copy(content = last.content + text)
-                                        }
+                        var memoryEngine: LiteRtLmEmbeddingGemma2Engine? = null
+                        val observer = object : ChatStreamObserver {
+                            override fun onDelta(text: String) {
+                                mainHandler.post {
+                                    val last = history.lastOrNull()
+                                    if (last?.role == "assistant") {
+                                        history[history.lastIndex] = last.copy(content = last.content + text)
                                     }
                                 }
+                            }
 
-                                override fun onComplete() {
-                                    mainHandler.post {
-                                        busy = false
-                                        status = "回复完成。"
-                                    }
+                            override fun onComplete() {
+                                memoryEngine?.close()
+                                memoryEngine = null
+                                mainHandler.post {
+                                    busy = false
+                                    status = "回复完成。"
                                 }
+                            }
 
-                                override fun onFailure(failure: ChatStreamFailure) {
-                                    mainHandler.post {
-                                        busy = false
-                                        status = failure.safeMessage
-                                        val last = history.lastOrNull()
-                                        if (last?.role == "assistant" && last.content.isBlank()) {
-                                            history[history.lastIndex] = last.copy(content = failure.safeMessage)
-                                        }
+                            override fun onFailure(failure: ChatStreamFailure) {
+                                memoryEngine?.close()
+                                memoryEngine = null
+                                mainHandler.post {
+                                    busy = false
+                                    status = failure.safeMessage
+                                    val last = history.lastOrNull()
+                                    if (last?.role == "assistant" && last.content.isBlank()) {
+                                        history[history.lastIndex] = last.copy(content = failure.safeMessage)
                                     }
                                 }
-                            })
-                        } catch (error: Exception) {
-                            busy = false
-                            status = error.message?.take(180) ?: "聊天请求配置失败。"
-                            val last = history.lastOrNull()
-                            if (last?.role == "assistant" && last.content.isBlank()) {
-                                history[history.lastIndex] = last.copy(content = status)
+                            }
+                        }
+                        coroutineScope.launch {
+                            try {
+                                val modelAssets = EmbeddingGemma2ModelAssetManager(File(context.filesDir, "models"))
+                                val installedModel = runCatching { modelAssets.verifyInstalled() }.getOrNull()
+                                val configuredDimensions = context.getSharedPreferences(
+                                    "mistbell-v3-settings",
+                                    Context.MODE_PRIVATE,
+                                ).getInt("embedding_output_dimensions", 768)
+                                if (installedModel == null || configuredDimensions !in listOf(128, 256, 512, 768)) {
+                                    status = if (installedModel == null) {
+                                        "本地模型未安装或校验失败，继续普通聊天；向量记忆暂不可用。"
+                                    } else {
+                                        "当前模型不支持所选维度，继续普通聊天；向量记忆暂不可用。"
+                                    }
+                                    client.stream(messages, observer)
+                                } else {
+                                    val engine = LiteRtLmEmbeddingGemma2Engine(
+                                        context = context.applicationContext,
+                                        modelFile = installedModel.file,
+                                        diagnostics = DiagnosticLogStore(context.applicationContext.filesDir),
+                                    )
+                                    memoryEngine = engine
+                                    engine.initialize()
+                                    val adapter = EmbeddingGemma2RuntimeAdapter(
+                                        engine = engine,
+                                        outputDimensions = configuredDimensions,
+                                    )
+                                    val memoryRuntime = EmbeddingGemma2MemoryRuntime(adapter)
+                                    val memoryContext = VectorMemoryContextService(
+                                        snapshots = PersistedVectorSnapshotProvider(
+                                            store = AtomicVectorSnapshotStore(context),
+                                            expectedModelId = { memoryRuntime.modelId },
+                                            expectedDimensions = { memoryRuntime.dimensions },
+                                        ),
+                                        embeddings = memoryRuntime,
+                                        textProvider = AtomicMemoryTextStore(context),
+                                    )
+                                    status = "本地记忆检索已接入；没有可用索引时仍会正常聊天。"
+                                    MemoryAwareChatRequest(client, memoryContext).stream(messages, observer)
+                                }
+                            } catch (error: Exception) {
+                                memoryEngine?.close()
+                                memoryEngine = null
+                                status = "本地记忆不可用，已尝试回退普通聊天：${error.message?.take(120) ?: error::class.java.simpleName}"
+                                try {
+                                    client.stream(messages, observer)
+                                } catch (chatError: Exception) {
+                                    busy = false
+                                    status = chatError.message?.take(180) ?: "聊天请求配置失败。"
+                                    val last = history.lastOrNull()
+                                    if (last?.role == "assistant" && last.content.isBlank()) {
+                                        history[history.lastIndex] = last.copy(content = status)
+                                    }
+                                }
                             }
                         }
                     },
