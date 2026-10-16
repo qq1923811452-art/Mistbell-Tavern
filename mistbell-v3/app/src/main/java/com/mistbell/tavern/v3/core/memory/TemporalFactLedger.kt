@@ -81,6 +81,7 @@ object TemporalFactLedger {
             val predicateKey = normalize(observation.predicate)
             val currentForPredicate = facts.filter {
                 it.isCurrent &&
+                    it.conversationId == observation.conversationId &&
                     normalize(it.subject) == subjectKey &&
                     normalize(it.predicate) == predicateKey
             }
@@ -95,6 +96,7 @@ object TemporalFactLedger {
 
             facts = facts.map { fact ->
                 if (fact.isCurrent &&
+                    fact.conversationId == observation.conversationId &&
                     normalize(fact.subject) == subjectKey &&
                     normalize(fact.predicate) == predicateKey
                 ) {
