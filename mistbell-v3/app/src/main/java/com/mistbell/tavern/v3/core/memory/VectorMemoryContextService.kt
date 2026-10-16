@@ -1,5 +1,13 @@
 package com.mistbell.tavern.v3.core.memory
 
+/** Storage adapter result for loading a validated vector snapshot. */
+sealed interface VectorSnapshotReadResult {
+    data object Missing : VectorSnapshotReadResult
+    data class Loaded(val snapshot: VectorSnapshot) : VectorSnapshotReadResult
+    data class Incompatible(val reason: String) : VectorSnapshotReadResult
+    data class Corrupt(val reason: String) : VectorSnapshotReadResult
+}
+
 /** The local embedding runtime implementation must report failures instead of returning fake vectors. */
 fun interface QueryEmbeddingProvider {
     fun embed(text: String): List<Float>
@@ -12,7 +20,7 @@ fun interface MemoryTextProvider {
 
 /** Loads a validated snapshot, allowing storage to report missing, corrupt, or incompatible data. */
 fun interface VectorSnapshotProvider {
-    fun loadSnapshot(): VectorSnapshotLoadResult
+    fun loadSnapshot(): VectorSnapshotReadResult
 }
 
 sealed interface VectorMemoryContextResult {
@@ -57,16 +65,16 @@ class VectorMemoryContextService(
         )
 
         val snapshot = when (val loaded = snapshots.loadSnapshot()) {
-            VectorSnapshotLoadResult.Missing -> return VectorMemoryContextResult.Unavailable(
+            VectorSnapshotReadResult.Missing -> return VectorMemoryContextResult.Unavailable(
                 VectorMemoryContextResult.Reason.SNAPSHOT_MISSING,
             )
-            is VectorSnapshotLoadResult.Corrupt -> return VectorMemoryContextResult.Unavailable(
+            is VectorSnapshotReadResult.Corrupt -> return VectorMemoryContextResult.Unavailable(
                 VectorMemoryContextResult.Reason.SNAPSHOT_CORRUPT,
             )
-            is VectorSnapshotLoadResult.Incompatible -> return VectorMemoryContextResult.Unavailable(
+            is VectorSnapshotReadResult.Incompatible -> return VectorMemoryContextResult.Unavailable(
                 VectorMemoryContextResult.Reason.SNAPSHOT_INCOMPATIBLE,
             )
-            is VectorSnapshotLoadResult.Loaded -> loaded.snapshot
+            is VectorSnapshotReadResult.Loaded -> loaded.snapshot
         }
 
         val queryVector = try {
