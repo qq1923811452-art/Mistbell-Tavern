@@ -1,5 +1,7 @@
 package com.mistbell.tavern.v3.core.memory
 
+import kotlinx.coroutines.runBlocking
+
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -15,7 +17,7 @@ class VectorMemoryContextServiceTest {
     )
 
     @Test
-    fun embedsQueryAndReturnsValidatedRelevantMemory() {
+    fun embedsQueryAndReturnsValidatedRelevantMemory() = runBlocking {
         val service = service(
             snapshotResult = VectorSnapshotReadResult.Loaded(snapshot),
             embedding = QueryEmbeddingProvider { listOf(1f, 0f) },
@@ -29,7 +31,7 @@ class VectorMemoryContextServiceTest {
     }
 
     @Test
-    fun missingSnapshotDoesNotCallEmbeddingRuntime() {
+    fun missingSnapshotDoesNotCallEmbeddingRuntime() = runBlocking {
         var called = false
         val service = service(
             snapshotResult = VectorSnapshotReadResult.Missing,
@@ -52,7 +54,7 @@ class VectorMemoryContextServiceTest {
     }
 
     @Test
-    fun invalidEmbeddingOutputFailsClosed() {
+    fun invalidEmbeddingOutputFailsClosed() = runBlocking {
         val service = service(
             snapshotResult = VectorSnapshotReadResult.Loaded(snapshot),
             embedding = QueryEmbeddingProvider { listOf(Float.NaN, 0f) },
@@ -68,7 +70,7 @@ class VectorMemoryContextServiceTest {
     }
 
     @Test
-    fun runtimeFailureIsExplicitAndDoesNotUseRemoteFallback() {
+    fun runtimeFailureIsExplicitAndDoesNotUseRemoteFallback() = runBlocking {
         val service = service(
             snapshotResult = VectorSnapshotReadResult.Loaded(snapshot),
             embedding = QueryEmbeddingProvider { error("local runtime unavailable") },
