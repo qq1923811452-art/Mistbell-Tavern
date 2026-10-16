@@ -86,12 +86,23 @@ private data class ChatLine(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatScreen(onBack: () -> Unit) {
-    var baseUrl by remember { mutableStateOf("https://api.odys.work/v1") }
-    var modelId by remember { mutableStateOf("") }
     val context = LocalContext.current
+    val settings = remember(context) {
+        context.getSharedPreferences("mistbell-v3-settings", Context.MODE_PRIVATE)
+    }
+    var baseUrl by remember(settings) {
+        mutableStateOf(settings.getString("chat_api_base_url", "https://api.odys.work/v1") ?: "https://api.odys.work/v1")
+    }
+    var modelId by remember(settings) {
+        mutableStateOf(settings.getString("chat_model_id", "") ?: "")
+    }
     var apiKey by remember { mutableStateOf("") }
-    var memoryBaseUrl by remember { mutableStateOf("https://api.odys.work/v1") }
-    var memoryModelId by remember { mutableStateOf("") }
+    var memoryBaseUrl by remember(settings) {
+        mutableStateOf(settings.getString("memory_api_base_url", "https://api.odys.work/v1") ?: "https://api.odys.work/v1")
+    }
+    var memoryModelId by remember(settings) {
+        mutableStateOf(settings.getString("memory_model_id", "") ?: "")
+    }
     var memoryApiKey by remember { mutableStateOf("") }
     var draft by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
@@ -288,14 +299,20 @@ fun ChatScreen(onBack: () -> Unit) {
                     Text("聊天 API 配置", style = MaterialTheme.typography.titleMedium)
                     OutlinedTextField(
                         value = baseUrl,
-                        onValueChange = { baseUrl = it },
+                        onValueChange = {
+                            baseUrl = it
+                            settings.edit().putString("chat_api_base_url", it).apply()
+                        },
                         label = { Text("API Base URL") },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
                     )
                     OutlinedTextField(
                         value = modelId,
-                        onValueChange = { modelId = it },
+                        onValueChange = {
+                            modelId = it
+                            settings.edit().putString("chat_model_id", it).apply()
+                        },
                         label = { Text("模型 ID（必填）") },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
@@ -309,7 +326,7 @@ fun ChatScreen(onBack: () -> Unit) {
                         visualTransformation = PasswordVisualTransformation(),
                     )
                     Text(
-                        "当前为开发测试入口：API 配置不会持久保存；离开此页面后密钥会从界面状态中清除。",
+                        "Base URL 和模型 ID 会保存在本机设置中；API Key 不会持久保存，离开页面后需要重新输入。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -324,14 +341,20 @@ fun ChatScreen(onBack: () -> Unit) {
                     Text("独立记忆整理 API（可选）", style = MaterialTheme.typography.titleMedium)
                     OutlinedTextField(
                         value = memoryBaseUrl,
-                        onValueChange = { memoryBaseUrl = it },
+                        onValueChange = {
+                            memoryBaseUrl = it
+                            settings.edit().putString("memory_api_base_url", it).apply()
+                        },
                         label = { Text("记忆整理 API Base URL") },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
                     )
                     OutlinedTextField(
                         value = memoryModelId,
-                        onValueChange = { memoryModelId = it },
+                        onValueChange = {
+                            memoryModelId = it
+                            settings.edit().putString("memory_model_id", it).apply()
+                        },
                         label = { Text("记忆整理模型 ID（留空则关闭）") },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
@@ -345,7 +368,7 @@ fun ChatScreen(onBack: () -> Unit) {
                         visualTransformation = PasswordVisualTransformation(),
                     )
                     Text(
-                        "与聊天 API 分开配置。每累计 3 轮已完成对话后异步整理；失败不会撤销聊天回复。配置仅保留在当前页面内存中。",
+                        "与聊天 API 分开配置。Base URL 和模型 ID 会保存在本机；密钥仅在当前页面内存中。每累计 3 轮已完成对话后异步整理，失败不会撤销聊天回复。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
