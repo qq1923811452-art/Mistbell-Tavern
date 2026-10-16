@@ -10,6 +10,7 @@ on:
       - "gradlew"
       - "gradle.properties"
       - ".github/workflows/mistbell-v3-ci.yml"
+      - ".github/workflows/ci.yml"
   pull_request:
     paths:
       - "mistbell-v3/**"
@@ -17,6 +18,7 @@ on:
       - "gradlew"
       - "gradle.properties"
       - ".github/workflows/mistbell-v3-ci.yml"
+      - ".github/workflows/ci.yml"
   workflow_dispatch:
 
 permissions:
