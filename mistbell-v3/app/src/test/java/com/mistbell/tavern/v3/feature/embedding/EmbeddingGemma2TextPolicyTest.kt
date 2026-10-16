@@ -35,6 +35,19 @@ class EmbeddingGemma2TextPolicyTest {
     }
 
     @Test
+    fun higherDimensionsAreListedButCannotBeFakedFromEmbeddingGemma2Output() {
+        assertTrue(1024 in EmbeddingGemma2TextPolicy.supportedDimensions)
+        assertTrue(1536 in EmbeddingGemma2TextPolicy.supportedDimensions)
+        assertTrue(2048 in EmbeddingGemma2TextPolicy.supportedDimensions)
+        val nativeVector = List(EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS) { 1f }
+        for (dimension in listOf(1024, 1536, 2048)) {
+            assertTrue(runCatching {
+                EmbeddingGemma2TextPolicy.truncateAndNormalize(nativeVector, dimension)
+            }.isFailure)
+        }
+    }
+
+    @Test
     fun unsupportedDimensionsAndInvalidVectorsAreRejected() {
         val vector = List(EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS) { 1f }
         assertTrue(runCatching {
