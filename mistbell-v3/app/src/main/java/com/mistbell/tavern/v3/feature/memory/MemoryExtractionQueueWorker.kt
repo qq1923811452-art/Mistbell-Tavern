@@ -62,6 +62,7 @@ class MemoryExtractionQueueWorker(
                                 is ChatHistoryLoadResult.Loaded -> loaded.messages
                                 ChatHistoryLoadResult.Missing -> error("Persisted source chat history is missing.")
                                 ChatHistoryLoadResult.Corrupt -> error("Persisted source chat history is corrupt.")
+                                ChatHistoryLoadResult.Unavailable -> throw MemoryExtractionQueueRunner.RetryableInputException()
                             }
                             val input = inputFactory.create(job, history)
                             val profile = ProviderProfile(
