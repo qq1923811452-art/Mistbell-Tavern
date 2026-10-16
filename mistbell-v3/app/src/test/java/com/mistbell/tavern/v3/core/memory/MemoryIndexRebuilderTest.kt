@@ -1,5 +1,7 @@
 package com.mistbell.tavern.v3.core.memory
 
+import kotlinx.coroutines.runBlocking
+
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -7,7 +9,7 @@ import org.junit.Test
 
 class MemoryIndexRebuilderTest {
     @Test
-    fun rebuildsSortedSnapshotBoundToSourceHashesAndRuntimeMetadata() {
+    fun rebuildsSortedSnapshotBoundToSourceHashesAndRuntimeMetadata() = runBlocking {
         val savedTexts = mutableListOf<MemoryTextRecord>()
         var savedSnapshot: VectorSnapshot? = null
         val runtime = TestRuntime()
@@ -33,7 +35,7 @@ class MemoryIndexRebuilderTest {
     }
 
     @Test
-    fun invalidEmbeddingDoesNotPersistEitherSourceOrSnapshot() {
+    fun invalidEmbeddingDoesNotPersistEitherSourceOrSnapshot() = runBlocking {
         var textSaved = false
         var snapshotSaved = false
         val result = MemoryIndexRebuilder(
@@ -51,7 +53,7 @@ class MemoryIndexRebuilderTest {
     }
 
     @Test
-    fun sourceTextSaveFailureLeavesSnapshotUntouched() {
+    fun sourceTextSaveFailureLeavesSnapshotUntouched() = runBlocking {
         var snapshotSaved = false
         val result = MemoryIndexRebuilder(
             runtime = TestRuntime(),
@@ -66,7 +68,7 @@ class MemoryIndexRebuilderTest {
     }
 
     @Test
-    fun snapshotSaveFailureIsReportedAfterSavingSourceTextsForHashSafeRetry() {
+    fun snapshotSaveFailureIsReportedAfterSavingSourceTextsForHashSafeRetry() = runBlocking {
         var sourceSaved = false
         val result = MemoryIndexRebuilder(
             runtime = TestRuntime(),
@@ -81,7 +83,7 @@ class MemoryIndexRebuilderTest {
     }
 
     @Test
-    fun rejectsDuplicateIdsAndNegativeTimestampsBeforeWriting() {
+    fun rejectsDuplicateIdsAndNegativeTimestampsBeforeWriting() = runBlocking {
         var writes = 0
         val rebuilder = MemoryIndexRebuilder(
             runtime = TestRuntime(),
@@ -106,6 +108,6 @@ class MemoryIndexRebuilderTest {
         override val modelId: String = "actual-local-model"
         override val dimensions: Int = 3
 
-        override fun embed(text: String): List<Float> = vector
+        override suspend fun embed(text: String): List<Float> = vector
     }
 }
