@@ -120,7 +120,7 @@ jobs:
         if: ${{ steps.request.outputs.enabled == 'true' }}
         shell: bash
         env:
-          VERIFIED_SHA: ${{ github.event.pull_request.head.sha }}
+          VERIFIED_SHA: ${{ needs.compile-and-test.outputs.tested_sha }}
         run: |
           set -euo pipefail
           mkdir -p build-artifacts
