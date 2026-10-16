@@ -34,6 +34,8 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -53,6 +55,8 @@ import androidx.compose.ui.unit.dp
 import com.mistbell.tavern.v3.core.model.ProviderKind
 import com.mistbell.tavern.v3.core.model.ProviderProfile
 import com.mistbell.tavern.v3.core.model.ProviderProfileSet
+
+private val CHAT_EMBEDDING_DIMENSION_OPTIONS = listOf(128, 256, 512, 768, 1024, 1536, 2048)
 
 private data class ChatLine(
     val id: String,
@@ -76,6 +80,14 @@ fun ChatScreen(onBack: () -> Unit) {
     var busy by remember { mutableStateOf(false) }
     var historyReady by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("填写模型 ID 和 API 配置后即可测试聊天。") }
+    var selectedEmbeddingDimensions by remember(context) {
+        mutableStateOf(
+            context.getSharedPreferences("mistbell-v3-settings", Context.MODE_PRIVATE)
+                .getInt("embedding_output_dimensions", 768)
+                .takeIf { it in CHAT_EMBEDDING_DIMENSION_OPTIONS } ?: 768,
+        )
+    }
+    var dimensionMenuExpanded by remember { mutableStateOf(false) }
     val history = remember { mutableStateListOf<ChatLine>() }
     val listState = rememberLazyListState()
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
@@ -203,6 +215,38 @@ fun ChatScreen(onBack: () -> Unit) {
                 }
             }
 
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = { dimensionMenuExpanded = true }) {
+                    Text("向量维度：${selectedEmbeddingDimensions} 维")
+                }
+                DropdownMenu(
+                    expanded = dimensionMenuExpanded,
+                    onDismissRequest = { dimensionMenuExpanded = false },
+                ) {
+                    CHAT_EMBEDDING_DIMENSION_OPTIONS.forEach { dimensions ->
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    if (dimensions <= 768) "$dimensions 维"
+                                    else "$dimensions 维（当前模型不支持）",
+                                )
+                            },
+                            onClick = {
+                                selectedEmbeddingDimensions = dimensions
+                                context.getSharedPreferences("mistbell-v3-settings", Context.MODE_PRIVATE)
+                                    .edit().putInt("embedding_output_dimensions", dimensions).apply()
+                                dimensionMenuExpanded = false
+                                status = if (dimensions <= 768) {
+                                    "已选择 $dimensions 维输出。切换档位后，已有向量需要按新维度重建。"
+                                } else {
+                                    "已保留 $dimensions 维档位供更高维模型使用；当前 EmbeddingGemma 2 原生最高为 768 维，超出时会跳过本地记忆并继续普通聊天。"
+                                }
+                                diagnosticStore.info("embedding.dimensions.changed", "dimensions=$dimensions")
+                            },
+                        )
+                    }
+                }
+            }
             Text(status, style = MaterialTheme.typography.bodySmall)
             LazyColumn(
                 modifier = Modifier.weight(1f).fillMaxWidth(),
@@ -360,7 +404,7 @@ fun ChatScreen(onBack: () -> Unit) {
                                     "mistbell-v3-settings",
                                     Context.MODE_PRIVATE,
                                 ).getInt("embedding_output_dimensions", 768)
-                                if (installedModel == null || configuredDimensions !in listOf(128, 256, 512, 768)) {
+                                if (installedModel == null || configuredDimensions !in CHAT_EMBEDDING_DIMENSION_OPTIONS || configuredDimensions > 768) {
                                     if (installedModel == null) {
                                         diagnosticStore.warn(
                                             "chat.embedding.unavailable",
@@ -369,13 +413,13 @@ fun ChatScreen(onBack: () -> Unit) {
                                     } else {
                                         diagnosticStore.warn(
                                             "chat.embedding.unavailable",
-                                            "reason=unsupported_dimension; dimensions=$configuredDimensions",
+                                            "reason=unsupported_dimension; dimensions=$configuredDimensions; native_max_dimensions=768",
                                         )
                                     }
                                     status = if (installedModel == null) {
                                         "本地模型未安装或校验失败，继续普通聊天；向量记忆暂不可用。"
                                     } else {
-                                        "当前模型不支持所选维度，继续普通聊天；向量记忆暂不可用。"
+                                        "当前 EmbeddingGemma 2 原生最高支持 768 维；所选 ${configuredDimensions} 维暂不可用于本地记忆，继续普通聊天。"
                                     }
                                     client.stream(messages, observer)
                                 } else {
