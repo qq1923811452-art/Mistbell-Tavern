@@ -1,5 +1,6 @@
 package com.mistbell.tavern.v3.feature.embedding
 
+import com.mistbell.tavern.v3.core.inference.BackendEvidence
 import com.mistbell.tavern.v3.core.inference.InferenceBackend
 import com.mistbell.tavern.v3.core.inference.InferencePhase
 import com.mistbell.tavern.v3.core.inference.InferenceRuntimeStatus
@@ -79,8 +80,10 @@ object EmbeddingOutputValidator {
         if (output.status.runtimeId != runtime.runtimeId) {
             throw EmbeddingOutputException("Runtime status ID does not match the selected adapter.")
         }
-        if (output.status.backend == InferenceBackend.UNKNOWN) {
-            throw EmbeddingOutputException("Runtime did not report a verified execution backend.")
+        if (output.status.backend == InferenceBackend.UNKNOWN ||
+            output.status.backendEvidence == BackendEvidence.NOT_AVAILABLE
+        ) {
+            throw EmbeddingOutputException("Runtime did not report backend evidence for this execution.")
         }
         return ValidatedEmbeddingBatch(
             modelId = runtime.model.modelId,
