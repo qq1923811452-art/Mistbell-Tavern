@@ -160,16 +160,17 @@ class MainActivity : ComponentActivity() {
                 val asset = withContext(Dispatchers.IO) { modelAssets.verifyInstalled() }
                     ?: throw IllegalStateException("模型不存在或 SHA-256 校验失败；请重新下载模型。")
                 activeEmbeddingEngine?.close()
-                runtime = LiteRtLmEmbeddingGemma2Engine(
+                val initializedRuntime = LiteRtLmEmbeddingGemma2Engine(
                     context = applicationContext,
                     modelFile = asset.file,
                     diagnostics = diagnostics,
                 )
-                activeEmbeddingEngine = runtime
-                runtime.initialize()
-                inferenceStatus = runtime.currentStatus()
+                runtime = initializedRuntime
+                activeEmbeddingEngine = initializedRuntime
+                initializedRuntime.initialize()
+                inferenceStatus = initializedRuntime.currentStatus()
                 operationMessage = "模型已初始化，正在执行真实文本向量测试……"
-                val result = EmbeddingGemma2RuntimeAdapter(runtime).embedQueries(
+                val result = EmbeddingGemma2RuntimeAdapter(initializedRuntime).embedQueries(
                     listOf("Mistbell Tavern local embedding diagnostic test"),
                 )
                 inferenceStatus = result.status
