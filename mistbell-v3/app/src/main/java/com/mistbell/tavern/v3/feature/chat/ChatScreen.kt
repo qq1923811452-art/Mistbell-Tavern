@@ -382,7 +382,7 @@ fun ChatScreen(onBack: () -> Unit) {
                                     val engine = LiteRtLmEmbeddingGemma2Engine(
                                         context = context.applicationContext,
                                         modelFile = installedModel.file,
-                                        diagnostics = DiagnosticLogStore(context.applicationContext.filesDir),
+                                        diagnostics = diagnosticStore,
                                     )
                                     memoryEngine = engine
                                     // Native model loading can block; never initialize the runtime on Compose's main thread.
