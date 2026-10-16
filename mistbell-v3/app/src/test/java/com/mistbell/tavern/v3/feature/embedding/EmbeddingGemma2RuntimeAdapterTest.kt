@@ -41,8 +41,8 @@ class EmbeddingGemma2RuntimeAdapterTest {
         val queryResult = adapter.embedQueries(listOf("Who left the tavern?"))
         val documentResult = adapter.embedDocuments(listOf("Mira left at midnight."), listOf("Night 1"))
 
-        assertEquals("task: search result | query: Who left the tavern?", seen[0][0])
-        assertEquals("title: Night 1 | text: Mira left at midnight.", seen[1][0])
+        assertEquals("task: search query | text: Who left the tavern?", seen[0][0])
+        assertEquals("task: search result | title: Night 1 | text: Mira left at midnight.", seen[1][0])
         assertEquals(128, queryResult.vectors.single().size)
         assertEquals(128, documentResult.vectors.single().size)
         assertEquals(InferenceBackend.CPU, queryResult.status.backend)
