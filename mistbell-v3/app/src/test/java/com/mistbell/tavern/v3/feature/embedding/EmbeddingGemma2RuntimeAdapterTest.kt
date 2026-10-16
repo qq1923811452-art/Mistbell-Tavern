@@ -24,7 +24,7 @@ class EmbeddingGemma2RuntimeAdapterTest {
     }
 
     @Test
-    fun queryAndDocumentUseDifferentFormatsAndNormalizedOutput() = runBlocking {
+    fun queryAndDocumentUseDifferentFormatsAndNormalizedOutput(): Unit = runBlocking {
         val seen = mutableListOf<List<String>>()
         val adapter = EmbeddingGemma2RuntimeAdapter(
             engine = engine { inputs ->
@@ -49,7 +49,7 @@ class EmbeddingGemma2RuntimeAdapterTest {
     }
 
     @Test
-    fun rejectsUnknownBackendAndWrongModel() = runBlocking {
+    fun rejectsUnknownBackendAndWrongModel(): Unit = runBlocking {
         val unknownBackend = EmbeddingGemma2RuntimeAdapter(
             engine = engine {
                 EmbeddingBatch(
@@ -76,7 +76,7 @@ class EmbeddingGemma2RuntimeAdapterTest {
     }
 
     @Test
-    fun rejectsTitleCountMismatch() = runBlocking {
+    fun rejectsTitleCountMismatch(): Unit = runBlocking {
         val adapter = EmbeddingGemma2RuntimeAdapter(
             engine = engine { error("Engine must not run when title count is invalid.") },
         )
