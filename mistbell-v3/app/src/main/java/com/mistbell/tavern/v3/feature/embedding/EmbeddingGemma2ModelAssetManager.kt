@@ -37,22 +37,8 @@ class EmbeddingGemma2ModelAssetManager(
         if (temporaryFile.exists() && !temporaryFile.delete()) {
             throw IllegalStateException("An incomplete model download could not be removed.")
         }
-        val connection = (URL(MODEL_DOWNLOAD_URL).openConnection() as HttpURLConnection).apply {
-            connectTimeout = CONNECT_TIMEOUT_MS
-            readTimeout = READ_TIMEOUT_MS
-            instanceFollowRedirects = true
-            requestMethod = "GET"
-            setRequestProperty("User-Agent", "Mistbell-Tavern-3.0")
-        }
+        val connection = openSecureConnection()
         try {
-            connection.connect()
-            check(connection.url.protocol.equals("https", ignoreCase = true)) {
-                "Model download redirected to a non-HTTPS URL."
-            }
-            val code = connection.responseCode
-            check(code == HttpURLConnection.HTTP_OK) {
-                "Model download failed with HTTP $code."
-            }
             val totalBytes = connection.contentLengthLong.takeIf { it > 0L }
             require(totalBytes == null || totalBytes <= MAX_MODEL_BYTES) {
                 "Model download exceeds the configured size limit."
@@ -117,7 +103,7 @@ class EmbeddingGemma2ModelAssetManager(
 
     suspend fun verifyInstalled(): DownloadedEmbeddingModel? = withContext(Dispatchers.IO) {
         try {
-            if (!modelFile.isFile || !digestFile.isFile) return@withContext null
+            if (!modelFile.isFile || !digestFile.isFile || modelFile.length() !in 1..MAX_MODEL_BYTES) return@withContext null
             val expected = digestFile.readText(Charsets.UTF_8).trim().substringBefore(' ').trim()
             if (!expected.matches(Regex("[0-9a-fA-F]{64}"))) return@withContext null
             val digest = MessageDigest.getInstance("SHA-256")
@@ -139,12 +125,53 @@ class EmbeddingGemma2ModelAssetManager(
         }
     }
 
+    private fun openSecureConnection(): HttpURLConnection {
+        var currentUrl = URL(MODEL_DOWNLOAD_URL)
+        for (redirectCount in 0..MAX_REDIRECTS) {
+            check(currentUrl.protocol.equals("https", ignoreCase = true)) {
+                "Model download redirects must use HTTPS."
+            }
+            val connection = (currentUrl.openConnection() as HttpURLConnection).apply {
+                connectTimeout = CONNECT_TIMEOUT_MS
+                readTimeout = READ_TIMEOUT_MS
+                instanceFollowRedirects = false
+                requestMethod = "GET"
+                setRequestProperty("User-Agent", "Mistbell-Tavern-3.0")
+            }
+            try {
+                val code = connection.responseCode
+                if (code in 300..399) {
+                    val location = connection.getHeaderField("Location")
+                    connection.disconnect()
+                    check(!location.isNullOrBlank()) { "Model server returned a redirect without a location." }
+                    val nextUrl = URL(currentUrl, location)
+                    check(nextUrl.protocol.equals("https", ignoreCase = true)) {
+                        "Model download redirected to a non-HTTPS URL."
+                    }
+                    check(redirectCount < MAX_REDIRECTS) { "Model download exceeded the redirect limit." }
+                    currentUrl = nextUrl
+                    continue
+                }
+                check(code == HttpURLConnection.HTTP_OK) { "Model download failed with HTTP $code." }
+                check(connection.url.protocol.equals("https", ignoreCase = true)) {
+                    "Model download did not remain on HTTPS."
+                }
+                return connection
+            } catch (error: Exception) {
+                connection.disconnect()
+                throw error
+            }
+        }
+        throw IllegalStateException("Model download exceeded the redirect limit.")
+    }
+
     companion object {
         const val MODEL_FILE_NAME = "embeddinggemma-2-740m.litertlm"
         const val MODEL_DOWNLOAD_URL =
             "https://huggingface.co/litert-community/embeddinggemma-2-740m-litert-lm/resolve/main/embeddinggemma-2-740m.litertlm"
         const val MAX_MODEL_BYTES = 2L * 1024L * 1024L * 1024L
         const val PROGRESS_INTERVAL_BYTES = 1024L * 1024L
+        const val MAX_REDIRECTS = 5
         const val CONNECT_TIMEOUT_MS = 30_000
         const val READ_TIMEOUT_MS = 120_000
 
