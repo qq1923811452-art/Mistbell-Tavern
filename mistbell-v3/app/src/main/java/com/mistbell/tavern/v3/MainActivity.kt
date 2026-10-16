@@ -71,7 +71,7 @@ class MainActivity : ComponentActivity() {
         diagnostics.info("app.started", "build=3.0.0-dev")
         lifecycleScope.launch {
             val installed = withContext(Dispatchers.IO) { modelAssets.verifyInstalled() }
-            operationMessage = if (installed == null) {
+            if (!operationBusy) operationMessage = if (installed == null) {
                 "本地模型未安装，需先下载 EmbeddingGemma 2。"
             } else {
                 "本地模型已校验：${installed.sizeBytes} bytes；SHA-256 一致。"
@@ -130,15 +130,19 @@ class MainActivity : ComponentActivity() {
             if (uri == null) {
                 diagnostics.info("diagnostics.export.cancelled")
             } else {
-                try {
-                    val output = contentResolver.openOutputStream(uri)
-                        ?: throw IllegalStateException("Selected export destination could not be opened.")
-                    output.use { diagnostics.exportTo(it) }
-                    Toast.makeText(this, "诊断日志已导出", Toast.LENGTH_LONG).show()
-                    diagnostics.info("diagnostics.export.succeeded")
-                } catch (error: Exception) {
-                    diagnostics.error("diagnostics.export.failed", error::class.java.simpleName + ": " + (error.message ?: "unknown error"))
-                    Toast.makeText(this, "日志导出失败，请重试", Toast.LENGTH_LONG).show()
+                lifecycleScope.launch {
+                    try {
+                        withContext(Dispatchers.IO) {
+                            val output = contentResolver.openOutputStream(uri)
+                                ?: throw IllegalStateException("Selected export destination could not be opened.")
+                            output.use { diagnostics.exportTo(it) }
+                        }
+                        Toast.makeText(this@MainActivity, "诊断日志已导出", Toast.LENGTH_LONG).show()
+                        diagnostics.info("diagnostics.export.succeeded")
+                    } catch (error: Exception) {
+                        diagnostics.error("diagnostics.export.failed", error::class.java.simpleName + ": " + (error.message ?: "unknown error"))
+                        Toast.makeText(this@MainActivity, "日志导出失败，请重试", Toast.LENGTH_LONG).show()
+                    }
                 }
             }
         }
