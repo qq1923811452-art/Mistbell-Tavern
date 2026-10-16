@@ -8,7 +8,7 @@ import okhttp3.Call
 /**
  * Connects local vector-memory retrieval to the actual outgoing chat request.
  *
- * Call from a background dispatcher: query embedding and snapshot reads are synchronous.
+ * Call from a coroutine; query embedding is suspendable and storage adapters may perform I/O.
  * Retrieval failure is fail-open for chat (send the original prompt), never a remote embedding
  * fallback. The generated memory section is ephemeral and is not written into chat history.
  */
