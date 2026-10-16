@@ -167,9 +167,16 @@ class MainActivity : ComponentActivity() {
                 )
                 runtime = initializedRuntime
                 activeEmbeddingEngine = initializedRuntime
+                inferenceStatus = InferenceRuntimeStatus(
+                    phase = InferencePhase.LOADING_MODEL,
+                    modelId = com.mistbell.tavern.v3.feature.embedding.EmbeddingGemma2TextPolicy.MODEL_ID,
+                    backend = InferenceBackend.UNKNOWN,
+                    runtimeId = initializedRuntime.runtimeId,
+                )
                 initializedRuntime.initialize()
                 inferenceStatus = initializedRuntime.currentStatus()
                 operationMessage = "模型已初始化，正在执行真实文本向量测试……"
+                inferenceStatus = initializedRuntime.currentStatus().copy(phase = InferencePhase.RUNNING)
                 val result = EmbeddingGemma2RuntimeAdapter(initializedRuntime).embedQueries(
                     listOf("Mistbell Tavern local embedding diagnostic test"),
                 )
@@ -322,7 +329,7 @@ private fun InferenceStatusCard(status: InferenceRuntimeStatus) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text("本地 Embedding / NPU 状态", style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(6.dp))
-            Text("$phaseLabel · 后端：$backendLabel", style = MaterialTheme.typography.bodyMedium)
+            Text("$phaseLabel · 配置后端：$backendLabel", style = MaterialTheme.typography.bodyMedium)
             val details = listOfNotNull(
                 status.modelId?.let { "模型：$it" },
                 status.acceleratorName?.let { "配置后端：$it" },
