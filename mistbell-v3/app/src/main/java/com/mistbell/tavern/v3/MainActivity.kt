@@ -3,6 +3,7 @@ package com.mistbell.tavern.v3
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
+import android.provider.OpenableColumns
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -77,6 +78,54 @@ class MainActivity : ComponentActivity() {
             }
             diagnostics.info("embedding.model.startup.check", "installed=${installed != null}")
         }
+        val importModel = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            if (uri == null) {
+                diagnostics.info("embedding.model.import.cancelled")
+            } else if (operationBusy) {
+                Toast.makeText(this, "当前操作尚未完成", Toast.LENGTH_LONG).show()
+            } else {
+                operationBusy = true
+                operationMessage = "正在导入本地 .litertlm 模型……"
+                lifecycleScope.launch {
+                    try {
+                        val sourceName = withContext(Dispatchers.IO) {
+                            contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                                val column = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                                if (cursor.moveToFirst() && column >= 0) cursor.getString(column) else null
+                            }
+                        } ?: throw IllegalStateException("无法读取所选文件名。")
+                        require(sourceName.endsWith(".litertlm", ignoreCase = true)) {
+                            "请选择扩展名为 .litertlm 的模型文件。"
+                        }
+                        val input = withContext(Dispatchers.IO) { contentResolver.openInputStream(uri) }
+                            ?: throw IllegalStateException("所选文件无法打开。")
+                        val imported = modelAssets.importModel(sourceName, input) { bytes, _ ->
+                            runOnUiThread { operationMessage = "模型导入中：${bytes / (1024 * 1024)} MiB" }
+                        }
+                        operationMessage = "模型导入完成，SHA-256：${imported.sha256}"
+                        diagnostics.info("embedding.model.import.succeeded", "bytes=${imported.sizeBytes}; sha256=${imported.sha256}")
+                    } catch (cancelled: CancellationException) {
+                        diagnostics.warn("embedding.model.import.cancelled")
+                        throw cancelled
+                    } catch (error: Exception) {
+                        val detail = "${error::class.java.simpleName}: ${error.message ?: "model import failed"}"
+                            .take(InferenceRuntimeStatus.MAX_DETAIL_LENGTH)
+                        operationMessage = "模型导入失败：$detail"
+                        inferenceStatus = InferenceRuntimeStatus(
+                            phase = InferencePhase.FAILED,
+                            modelId = com.mistbell.tavern.v3.feature.embedding.EmbeddingGemma2TextPolicy.MODEL_ID,
+                            backend = InferenceBackend.UNKNOWN,
+                            runtimeId = null,
+                            lastError = detail,
+                        )
+                        diagnostics.error("embedding.model.import.failed", detail)
+                    } finally {
+                        operationBusy = false
+                    }
+                }
+            }
+        }
+
         val exportDiagnostics = registerForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
             if (uri == null) {
                 diagnostics.info("diagnostics.export.cancelled")
@@ -104,6 +153,7 @@ class MainActivity : ComponentActivity() {
                         operationMessage = operationMessage,
                         operationBusy = operationBusy,
                         onDownloadModel = ::downloadEmbeddingModel,
+                        onImportModel = { importModel.launch(arrayOf("*/*")) },
                         onRunEmbeddingTest = ::runEmbeddingSelfTest,
                         onExportLogs = { exportDiagnostics.launch("mistbell-diagnostics.txt") },
                     )
@@ -226,6 +276,7 @@ private fun DevelopmentHome(
     operationMessage: String,
     operationBusy: Boolean,
     onDownloadModel: () -> Unit,
+    onImportModel: () -> Unit,
     onRunEmbeddingTest: () -> Unit,
     onExportLogs: () -> Unit,
 ) {
@@ -269,6 +320,10 @@ private fun DevelopmentHome(
                         Spacer(Modifier.height(10.dp))
                         Button(onClick = onDownloadModel, enabled = !operationBusy, modifier = Modifier.fillMaxWidth()) {
                             Text("下载 / 重新下载 EmbeddingGemma 2 模型")
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Button(onClick = onImportModel, enabled = !operationBusy, modifier = Modifier.fillMaxWidth()) {
+                            Text("从文件导入 .litertlm 模型")
                         }
                         Spacer(Modifier.height(8.dp))
                         Button(onClick = onRunEmbeddingTest, enabled = !operationBusy, modifier = Modifier.fillMaxWidth()) {
