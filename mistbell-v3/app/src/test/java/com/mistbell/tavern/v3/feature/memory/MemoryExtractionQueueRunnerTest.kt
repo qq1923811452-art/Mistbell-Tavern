@@ -83,6 +83,39 @@ class MemoryExtractionQueueRunnerTest {
         assertEquals(MemoryExtractionQueueRunner.Result.Idle, result)
     }
 
+    @Test fun completionPersistenceFailureIsReportedInsteadOfLeavingWorkerWaiting() {
+        val store = FailingCompletionStore()
+        val repository = MemoryExtractionJobRepository(store)
+        repository.enqueue(job("persistence-failure"))
+        val runner = MemoryExtractionQueueRunner(repository) { 10_000L }
+        var observed: MemoryExtractionQueueRunner.Result? = null
+
+        val result = runner.runNext(
+            buildInput = { it.id },
+            execute = { _, _, complete -> complete(MemoryExtractionQueueRunner.ExecutionResult.Success) },
+            observer = { observed = it },
+        )
+
+        assertTrue(result is MemoryExtractionQueueRunner.Result.PersistenceFailure)
+        assertTrue(observed is MemoryExtractionQueueRunner.Result.PersistenceFailure)
+    }
+
+    private class FailingCompletionStore : MemoryExtractionJobPersistence {
+        private var savedJobs: List<MemoryExtractionJob>? = null
+        private var saveCount = 0
+
+        override fun save(jobs: List<MemoryExtractionJob>) {
+            saveCount += 1
+            // enqueue=1, claim RUNNING=2, completion=3. Simulate disk failure at completion.
+            if (saveCount == 3) error("simulated storage failure")
+            savedJobs = jobs.toList()
+        }
+
+        override fun load(): MemoryExtractionJobLoadResult =
+            savedJobs?.let(MemoryExtractionJobLoadResult::Loaded)
+                ?: MemoryExtractionJobLoadResult.Missing
+    }
+
     private fun repository(): MemoryExtractionJobRepository =
         MemoryExtractionJobRepository(InMemoryJobStore())
 
