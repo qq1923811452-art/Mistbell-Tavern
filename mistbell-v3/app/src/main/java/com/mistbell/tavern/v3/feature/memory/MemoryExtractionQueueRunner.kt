@@ -1,6 +1,7 @@
 package com.mistbell.tavern.v3.feature.memory
 
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * Executes one persisted extraction job at a time.
@@ -43,6 +44,8 @@ class MemoryExtractionQueueRunner(
     ): Result {
         val job = repository.claimDue(now()) ?: return Result.Idle.also(observer)
         val finished = AtomicBoolean(false)
+        // Inline callbacks can finish before runNext returns; asynchronous callbacks still return Started.
+        val synchronousResult = AtomicReference<Result.Finished?>(null)
 
         fun finish(result: ExecutionResult) {
             if (!finished.compareAndSet(false, true)) return
@@ -58,14 +61,16 @@ class MemoryExtractionQueueRunner(
             }
             val state = repository.list().firstOrNull { it.id == job.id }?.state
                 ?: MemoryExtractionJob.State.PERMANENT_FAILURE
-            observer(Result.Finished(job.id, state))
+            val terminal = Result.Finished(job.id, state)
+            synchronousResult.set(terminal)
+            observer(terminal)
         }
 
         val input = try {
             buildInput(job)
         } catch (_: Exception) {
             finish(ExecutionResult.Failure(permanent = true))
-            return Result.Started(job.id)
+            return synchronousResult.get() ?: Result.Started(job.id)
         }
 
         try {
@@ -73,7 +78,7 @@ class MemoryExtractionQueueRunner(
         } catch (_: Exception) {
             finish(ExecutionResult.Failure())
         }
-        return Result.Started(job.id)
+        return synchronousResult.get() ?: Result.Started(job.id)
     }
 
     private fun now(): Long = clockMillis().also { require(it >= 0L) }
