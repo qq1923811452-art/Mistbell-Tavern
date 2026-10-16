@@ -1,7 +1,7 @@
 package com.mistbell.tavern.v3.feature.memory
 
 /** Queue state transitions are persisted before work is dispatched. */
-class MemoryExtractionJobRepository(private val store: MemoryExtractionJobStore) {
+class MemoryExtractionJobRepository(private val store: MemoryExtractionJobPersistence) {
     @Synchronized
     fun enqueue(job: MemoryExtractionJob): Boolean {
         val jobs = read()
