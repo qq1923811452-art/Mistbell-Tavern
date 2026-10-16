@@ -73,7 +73,7 @@ class ImageGenerationClient(
     private val client: OkHttpClient = httpClient.newBuilder()
         .followRedirects(false)
         .followSslRedirects(false)
-        .callTimeout(IMAGE_CALL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .callTimeout(IMAGE_CALL_TIMEOUT_SECONDS.toLong(), TimeUnit.SECONDS)
         .build()
 
     init {
@@ -206,7 +206,7 @@ class ImageGenerationClient(
     companion object {
         const val MAX_RESPONSE_BYTES = 10 * 1024 * 1024
         const val IMAGE_CALL_TIMEOUT_SECONDS = 180
-        private const val JSON_MEDIA_TYPE = "application/json; charset=utf-8"
+        private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
         private val REDIRECT_CODES = setOf(300, 301, 302, 303, 307, 308)
     }
 }
