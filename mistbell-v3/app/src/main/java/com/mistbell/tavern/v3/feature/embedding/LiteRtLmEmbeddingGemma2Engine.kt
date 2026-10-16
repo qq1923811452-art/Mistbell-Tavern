@@ -83,6 +83,9 @@ class LiteRtLmEmbeddingGemma2Engine(
                 } catch (error: Exception) {
                     if (candidate.isInitialized()) candidate.close()
                     failures += "${backend.name}: ${error.message ?: error::class.java.simpleName}".take(180)
+                } catch (error: LinkageError) {
+                    if (candidate.isInitialized()) candidate.close()
+                    failures += "${backend.name}: native runtime unavailable (${error::class.java.simpleName})"
                 }
             }
             selectedBackend = InferenceBackend.UNKNOWN
