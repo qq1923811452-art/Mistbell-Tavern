@@ -1,5 +1,7 @@
 package com.mistbell.tavern.v3.feature.chat
 
+import kotlinx.coroutines.runBlocking
+
 import com.mistbell.tavern.v3.core.memory.MemoryTextProvider
 import com.mistbell.tavern.v3.core.memory.MemoryTextRecord
 import com.mistbell.tavern.v3.core.memory.QueryEmbeddingProvider
@@ -31,7 +33,7 @@ class MemoryAwareChatRequestTest {
     }
 
     @Test
-    fun retrievedMemoryIsSentWithRequestWithoutMutatingConversationHistory() {
+    fun retrievedMemoryIsSentWithRequestWithoutMutatingConversationHistory() = runBlocking {
         server.enqueue(
             MockResponse()
                 .setResponseCode(200)
