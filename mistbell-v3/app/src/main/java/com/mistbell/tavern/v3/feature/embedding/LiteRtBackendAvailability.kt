@@ -42,23 +42,24 @@ data class LiteRtBackendAvailability private constructor(
         ): LiteRtBackendAvailability {
             val missingNpu = SM8650_NPU_REQUIRED_LIBRARIES.filterNot { nativeLibraryDir.hasNonEmptyLibrary(it) }
             val missingGpu = GPU_REQUIRED_LIBRARIES.filterNot { nativeLibraryDir.hasNonEmptyLibrary(it) }
-            val npuReason = when {
-                !npuModelCompatible ->
-                    "installed model SHA-256 does not match the pinned Qualcomm SM8650 model"
-                !isArm64 ->
-                    "device ABI does not include arm64-v8a"
-                !npuRuntimeValidated ->
-                    "no validated LiteRT-LM 0.18.0 / QAIRT runtime manifest is packaged; refusing to risk native initialization"
-                missingNpu.isNotEmpty() ->
-                    "missing or empty Qualcomm runtime libraries: ${missingNpu.joinToString(",")}"
-                else -> null
+            val npuReasons = buildList {
+                if (!npuModelCompatible) add("installed model SHA-256 does not match the pinned Qualcomm SM8650 model")
+                if (!isArm64) add("device ABI does not include arm64-v8a")
+                if (!npuRuntimeValidated) {
+                    add("no validated LiteRT-LM 0.18.0 / QAIRT runtime manifest is packaged")
+                }
+                if (missingNpu.isNotEmpty()) {
+                    add("missing or empty Qualcomm runtime libraries: ${missingNpu.joinToString(",")}")
+                }
             }
-            val gpuReason = when {
-                !isArm64 -> "device ABI does not include arm64-v8a"
-                missingGpu.isNotEmpty() ->
-                    "missing or empty LiteRT GPU accelerator libraries: ${missingGpu.joinToString(",")}"
-                else -> null
+            val npuReason = npuReasons.takeIf { it.isNotEmpty() }?.joinToString("; ")
+            val gpuReasons = buildList {
+                if (!isArm64) add("device ABI does not include arm64-v8a")
+                if (missingGpu.isNotEmpty()) {
+                    add("missing or empty LiteRT GPU accelerator libraries: ${missingGpu.joinToString(",")}")
+                }
             }
+            val gpuReason = gpuReasons.takeIf { it.isNotEmpty() }?.joinToString("; ")
             val available = buildSet {
                 add(InferenceBackend.CPU)
                 if (npuReason == null) add(InferenceBackend.NPU)
