@@ -14,6 +14,10 @@ class DiagnosticLogStoreTest {
         try {
             val store = DiagnosticLogStore(directory) { Instant.parse("2026-10-16T12:00:00Z") }
             store.info("embedding.initialize", "Bearer super-secret-token; api_key=private-key")
+            store.warn(
+                "network.error",
+                "Authorization: Basic dXNlcjpwYXNz; X-Api-Key=api-secret; https://example.test/?token=query-secret; hf_abcdefghijklmnopqrstuvwxyz",
+            )
             val output = ByteArrayOutputStream()
             store.exportTo(output)
             val exported = output.toString(Charsets.UTF_8.name())
@@ -22,6 +26,10 @@ class DiagnosticLogStoreTest {
             assertTrue(exported.contains("[REDACTED]"))
             assertFalse(exported.contains("super-secret-token"))
             assertFalse(exported.contains("private-key"))
+            assertFalse(exported.contains("dXNlcjpwYXNz"))
+            assertFalse(exported.contains("api-secret"))
+            assertFalse(exported.contains("query-secret"))
+            assertFalse(exported.contains("hf_abcdefghijklmnopqrstuvwxyz"))
         } finally {
             directory.deleteRecursively()
         }
