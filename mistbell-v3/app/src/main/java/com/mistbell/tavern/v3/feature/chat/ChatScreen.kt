@@ -13,8 +13,10 @@ import kotlinx.coroutines.withContext
 import com.mistbell.tavern.v3.core.diagnostics.DiagnosticLogStore
 import com.mistbell.tavern.v3.core.memory.MemoryIndexRebuilder
 import com.mistbell.tavern.v3.core.memory.MemoryIndexRebuildResult
+import com.mistbell.tavern.v3.core.memory.EligibleConversationTurn
 import com.mistbell.tavern.v3.core.memory.VectorMemoryContextService
 import com.mistbell.tavern.v3.core.storage.AtomicMemoryTextStore
+import com.mistbell.tavern.v3.core.storage.AtomicTemporalFactStore
 import com.mistbell.tavern.v3.core.storage.MemoryTextLoadResult
 import com.mistbell.tavern.v3.core.storage.AtomicVectorSnapshotStore
 import com.mistbell.tavern.v3.core.storage.PersistedVectorSnapshotProvider
@@ -59,6 +61,11 @@ import androidx.compose.ui.unit.dp
 import com.mistbell.tavern.v3.core.model.ProviderKind
 import com.mistbell.tavern.v3.core.model.ProviderProfile
 import com.mistbell.tavern.v3.core.model.ProviderProfileSet
+import com.mistbell.tavern.v3.feature.memory.MemoryCredentialResolver
+import com.mistbell.tavern.v3.feature.memory.MemoryExtractionClient
+import com.mistbell.tavern.v3.feature.memory.MemoryExtractionInput
+import com.mistbell.tavern.v3.feature.memory.TemporalFactExtractionPipeline
+import com.mistbell.tavern.v3.feature.memory.TemporalFactPipelineOutcome
 
 private val CHAT_EMBEDDING_DIMENSION_OPTIONS = listOf(128, 256, 512, 768, 1024, 1536, 2048)
 
@@ -80,6 +87,9 @@ fun ChatScreen(onBack: () -> Unit) {
     var baseUrl by remember { mutableStateOf("https://api.odys.work/v1") }
     var modelId by remember { mutableStateOf("") }
     var apiKey by remember { mutableStateOf("") }
+    var memoryBaseUrl by remember { mutableStateOf("https://api.odys.work/v1") }
+    var memoryModelId by remember { mutableStateOf("") }
+    var memoryApiKey by remember { mutableStateOf("") }
     var draft by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var historyReady by remember { mutableStateOf(false) }
@@ -99,6 +109,7 @@ fun ChatScreen(onBack: () -> Unit) {
     val historyStore = remember(context) { ChatHistoryStore(context.applicationContext) }
     val coroutineScope = rememberCoroutineScope()
     val diagnosticStore = remember(context) { DiagnosticLogStore(context.applicationContext.filesDir) }
+    val memoryExtractionInFlight = remember { mutableSetOf<String>() }
 
     fun persistHistory() {
         coroutineScope.launch {
@@ -169,6 +180,90 @@ fun ChatScreen(onBack: () -> Unit) {
         }
     }
 
+    fun scheduleMemoryExtractionIfDue(
+        providers: ProviderProfileSet,
+        memorySecret: String,
+    ) {
+        if (providers.profileFor(ProviderKind.MEMORY_EXTRACTION) == null) return
+        val pairs = mutableListOf<Pair<ChatLine, ChatLine>>()
+        var index = 0
+        while (index + 1 < history.size) {
+            val user = history[index]
+            val assistant = history[index + 1]
+            if (user.role == "user" && assistant.role == "assistant" &&
+                assistant.deliveryState == PersistedChatMessage.DeliveryState.COMPLETE
+            ) pairs += user to assistant
+            index += 1
+        }
+        val preferences = context.getSharedPreferences("mistbell-v3-settings", Context.MODE_PRIVATE)
+        val lastSuccessfulTurnId = preferences.getString("memory_extraction_last_success_turn_id", null)
+        val previousIndex = pairs.indexOfLast { it.first.id == lastSuccessfulTurnId }
+        val pending = if (previousIndex >= 0) pairs.drop(previousIndex + 1) else pairs
+        if (pending.size < 3) return
+        val batch = pending.take(20)
+        val batchEndId = batch.last().first.id
+        if (!memoryExtractionInFlight.add(batchEndId)) return
+        val conversationId = preferences.getString("memory_extraction_conversation_id", null)
+            ?: UUID.randomUUID().toString().also {
+                preferences.edit().putString("memory_extraction_conversation_id", it).apply()
+            }
+        val turns = batch.mapIndexed { ordinal, pair ->
+            EligibleConversationTurn(id = pair.first.id, ordinal = ordinal + 1)
+        }
+        val textByTurnId = batch.associate { (user, assistant) ->
+            user.id to ("User: " + user.content + "\\nAssistant: " + assistant.content)
+                .take(MemoryExtractionInput.MAX_TURN_TEXT_CHARS)
+        }
+        val input = runCatching {
+            MemoryExtractionInput(
+                conversationId = conversationId,
+                turns = turns,
+                textByTurnId = textByTurnId,
+            )
+        }.getOrElse { error ->
+            memoryExtractionInFlight.remove(batchEndId)
+            diagnosticStore.warn("memory.extraction.input_rejected", "reason=${error::class.java.simpleName}")
+            status = "记忆整理未启动：本批对话超出输入限制。"
+            return
+        }
+        val pipeline = TemporalFactExtractionPipeline(
+            client = MemoryExtractionClient(
+                providers = providers,
+                credentials = MemoryCredentialResolver { handle ->
+                    if (handle == "session-memory-key") memorySecret else null
+                },
+            ),
+            factStore = AtomicTemporalFactStore(context.applicationContext),
+            memoryTextStore = AtomicMemoryTextStore(context.applicationContext),
+        )
+        try {
+            pipeline.extractAndPersist(input) { outcome ->
+                mainHandler.post {
+                    memoryExtractionInFlight.remove(batchEndId)
+                    when (outcome) {
+                        is TemporalFactPipelineOutcome.Failed -> {
+                            diagnosticStore.warn("memory.extraction.failed", "reason=safe_failure")
+                            status = "记忆整理失败：${outcome.safeMessage}；聊天回复已保留。"
+                        }
+                        is TemporalFactPipelineOutcome.Saved -> {
+                            preferences.edit().putString("memory_extraction_last_success_turn_id", batchEndId).apply()
+                            diagnosticStore.info(
+                                "memory.extraction.saved",
+                                "extracted=${outcome.extractedFacts}; current=${outcome.currentFacts}; indexed_texts=${outcome.indexedTextRecords}",
+                            )
+                            status = "记忆整理完成：本批提取 ${outcome.extractedFacts} 条事实，当前有效 ${outcome.currentFacts} 条。" +
+                                (outcome.indexingWarning?.let { " $it" } ?: "")
+                        }
+                    }
+                }
+            }
+        } catch (error: Exception) {
+            memoryExtractionInFlight.remove(batchEndId)
+            diagnosticStore.warn("memory.extraction.start_failed", "reason=${error::class.java.simpleName}")
+            status = "记忆整理 API 未启动；聊天回复已保留。"
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -213,6 +308,42 @@ fun ChatScreen(onBack: () -> Unit) {
                     )
                     Text(
                         "当前为开发测试入口：API 配置不会持久保存；离开此页面后密钥会从界面状态中清除。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text("独立记忆整理 API（可选）", style = MaterialTheme.typography.titleMedium)
+                    OutlinedTextField(
+                        value = memoryBaseUrl,
+                        onValueChange = { memoryBaseUrl = it },
+                        label = { Text("记忆整理 API Base URL") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                    )
+                    OutlinedTextField(
+                        value = memoryModelId,
+                        onValueChange = { memoryModelId = it },
+                        label = { Text("记忆整理模型 ID（留空则关闭）") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                    )
+                    OutlinedTextField(
+                        value = memoryApiKey,
+                        onValueChange = { memoryApiKey = it },
+                        label = { Text("独立记忆 API Key") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                    )
+                    Text(
+                        "与聊天 API 分开配置。每累计 3 轮已完成对话后异步整理；失败不会撤销聊天回复。配置仅保留在当前页面内存中。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -314,10 +445,36 @@ fun ChatScreen(onBack: () -> Unit) {
                             return@Button
                         }
                         val secretForThisRequest = apiKey
+                        val memorySecretForThisRequest = memoryApiKey
+                        val memoryProfile = memoryModelId.trim().takeIf(String::isNotBlank)?.let { configuredMemoryModel ->
+                            ProviderProfile(
+                                id = "session-memory-extraction",
+                                kind = ProviderKind.MEMORY_EXTRACTION,
+                                baseUrl = memoryBaseUrl.trim(),
+                                modelId = configuredMemoryModel,
+                                credentialHandle = if (memoryApiKey.isBlank()) null else "session-memory-key",
+                            )
+                        }
+                        val providersForRequest = try {
+                            ProviderProfileSet(
+                                profiles = listOfNotNull(profile, memoryProfile),
+                                selectedProfileIds = buildMap {
+                                    put(ProviderKind.CHAT, profile.id)
+                                    if (memoryProfile != null) put(ProviderKind.MEMORY_EXTRACTION, memoryProfile.id)
+                                },
+                            )
+                        } catch (_: IllegalArgumentException) {
+                            status = "聊天或记忆 API 配置无效，请检查 Base URL 和模型 ID。"
+                            return@Button
+                        }
                         val client = OpenAiCompatibleChatClient(
-                            providers = providers,
+                            providers = providersForRequest,
                             credentials = CredentialResolver { handle ->
-                                if (handle == "session-chat-key") secretForThisRequest else null
+                                when (handle) {
+                                    "session-chat-key" -> secretForThisRequest
+                                    "session-memory-key" -> memorySecretForThisRequest
+                                    else -> null
+                                }
                             },
                         )
                         val now = System.currentTimeMillis()
@@ -377,6 +534,10 @@ fun ChatScreen(onBack: () -> Unit) {
                                         )
                                     }
                                     persistHistory()
+                                    scheduleMemoryExtractionIfDue(
+                                        providers = providersForRequest,
+                                        memorySecret = memorySecretForThisRequest,
+                                    )
                                 }
                             }
 
@@ -546,8 +707,12 @@ fun ChatScreen(onBack: () -> Unit) {
                 Button(
                     onClick = {
                         history.clear()
+                        context.getSharedPreferences("mistbell-v3-settings", Context.MODE_PRIVATE).edit()
+                            .remove("memory_extraction_last_success_turn_id")
+                            .putString("memory_extraction_conversation_id", UUID.randomUUID().toString())
+                            .apply()
                         persistHistory()
-                        status = "会话已清空。"
+                        status = "会话已清空；长期事实记忆保留，新的对话将单独记录来源。"
                     },
                     enabled = !busy && historyReady && history.isNotEmpty(),
                 ) { Text("清空会话") }
