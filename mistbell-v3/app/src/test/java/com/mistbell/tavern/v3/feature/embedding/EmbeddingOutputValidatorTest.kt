@@ -62,6 +62,15 @@ class EmbeddingOutputValidatorTest {
     }
 
     @Test
+    fun rejectsBackendWithoutEvidence() {
+        val output = result(1).copy(
+            status = result(1).status.copy(backendEvidence = BackendEvidence.NOT_AVAILABLE),
+        )
+        assertThrows(EmbeddingOutputException::class.java) {
+            EmbeddingOutputValidator.validate(runtime, listOf("hello"), output)
+        }
+    }
+    @Test
     fun rejectsZeroVector() {
         assertThrows(EmbeddingOutputException::class.java) {
             EmbeddingOutputValidator.validate(runtime, listOf("hello"), result(1, vectorValue = 0f))
