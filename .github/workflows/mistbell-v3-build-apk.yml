@@ -2,12 +2,6 @@ name: Mistbell 3.0 Final Device-Test APK
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - codex/mistbell-3.0-core-features
-    paths:
-      - "mistbell-v3/**"
-      - ".github/workflows/mistbell-v3-build-apk.yml"
 
 permissions:
   contents: read
@@ -20,7 +14,7 @@ jobs:
   build-verified-apk:
     # The push trigger is intentionally opt-in: only a commit explicitly marked
     # [build-v3-apk] can publish an APK. Manual workflow_dispatch also runs it.
-    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[build-v3-apk]') }}
+    if: ${{ github.event_name == 'workflow_dispatch' }}
     name: Verify 3.0 source, then package debug APK
     runs-on: ubuntu-latest
     timeout-minutes: 45
