@@ -13,11 +13,16 @@ sealed interface MemoryJobLedgerLoadResult {
     data class Corrupt(val safeReason: String) : MemoryJobLedgerLoadResult
 }
 
+interface MemoryJobLedgerPersistence {
+    fun save(ledger: MemoryJobLedger)
+    fun load(): MemoryJobLedgerLoadResult
+}
+
 /** App-private atomic persistence. Corrupt state is reported, never silently overwritten. */
 class AtomicMemoryJobLedgerStore(
     context: Context,
     fileName: String = DEFAULT_FILE_NAME,
-) {
+) : MemoryJobLedgerPersistence {
     private val atomicFile: AtomicFile
 
     init {
@@ -29,7 +34,7 @@ class AtomicMemoryJobLedgerStore(
     }
 
     @Synchronized
-    fun save(ledger: MemoryJobLedger) {
+    override fun save(ledger: MemoryJobLedger) {
         val bytes = MemoryJobLedgerCodec.encode(ledger)
         val stream = atomicFile.startWrite()
         try {
@@ -42,7 +47,7 @@ class AtomicMemoryJobLedgerStore(
     }
 
     @Synchronized
-    fun load(): MemoryJobLedgerLoadResult {
+    override fun load(): MemoryJobLedgerLoadResult {
         val baseFile = atomicFile.baseFile
         val backup = File(baseFile.path + ".bak")
         if (!baseFile.exists() && !backup.exists()) return MemoryJobLedgerLoadResult.Missing
