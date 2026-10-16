@@ -44,6 +44,10 @@ class EmbeddingGemma2ModelAssetManager(
         }
         val connection = openSecureConnection()
         try {
+            val contentType = connection.contentType?.substringBefore(';')?.trim()?.lowercase()
+            check(contentType == null || contentType in ALLOWED_MODEL_CONTENT_TYPES) {
+                "Model server returned an unexpected content type."
+            }
             val totalBytes = connection.contentLengthLong.takeIf { it > 0L }
             require(totalBytes == null || totalBytes <= MAX_MODEL_BYTES) {
                 "Model download exceeds the configured size limit."
@@ -262,6 +266,11 @@ class EmbeddingGemma2ModelAssetManager(
         const val MODEL_FILE_NAME = "embeddinggemma-2-740m.litertlm"
         const val MODEL_DOWNLOAD_URL =
             "https://huggingface.co/litert-community/embeddinggemma-2-740m-litert-lm/resolve/main/embeddinggemma-2-740m.litertlm"
+        private val ALLOWED_MODEL_CONTENT_TYPES = setOf(
+            "application/octet-stream",
+            "application/x-litertlm",
+            "application/vnd.google.litertlm",
+        )
         const val MAX_MODEL_BYTES = 2L * 1024L * 1024L * 1024L
         const val PROGRESS_INTERVAL_BYTES = 1024L * 1024L
         const val MAX_REDIRECTS = 5
