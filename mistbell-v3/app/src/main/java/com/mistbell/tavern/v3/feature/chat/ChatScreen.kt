@@ -237,37 +237,66 @@ fun ChatScreen(onBack: () -> Unit) {
         val pending = if (previousIndex >= 0) pairs.drop(previousIndex + 1) else pairs
         if (pending.size < 3) return
 
-        val repository = MemoryExtractionJobRepository(MemoryExtractionJobStore(context.applicationContext))
         val conversationId = preferences.getString("memory_extraction_conversation_id", null)
             ?: UUID.randomUUID().toString().also {
                 preferences.edit().putString("memory_extraction_conversation_id", it).apply()
             }
-        var enqueued = 0
-        pending.chunked(MemoryExtractionInput.MAX_TURNS).forEach { batch ->
-            if (batch.size < 3) return@forEach
-            val turnIds = batch.map { it.first.id }
-            val stableId = UUID.nameUUIDFromBytes(
-                (conversationId + "|" + turnIds.joinToString("|")).toByteArray(Charsets.UTF_8),
-            ).toString()
-            val existing = repository.list().firstOrNull { it.id == stableId }
-            if (existing != null) return@forEach
-            val job = MemoryExtractionJob(
-                id = stableId,
-                conversationId = conversationId,
-                turnIds = turnIds,
-                providerProfileId = profile.id,
-                credentialHandle = credentialHandle,
-                createdAtEpochMillis = System.currentTimeMillis().coerceAtLeast(0L),
+        val jobs = pending.chunked(MemoryExtractionInput.MAX_TURNS)
+            .filter { it.size >= 3 }
+            .map { batch ->
+                val turnIds = batch.map { it.first.id }
+                val stableId = UUID.nameUUIDFromBytes(
+                    (conversationId + "|" + turnIds.joinToString("|")).toByteArray(Charsets.UTF_8),
+                ).toString()
+                MemoryExtractionJob(
+                    id = stableId,
+                    conversationId = conversationId,
+                    turnIds = turnIds,
+                    providerProfileId = profile.id,
+                    credentialHandle = credentialHandle,
+                    createdAtEpochMillis = System.currentTimeMillis().coerceAtLeast(0L),
+                )
+            }
+        val historySnapshot = history.map { line ->
+            PersistedChatMessage(
+                id = line.id,
+                role = line.role,
+                content = line.content,
+                createdAtEpochMillis = line.createdAtEpochMillis,
+                deliveryState = line.deliveryState,
             )
-            if (repository.enqueue(job)) enqueued += 1
         }
-        if (enqueued > 0) {
+        coroutineScope.launch {
+            val queuedCount = runCatching {
+                withContext(Dispatchers.IO) {
+                    // Commit source history first. A worker must never observe a queue job whose
+                    // source turn IDs refer to a newer, not-yet-persisted chat snapshot.
+                    historyStore.save(historySnapshot)
+                    val repository = MemoryExtractionJobRepository(
+                        MemoryExtractionJobStore(context.applicationContext),
+                    )
+                    var added = 0
+                    jobs.forEach { job ->
+                        val existing = repository.list().firstOrNull { it.id == job.id }
+                        if (existing == null && repository.enqueue(job)) added += 1
+                    }
+                    added
+                }
+            }.getOrElse { error ->
+                diagnosticStore.warn(
+                    "memory.extraction.queue_enqueue_failed",
+                    "reason=${error::class.java.simpleName}",
+                )
+                status = "记忆整理任务未能安全入队；聊天记录仍保留，稍后可重试。"
+                return@launch
+            }
             MemoryExtractionQueueWorker.enqueue(context.applicationContext)
-            diagnosticStore.info("memory.extraction.queue_enqueued", "jobs=$enqueued")
-            status = "已将 $enqueued 批记忆整理任务写入持久化队列；后台任务会独立重试，不影响聊天回复。"
-        } else {
-            MemoryExtractionQueueWorker.enqueue(context.applicationContext)
-            status = "记忆整理队列已检查；已有任务不会重复入队。"
+            diagnosticStore.info("memory.extraction.queue_enqueued", "jobs=$queuedCount")
+            status = if (queuedCount > 0) {
+                "已将 $queuedCount 批记忆整理任务写入持久化队列；后台任务会独立重试，不影响聊天回复。"
+            } else {
+                "记忆整理队列已检查；已有任务不会重复入队。"
+            }
         }
     }
 
