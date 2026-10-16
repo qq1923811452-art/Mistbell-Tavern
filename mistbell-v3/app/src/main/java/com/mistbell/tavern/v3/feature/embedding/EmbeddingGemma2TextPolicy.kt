@@ -9,7 +9,11 @@ package com.mistbell.tavern.v3.feature.embedding
 object EmbeddingGemma2TextPolicy {
     const val MODEL_ID = "google/embeddinggemma-2"
     const val NATIVE_DIMENSIONS = 768
-    val supportedDimensions: Set<Int> = setOf(128, 256, 512, 768)
+    /**
+     * UI tiers above 768 require a compatible native higher-dimensional model.
+     * EmbeddingGemma 2 itself remains limited to 768 native dimensions.
+     */
+    val supportedDimensions: Set<Int> = setOf(128, 256, 512, 768, 1024, 1536, 2048)
 
     fun formatSearchQuery(query: String): String {
         require(query.isNotBlank()) { "Search query must not be blank." }
@@ -30,7 +34,10 @@ object EmbeddingGemma2TextPolicy {
      * Truncation without normalization changes cosine-similarity ranking.
      */
     fun truncateAndNormalize(vector: List<Float>, dimensions: Int): List<Float> {
-        require(dimensions in supportedDimensions) { "Unsupported EmbeddingGemma 2 output dimension." }
+        require(dimensions in supportedDimensions) { "Unsupported embedding output dimension." }
+        require(dimensions <= NATIVE_DIMENSIONS) {
+            "EmbeddingGemma 2 natively outputs $NATIVE_DIMENSIONS dimensions; $dimensions requires a compatible higher-dimensional model."
+        }
         require(vector.size == NATIVE_DIMENSIONS) {
             "Expected a native $NATIVE_DIMENSIONS-dimensional EmbeddingGemma 2 vector."
         }
