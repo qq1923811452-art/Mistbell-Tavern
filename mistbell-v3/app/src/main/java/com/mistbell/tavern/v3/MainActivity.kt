@@ -2,6 +2,7 @@ package com.mistbell.tavern.v3
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -15,6 +16,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -24,6 +26,8 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import android.widget.Toast
+import com.mistbell.tavern.v3.core.diagnostics.DiagnosticLogStore
 import com.mistbell.tavern.v3.core.inference.InferenceBackend
 import com.mistbell.tavern.v3.core.inference.InferencePhase
 import com.mistbell.tavern.v3.core.inference.InferenceRuntimeStatus
@@ -39,15 +43,35 @@ private val initialStages = listOf(
 )
 
 class MainActivity : ComponentActivity() {
+    private lateinit var diagnostics: DiagnosticLogStore
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        diagnostics = DiagnosticLogStore(filesDir)
+        diagnostics.info("app.started", "build=3.0.0-dev")
+        val exportDiagnostics = registerForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
+            if (uri == null) {
+                diagnostics.info("diagnostics.export.cancelled")
+            } else {
+                try {
+                    val output = contentResolver.openOutputStream(uri)
+                        ?: throw IllegalStateException("Selected export destination could not be opened.")
+                    output.use { diagnostics.exportTo(it) }
+                    Toast.makeText(this, "诊断日志已导出", Toast.LENGTH_LONG).show()
+                    diagnostics.info("diagnostics.export.succeeded")
+                } catch (error: Exception) {
+                    diagnostics.error("diagnostics.export.failed", error::class.java.simpleName + ": " + (error.message ?: "unknown error"))
+                    Toast.makeText(this, "日志导出失败，请重试", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
         setContent {
             MaterialTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background,
                 ) {
-                    DevelopmentHome()
+                    DevelopmentHome(onExportLogs = { exportDiagnostics.launch("mistbell-diagnostics.txt") })
                 }
             }
         }
@@ -56,7 +80,7 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun DevelopmentHome() {
+private fun DevelopmentHome(onExportLogs: () -> Unit) {
     // This is deliberately an idle status until a real runtime adapter reports execution.
     // The UI must never infer NPU/GPU use from the phone model or a requested delegate.
     val inferenceStatus = InferenceRuntimeStatus.idle()
@@ -91,6 +115,22 @@ private fun DevelopmentHome() {
                 )
             }
             item { InferenceStatusCard(inferenceStatus) }
+            item {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text("诊断与故障排查", style = MaterialTheme.typography.titleMedium)
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            "导出的日志包含运行阶段、后端初始化结果、错误摘要和耗时；不会主动记录聊天正文、提示词或 API 密钥。",
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        Button(onClick = onExportLogs, modifier = Modifier.fillMaxWidth()) {
+                            Text("导出诊断日志")
+                        }
+                    }
+                }
+            }
             items(initialStages, key = BuildStage::title) { stage ->
                 Card(
                     modifier = Modifier.fillMaxWidth(),
