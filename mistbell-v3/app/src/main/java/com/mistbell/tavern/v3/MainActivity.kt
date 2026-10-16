@@ -69,10 +69,15 @@ class MainActivity : ComponentActivity() {
     private var operationMessage by mutableStateOf("正在检查本地模型……")
     private var operationBusy by mutableStateOf(false)
     private var showChat by mutableStateOf(true)
+    private val embeddingDimensionOptions = listOf(128, 256, 512, 768)
+    private var selectedEmbeddingDimensions by mutableStateOf(768)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         diagnostics = DiagnosticLogStore(filesDir)
+        selectedEmbeddingDimensions = getSharedPreferences("mistbell-v3-settings", MODE_PRIVATE)
+            .getInt("embedding_output_dimensions", 768)
+            .takeIf { it in embeddingDimensionOptions } ?: 768
         modelAssets = EmbeddingGemma2ModelAssetManager(File(filesDir, "models"))
         diagnostics.info("app.started", "build=3.0.0-dev")
         lifecycleScope.launch {
@@ -172,6 +177,8 @@ class MainActivity : ComponentActivity() {
                             onOpenChat = { showChat = true },
                             onDownloadModel = ::downloadEmbeddingModel,
                             onImportModel = { importModel.launch(arrayOf("*/*")) },
+                            selectedEmbeddingDimensions = selectedEmbeddingDimensions,
+                            onCycleEmbeddingDimensions = ::cycleEmbeddingDimensions,
                             onRunEmbeddingTest = ::runEmbeddingSelfTest,
                             onExportLogs = { exportDiagnostics.launch("mistbell-diagnostics.txt") },
                         )
@@ -223,6 +230,16 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun cycleEmbeddingDimensions() {
+        val currentIndex = embeddingDimensionOptions.indexOf(selectedEmbeddingDimensions).coerceAtLeast(0)
+        selectedEmbeddingDimensions = embeddingDimensionOptions[(currentIndex + 1) % embeddingDimensionOptions.size]
+        getSharedPreferences("mistbell-v3-settings", MODE_PRIVATE).edit()
+            .putInt("embedding_output_dimensions", selectedEmbeddingDimensions)
+            .apply()
+        diagnostics.info("embedding.dimensions.changed", "dimensions=$selectedEmbeddingDimensions")
+        operationMessage = "已选择 ${selectedEmbeddingDimensions} 维输出；下次本地向量测试将使用此档位。已有向量需要按新维度重建后才能混合检索。"
+    }
+
     private fun runEmbeddingSelfTest() {
         if (operationBusy) return
         operationBusy = true
@@ -250,7 +267,10 @@ class MainActivity : ComponentActivity() {
                 inferenceStatus = initializedRuntime.currentStatus()
                 operationMessage = "模型已初始化，正在执行真实文本向量测试……"
                 inferenceStatus = initializedRuntime.currentStatus().copy(phase = InferencePhase.RUNNING)
-                val result = EmbeddingGemma2RuntimeAdapter(initializedRuntime).embedQueries(
+                val result = EmbeddingGemma2RuntimeAdapter(
+                    initializedRuntime,
+                    outputDimensions = selectedEmbeddingDimensions,
+                ).embedQueries(
                     listOf("Mistbell Tavern local embedding diagnostic test"),
                 )
                 inferenceStatus = result.status
@@ -297,6 +317,8 @@ private fun DevelopmentHome(
     onOpenChat: () -> Unit,
     onDownloadModel: () -> Unit,
     onImportModel: () -> Unit,
+    selectedEmbeddingDimensions: Int,
+    onCycleEmbeddingDimensions: () -> Unit,
     onRunEmbeddingTest: () -> Unit,
     onExportLogs: () -> Unit,
 ) {
@@ -348,6 +370,13 @@ private fun DevelopmentHome(
                 Card(modifier = Modifier.fillMaxWidth().animateContentSize(animationSpec = tween(durationMillis = 240, easing = FastOutSlowInEasing))) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text("本地模型与实测", style = MaterialTheme.typography.titleMedium)
+                        Spacer(Modifier.height(6.dp))
+                        Text("向量维度档位：${selectedEmbeddingDimensions} 维", style = MaterialTheme.typography.bodyMedium)
+                        Spacer(Modifier.height(6.dp))
+                        Button(onClick = onCycleEmbeddingDimensions, enabled = !operationBusy, modifier = Modifier.fillMaxWidth()) {
+                            Text("切换向量维度（128 → 256 → 512 → 768）")
+                        }
+                        Text("此设置会保存到本机；只影响 Embedding 输出维度，不会改变模型原生维度。切换后需要重建旧向量索引。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.height(6.dp))
                         AnimatedContent(targetState = operationMessage, label = "operation-message") { message ->
                             Text(message, style = MaterialTheme.typography.bodyMedium)
