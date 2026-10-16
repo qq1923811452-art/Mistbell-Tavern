@@ -15,7 +15,10 @@ class MemoryExtractionQueueRunnerTest {
             execute = { _, _, complete -> complete(MemoryExtractionQueueRunner.ExecutionResult.Success) },
         )
 
-        assertTrue(dispatch is MemoryExtractionQueueRunner.Result.Started)
+        assertEquals(
+            MemoryExtractionQueueRunner.Result.Finished("success", MemoryExtractionJob.State.COMPLETED),
+            dispatch,
+        )
         assertEquals(MemoryExtractionJob.State.COMPLETED, repository.list().single().state)
     }
 
