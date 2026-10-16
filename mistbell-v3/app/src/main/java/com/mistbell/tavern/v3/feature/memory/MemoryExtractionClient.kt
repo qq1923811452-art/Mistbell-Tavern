@@ -23,9 +23,24 @@ fun interface MemoryCredentialResolver {
     fun resolve(handle: String): String?
 }
 
-/** Formats one completed chat pair for extraction while preserving the user/assistant boundary. */
-fun formatMemoryExtractionTurn(userText: String, assistantText: String): String =
-    ("User: $userText\nAssistant: $assistantText").take(MemoryExtractionInput.MAX_TURN_TEXT_CHARS)
+/**
+ * Formats a completed chat pair without allowing a very long user message to erase the
+ * assistant boundary. The total is bounded while both sides retain as much text as possible.
+ */
+fun formatMemoryExtractionTurn(userText: String, assistantText: String): String {
+    val userPrefix = "User: "
+    val assistantPrefix = "\nAssistant: "
+    val contentBudget = MemoryExtractionInput.MAX_TURN_TEXT_CHARS -
+        userPrefix.length - assistantPrefix.length
+    require(contentBudget >= 0) { "Turn text limit is too small for role boundaries." }
+
+    var userBudget = minOf(userText.length, contentBudget / 2)
+    var assistantBudget = minOf(assistantText.length, contentBudget - userBudget)
+    userBudget = minOf(userText.length, contentBudget - assistantBudget)
+
+    return userPrefix + userText.take(userBudget) +
+        assistantPrefix + assistantText.take(assistantBudget)
+}
 
 data class MemoryExtractionInput(
     val conversationId: String,
