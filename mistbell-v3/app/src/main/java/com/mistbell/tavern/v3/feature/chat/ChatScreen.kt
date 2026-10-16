@@ -170,7 +170,7 @@ fun ChatScreen(onBack: () -> Unit) {
                         status = "正在连接聊天 API……"
                         val messages = buildList {
                             add(PromptMessage(PromptRole.SYSTEM, "你是 Mistbell Tavern 的聊天助手。请直接、清晰地回答用户。"))
-                            history.dropLast(1).forEach { line ->
+                            history.dropLast(2).forEach { line ->
                                 if (line.content.isNotBlank()) {
                                     add(
                                         PromptMessage(
