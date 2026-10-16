@@ -1,5 +1,8 @@
 package com.mistbell.tavern.v3.core.memory
 
+import java.nio.ByteBuffer
+import java.security.MessageDigest
+
 /**
  * A conversation turn is one completed user/assistant exchange, not an individual message.
  * The storage layer must durably record a returned plan as pending before dispatching its API call.
@@ -56,13 +59,29 @@ object MemoryBatchPolicy {
         }
 
         val selected = pending.take(batchSize)
-        val first = selected.first().id
-        val last = selected.last().id
         return MemoryBatchPlan(
-            id = "memory:$conversationId:$first:$last",
+            id = stablePlanId(conversationId, selected),
             conversationId = conversationId,
             turns = selected,
         )
+    }
+
+    private fun stablePlanId(
+        conversationId: String,
+        selected: List<EligibleConversationTurn>,
+    ): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        fun updateString(value: String) {
+            val bytes = value.toByteArray(Charsets.UTF_8)
+            digest.update(ByteBuffer.allocate(Int.SIZE_BYTES).putInt(bytes.size).array())
+            digest.update(bytes)
+        }
+        updateString(conversationId)
+        selected.forEach { turn ->
+            digest.update(ByteBuffer.allocate(Long.SIZE_BYTES).putLong(turn.ordinal).array())
+            updateString(turn.id)
+        }
+        return "memory:" + digest.digest().joinToString("") { byte -> "%02x".format(byte) }
     }
 
     const val DEFAULT_BATCH_SIZE = 3
