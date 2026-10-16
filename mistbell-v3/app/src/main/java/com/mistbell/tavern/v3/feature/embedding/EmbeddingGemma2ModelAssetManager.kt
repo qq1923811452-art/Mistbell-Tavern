@@ -119,8 +119,12 @@ class EmbeddingGemma2ModelAssetManager(
     ): DownloadedEmbeddingModel = withContext(Dispatchers.IO) {
         downloadLock.lock()
         try {
-            require(sourceName.endsWith(".litertlm", ignoreCase = true)) {
-                "Selected file must have a .litertlm extension."
+            require(
+                sourceName.endsWith(".litertlm", ignoreCase = true) &&
+                    (sourceName.contains("embeddinggemma", ignoreCase = true) ||
+                        sourceName.contains("embedding-gemma", ignoreCase = true)),
+            ) {
+                "Select an EmbeddingGemma 2 .litertlm model file; its filename must identify EmbeddingGemma."
             }
             check(modelDirectory.isDirectory || modelDirectory.mkdirs()) {
                 "Model directory could not be created."
