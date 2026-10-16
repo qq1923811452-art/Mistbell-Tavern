@@ -1,10 +1,10 @@
 package com.mistbell.tavern.v3.feature.memory
 
 import com.mistbell.tavern.v3.core.memory.MemoryTextRecord
-import com.mistbell.tavern.v3.core.memory.MemoryTextPersistence
 import com.mistbell.tavern.v3.core.memory.TemporalFactLedger
 import com.mistbell.tavern.v3.core.memory.TemporalFactObservation
 import com.mistbell.tavern.v3.core.storage.MemoryTextLoadResult
+import com.mistbell.tavern.v3.core.storage.MemoryTextPersistence
 import com.mistbell.tavern.v3.core.storage.TemporalFactLoadResult
 import com.mistbell.tavern.v3.core.storage.TemporalFactPersistence
 import com.mistbell.tavern.v3.core.memory.TemporalMemoryFact
