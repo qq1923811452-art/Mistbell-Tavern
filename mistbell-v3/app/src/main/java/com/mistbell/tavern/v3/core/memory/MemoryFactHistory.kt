@@ -52,6 +52,13 @@ data class FactHistoryUpdate(
  */
 object FactHistoryReducer {
     fun append(history: List<MemoryFact>, incoming: MemoryFact): FactHistoryUpdate {
+        require(incoming.status == FactStatus.ACTIVE) {
+            "Only a new active fact can be appended."
+        }
+        require(history.map(MemoryFact::id).distinct().size == history.size) {
+            "Existing fact IDs must be unique."
+        }
+
         val existingById = history.firstOrNull { it.id == incoming.id }
         if (existingById != null) {
             require(existingById == incoming) {
@@ -61,30 +68,55 @@ object FactHistoryReducer {
         }
 
         val incomingKey = key(incoming.subject, incoming.predicate)
-        val equivalentActive = history.firstOrNull {
-            it.status == FactStatus.ACTIVE &&
-                key(it.subject, it.predicate) == incomingKey &&
-                normalize(it.value) == normalize(incoming.value)
-        }
-        if (equivalentActive != null) {
-            // The same currently-known value is already represented. Do not create duplicate facts.
-            return FactHistoryUpdate(history.toList(), inserted = false, supersededFactIds = emptyList())
-        }
-
-        val conflicts = history.filter {
+        val activeForKey = history.filter {
             it.status == FactStatus.ACTIVE && key(it.subject, it.predicate) == incomingKey
         }
-        val superseded = conflicts.map { fact ->
+        val equivalentActive = activeForKey.firstOrNull {
+            normalize(it.value) == normalize(incoming.value)
+        }
+
+        // If legacy/corrupt data has multiple active values for one fact key, keep the
+        // already-recorded equivalent value and supersede only contradictory active records.
+        if (equivalentActive != null) {
+            val conflicts = activeForKey.filter { it.id != equivalentActive.id }
+            if (conflicts.isEmpty()) {
+                return FactHistoryUpdate(
+                    history = history.toList(),
+                    inserted = false,
+                    supersededFactIds = emptyList(),
+                )
+            }
+            val superseded = conflicts.map { fact ->
+                fact.copy(
+                    status = FactStatus.SUPERSEDED,
+                    supersededAtEpochMillis = maxOf(
+                        incoming.recordedAtEpochMillis,
+                        fact.recordedAtEpochMillis,
+                    ),
+                    supersededByFactId = equivalentActive.id,
+                )
+            }
+            val replacements = superseded.associateBy(MemoryFact::id)
+            return FactHistoryUpdate(
+                history = history.map { replacements[it.id] ?: it },
+                inserted = false,
+                supersededFactIds = superseded.map(MemoryFact::id),
+            )
+        }
+
+        val superseded = activeForKey.map { fact ->
             fact.copy(
                 status = FactStatus.SUPERSEDED,
-                supersededAtEpochMillis = incoming.recordedAtEpochMillis,
+                supersededAtEpochMillis = maxOf(
+                    incoming.recordedAtEpochMillis,
+                    fact.recordedAtEpochMillis,
+                ),
                 supersededByFactId = incoming.id,
             )
         }
-        val supersededById = superseded.associateBy(MemoryFact::id)
-        val updatedHistory = history.map { supersededById[it.id] ?: it } + incoming
+        val replacements = superseded.associateBy(MemoryFact::id)
         return FactHistoryUpdate(
-            history = updatedHistory,
+            history = history.map { replacements[it.id] ?: it } + incoming,
             inserted = true,
             supersededFactIds = superseded.map(MemoryFact::id),
         )

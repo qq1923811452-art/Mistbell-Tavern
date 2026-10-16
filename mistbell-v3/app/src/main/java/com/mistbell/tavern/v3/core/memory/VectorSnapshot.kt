@@ -11,7 +11,7 @@ data class StoredVector(
     init {
         require(id.isNotBlank()) { "Vector ID must not be blank." }
         require(sourceTextSha256.matches(SHA256_PATTERN)) {
-            "Source text hash must be a 64-character SHA-256 hex digest."
+            "Source text hash must be a 64-character lowercase SHA-256 hex digest."
         }
         require(createdAtEpochMillis >= 0) { "Vector timestamp must not be negative." }
         require(values.isNotEmpty()) { "Vector must not be empty." }
@@ -19,7 +19,7 @@ data class StoredVector(
     }
 
     companion object {
-        private val SHA256_PATTERN = Regex("[0-9a-fA-F]{64}")
+        private val SHA256_PATTERN = Regex("[0-9a-f]{64}")
     }
 }
 
@@ -72,7 +72,7 @@ object VectorSnapshotCodec {
             out.writeInt(snapshot.records.size)
             snapshot.records.forEach { record ->
                 out.writeUTF(record.id)
-                out.writeUTF(record.sourceTextSha256.lowercase())
+                out.writeUTF(record.sourceTextSha256)
                 out.writeLong(record.createdAtEpochMillis)
                 record.values.forEach(out::writeFloat)
             }

@@ -25,7 +25,13 @@ class AtomicVectorSnapshotStore(
     private val atomicFile: AtomicFile
 
     init {
-        require(fileName.isNotBlank() && File(fileName).name == fileName) {
+        require(
+            fileName.isNotBlank() &&
+                fileName != "." &&
+                fileName != ".." &&
+                '/' !in fileName &&
+                '\\' !in fileName,
+        ) {
             "Vector snapshot file name must be a simple file name."
         }
         atomicFile = AtomicFile(File(context.filesDir, fileName))

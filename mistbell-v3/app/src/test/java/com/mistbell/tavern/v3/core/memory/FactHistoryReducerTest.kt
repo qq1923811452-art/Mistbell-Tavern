@@ -49,6 +49,32 @@ class FactHistoryReducerTest {
         assertEquals(listOf(existing), update.history)
     }
 
+    @Test
+    fun existingConflictingActiveFactsAreReconciledWithoutLosingHistory() {
+        val blue = fact(id = "blue", value = "blue")
+        val green = fact(id = "green", value = "green", timestamp = 200)
+        val preferred = fact(id = "new-blue", value = " BLUE ", timestamp = 300)
+
+        val update = FactHistoryReducer.append(listOf(blue, green), preferred)
+
+        assertFalse(update.inserted)
+        assertEquals(listOf("green"), update.supersededFactIds)
+        assertEquals(FactStatus.SUPERSEDED, update.history[1].status)
+        assertEquals("blue", update.history[1].supersededByFactId)
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun cannotAppendAlreadySupersededFact() {
+        FactHistoryReducer.append(
+            emptyList(),
+            fact(id = "old", value = "blue").copy(
+                status = FactStatus.SUPERSEDED,
+                supersededAtEpochMillis = 200,
+                supersededByFactId = "new",
+            ),
+        )
+    }
+
     @Test(expected = IllegalArgumentException::class)
     fun reusingFactIdForDifferentContentIsRejected() {
         FactHistoryReducer.append(
