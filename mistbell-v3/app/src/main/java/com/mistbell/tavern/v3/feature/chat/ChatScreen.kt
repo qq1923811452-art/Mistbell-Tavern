@@ -209,7 +209,19 @@ fun ChatScreen(onBack: () -> Unit) {
         providers: ProviderProfileSet,
         memorySecret: String,
     ) {
-        if (providers.profileFor(ProviderKind.MEMORY_EXTRACTION) == null) return
+        val profile = providers.profileFor(ProviderKind.MEMORY_EXTRACTION) ?: return
+        val preferences = context.getSharedPreferences("mistbell-v3-settings", Context.MODE_PRIVATE)
+        if (memorySecret.isNotBlank()) {
+            status = "要让记忆整理任务在应用重启后继续运行，请先点“安全保存密钥”；未保存的临时密钥不会进入持久化队列。"
+            return
+        }
+        val credentialHandle = preferences.getString("memory_api_credential_handle", null)
+            ?.takeIf(memoryCredentialStore::contains)
+        if (credentialHandle == null) {
+            status = "记忆整理任务尚未排队：请先安全保存独立记忆 API Key。"
+            return
+        }
+
         val pairs = mutableListOf<Pair<ChatLine, ChatLine>>()
         var index = 0
         while (index + 1 < history.size) {
@@ -220,73 +232,42 @@ fun ChatScreen(onBack: () -> Unit) {
             ) pairs += user to assistant
             index += 1
         }
-        val preferences = context.getSharedPreferences("mistbell-v3-settings", Context.MODE_PRIVATE)
         val lastSuccessfulTurnId = preferences.getString("memory_extraction_last_success_turn_id", null)
         val previousIndex = pairs.indexOfLast { it.first.id == lastSuccessfulTurnId }
         val pending = if (previousIndex >= 0) pairs.drop(previousIndex + 1) else pairs
         if (pending.size < 3) return
-        val batch = pending.take(20)
-        val batchEndId = batch.last().first.id
-        if (!memoryExtractionInFlight.add(batchEndId)) return
+
+        val repository = MemoryExtractionJobRepository(MemoryExtractionJobStore(context.applicationContext))
         val conversationId = preferences.getString("memory_extraction_conversation_id", null)
             ?: UUID.randomUUID().toString().also {
                 preferences.edit().putString("memory_extraction_conversation_id", it).apply()
             }
-        val turns = batch.mapIndexed { ordinal, pair ->
-            EligibleConversationTurn(id = pair.first.id, ordinal = (ordinal + 1).toLong())
-        }
-        val textByTurnId = batch.associate { (user, assistant) ->
-            user.id to formatMemoryExtractionTurn(user.content, assistant.content)
-        }
-        val input = runCatching {
-            MemoryExtractionInput(
+        var enqueued = 0
+        pending.chunked(MemoryExtractionInput.MAX_TURNS).forEach { batch ->
+            if (batch.size < 3) return@forEach
+            val turnIds = batch.map { it.first.id }
+            val stableId = UUID.nameUUIDFromBytes(
+                (conversationId + "|" + turnIds.joinToString("|")).toByteArray(Charsets.UTF_8),
+            ).toString()
+            val existing = repository.list().firstOrNull { it.id == stableId }
+            if (existing != null) return@forEach
+            val job = MemoryExtractionJob(
+                id = stableId,
                 conversationId = conversationId,
-                turns = turns,
-                textByTurnId = textByTurnId,
+                turnIds = turnIds,
+                providerProfileId = profile.id,
+                credentialHandle = credentialHandle,
+                createdAtEpochMillis = System.currentTimeMillis().coerceAtLeast(0L),
             )
-        }.getOrElse { error ->
-            memoryExtractionInFlight.remove(batchEndId)
-            diagnosticStore.warn("memory.extraction.input_rejected", "reason=${error::class.java.simpleName}")
-            status = "记忆整理未启动：本批对话超出输入限制。"
-            return
+            if (repository.enqueue(job)) enqueued += 1
         }
-        val pipeline = TemporalFactExtractionPipeline(
-            client = MemoryExtractionClient(
-                providers = providers,
-                credentials = MemoryCredentialResolver { handle ->
-                    if (handle == "session-memory-key") memorySecret else memoryCredentialStore.resolve(handle)
-                },
-            ),
-            factStore = AtomicTemporalFactStore(context.applicationContext),
-            memoryTextStore = AtomicMemoryTextStore(context.applicationContext),
-        )
-        try {
-            pipeline.extractAndPersist(input) { outcome ->
-                mainHandler.post {
-                    memoryExtractionInFlight.remove(batchEndId)
-                    when (outcome) {
-                        is TemporalFactPipelineOutcome.Failed -> {
-                            diagnosticStore.warn("memory.extraction.failed", "reason=safe_failure")
-                            status = "记忆整理失败：${outcome.safeMessage}；聊天回复已保留。"
-                        }
-                        is TemporalFactPipelineOutcome.Saved -> {
-                            preferences.edit().putString("memory_extraction_last_success_turn_id", batchEndId).apply()
-                            diagnosticStore.info(
-                                "memory.extraction.saved",
-                                "extracted=${outcome.extractedFacts}; current=${outcome.currentFacts}; indexed_texts=${outcome.indexedTextRecords}",
-                            )
-                            status = "记忆整理完成：本批提取 ${outcome.extractedFacts} 条事实，当前有效 ${outcome.currentFacts} 条。" +
-                                (outcome.indexingWarning?.let { " $it" } ?: "")
-                            // Drain additional complete batches immediately; otherwise >20 pending turns can stall until another chat reply.
-                            scheduleMemoryExtractionIfDue(providers, memorySecret)
-                        }
-                    }
-                }
-            }
-        } catch (error: Exception) {
-            memoryExtractionInFlight.remove(batchEndId)
-            diagnosticStore.warn("memory.extraction.start_failed", "reason=${error::class.java.simpleName}")
-            status = "记忆整理 API 未启动；聊天回复已保留。"
+        if (enqueued > 0) {
+            MemoryExtractionQueueWorker.enqueue(context.applicationContext)
+            diagnosticStore.info("memory.extraction.queue_enqueued", "jobs=$enqueued")
+            status = "已将 $enqueued 批记忆整理任务写入持久化队列；后台任务会独立重试，不影响聊天回复。"
+        } else {
+            MemoryExtractionQueueWorker.enqueue(context.applicationContext)
+            status = "记忆整理队列已检查；已有任务不会重复入队。"
         }
     }
 
