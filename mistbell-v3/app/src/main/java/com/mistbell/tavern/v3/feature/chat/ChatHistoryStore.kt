@@ -34,6 +34,8 @@ sealed interface ChatHistoryLoadResult {
     data object Missing : ChatHistoryLoadResult
     data class Loaded(val messages: List<PersistedChatMessage>) : ChatHistoryLoadResult
     data object Corrupt : ChatHistoryLoadResult
+    /** A read failed transiently; callers may retry without treating the source as corrupt. */
+    data object Unavailable : ChatHistoryLoadResult
 }
 
 /**
@@ -113,7 +115,7 @@ class ChatHistoryStore(
             require(messages.map(PersistedChatMessage::id).distinct().size == messages.size)
             ChatHistoryLoadResult.Loaded(messages)
         } catch (_: IOException) {
-            ChatHistoryLoadResult.Corrupt
+            ChatHistoryLoadResult.Unavailable
         } catch (_: Exception) {
             ChatHistoryLoadResult.Corrupt
         }
