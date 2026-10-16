@@ -69,6 +69,29 @@ class VectorMemoryRetrieverTest {
     }
 
     @Test
+    fun doesNotReplaceHigherScoringOverBudgetMemoryWithLowerScoringShortMemory() {
+        val longText = MemoryTextRecord("long", "highly relevant")
+        val shortText = MemoryTextRecord("short", "ok")
+        val rankedSnapshot = VectorSnapshot(
+            modelId = "embedding-test",
+            dimensions = 2,
+            records = listOf(
+                StoredVector("long-vector", longText.sourceTextSha256, 1L, listOf(1f, 0f)),
+                StoredVector("short-vector", shortText.sourceTextSha256, 2L, listOf(0.8f, 0.2f)),
+            ),
+        )
+
+        val result = VectorMemoryRetriever.retrieve(
+            snapshot = rankedSnapshot,
+            queryVector = listOf(1f, 0f),
+            texts = listOf(longText, shortText),
+            maxCharacters = 5,
+        )
+
+        assertTrue(result.isEmpty())
+    }
+
+    @Test
     fun rejectsDuplicateTextIdsAndInvalidBudgets() {
         assertTrue(runCatching {
             VectorMemoryRetriever.retrieve(
