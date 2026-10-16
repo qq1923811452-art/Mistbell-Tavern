@@ -8,7 +8,6 @@ import com.mistbell.tavern.v3.core.memory.MemoryFact
 import com.mistbell.tavern.v3.core.memory.MemoryExtractionJob
 import com.mistbell.tavern.v3.core.memory.MemoryJobLedger
 import com.mistbell.tavern.v3.core.memory.MemoryJobStatus
-import com.mistbell.tavern.v3.core.storage.MemoryFactHistoryLoadResult
 import com.mistbell.tavern.v3.core.storage.MemoryFactHistoryPersistence
 import com.mistbell.tavern.v3.core.storage.MemoryJobLedgerLoadResult
 import com.mistbell.tavern.v3.core.storage.MemoryJobLedgerPersistence
