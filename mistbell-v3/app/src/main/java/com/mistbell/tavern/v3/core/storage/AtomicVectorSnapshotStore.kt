@@ -11,6 +11,10 @@ fun interface VectorSnapshotLoader {
     fun load(expectedModelId: String, expectedDimensions: Int): VectorSnapshotLoadResult
 }
 
+fun interface VectorSnapshotSaver {
+    fun save(snapshot: VectorSnapshot)
+}
+
 sealed interface VectorSnapshotLoadResult {
     data object Missing : VectorSnapshotLoadResult
     data class Loaded(val snapshot: VectorSnapshot) : VectorSnapshotLoadResult
@@ -25,7 +29,7 @@ sealed interface VectorSnapshotLoadResult {
 class AtomicVectorSnapshotStore(
     context: Context,
     fileName: String = DEFAULT_FILE_NAME,
-) : VectorSnapshotLoader {
+) : VectorSnapshotLoader, VectorSnapshotSaver {
     private val atomicFile: AtomicFile
 
     init {
@@ -42,7 +46,7 @@ class AtomicVectorSnapshotStore(
     }
 
     @Synchronized
-    fun save(snapshot: VectorSnapshot) {
+    override fun save(snapshot: VectorSnapshot) {
         val bytes = VectorSnapshotCodec.encode(snapshot)
         val stream = atomicFile.startWrite()
         try {
