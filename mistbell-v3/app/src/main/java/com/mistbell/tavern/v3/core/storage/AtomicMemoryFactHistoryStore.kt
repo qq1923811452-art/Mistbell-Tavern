@@ -13,11 +13,16 @@ sealed interface MemoryFactHistoryLoadResult {
     data class Corrupt(val safeReason: String) : MemoryFactHistoryLoadResult
 }
 
+interface MemoryFactHistoryPersistence {
+    fun save(history: List<MemoryFact>)
+    fun load(): MemoryFactHistoryLoadResult
+}
+
 /** App-private atomic fact-history storage. Invalid data is never silently replaced. */
 class AtomicMemoryFactHistoryStore(
     context: Context,
     fileName: String = DEFAULT_FILE_NAME,
-) {
+) : MemoryFactHistoryPersistence {
     private val atomicFile: AtomicFile
 
     init {
@@ -29,7 +34,7 @@ class AtomicMemoryFactHistoryStore(
     }
 
     @Synchronized
-    fun save(history: List<MemoryFact>) {
+    override fun save(history: List<MemoryFact>) {
         val bytes = MemoryFactHistoryCodec.encode(history)
         val stream = atomicFile.startWrite()
         try {
@@ -42,7 +47,7 @@ class AtomicMemoryFactHistoryStore(
     }
 
     @Synchronized
-    fun load(): MemoryFactHistoryLoadResult {
+    override fun load(): MemoryFactHistoryLoadResult {
         val baseFile = atomicFile.baseFile
         val backup = File(baseFile.path + ".bak")
         if (!baseFile.exists() && !backup.exists()) return MemoryFactHistoryLoadResult.Missing
