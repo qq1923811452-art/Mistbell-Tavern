@@ -40,8 +40,16 @@ class MemoryExtractionJobRepository(private val store: MemoryExtractionJobStore)
         if (changed) store.save(eligible)
         val index = eligible.indices.filter { i ->
             val job = eligible[i]
-            (job.state == MemoryExtractionJob.State.PENDING ||
+            val due = (job.state == MemoryExtractionJob.State.PENDING ||
                 job.state == MemoryExtractionJob.State.RETRY_WAIT) && job.nextAttemptAtEpochMillis <= now
+            // Preserve order within a conversation: a later batch must not advance the success
+            // cursor while an earlier batch is waiting for retry.
+            due && eligible.take(i).none { earlier ->
+                earlier.conversationId == job.conversationId &&
+                    (earlier.state == MemoryExtractionJob.State.PENDING ||
+                        earlier.state == MemoryExtractionJob.State.RUNNING ||
+                        earlier.state == MemoryExtractionJob.State.RETRY_WAIT)
+            }
         }.minByOrNull { eligible[it].createdAtEpochMillis } ?: return null
         val job = eligible[index]
         val claimed = job.copy(state = MemoryExtractionJob.State.RUNNING, attemptCount = job.attemptCount + 1)
