@@ -37,6 +37,7 @@ sealed interface VectorMemoryContextResult {
         EMBEDDING_FAILED,
         SOURCE_TEXT_UNAVAILABLE,
         INVALID_QUERY_VECTOR,
+        UNEXPECTED_FAILURE,
     }
 }
 
