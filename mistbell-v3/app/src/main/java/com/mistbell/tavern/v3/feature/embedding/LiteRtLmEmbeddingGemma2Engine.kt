@@ -119,43 +119,98 @@ class LiteRtLmEmbeddingGemma2Engine(
         require(formattedInputs.isNotEmpty()) { "Embedding input batch must not be empty." }
         require(formattedInputs.all(String::isNotBlank)) { "Embedding inputs must not be blank." }
         lock.withLock {
-            val activeEngine = checkNotNull(engine) { "LiteRT-LM embedding engine is not initialized." }
-            val startedAt = System.nanoTime()
-            logInfo("embedding.inference.started", "inputCount=${formattedInputs.size}; backend=${selectedBackend.name}")
-            try {
-                val responses = activeEngine.computeEmbeddingBatch(
-                    formattedInputs.map { listOf(InputData.Text(it)) },
-                    EmbeddingOptions(
-                        normalize = true,
-                        outputSize = EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS,
-                    ),
-                )
-                val elapsedMillis = ((System.nanoTime() - startedAt) / 1_000_000L).coerceAtLeast(0L)
-                lastError = null
-                logInfo("embedding.inference.succeeded", "outputCount=${responses.size}; dimensions=${responses.firstOrNull()?.embedding?.size ?: 0}; elapsedMs=$elapsedMillis; backend=${selectedBackend.name}")
-                val status = InferenceRuntimeStatus(
-                    phase = if (fallbackReason == null) InferencePhase.READY else InferencePhase.FALLBACK,
-                    modelId = EmbeddingGemma2TextPolicy.MODEL_ID,
-                    backend = selectedBackend,
-                    runtimeId = runtimeId,
-                    backendEvidence = BackendEvidence.CONFIGURED_ONLY,
-                    acceleratorName = selectedBackend.name,
-                    fallbackReason = fallbackReason,
-                    lastExecutionMillis = elapsedMillis,
-                )
-                EmbeddingBatch(
-                    vectors = responses.map { response -> response.embedding.toList() },
-                    status = status,
-                )
-            } catch (cancelled: CancellationException) {
-                logWarn("embedding.inference.cancelled", "backend=${selectedBackend.name}")
-                throw cancelled
-            } catch (error: Exception) {
-                lastError = "${error::class.java.simpleName}: ${error.message ?: "inference failed"}"
-                    .take(InferenceRuntimeStatus.MAX_DETAIL_LENGTH)
-                logError("embedding.inference.failed", lastError.orEmpty())
-                throw error
+            check(engine != null) { "LiteRT-LM embedding engine is not initialized." }
+            val startIndex = backendOrder.indexOf(selectedBackend).coerceAtLeast(0)
+            val failures = mutableListOf<String>()
+            fallbackReason?.let(failures::add)
+            for (index in startIndex until backendOrder.size) {
+                val backend = backendOrder[index]
+                var candidate = engine.takeIf { selectedBackend == backend }
+                if (candidate == null) {
+                    runCatching { engine?.close() }.onFailure { logWarn("embedding.engine.close.failed", it::class.java.simpleName) }
+                    engine = null
+                    try {
+                        candidate = EmbeddingEngine(
+                            EmbeddingEngineConfig(
+                                modelPath = modelFile.absolutePath,
+                                backend = backend.toLiteRtBackend(),
+                                cacheDir = cacheDirectory.absolutePath,
+                            ),
+                        )
+                        candidate.initialize()
+                        engine = candidate
+                        selectedBackend = backend
+                        logInfo("embedding.backend.fallback.initialized", "backend=${backend.name}")
+                    } catch (cancelled: CancellationException) {
+                        candidate?.let { runCatching { it.close() } }
+                        throw cancelled
+                    } catch (error: Exception) {
+                        candidate?.let { runCatching { if (it.isInitialized()) it.close() } }
+                        val reason = "${backend.name}: ${error.message ?: error::class.java.simpleName}".take(180)
+                        failures += reason
+                        logWarn("embedding.backend.fallback.initialize.failed", reason)
+                        candidate = null
+                        continue
+                    } catch (error: LinkageError) {
+                        candidate?.let { runCatching { if (it.isInitialized()) it.close() } }
+                        val reason = "${backend.name}: native runtime unavailable (${error::class.java.simpleName})"
+                        failures += reason
+                        logWarn("embedding.backend.fallback.initialize.failed", reason)
+                        candidate = null
+                        continue
+                    }
+                }
+                val active = candidate ?: continue
+                val startedAt = System.nanoTime()
+                logInfo("embedding.inference.started", "inputCount=${formattedInputs.size}; backend=${backend.name}")
+                try {
+                    val responses = active.computeEmbeddingBatch(
+                        formattedInputs.map { listOf(InputData.Text(it)) },
+                        EmbeddingOptions(normalize = true, outputSize = EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS),
+                    )
+                    val elapsedMillis = ((System.nanoTime() - startedAt) / 1_000_000L).coerceAtLeast(0L)
+                    selectedBackend = backend
+                    engine = active
+                    fallbackReason = failures.takeIf { it.isNotEmpty() }?.joinToString("; ")
+                        ?.take(InferenceRuntimeStatus.MAX_DETAIL_LENGTH)
+                    lastError = null
+                    logInfo("embedding.inference.succeeded", "outputCount=${responses.size}; dimensions=${responses.firstOrNull()?.embedding?.size ?: 0}; elapsedMs=$elapsedMillis; backend=${backend.name}; fallback=${fallbackReason != null}")
+                    return@withLock EmbeddingBatch(
+                        vectors = responses.map { response -> response.embedding.toList() },
+                        status = InferenceRuntimeStatus(
+                            phase = if (fallbackReason == null) InferencePhase.READY else InferencePhase.FALLBACK,
+                            modelId = EmbeddingGemma2TextPolicy.MODEL_ID,
+                            backend = selectedBackend,
+                            runtimeId = runtimeId,
+                            backendEvidence = BackendEvidence.CONFIGURED_ONLY,
+                            acceleratorName = selectedBackend.name,
+                            fallbackReason = fallbackReason,
+                            lastExecutionMillis = elapsedMillis,
+                        ),
+                    )
+                } catch (cancelled: CancellationException) {
+                    logWarn("embedding.inference.cancelled", "backend=${backend.name}")
+                    throw cancelled
+                } catch (error: Exception) {
+                    val reason = "${backend.name}: ${error::class.java.simpleName}: ${error.message ?: "inference failed"}".take(180)
+                    failures += reason
+                    logError("embedding.inference.failed", reason)
+                    runCatching { active.close() }
+                    engine = null
+                    selectedBackend = InferenceBackend.UNKNOWN
+                } catch (error: LinkageError) {
+                    val reason = "${backend.name}: native runtime unavailable (${error::class.java.simpleName})"
+                    failures += reason
+                    logError("embedding.inference.failed", reason)
+                    runCatching { active.close() }
+                    engine = null
+                    selectedBackend = InferenceBackend.UNKNOWN
+                }
             }
+            lastError = "EmbeddingGemma 2 inference failed on all configured backends: ${failures.joinToString("; ")}"
+                .take(InferenceRuntimeStatus.MAX_DETAIL_LENGTH)
+            logError("embedding.inference.all_backends_failed", lastError.orEmpty())
+            throw IllegalStateException(lastError)
         }
     }
 
