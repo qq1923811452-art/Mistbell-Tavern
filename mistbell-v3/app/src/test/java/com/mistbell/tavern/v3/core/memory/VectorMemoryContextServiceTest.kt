@@ -1,7 +1,6 @@
 package com.mistbell.tavern.v3.core.memory
 
 import kotlinx.coroutines.runBlocking
-
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
