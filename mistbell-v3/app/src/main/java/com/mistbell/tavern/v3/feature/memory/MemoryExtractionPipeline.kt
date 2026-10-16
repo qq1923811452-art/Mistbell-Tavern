@@ -128,7 +128,11 @@ class MemoryExtractionWorker(
                 null
             }
             if (text.isNullOrBlank()) {
-                val failure = failJob(job.plan.id, "A source conversation turn is unavailable.")
+                val failure = failJob(
+                    job.plan.id,
+                    "A source conversation turn is unavailable.",
+                    permanent = true,
+                )
                 synchronized(this) { activeJobId = null }
                 observer(failure)
                 return null
@@ -164,32 +168,28 @@ class MemoryExtractionWorker(
 
     private fun finishJob(plan: MemoryBatchPlan, result: MemoryExtractionResult): MemoryPipelineResult {
         return try {
-            val loadedHistory = when (val loaded = factStore.load()) {
-                MemoryFactHistoryLoadResult.Missing -> emptyList()
-                is MemoryFactHistoryLoadResult.Loaded -> loaded.history
-                is MemoryFactHistoryLoadResult.Corrupt ->
-                    throw IllegalStateException(loaded.safeReason)
-            }
             val allowedTurnIds = plan.turns.map(EligibleConversationTurn::id).toSet()
-            var updatedHistory = loadedHistory
             var insertedFacts = 0
-            result.facts.forEach { draft ->
-                require(draft.sourceTurnId in allowedTurnIds) {
-                    "Extracted fact references a turn outside its job."
+            factStore.update { currentHistory ->
+                var updatedHistory = currentHistory
+                result.facts.forEach { draft ->
+                    require(draft.sourceTurnId in allowedTurnIds) {
+                        "Extracted fact references a turn outside its job."
+                    }
+                    val fact = MemoryFact(
+                        id = stableFactId(plan.conversationId, draft),
+                        subject = draft.subject,
+                        predicate = draft.predicate,
+                        value = draft.value,
+                        sourceTurnId = draft.sourceTurnId,
+                        recordedAtEpochMillis = nowEpochMillis(),
+                    )
+                    val update = FactHistoryReducer.append(updatedHistory, fact)
+                    updatedHistory = update.history
+                    if (update.inserted) insertedFacts++
                 }
-                val fact = MemoryFact(
-                    id = stableFactId(plan.conversationId, draft),
-                    subject = draft.subject,
-                    predicate = draft.predicate,
-                    value = draft.value,
-                    sourceTurnId = draft.sourceTurnId,
-                    recordedAtEpochMillis = nowEpochMillis(),
-                )
-                val update = FactHistoryReducer.append(updatedHistory, fact)
-                updatedHistory = update.history
-                if (update.inserted) insertedFacts++
+                updatedHistory
             }
-            if (updatedHistory != loadedHistory) factStore.save(updatedHistory)
 
             // Completion is deliberately written only after the entire fact history was saved.
             val currentLedger = when (val loaded = ledgerStore.load()) {
@@ -207,7 +207,11 @@ class MemoryExtractionWorker(
         }
     }
 
-    private fun failJob(planId: String, safeMessage: String): MemoryPipelineResult {
+    private fun failJob(
+        planId: String,
+        safeMessage: String,
+        permanent: Boolean = false,
+    ): MemoryPipelineResult {
         return try {
             val currentLedger = when (val loaded = ledgerStore.load()) {
                 is MemoryJobLedgerLoadResult.Loaded -> loaded.ledger
@@ -223,15 +227,19 @@ class MemoryExtractionWorker(
             }
             val boundedMessage = safeMessage.take(MemoryExtractionJob.MAX_ERROR_LENGTH)
                 .ifBlank { "Memory extraction failed." }
-            val attempt = (job.attemptCount - 1).coerceIn(0, 10)
-            val delay = minOf(30_000L * (1L shl attempt), MAX_RETRY_DELAY_MILLIS)
-            val retried = currentLedger.retry(
-                planId = planId,
-                nowEpochMillis = nowEpochMillis(),
-                delayMillis = delay,
-                safeError = boundedMessage,
-            )
-            ledgerStore.save(retried)
+            val updated = if (permanent) {
+                currentLedger.failPermanently(planId, boundedMessage)
+            } else {
+                val attempt = (job.attemptCount - 1).coerceIn(0, 10)
+                val delay = minOf(30_000L * (1L shl attempt), MAX_RETRY_DELAY_MILLIS)
+                currentLedger.retry(
+                    planId = planId,
+                    nowEpochMillis = nowEpochMillis(),
+                    delayMillis = delay,
+                    safeError = boundedMessage,
+                )
+            }
+            ledgerStore.save(updated)
             MemoryPipelineResult.Failed(boundedMessage)
         } catch (_: Exception) {
             MemoryPipelineResult.Failed("Memory job failure state could not be saved.")
