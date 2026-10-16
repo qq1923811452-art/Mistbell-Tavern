@@ -67,8 +67,8 @@ class DiagnosticLogStore(
     private fun sanitize(value: String, maxChars: Int): String {
         val singleLine = value.replace(Regex("[\\r\\n\\t]+"), " ").trim()
         val redacted = singleLine
-            .replace(Regex("(?i)(bearer\\s+)[A-Za-z0-9._~+/=-]+"), "$1[REDACTED]")
-            .replace(Regex("(?i)(api[_ -]?key\\s*[:=]\\s*)[^ ,;]+"), "$1[REDACTED]")
+            .replace(Regex("(?i)(bearer\\s+)[A-Za-z0-9._~+/=-]+")) { match -> "${match.groupValues[1]}[REDACTED]" }
+            .replace(Regex("(?i)(api[_ -]?key\\s*[:=]\\s*)[^ ,;]+")) { match -> "${match.groupValues[1]}[REDACTED]" }
         return redacted.take(maxChars)
     }
 
