@@ -5,7 +5,9 @@ import android.os.Looper
 import android.content.Context
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import com.mistbell.tavern.v3.core.diagnostics.DiagnosticLogStore
 import com.mistbell.tavern.v3.core.memory.VectorMemoryContextService
 import com.mistbell.tavern.v3.core.storage.AtomicMemoryTextStore
@@ -234,7 +236,7 @@ fun ChatScreen(onBack: () -> Unit) {
                         coroutineScope.launch {
                             try {
                                 val modelAssets = EmbeddingGemma2ModelAssetManager(File(context.filesDir, "models"))
-                                val installedModel = runCatching { modelAssets.verifyInstalled() }.getOrNull()
+                                val installedModel = runCatching { withContext(Dispatchers.IO) { modelAssets.verifyInstalled() } }.getOrNull()
                                 val configuredDimensions = context.getSharedPreferences(
                                     "mistbell-v3-settings",
                                     Context.MODE_PRIVATE,
