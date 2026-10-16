@@ -6,6 +6,7 @@ import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import java.util.concurrent.TimeUnit
 import com.mistbell.tavern.v3.core.model.ProviderKind
 import com.mistbell.tavern.v3.core.model.ProviderProfile
 import com.mistbell.tavern.v3.core.model.ProviderProfileSet
@@ -85,8 +86,16 @@ class MemoryExtractionQueueWorker(
                             )
                             pipeline.extractAndPersist(input) { outcome ->
                                 when (outcome) {
-                                    is TemporalFactPipelineOutcome.Saved ->
+                                    is TemporalFactPipelineOutcome.Saved -> {
+                                        applicationContext.getSharedPreferences(
+                                            "mistbell-v3-settings",
+                                            Context.MODE_PRIVATE,
+                                        ).edit().putString(
+                                            "memory_extraction_last_success_turn_id",
+                                            job.turnIds.last(),
+                                        ).apply()
                                         complete(MemoryExtractionQueueRunner.ExecutionResult.Success)
+                                    }
                                     is TemporalFactPipelineOutcome.Failed ->
                                         complete(
                                             MemoryExtractionQueueRunner.ExecutionResult.Failure(
@@ -112,10 +121,30 @@ class MemoryExtractionQueueWorker(
                 }
                 if (!hasJob) break
             }
+            scheduleNextRetry(repository)
             Result.success()
         } catch (_: Exception) {
             Result.retry()
         }
+    }
+
+    private fun scheduleNextRetry(repository: MemoryExtractionJobRepository) {
+        val nextTime = repository.list()
+            .filter {
+                it.state == MemoryExtractionJob.State.PENDING ||
+                    it.state == MemoryExtractionJob.State.RETRY_WAIT
+            }
+            .minOfOrNull(MemoryExtractionJob::nextAttemptAtEpochMillis) ?: return
+        val delay = (nextTime - System.currentTimeMillis()).coerceAtLeast(0L)
+        val request = OneTimeWorkRequestBuilder<MemoryExtractionQueueWorker>()
+            .setInitialDelay(delay, TimeUnit.MILLISECONDS)
+            .addTag(UNIQUE_WORK_NAME)
+            .build()
+        WorkManager.getInstance(applicationContext).enqueueUniqueWork(
+            UNIQUE_WORK_NAME,
+            ExistingWorkPolicy.APPEND_OR_REPLACE,
+            request,
+        )
     }
 
     companion object {
