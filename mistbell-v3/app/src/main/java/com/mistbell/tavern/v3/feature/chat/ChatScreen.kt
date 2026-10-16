@@ -389,7 +389,10 @@ fun ChatScreen(onBack: () -> Unit) {
                                     runCatching {
                                         val newHandle = memoryCredentialStore.put(memoryApiKey)
                                         val oldHandle = settings.getString("memory_api_credential_handle", null)
-                                        settings.edit().putString("memory_api_credential_handle", newHandle).commit()
+                                        if (!settings.edit().putString("memory_api_credential_handle", newHandle).commit()) {
+                                            memoryCredentialStore.delete(newHandle)
+                                            throw IllegalStateException("Credential handle could not be saved.")
+                                        }
                                         if (!oldHandle.isNullOrBlank() && oldHandle != newHandle) {
                                             memoryCredentialStore.delete(oldHandle)
                                         }
@@ -523,10 +526,10 @@ fun ChatScreen(onBack: () -> Unit) {
                                 baseUrl = memoryBaseUrl.trim(),
                                 modelId = configuredMemoryModel,
                                 credentialHandle = when {
-                            memoryApiKey.isNotBlank() -> "session-memory-key"
-                            else -> settings.getString("memory_api_credential_handle", null)
-                                ?.takeIf(memoryCredentialStore::contains)
-                        },
+                                    memoryApiKey.isNotBlank() -> "session-memory-key"
+                                    else -> settings.getString("memory_api_credential_handle", null)
+                                        ?.takeIf(memoryCredentialStore::contains)
+                                },
                             )
                         }
                         val providersForRequest = try {
