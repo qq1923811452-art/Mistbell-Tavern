@@ -185,6 +185,7 @@ class EmbeddingGemma2ModelAssetManager(
                 temporaryDigestFile.delete()
             }
         } finally {
+            runCatching { input.close() }
             downloadLock.unlock()
         }
     }
