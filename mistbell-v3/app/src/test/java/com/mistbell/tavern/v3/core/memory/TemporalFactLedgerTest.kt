@@ -88,12 +88,12 @@ class TemporalFactLedgerTest {
     fun stableIdentityIsUnambiguousWhenIdentifiersContainNul() {
         val first = observation(
             turn = "turn",
-            conversation = "conversation\\u0000part",
+            conversation = "conversation\u0000part",
             value = "tea",
             at = 100L,
         )
         val second = observation(
-            turn = "part\\u0000turn",
+            turn = "part\u0000turn",
             conversation = "conversation",
             value = "tea",
             at = 100L,
