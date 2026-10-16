@@ -14,7 +14,7 @@ data class MemoryTextRecord(
     }
 
     val sourceTextSha256: String
-        get() = sha256(text)
+        get() = sha256Text(text)
 }
 
 /** A memory passage selected for prompt injection, ordered by descending semantic relevance. */
@@ -68,11 +68,11 @@ object VectorMemoryRetriever {
         return result
     }
 
-    private fun sha256(text: String): String =
-        MessageDigest.getInstance("SHA-256")
-            .digest(text.toByteArray(StandardCharsets.UTF_8))
-            .joinToString("") { byte -> "%02x".format(byte) }
-
     const val DEFAULT_MAX_CHARACTERS = 6_000
     const val MAX_CHARACTERS = 100_000
 }
+
+private fun sha256Text(text: String): String =
+    MessageDigest.getInstance("SHA-256")
+        .digest(text.toByteArray(StandardCharsets.UTF_8))
+        .joinToString("") { byte -> "%02x".format(byte) }
