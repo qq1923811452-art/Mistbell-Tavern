@@ -61,3 +61,19 @@ These are logical boundaries, not a requirement to create a large number of Grad
 ## Acceptance record
 
 Each feature must have a checklist entry with: implementation path, data flow, persistence behavior, failure behavior, tests run and their exact result, plus device-only checks where applicable. Untested items remain explicitly incomplete.
+
+
+## Current implementation record — 2026-10-16
+
+Implemented in the clean-room source tree (not yet final-acceptance complete):
+
+- Streaming chat request client, cancellation/error categories, and deterministic prompt assembly.
+- Explicit per-capability provider profile selection; the memory extraction client uses only the selected `MEMORY_EXTRACTION` profile and validates that every extracted fact references a supplied source turn.
+- Temporal fact reducer, three-turn batching policy, versioned vector snapshot codec, and atomic app-private snapshot storage.
+- Local inference status contract and backend-selection policy. An accelerator is shown only when a runtime reports it; a device name or requested delegate is not evidence of NPU/GPU execution.
+- Embedding output contract validates batch count, dimensions, finite values, model identity and runtime identity before vectors can be accepted.
+- The home screen has a deliberately idle inference indicator until a real adapter reports an execution result.
+
+Not yet implemented or verified: production database integration and durable pending-memory jobs; actual EmbeddingGemma 2 model packaging/tokenization and LiteRT-LM adapter; runtime-backed CPU/GPU/NPU probes on Redmi K70 Pro; vector similarity retrieval and full rebuild; dedicated image API; new worldbook/character parsers and import fixtures; end-to-end security/backup flows; UI motion/performance measurements.
+
+Validation rule: do not mark a feature complete until the latest commit's focused tests pass and its data, cancellation, error, persistence and privacy paths have been reviewed. Routine CI must not package an APK; APK/emulator/instrumented and physical-device checks are reserved for final acceptance.
