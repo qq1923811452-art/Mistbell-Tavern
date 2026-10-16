@@ -51,6 +51,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -139,6 +140,23 @@ fun ChatScreen(onBack: () -> Unit) {
     val coroutineScope = rememberCoroutineScope()
     val diagnosticStore = remember(context) { DiagnosticLogStore(context.applicationContext.filesDir) }
     val memoryExtractionInFlight = remember { mutableSetOf<String>() }
+    val activeMemoryEngines = remember {
+        java.util.Collections.synchronizedSet(mutableSetOf<LiteRtLmEmbeddingGemma2Engine>())
+    }
+    DisposableEffect(activeMemoryEngines) {
+        onDispose {
+            val engines = synchronized(activeMemoryEngines) {
+                activeMemoryEngines.toList().also { activeMemoryEngines.clear() }
+            }
+            engines.forEach { engine -> runCatching { engine.close() } }
+        }
+    }
+
+    fun closeTrackedMemoryEngine(engine: LiteRtLmEmbeddingGemma2Engine?) {
+        if (engine == null) return
+        val shouldClose = synchronized(activeMemoryEngines) { activeMemoryEngines.remove(engine) }
+        if (shouldClose) runCatching { engine.close() }
+    }
 
     fun persistHistory() {
         coroutineScope.launch {
@@ -621,7 +639,7 @@ fun ChatScreen(onBack: () -> Unit) {
                             }
 
                             override fun onComplete() {
-                                memoryEngine?.close()
+                                closeTrackedMemoryEngine(memoryEngine)
                                 memoryEngine = null
                                 mainHandler.post {
                                     busy = false
@@ -691,6 +709,7 @@ fun ChatScreen(onBack: () -> Unit) {
                                         diagnostics = diagnosticStore,
                                     )
                                     memoryEngine = engine
+                                    activeMemoryEngines.add(engine)
                                     // Native model loading can block; never initialize the runtime on Compose's main thread.
                                     withContext(Dispatchers.IO) { engine.initialize() }
                                     val backendStatus = withContext(Dispatchers.IO) { engine.currentStatus() }
