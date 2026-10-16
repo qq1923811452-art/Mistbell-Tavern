@@ -447,6 +447,7 @@ fun ChatScreen(onBack: () -> Unit) {
                                     val memoryRuntime = EmbeddingGemma2MemoryRuntime(adapter)
                                     val memoryTextStore = AtomicMemoryTextStore(context)
                                     val vectorSnapshotStore = AtomicVectorSnapshotStore(context)
+                                    var indexMaintenanceMessage = ""
                                     when (
                                         val existingSnapshot = withContext(Dispatchers.IO) {
                                             vectorSnapshotStore.load(memoryRuntime.modelId, memoryRuntime.dimensions)
@@ -458,6 +459,7 @@ fun ChatScreen(onBack: () -> Unit) {
                                                 "memory.index.rebuild_skipped",
                                                 "reason=corrupt_snapshot_preserved",
                                             )
+                                            indexMaintenanceMessage = "现有向量快照损坏，已保留原文件，未自动覆盖。"
                                         }
                                         VectorSnapshotLoadResult.Missing,
                                         is VectorSnapshotLoadResult.Incompatible -> {
@@ -468,6 +470,7 @@ fun ChatScreen(onBack: () -> Unit) {
                                                         "memory.index.rebuild_skipped",
                                                         "reason=source_text_store_corrupt",
                                                     )
+                                                    indexMaintenanceMessage = "记忆文本存储校验失败，未覆盖原数据。"
                                                 }
                                                 is MemoryTextLoadResult.Loaded -> {
                                                     if (sourceTexts.records.isNotEmpty()) {
@@ -485,14 +488,14 @@ fun ChatScreen(onBack: () -> Unit) {
                                                                     "memory.index.rebuild.succeeded",
                                                                     "records=${rebuildResult.indexedRecords}; dimensions=${rebuildResult.dimensions}; model=${rebuildResult.modelId}",
                                                                 )
-                                                                status = "本地记忆索引已重建：${rebuildResult.indexedRecords} 条，${rebuildResult.dimensions} 维。"
+                                                                indexMaintenanceMessage = "索引已重建：${rebuildResult.indexedRecords} 条，${rebuildResult.dimensions} 维。"
                                                             }
                                                             is MemoryIndexRebuildResult.Failed -> {
                                                                 diagnosticStore.warn(
                                                                     "memory.index.rebuild.failed",
                                                                     "stage=${rebuildResult.stage}; reason=${rebuildResult.reason}",
                                                                 )
-                                                                status = "本地记忆索引重建失败（${rebuildResult.stage}）；继续普通聊天或使用可用记忆。"
+                                                                indexMaintenanceMessage = "索引重建失败（${rebuildResult.stage}）；不会伪报重建成功。"
                                                             }
                                                         }
                                                     }
@@ -509,7 +512,8 @@ fun ChatScreen(onBack: () -> Unit) {
                                         embeddings = memoryRuntime,
                                         textProvider = memoryTextStore,
                                     )
-                                    status = "本地记忆检索已接入；后端=${backendStatus.backend}，证据=${backendStatus.backendEvidence}。配置状态不等于芯片级 NPU 实测。"
+                                    status = "本地记忆检索已接入；后端=${backendStatus.backend}，证据=${backendStatus.backendEvidence}。配置状态不等于芯片级 NPU 实测。" +
+                                        if (indexMaintenanceMessage.isBlank()) "" else " $indexMaintenanceMessage"
                                     MemoryAwareChatRequest(client, memoryContext).stream(messages, observer)
                                 }
                             } catch (error: Exception) {
