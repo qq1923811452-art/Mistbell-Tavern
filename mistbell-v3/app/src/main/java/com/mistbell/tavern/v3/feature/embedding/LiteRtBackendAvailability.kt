@@ -1,0 +1,72 @@
+package com.mistbell.tavern.v3.feature.embedding
+
+import com.mistbell.tavern.v3.core.inference.InferenceBackend
+import java.io.File
+
+/**
+ * Prevents asking LiteRT-LM to initialize an accelerator whose native plugin/runtime is not packaged.
+ * This is a packaging preflight only; it does not prove the hardware actually executes an operation.
+ */
+data class LiteRtBackendAvailability private constructor(
+    private val availableBackends: Set<InferenceBackend>,
+    val npuReason: String?,
+    val gpuReason: String?,
+) {
+    fun isAvailable(backend: InferenceBackend): Boolean = backend in availableBackends
+
+    companion object {
+        /**
+         * SM8650 NPU requires the Qualcomm dispatch plugin plus matching QAIRT/QNN runtime files.
+         * These names are a conservative minimum for the SM8650 / Hexagon V75 target.
+         */
+        val SM8650_NPU_REQUIRED_LIBRARIES = listOf(
+            "libLiteRtDispatch_Qualcomm.so",
+            "libQnnSystem.so",
+            "libQnnHtp.so",
+            "libQnnHtpPrepare.so",
+            "libQnnHtpV75Stub.so",
+            "libQnnHtpV75Skel.so",
+        )
+
+        /** The current AAR's JNI alone does not package these accelerator plugins. */
+        val GPU_REQUIRED_LIBRARIES = listOf(
+            "libLiteRtGpuAccelerator.so",
+            "libLiteRtOpenClAccelerator.so",
+        )
+
+        fun detect(
+            nativeLibraryDir: File,
+            isArm64: Boolean,
+            npuModelCompatible: Boolean,
+        ): LiteRtBackendAvailability {
+            val missingNpu = SM8650_NPU_REQUIRED_LIBRARIES.filterNot { nativeLibraryDir.hasNonEmptyLibrary(it) }
+            val missingGpu = GPU_REQUIRED_LIBRARIES.filterNot { nativeLibraryDir.hasNonEmptyLibrary(it) }
+            val npuReason = when {
+                !npuModelCompatible ->
+                    "installed model SHA-256 does not match the pinned Qualcomm SM8650 model"
+                !isArm64 ->
+                    "device ABI does not include arm64-v8a"
+                missingNpu.isNotEmpty() ->
+                    "missing or empty Qualcomm runtime libraries: ${missingNpu.joinToString(",")}"
+                else -> null
+            }
+            val gpuReason = when {
+                !isArm64 -> "device ABI does not include arm64-v8a"
+                missingGpu.isNotEmpty() ->
+                    "missing or empty LiteRT GPU accelerator libraries: ${missingGpu.joinToString(",")}"
+                else -> null
+            }
+            val available = buildSet {
+                add(InferenceBackend.CPU)
+                if (npuReason == null) add(InferenceBackend.NPU)
+                if (gpuReason == null) add(InferenceBackend.GPU)
+            }
+            return LiteRtBackendAvailability(available, npuReason, gpuReason)
+        }
+
+        private fun File.hasNonEmptyLibrary(name: String): Boolean {
+            val library = File(this, name)
+            return library.isFile && library.length() > 0L
+        }
+    }
+}
