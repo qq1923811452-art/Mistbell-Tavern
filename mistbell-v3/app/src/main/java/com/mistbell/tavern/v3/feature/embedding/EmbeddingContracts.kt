@@ -1,6 +1,7 @@
 package com.mistbell.tavern.v3.feature.embedding
 
 import com.mistbell.tavern.v3.core.inference.InferenceBackend
+import com.mistbell.tavern.v3.core.inference.InferencePhase
 import com.mistbell.tavern.v3.core.inference.InferenceRuntimeStatus
 
 /** Candidate metadata only; it does not claim that a model is installed or runnable. */
@@ -19,8 +20,8 @@ data class EmbeddingModelSpec(
 
 data class EmbeddingBatch(val vectors: List<List<Float>>, val status: InferenceRuntimeStatus) {
     init {
-        require(status.phase.name == "READY" || status.phase.name == "RUNNING" ||
-            status.phase.name == "FALLBACK") {
+        require(status.phase == InferencePhase.READY || status.phase == InferencePhase.RUNNING ||
+            status.phase == InferencePhase.FALLBACK) {
             "Embedding result must include an active runtime status."
         }
         require(vectors.isNotEmpty()) { "Embedding result must not be empty." }
