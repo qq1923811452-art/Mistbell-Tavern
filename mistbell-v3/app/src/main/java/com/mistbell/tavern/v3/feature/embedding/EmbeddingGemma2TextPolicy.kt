@@ -13,7 +13,7 @@ object EmbeddingGemma2TextPolicy {
 
     fun formatSearchQuery(query: String): String {
         require(query.isNotBlank()) { "Search query must not be blank." }
-        return "task: search result | query: $query"
+        return "task: search query | text: ${query.trim()}"
     }
 
     fun formatDocument(text: String, title: String? = null): String {
@@ -22,7 +22,7 @@ object EmbeddingGemma2TextPolicy {
         require('\n' !in safeTitle && '\r' !in safeTitle) {
             "Document title must be a single line."
         }
-        return "title: $safeTitle | text: $text"
+        return "task: search result | title: $safeTitle | text: ${text.trim()}"
     }
 
     /**
