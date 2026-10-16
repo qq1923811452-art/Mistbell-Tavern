@@ -20,7 +20,13 @@ object WorldbookSelector {
             depthById[it.id] = 0
         }
 
-        var scanText = text
+        var scanText = buildString {
+            append(text)
+            enabled.filter { it.id in selectedIds && it.recursive }.forEach {
+                append("\n")
+                append(it.content)
+            }
+        }
         var depth = 0
         while (true) {
             val matches = enabled.filter { entry ->
