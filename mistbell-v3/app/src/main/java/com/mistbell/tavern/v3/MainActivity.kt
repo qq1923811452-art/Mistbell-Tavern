@@ -32,6 +32,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -132,6 +133,9 @@ class MainActivity : ComponentActivity() {
                     "embedding.model.download.succeeded",
                     "bytes=${downloaded.sizeBytes}; sha256=${downloaded.sha256}",
                 )
+            } catch (cancelled: CancellationException) {
+                diagnostics.warn("embedding.model.download.cancelled")
+                throw cancelled
             } catch (error: Exception) {
                 val detail = "${error::class.java.simpleName}: ${error.message ?: "download failed"}"
                     .take(InferenceRuntimeStatus.MAX_DETAIL_LENGTH)
@@ -187,6 +191,9 @@ class MainActivity : ComponentActivity() {
                     "embedding.selftest.succeeded",
                     "dimensions=${result.vectors.single().size}; configuredBackend=${result.status.backend}; evidence=${result.status.backendEvidence}; elapsedMs=${result.status.lastExecutionMillis}",
                 )
+            } catch (cancelled: CancellationException) {
+                diagnostics.warn("embedding.selftest.cancelled")
+                throw cancelled
             } catch (error: Exception) {
                 val detail = "${error::class.java.simpleName}: ${error.message ?: "embedding test failed"}"
                     .take(InferenceRuntimeStatus.MAX_DETAIL_LENGTH)
