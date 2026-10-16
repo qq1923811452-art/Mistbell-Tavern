@@ -607,6 +607,7 @@ fun ChatScreen(onBack: () -> Unit) {
                                     val engine = LiteRtLmEmbeddingGemma2Engine(
                                         context = context.applicationContext,
                                         modelFile = installedModel.file,
+                                        npuModelCompatible = installedModel.isQualcommSm8650Optimized,
                                         diagnostics = diagnosticStore,
                                     )
                                     memoryEngine = engine
