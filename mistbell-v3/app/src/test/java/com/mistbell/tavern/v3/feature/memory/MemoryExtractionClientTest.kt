@@ -46,13 +46,13 @@ class MemoryExtractionClientTest {
                     ProviderKind.MEMORY_EXTRACTION to "memory",
                 ),
             )
-            val client = MemoryExtractionClient(profiles) { handle ->
+            val client = MemoryExtractionClient(profiles, credentials = MemoryCredentialResolver { handle ->
                 when (handle) {
                     "chat-key" -> "chat-secret"
                     "memory-key" -> "memory-secret"
                     else -> null
                 }
-            }
+            })
             val outcome = execute(client)
             assertTrue(outcome is MemoryExtractionOutcome.Success)
             val success = outcome as MemoryExtractionOutcome.Success
@@ -92,7 +92,7 @@ class MemoryExtractionClientTest {
                 selectedProfileIds = mapOf(ProviderKind.MEMORY_EXTRACTION to "memory"),
             )
             val outcome = execute(
-                MemoryExtractionClient(profiles) { "memory-secret" },
+                MemoryExtractionClient(profiles, credentials = MemoryCredentialResolver { "memory-secret" }),
             )
             assertTrue(outcome is MemoryExtractionOutcome.Failure)
             assertEquals(
