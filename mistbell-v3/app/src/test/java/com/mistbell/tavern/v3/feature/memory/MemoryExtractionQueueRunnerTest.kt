@@ -1,15 +1,10 @@
 package com.mistbell.tavern.v3.feature.memory
 
-import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
-import org.junit.Rule
 import org.junit.Test
-import org.junit.rules.TemporaryFolder
 
 class MemoryExtractionQueueRunnerTest {
-    @get:Rule val folder = TemporaryFolder()
-
     @Test fun successfulExecutionCompletesClaimedJob() {
         val repository = repository()
         repository.enqueue(job("success"))
@@ -85,9 +80,19 @@ class MemoryExtractionQueueRunnerTest {
         assertEquals(MemoryExtractionQueueRunner.Result.Idle, result)
     }
 
-    private fun repository(): MemoryExtractionJobRepository {
-        val root: File = folder.newFolder()
-        return MemoryExtractionJobRepository(MemoryExtractionJobStore(root))
+    private fun repository(): MemoryExtractionJobRepository =
+        MemoryExtractionJobRepository(InMemoryJobStore())
+
+    private class InMemoryJobStore : MemoryExtractionJobPersistence {
+        private var savedJobs: List<MemoryExtractionJob>? = null
+
+        override fun save(jobs: List<MemoryExtractionJob>) {
+            savedJobs = jobs.toList()
+        }
+
+        override fun load(): MemoryExtractionJobLoadResult =
+            savedJobs?.let(MemoryExtractionJobLoadResult::Loaded)
+                ?: MemoryExtractionJobLoadResult.Missing
     }
 
     private fun job(id: String) = MemoryExtractionJob(
