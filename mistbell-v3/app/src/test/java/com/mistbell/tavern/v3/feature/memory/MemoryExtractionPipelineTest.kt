@@ -167,6 +167,13 @@ class MemoryExtractionPipelineTest {
 
         override fun load(): MemoryFactHistoryLoadResult = value
 
+        override fun update(transform: (List<MemoryFact>) -> List<MemoryFact>): List<MemoryFact> {
+            val current = (value as? MemoryFactHistoryLoadResult.Loaded)?.history.orEmpty()
+            val updated = transform(current)
+            if (updated != current) save(updated)
+            return updated
+        }
+
         fun history(): List<MemoryFact> =
             (value as? MemoryFactHistoryLoadResult.Loaded)?.history.orEmpty()
 
