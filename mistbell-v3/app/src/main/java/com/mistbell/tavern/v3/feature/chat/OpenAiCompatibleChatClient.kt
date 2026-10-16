@@ -191,7 +191,7 @@ class OpenAiCompatibleChatClient(
                                 safeMessage = if (call.isCanceled()) {
                                     "Generation was cancelled."
                                 } else {
-                                    "Chat stream was interrupted.",
+                                    "Chat stream was interrupted."
                                 },
                             ),
                         )
