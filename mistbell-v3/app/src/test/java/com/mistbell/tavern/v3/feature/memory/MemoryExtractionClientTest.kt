@@ -26,8 +26,20 @@ class MemoryExtractionClientTest {
         try {
             val profiles = ProviderProfileSet(
                 profiles = listOf(
-                    ProviderProfile("chat", ProviderKind.CHAT, server.url("/chat-v1").toString(), "chat-model", "chat-key"),
-                    ProviderProfile("memory", ProviderKind.MEMORY_EXTRACTION, server.url("/v1").toString(), "memory-model", "memory-key"),
+                    ProviderProfile(
+                        id = "chat",
+                        kind = ProviderKind.CHAT,
+                        baseUrl = server.url("/chat-v1").toString(),
+                        modelId = "chat-model",
+                        credentialHandle = "chat-key",
+                    ),
+                    ProviderProfile(
+                        id = "memory",
+                        kind = ProviderKind.MEMORY_EXTRACTION,
+                        baseUrl = server.url("/v1").toString(),
+                        modelId = "memory-model",
+                        credentialHandle = "memory-key",
+                    ),
                 ),
                 selectedProfileIds = mapOf(
                     ProviderKind.CHAT to "chat",
@@ -70,11 +82,11 @@ class MemoryExtractionClientTest {
             val profiles = ProviderProfileSet(
                 profiles = listOf(
                     ProviderProfile(
-                        "memory",
-                        ProviderKind.MEMORY_EXTRACTION,
-                        server.url("/v1").toString(),
-                        "memory-model",
-                        "memory-key",
+                        id = "memory",
+                        kind = ProviderKind.MEMORY_EXTRACTION,
+                        baseUrl = server.url("/v1").toString(),
+                        modelId = "memory-model",
+                        credentialHandle = "memory-key",
                     ),
                 ),
                 selectedProfileIds = mapOf(ProviderKind.MEMORY_EXTRACTION to "memory"),
