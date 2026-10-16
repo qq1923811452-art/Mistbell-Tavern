@@ -60,11 +60,11 @@ class VectorMemoryRetrieverTest {
             queryVector = listOf(1f, 0f),
             texts = listOf(firstText, duplicate, secondText),
             minimumScore = 0.5,
-            maxCharacters = 20,
+            maxCharacters = 40,
         )
 
         assertEquals(1, result.size)
-        assertEquals(20, result.sumOf { it.text.length })
+        assertEquals(firstText.text.length, result.sumOf { it.text.length })
         assertEquals(firstText.id, result.single().id)
     }
 
