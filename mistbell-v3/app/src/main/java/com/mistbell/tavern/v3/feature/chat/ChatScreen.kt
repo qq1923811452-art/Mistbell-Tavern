@@ -64,6 +64,8 @@ import com.mistbell.tavern.v3.core.model.ProviderProfileSet
 import com.mistbell.tavern.v3.feature.memory.MemoryCredentialResolver
 import com.mistbell.tavern.v3.feature.memory.MemoryExtractionClient
 import com.mistbell.tavern.v3.feature.memory.MemoryExtractionInput
+import com.mistbell.tavern.v3.feature.memory.TemporalFactTextSynchronizer
+import com.mistbell.tavern.v3.feature.memory.TemporalFactTextSyncResult
 import com.mistbell.tavern.v3.feature.memory.TemporalFactExtractionPipeline
 import com.mistbell.tavern.v3.feature.memory.TemporalFactPipelineOutcome
 
@@ -600,6 +602,29 @@ fun ChatScreen(onBack: () -> Unit) {
                                     val memoryTextStore = AtomicMemoryTextStore(context)
                                     val vectorSnapshotStore = AtomicVectorSnapshotStore(context)
                                     var indexMaintenanceMessage = ""
+                                    when (val syncResult = withContext(Dispatchers.IO) {
+                                        TemporalFactTextSynchronizer(
+                                            factStore = AtomicTemporalFactStore(context.applicationContext),
+                                            memoryTextStore = memoryTextStore,
+                                        ).synchronize()
+                                    }) {
+                                        TemporalFactTextSyncResult.NoFacts -> Unit
+                                        is TemporalFactTextSyncResult.Synchronized -> {
+                                            if (syncResult.changed) {
+                                                diagnosticStore.info(
+                                                    "memory.facts.text_projection_synced",
+                                                    "current_facts=${syncResult.currentFacts}",
+                                                )
+                                            }
+                                        }
+                                        is TemporalFactTextSyncResult.Skipped -> {
+                                            diagnosticStore.warn(
+                                                "memory.facts.text_projection_skipped",
+                                                "reason=safe_sync_failure",
+                                            )
+                                            indexMaintenanceMessage = "事实记忆同步暂不可用；原始事实文件不会被覆盖。"
+                                        }
+                                    }
                                     when (
                                         val existingSnapshot = withContext(Dispatchers.IO) {
                                             vectorSnapshotStore.load(memoryRuntime.modelId, memoryRuntime.dimensions)
