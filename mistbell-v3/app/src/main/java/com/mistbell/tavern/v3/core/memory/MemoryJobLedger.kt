@@ -4,7 +4,7 @@ package com.mistbell.tavern.v3.core.memory
  * Durable job state for memory extraction. Persist each transition before dispatching work so
  * process death cannot silently lose a selected batch. A retry reuses the same stable plan ID.
  */
-enum class MemoryJobStatus { PENDING, PROCESSING, RETTRY_WAIT, COMPLETED, PERMANENT_FAILURE }
+enum class MemoryJobStatus { PENDING, PROCESSING, RETRY_WAIT, COMPLETED, PERMANENT_FAILURE }
 
 data class MemoryExtractionJob(
     val plan: MemoryBatchPlan,
@@ -26,7 +26,7 @@ data class MemoryExtractionJob(
         require(
             (status == MemoryJobStatus.COMPLETED) == (completedAtEpochMillis != null),
         ) { "Completion timestamp must match completed status." }
-        require(status == MemoryJobStatus.RETTRY_WAIT || nextAttemptAtEpochMillis == 0L) {
+        require(status == MemoryJobStatus.RETRY_WAIT || nextAttemptAtEpochMillis == 0L) {
             "Only retry-wait jobs may have a scheduled retry time."
         }
     }
@@ -68,7 +68,7 @@ data class MemoryJobLedger(val jobs: List<MemoryExtractionJob> = emptyList()) {
         require(nowEpochMillis >= 0)
         val candidate = jobs.firstOrNull {
             it.status == MemoryJobStatus.PENDING ||
-                (it.status == MemoryJobStatus.RETTRY_WAIT && it.nextAttemptAtEpochMillis <= nowEpochMillis)
+                (it.status == MemoryJobStatus.RETRY_WAIT && it.nextAttemptAtEpochMillis <= nowEpochMillis)
         } ?: return this to null
         val claimed = candidate.copy(
             status = MemoryJobStatus.PROCESSING,
@@ -113,7 +113,7 @@ data class MemoryJobLedger(val jobs: List<MemoryExtractionJob> = emptyList()) {
             )
         } else {
             job.copy(
-                status = MemoryJobStatus.RETTRY_WAIT,
+                status = MemoryJobStatus.RETRY_WAIT,
                 nextAttemptAtEpochMillis = Math.addExact(nowEpochMillis, delayMillis),
                 lastSafeError = safeError,
             )
@@ -127,7 +127,7 @@ data class MemoryJobLedger(val jobs: List<MemoryExtractionJob> = emptyList()) {
             jobs = jobs.map { job ->
                 if (job.status == MemoryJobStatus.PROCESSING) {
                     job.copy(
-                        status = MemoryJobStatus.RETTRY_WAIT,
+                        status = MemoryJobStatus.RETRY_WAIT,
                         nextAttemptAtEpochMillis = 0,
                         lastSafeError = safeError,
                     )
