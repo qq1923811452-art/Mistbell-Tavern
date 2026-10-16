@@ -62,7 +62,7 @@ object CharacterCardCodec {
     }
 
     private fun List<String>.toJsonArray(): JSONArray = JSONArray().also { array ->
-        forEach(array::put)
+        forEach { array.put(it) }
     }
 
     private fun JSONArray?.toStringList(): List<String> {
