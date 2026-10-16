@@ -61,16 +61,7 @@ object VectorMemoryRetriever {
             if (normalizedText.isEmpty()) continue
             val remaining = maxCharacters - usedCharacters
             if (remaining <= 0) break
-            if (normalizedText.length > remaining) {
-                if (result.isEmpty() && remaining > 0) {
-                    result += RetrievedMemory(
-                        id = source.id,
-                        text = normalizedText.take(remaining),
-                        similarity = hit.score,
-                    )
-                }
-                break
-            }
+            if (normalizedText.length > remaining) continue
             result += RetrievedMemory(id = source.id, text = normalizedText, similarity = hit.score)
             usedCharacters += normalizedText.length
         }
