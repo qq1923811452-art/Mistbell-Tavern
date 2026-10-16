@@ -5,7 +5,9 @@ import java.io.File
 import java.security.MessageDigest
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Test
@@ -20,6 +22,7 @@ class EmbeddingGemma2ModelAssetManagerTest {
 
             assertNotNull(result)
             assertEquals("valid-model-bundle".length.toLong(), result!!.sizeBytes)
+            assertFalse(result.isQualcommSm8650Optimized)
         } finally {
             directory.deleteRecursively()
         }
@@ -37,6 +40,7 @@ class EmbeddingGemma2ModelAssetManagerTest {
             )
 
             assertEquals(bytes.size.toLong(), imported.sizeBytes)
+            assertFalse(imported.isQualcommSm8650Optimized)
             assertEquals(imported.sha256, manager.verifyInstalled()!!.sha256)
         } finally {
             directory.deleteRecursively()
@@ -70,6 +74,12 @@ class EmbeddingGemma2ModelAssetManagerTest {
         } finally {
             directory.deleteRecursively()
         }
+    }
+
+    @Test
+    fun defaultDownloadIsPinnedToPublishedSm8650Bundle(): Unit {
+        assertTrue(EmbeddingGemma2ModelAssetManager.MODEL_DOWNLOAD_URL.contains("embeddinggemma-2-740m_Qualcomm_SM8650.litertlm"))
+        assertEquals(64, EmbeddingGemma2ModelAssetManager.QUALCOMM_SM8650_MODEL_SHA256.length)
     }
 
     private fun writeModelAndDigest(directory: File, bytes: ByteArray): File {
