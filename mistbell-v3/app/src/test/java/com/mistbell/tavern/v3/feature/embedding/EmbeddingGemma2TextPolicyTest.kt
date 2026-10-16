@@ -8,7 +8,7 @@ class EmbeddingGemma2TextPolicyTest {
     @Test
     fun searchQueryUsesTheRetrievalQueryInstruction() {
         assertEquals(
-            "task: search result | query: What happened last night?",
+            "task: search query | text: What happened last night?",
             EmbeddingGemma2TextPolicy.formatSearchQuery("What happened last night?"),
         )
     }
@@ -16,11 +16,11 @@ class EmbeddingGemma2TextPolicyTest {
     @Test
     fun documentUsesTitleAndTextFieldsAndDefaultsTitleToNone() {
         assertEquals(
-            "title: none | text: The tavern was closed.",
+            "task: search result | title: none | text: The tavern was closed.",
             EmbeddingGemma2TextPolicy.formatDocument("The tavern was closed."),
         )
         assertEquals(
-            "title: Chapter 4 | text: The tavern was closed.",
+            "task: search result | title: Chapter 4 | text: The tavern was closed.",
             EmbeddingGemma2TextPolicy.formatDocument("The tavern was closed.", " Chapter 4 "),
         )
     }
