@@ -1,5 +1,6 @@
 package com.mistbell.tavern.v3.feature.embedding
 
+import com.mistbell.tavern.v3.core.inference.BackendEvidence
 import com.mistbell.tavern.v3.core.inference.InferenceBackend
 import com.mistbell.tavern.v3.core.inference.InferencePhase
 
@@ -77,7 +78,8 @@ class EmbeddingGemma2RuntimeAdapter(
         }
         if (raw.status.runtimeId != engine.runtimeId ||
             raw.status.runtimeId.isNullOrBlank() ||
-            raw.status.backend == InferenceBackend.UNKNOWN
+            raw.status.backend == InferenceBackend.UNKNOWN ||
+            raw.status.backendEvidence == BackendEvidence.NOT_AVAILABLE
         ) {
             throw EmbeddingOutputException("Engine did not report a verified runtime and backend.")
         }
