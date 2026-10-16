@@ -17,6 +17,8 @@ data class DownloadedEmbeddingModel(
     val file: File,
     val sizeBytes: Long,
     val sha256: String,
+    /** True only when the bytes match the published SM8650-specific model checksum. */
+    val isQualcommSm8650Optimized: Boolean,
 )
 
 class EmbeddingGemma2ModelAssetManager(
@@ -84,6 +86,9 @@ class EmbeddingGemma2ModelAssetManager(
                 }
             }
             val sha256 = digest.digest().toHex()
+            check(sha256.equals(QUALCOMM_SM8650_MODEL_SHA256, ignoreCase = true)) {
+                "Downloaded model checksum does not match the published Qualcomm SM8650 model; refusing to install it."
+            }
             FileOutputStream(temporaryDigestFile).use { output ->
                 output.write("$sha256  $MODEL_FILE_NAME\n".toByteArray(Charsets.UTF_8))
                 output.fd.sync()
@@ -100,7 +105,12 @@ class EmbeddingGemma2ModelAssetManager(
                 StandardCopyOption.REPLACE_EXISTING,
                 StandardCopyOption.ATOMIC_MOVE,
             )
-            DownloadedEmbeddingModel(modelFile, downloadedBytes, sha256)
+            DownloadedEmbeddingModel(
+                file = modelFile,
+                sizeBytes = downloadedBytes,
+                sha256 = sha256,
+                isQualcommSm8650Optimized = true,
+            )
         } catch (error: Exception) {
             temporaryFile.delete()
             temporaryDigestFile.delete()
@@ -183,7 +193,12 @@ class EmbeddingGemma2ModelAssetManager(
                     StandardCopyOption.REPLACE_EXISTING,
                     StandardCopyOption.ATOMIC_MOVE,
                 )
-                DownloadedEmbeddingModel(modelFile, importedBytes, sha256)
+                DownloadedEmbeddingModel(
+                    file = modelFile,
+                    sizeBytes = importedBytes,
+                    sha256 = sha256,
+                    isQualcommSm8650Optimized = sha256.equals(QUALCOMM_SM8650_MODEL_SHA256, ignoreCase = true),
+                )
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
@@ -214,7 +229,12 @@ class EmbeddingGemma2ModelAssetManager(
             }
             val actual = digest.digest().toHex()
             if (!actual.equals(expected, ignoreCase = true)) return@withContext null
-            DownloadedEmbeddingModel(modelFile, modelFile.length(), actual)
+            DownloadedEmbeddingModel(
+                file = modelFile,
+                sizeBytes = modelFile.length(),
+                sha256 = actual,
+                isQualcommSm8650Optimized = actual.equals(QUALCOMM_SM8650_MODEL_SHA256, ignoreCase = true),
+            )
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
@@ -265,7 +285,9 @@ class EmbeddingGemma2ModelAssetManager(
     companion object {
         const val MODEL_FILE_NAME = "embeddinggemma-2-740m.litertlm"
         const val MODEL_DOWNLOAD_URL =
-            "https://huggingface.co/litert-community/embeddinggemma-2-740m-litert-lm/resolve/main/embeddinggemma-2-740m.litertlm"
+            "https://huggingface.co/litert-community/embeddinggemma-2-740m-litert-lm/resolve/ed3f5e1/embeddinggemma-2-740m_Qualcomm_SM8650.litertlm"
+        const val QUALCOMM_SM8650_MODEL_SHA256 =
+            "3b8a18c6d043b8132c4eda45611296e1ae455ada82cda8b591ec0ca141e041c5"
         private val ALLOWED_MODEL_CONTENT_TYPES = setOf(
             "application/octet-stream",
             "application/x-litertlm",
