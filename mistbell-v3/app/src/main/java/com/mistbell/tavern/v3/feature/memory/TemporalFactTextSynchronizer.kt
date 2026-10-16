@@ -2,7 +2,7 @@ package com.mistbell.tavern.v3.feature.memory
 
 import com.mistbell.tavern.v3.core.memory.MemoryTextRecord
 import com.mistbell.tavern.v3.core.storage.AtomicMemoryTextStore
-import com.mistbell.tavern.v3.core.storage.AtomicTemporalFactStore
+import com.mistbell.tavern.v3.core.storage.TemporalFactPersistence
 import com.mistbell.tavern.v3.core.storage.MemoryTextLoadResult
 import com.mistbell.tavern.v3.core.storage.TemporalFactLoadResult
 
@@ -14,7 +14,7 @@ sealed interface TemporalFactTextSyncResult {
 
 /** Repairs the derived vector-text projection from the durable temporal ledger without touching unrelated memories. */
 class TemporalFactTextSynchronizer(
-    private val factStore: AtomicTemporalFactStore,
+    private val factStore: TemporalFactPersistence,
     private val memoryTextStore: AtomicMemoryTextStore,
 ) {
     fun synchronize(): TemporalFactTextSyncResult {
