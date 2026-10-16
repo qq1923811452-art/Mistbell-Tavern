@@ -6,6 +6,7 @@ import com.google.ai.edge.litertlm.EmbeddingEngine
 import com.google.ai.edge.litertlm.EmbeddingEngineConfig
 import com.google.ai.edge.litertlm.EmbeddingOptions
 import com.google.ai.edge.litertlm.InputData
+import com.mistbell.tavern.v3.core.diagnostics.DiagnosticLogStore
 import com.mistbell.tavern.v3.core.inference.InferenceBackend
 import com.mistbell.tavern.v3.core.inference.InferencePhase
 import com.mistbell.tavern.v3.core.inference.InferenceRuntimeStatus
@@ -32,6 +33,7 @@ class LiteRtLmEmbeddingGemma2Engine(
         InferenceBackend.GPU,
         InferenceBackend.CPU,
     ),
+    private val diagnostics: DiagnosticLogStore = DiagnosticLogStore(context.applicationContext.filesDir),
 ) : EmbeddingGemma2InferenceEngine, AutoCloseable {
     private val appContext = context.applicationContext
     private val cacheDirectory = File(appContext.cacheDir, "litertlm-embeddinggemma2")
@@ -40,6 +42,7 @@ class LiteRtLmEmbeddingGemma2Engine(
     private var engine: EmbeddingEngine? = null
     private var selectedBackend = InferenceBackend.UNKNOWN
     private var fallbackReason: String? = null
+    private var lastError: String? = null
 
     override val runtimeId: String = RUNTIME_ID
 
@@ -61,7 +64,10 @@ class LiteRtLmEmbeddingGemma2Engine(
             }
 
             val failures = mutableListOf<String>()
+            lastError = null
+            logInfo("embedding.initialize.started", "backendOrder=${backendOrder.joinToString(",")}")
             for (backend in backendOrder) {
+                logInfo("embedding.backend.initialize.started", "backend=${backend.name}")
                 val candidate = EmbeddingEngine(
                     EmbeddingEngineConfig(
                         modelPath = modelFile.absolutePath,
@@ -76,22 +82,28 @@ class LiteRtLmEmbeddingGemma2Engine(
                     fallbackReason = failures.takeIf { it.isNotEmpty() }
                         ?.joinToString("; ")
                         ?.take(InferenceRuntimeStatus.MAX_DETAIL_LENGTH)
+                    logInfo("embedding.initialize.succeeded", "backend=${backend.name}; fallback=${fallbackReason != null}")
                     return@withLock
                 } catch (cancelled: CancellationException) {
                     if (candidate.isInitialized()) candidate.close()
                     throw cancelled
                 } catch (error: Exception) {
                     if (candidate.isInitialized()) candidate.close()
-                    failures += "${backend.name}: ${error.message ?: error::class.java.simpleName}".take(180)
+                    val reason = "${backend.name}: ${error.message ?: error::class.java.simpleName}".take(180)
+                    failures += reason
+                    logWarn("embedding.backend.initialize.failed", reason)
                 } catch (error: LinkageError) {
                     if (candidate.isInitialized()) candidate.close()
-                    failures += "${backend.name}: native runtime unavailable (${error::class.java.simpleName})"
+                    val reason = "${backend.name}: native runtime unavailable (${error::class.java.simpleName})"
+                    failures += reason
+                    logWarn("embedding.backend.initialize.failed", reason)
                 }
             }
             selectedBackend = InferenceBackend.UNKNOWN
-            throw IllegalStateException(
-                "EmbeddingGemma 2 could not initialize on any configured backend: ${failures.joinToString("; ")}",
-            )
+            lastError = "No configured backend initialized successfully: ${failures.joinToString("; ")}"
+                .take(InferenceRuntimeStatus.MAX_DETAIL_LENGTH)
+            logError("embedding.initialize.failed", lastError.orEmpty())
+            throw IllegalStateException(lastError)
         }
     }
 
@@ -101,34 +113,55 @@ class LiteRtLmEmbeddingGemma2Engine(
         lock.withLock {
             val activeEngine = checkNotNull(engine) { "LiteRT-LM embedding engine is not initialized." }
             val startedAt = System.nanoTime()
-            val responses = activeEngine.computeEmbeddingBatch(
-                formattedInputs.map { listOf(InputData.Text(it)) },
-                EmbeddingOptions(
-                    normalize = true,
-                    outputSize = EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS,
-                ),
-            )
-            val elapsedMillis = ((System.nanoTime() - startedAt) / 1_000_000L).coerceAtLeast(0L)
-            val status = InferenceRuntimeStatus(
-                phase = if (fallbackReason == null) InferencePhase.RUNNING else InferencePhase.FALLBACK,
-                modelId = EmbeddingGemma2TextPolicy.MODEL_ID,
-                backend = selectedBackend,
-                runtimeId = runtimeId,
-                acceleratorName = selectedBackend.name,
-                fallbackReason = fallbackReason,
-                lastExecutionMillis = elapsedMillis,
-            )
-            EmbeddingBatch(
-                vectors = responses.map { response -> response.embedding.toList() },
-                status = status,
-            )
+            logInfo("embedding.inference.started", "inputCount=${formattedInputs.size}; backend=${selectedBackend.name}")
+            try {
+                val responses = activeEngine.computeEmbeddingBatch(
+                    formattedInputs.map { listOf(InputData.Text(it)) },
+                    EmbeddingOptions(
+                        normalize = true,
+                        outputSize = EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS,
+                    ),
+                )
+                val elapsedMillis = ((System.nanoTime() - startedAt) / 1_000_000L).coerceAtLeast(0L)
+                lastError = null
+                logInfo("embedding.inference.succeeded", "outputCount=${responses.size}; dimensions=${responses.firstOrNull()?.embedding?.size ?: 0}; elapsedMs=$elapsedMillis; backend=${selectedBackend.name}")
+                val status = InferenceRuntimeStatus(
+                    phase = if (fallbackReason == null) InferencePhase.READY else InferencePhase.FALLBACK,
+                    modelId = EmbeddingGemma2TextPolicy.MODEL_ID,
+                    backend = selectedBackend,
+                    runtimeId = runtimeId,
+                    acceleratorName = selectedBackend.name,
+                    fallbackReason = fallbackReason,
+                    lastExecutionMillis = elapsedMillis,
+                )
+                EmbeddingBatch(
+                    vectors = responses.map { response -> response.embedding.toList() },
+                    status = status,
+                )
+            } catch (cancelled: CancellationException) {
+                logWarn("embedding.inference.cancelled", "backend=${selectedBackend.name}")
+                throw cancelled
+            } catch (error: Exception) {
+                lastError = "${error::class.java.simpleName}: ${error.message ?: "inference failed"}"
+                    .take(InferenceRuntimeStatus.MAX_DETAIL_LENGTH)
+                logError("embedding.inference.failed", lastError.orEmpty())
+                throw error
+            }
         }
     }
 
     fun currentStatus(): InferenceRuntimeStatus = lock.withLock {
-        if (engine == null) return@withLock InferenceRuntimeStatus.idle()
+        if (engine == null) {
+            return@withLock if (lastError == null) InferenceRuntimeStatus.idle() else InferenceRuntimeStatus(
+                phase = InferencePhase.FAILED,
+                modelId = EmbeddingGemma2TextPolicy.MODEL_ID,
+                backend = InferenceBackend.UNKNOWN,
+                runtimeId = runtimeId,
+                lastError = lastError,
+            )
+        }
         InferenceRuntimeStatus(
-            phase = if (fallbackReason == null) InferencePhase.READY else InferencePhase.FALLBACK,
+            phase = if (lastError != null) InferencePhase.FAILED else if (fallbackReason == null) InferencePhase.READY else InferencePhase.FALLBACK,
             modelId = EmbeddingGemma2TextPolicy.MODEL_ID,
             backend = selectedBackend,
             runtimeId = runtimeId,
@@ -139,12 +172,17 @@ class LiteRtLmEmbeddingGemma2Engine(
 
     override fun close() {
         lock.withLock {
-            engine?.close()
+            runCatching { engine?.close() }.onFailure { logWarn("embedding.engine.close.failed", it::class.java.simpleName) }
             engine = null
             selectedBackend = InferenceBackend.UNKNOWN
             fallbackReason = null
+            logInfo("embedding.engine.closed")
         }
     }
+
+    private fun logInfo(event: String, detail: String = "") { runCatching { diagnostics.info(event, detail) } }
+    private fun logWarn(event: String, detail: String = "") { runCatching { diagnostics.warn(event, detail) } }
+    private fun logError(event: String, detail: String = "") { runCatching { diagnostics.error(event, detail) } }
 
     private fun InferenceBackend.toLiteRtBackend(): Backend = when (this) {
         InferenceBackend.NPU -> Backend.NPU(nativeLibraryDir = appContext.applicationInfo.nativeLibraryDir)
