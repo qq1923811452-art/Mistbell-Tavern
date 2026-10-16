@@ -78,7 +78,7 @@ class DiagnosticLogStore(
             .replace(Regex("(?i)(authorization\\s*[:=]\\s*bearer\\s+)[A-Za-z0-9._~+/=-]+")) { match -> "${match.groupValues[1]}[REDACTED]" }
             .replace(Regex("(?i)(authorization\\s*[:=]\\s*basic\\s+)[A-Za-z0-9+/=]+")) { match -> "${match.groupValues[1]}[REDACTED]" }
             .replace(Regex("(?i)(bearer\\s+)[A-Za-z0-9._~+/=-]+")) { match -> "${match.groupValues[1]}[REDACTED]" }
-            .replace(Regex("(?i)((?:x-api-key|api[_ -]?key|access[_ -]?token|token)\\s*[:=]\\s*)[^\\s,;&]+")) { match -> "${match.groupValues[1]}[REDACTED]" }
+            .replace(Regex("(?i)([\\\"\\\']?(?:authorization|x-api-key|api[_ -]?key|access[_ -]?token|token)[\\\"\\\']?\\s*[:=]\\s*[\\\"\\\']?)([^\\\"\\\'\\s,;&}]+)([\\\"\\\']?)")) { match -> "${match.groupValues[1]}[REDACTED]${match.groupValues[3]}" }
             .replace(Regex("(?i)([?&](?:access_token|token|api_key|x-api-key)=)[^&\\s]+")) { match -> "${match.groupValues[1]}[REDACTED]" }
             .replace(Regex("(?i)\\bhf_[A-Za-z0-9]{10,}\\b"), "[REDACTED]")
         return redacted.take(maxChars)
