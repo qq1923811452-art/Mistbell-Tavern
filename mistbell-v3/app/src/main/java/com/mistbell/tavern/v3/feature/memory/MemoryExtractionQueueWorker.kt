@@ -16,6 +16,7 @@ import com.mistbell.tavern.v3.feature.chat.ChatHistoryLoadResult
 import com.mistbell.tavern.v3.feature.chat.ChatHistoryStore
 import com.mistbell.tavern.v3.feature.chat.MemoryExtractionBatchInputFactory
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 
 /**
@@ -134,6 +135,8 @@ class MemoryExtractionQueueWorker(
             }
             scheduleNextRetry(repository)
             Result.success()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (_: Exception) {
             Result.retry()
         }
