@@ -15,6 +15,17 @@ import java.util.concurrent.atomic.AtomicReference
 
 class MemoryExtractionClientTest {
     @Test
+    fun formatsCompletedTurnWithARealLineBreakAndBoundedLength() {
+        assertEquals(
+            "User: hello\\nAssistant: world",
+            formatMemoryExtractionTurn("hello", "world"),
+        )
+        val oversized = formatMemoryExtractionTurn("u".repeat(15_000), "a".repeat(15_000))
+        assertEquals(MemoryExtractionInput.MAX_TURN_TEXT_CHARS, oversized.length)
+        assertTrue(oversized.contains("\\nAssistant: "))
+    }
+
+    @Test
     fun usesOnlySelectedMemoryProviderAndValidatesFactSource() {
         val server = MockWebServer()
         server.enqueue(
