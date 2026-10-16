@@ -11,6 +11,7 @@ on:
       - "gradle.properties"
       - ".github/workflows/mistbell-v3-ci.yml"
       - ".github/workflows/ci.yml"
+      - ".github/workflows/mistbell-v3-build-apk.yml"
   pull_request:
     paths:
       - "mistbell-v3/**"
@@ -19,6 +20,7 @@ on:
       - "gradle.properties"
       - ".github/workflows/mistbell-v3-ci.yml"
       - ".github/workflows/ci.yml"
+      - ".github/workflows/mistbell-v3-build-apk.yml"
   workflow_dispatch:
 
 permissions:
@@ -124,11 +126,11 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p build-artifacts
-          find mistbell-v3/app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' -exec cp {} build-artifacts/ \;
+          find mistbell-v3/app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' -exec cp {} build-artifacts/ \\;
           test -n "$(find build-artifacts -maxdepth 1 -type f -name '*.apk' -print -quit)"
           cd build-artifacts
           sha256sum *.apk | tee SHA256SUMS.txt
-          printf 'source_sha=%s\nworkflow_run_id=%s\nartifact_role=3.0-device-test-debug-apk\n' "$VERIFIED_SHA" "$GITHUB_RUN_ID" > SOURCE.txt
+          printf 'source_sha=%s\\nworkflow_run_id=%s\\nartifact_role=3.0-device-test-debug-apk\\n' "$VERIFIED_SHA" "$GITHUB_RUN_ID" > SOURCE.txt
 
       - name: Upload final device-test APK
         if: ${{ steps.request.outputs.enabled == 'true' }}
