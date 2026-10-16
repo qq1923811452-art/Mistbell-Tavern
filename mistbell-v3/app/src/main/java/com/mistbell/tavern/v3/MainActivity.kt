@@ -27,6 +27,18 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import android.widget.Toast
+import java.io.File
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import com.mistbell.tavern.v3.core.inference.BackendEvidence
+import com.mistbell.tavern.v3.feature.embedding.EmbeddingGemma2ModelAssetManager
+import com.mistbell.tavern.v3.feature.embedding.EmbeddingGemma2RuntimeAdapter
+import com.mistbell.tavern.v3.feature.embedding.LiteRtLmEmbeddingGemma2Engine
 import com.mistbell.tavern.v3.core.diagnostics.DiagnosticLogStore
 import com.mistbell.tavern.v3.core.inference.InferenceBackend
 import com.mistbell.tavern.v3.core.inference.InferencePhase
@@ -44,11 +56,26 @@ private val initialStages = listOf(
 
 class MainActivity : ComponentActivity() {
     private lateinit var diagnostics: DiagnosticLogStore
+    private lateinit var modelAssets: EmbeddingGemma2ModelAssetManager
+    private var activeEmbeddingEngine: LiteRtLmEmbeddingGemma2Engine? = null
+    private var inferenceStatus by mutableStateOf(InferenceRuntimeStatus.idle())
+    private var operationMessage by mutableStateOf("正在检查本地模型……")
+    private var operationBusy by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         diagnostics = DiagnosticLogStore(filesDir)
+        modelAssets = EmbeddingGemma2ModelAssetManager(File(filesDir, "models"))
         diagnostics.info("app.started", "build=3.0.0-dev")
+        lifecycleScope.launch {
+            val installed = withContext(Dispatchers.IO) { modelAssets.verifyInstalled() }
+            operationMessage = if (installed == null) {
+                "本地模型未安装，需先下载 EmbeddingGemma 2。"
+            } else {
+                "本地模型已校验：${installed.sizeBytes} bytes；SHA-256 一致。"
+            }
+            diagnostics.info("embedding.model.startup.check", "installed=${installed != null}")
+        }
         val exportDiagnostics = registerForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
             if (uri == null) {
                 diagnostics.info("diagnostics.export.cancelled")
@@ -71,19 +98,122 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background,
                 ) {
-                    DevelopmentHome(onExportLogs = { exportDiagnostics.launch("mistbell-diagnostics.txt") })
+                    DevelopmentHome(
+                        inferenceStatus = inferenceStatus,
+                        operationMessage = operationMessage,
+                        operationBusy = operationBusy,
+                        onDownloadModel = ::downloadEmbeddingModel,
+                        onRunEmbeddingTest = ::runEmbeddingSelfTest,
+                        onExportLogs = { exportDiagnostics.launch("mistbell-diagnostics.txt") },
+                    )
                 }
             }
         }
+    }
+
+    private fun downloadEmbeddingModel() {
+        if (operationBusy) return
+        operationBusy = true
+        operationMessage = "开始下载模型；请保持应用在前台并连接稳定网络。"
+        diagnostics.info("embedding.model.download.started", "source=official-model-host")
+        lifecycleScope.launch {
+            try {
+                val downloaded = modelAssets.download { bytes, total ->
+                    runOnUiThread {
+                        operationMessage = if (total == null) {
+                            "模型下载中：${bytes / (1024 * 1024)} MiB"
+                        } else {
+                            "模型下载中：${(bytes * 100 / total).coerceIn(0, 100)}% (${bytes / (1024 * 1024)} MiB)"
+                        }
+                    }
+                }
+                operationMessage = "模型下载完成，SHA-256：${downloaded.sha256}"
+                diagnostics.info(
+                    "embedding.model.download.succeeded",
+                    "bytes=${downloaded.sizeBytes}; sha256=${downloaded.sha256}",
+                )
+            } catch (error: Exception) {
+                val detail = "${error::class.java.simpleName}: ${error.message ?: "download failed"}"
+                    .take(InferenceRuntimeStatus.MAX_DETAIL_LENGTH)
+                operationMessage = "模型下载失败：$detail"
+                inferenceStatus = InferenceRuntimeStatus(
+                    phase = InferencePhase.FAILED,
+                    modelId = com.mistbell.tavern.v3.feature.embedding.EmbeddingGemma2TextPolicy.MODEL_ID,
+                    backend = InferenceBackend.UNKNOWN,
+                    runtimeId = null,
+                    lastError = detail,
+                )
+                diagnostics.error("embedding.model.download.failed", detail)
+            } finally {
+                operationBusy = false
+            }
+        }
+    }
+
+    private fun runEmbeddingSelfTest() {
+        if (operationBusy) return
+        operationBusy = true
+        operationMessage = "正在准备本地 EmbeddingGemma 2 推理……"
+        lifecycleScope.launch {
+            var runtime: LiteRtLmEmbeddingGemma2Engine? = null
+            try {
+                val asset = withContext(Dispatchers.IO) { modelAssets.verifyInstalled() }
+                    ?: throw IllegalStateException("模型不存在或 SHA-256 校验失败；请重新下载模型。")
+                activeEmbeddingEngine?.close()
+                runtime = LiteRtLmEmbeddingGemma2Engine(
+                    context = applicationContext,
+                    modelFile = asset.file,
+                    diagnostics = diagnostics,
+                )
+                activeEmbeddingEngine = runtime
+                runtime.initialize()
+                inferenceStatus = runtime.currentStatus()
+                operationMessage = "模型已初始化，正在执行真实文本向量测试……"
+                val result = EmbeddingGemma2RuntimeAdapter(runtime).embedQueries(
+                    listOf("Mistbell Tavern local embedding diagnostic test"),
+                )
+                inferenceStatus = result.status
+                operationMessage =
+                    "真实本地推理成功：${result.vectors.single().size} 维向量；配置后端 ${result.status.backend}。硬件实际调用仍需结合设备日志确认。"
+                diagnostics.info(
+                    "embedding.selftest.succeeded",
+                    "dimensions=${result.vectors.single().size}; configuredBackend=${result.status.backend}; evidence=${result.status.backendEvidence}; elapsedMs=${result.status.lastExecutionMillis}",
+                )
+            } catch (error: Exception) {
+                val detail = "${error::class.java.simpleName}: ${error.message ?: "embedding test failed"}"
+                    .take(InferenceRuntimeStatus.MAX_DETAIL_LENGTH)
+                inferenceStatus = runtime?.currentStatus() ?: InferenceRuntimeStatus(
+                    phase = InferencePhase.FAILED,
+                    modelId = com.mistbell.tavern.v3.feature.embedding.EmbeddingGemma2TextPolicy.MODEL_ID,
+                    backend = InferenceBackend.UNKNOWN,
+                    runtimeId = null,
+                    lastError = detail,
+                )
+                operationMessage = "本地推理测试失败：$detail"
+                diagnostics.error("embedding.selftest.failed", detail)
+            } finally {
+                operationBusy = false
+            }
+        }
+    }
+
+    override fun onDestroy() {
+        activeEmbeddingEngine?.close()
+        activeEmbeddingEngine = null
+        super.onDestroy()
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun DevelopmentHome(onExportLogs: () -> Unit) {
-    // This is deliberately an idle status until a real runtime adapter reports execution.
-    // The UI must never infer NPU/GPU use from the phone model or a requested delegate.
-    val inferenceStatus = InferenceRuntimeStatus.idle()
+private fun DevelopmentHome(
+    inferenceStatus: InferenceRuntimeStatus,
+    operationMessage: String,
+    operationBusy: Boolean,
+    onDownloadModel: () -> Unit,
+    onRunEmbeddingTest: () -> Unit,
+    onExportLogs: () -> Unit,
+) {
     Scaffold(
         topBar = {
             TopAppBar(
@@ -115,6 +245,23 @@ private fun DevelopmentHome(onExportLogs: () -> Unit) {
                 )
             }
             item { InferenceStatusCard(inferenceStatus) }
+            item {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text("本地模型与实测", style = MaterialTheme.typography.titleMedium)
+                        Spacer(Modifier.height(6.dp))
+                        Text(operationMessage, style = MaterialTheme.typography.bodyMedium)
+                        Spacer(Modifier.height(10.dp))
+                        Button(onClick = onDownloadModel, enabled = !operationBusy, modifier = Modifier.fillMaxWidth()) {
+                            Text("下载 / 重新下载 EmbeddingGemma 2 模型")
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Button(onClick = onRunEmbeddingTest, enabled = !operationBusy, modifier = Modifier.fillMaxWidth()) {
+                            Text("初始化后执行真实向量测试")
+                        }
+                    }
+                }
+            }
             item {
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(16.dp)) {
@@ -177,7 +324,8 @@ private fun InferenceStatusCard(status: InferenceRuntimeStatus) {
             Text("$phaseLabel · 后端：$backendLabel", style = MaterialTheme.typography.bodyMedium)
             val details = listOfNotNull(
                 status.modelId?.let { "模型：$it" },
-                status.acceleratorName?.let { "设备：$it" },
+                status.acceleratorName?.let { "配置后端：$it" },
+                status.backendEvidence.takeIf { it != BackendEvidence.NOT_AVAILABLE }?.let { "硬件证据：${when (it) { BackendEvidence.NOT_AVAILABLE -> "无"; BackendEvidence.CONFIGURED_ONLY -> "仅配置成功，未独立确认实际硬件调用"; BackendEvidence.RUNTIME_REPORTED -> "运行时报告"; BackendEvidence.DEVICE_VERIFIED -> "设备实测确认" }}" },
                 status.lastExecutionMillis?.let { "最近耗时：$it ms" },
                 status.fallbackReason?.let { "回退原因：$it" },
                 status.lastError?.let { "错误：$it" },
