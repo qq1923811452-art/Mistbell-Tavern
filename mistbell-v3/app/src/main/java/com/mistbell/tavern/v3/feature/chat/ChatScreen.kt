@@ -224,16 +224,9 @@ fun ChatScreen(onBack: () -> Unit) {
         }
     }
 
-    fun scheduleMemoryExtractionIfDue(
-        providers: ProviderProfileSet,
-        memorySecret: String,
-    ) {
+    fun scheduleMemoryExtractionIfDue(providers: ProviderProfileSet) {
         val profile = providers.profileFor(ProviderKind.MEMORY_EXTRACTION) ?: return
         val preferences = context.getSharedPreferences("mistbell-v3-settings", Context.MODE_PRIVATE)
-        if (memorySecret.isNotBlank()) {
-            status = "要让记忆整理任务在应用重启后继续运行，请先点“安全保存密钥”；未保存的临时密钥不会进入持久化队列。"
-            return
-        }
         val credentialHandle = preferences.getString("memory_api_credential_handle", null)
             ?.takeIf(memoryCredentialStore::contains)
         if (credentialHandle == null) {
