@@ -20,6 +20,7 @@ import com.mistbell.tavern.v3.feature.embedding.EmbeddingGemma2ModelAssetManager
 import com.mistbell.tavern.v3.feature.embedding.EmbeddingGemma2RuntimeAdapter
 import com.mistbell.tavern.v3.feature.embedding.LiteRtLmEmbeddingGemma2Engine
 import java.io.File
+import java.util.UUID
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -40,6 +41,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -52,7 +54,13 @@ import com.mistbell.tavern.v3.core.model.ProviderKind
 import com.mistbell.tavern.v3.core.model.ProviderProfile
 import com.mistbell.tavern.v3.core.model.ProviderProfileSet
 
-private data class ChatLine(val role: String, val content: String)
+private data class ChatLine(
+    val id: String,
+    val role: String,
+    val content: String,
+    val createdAtEpochMillis: Long,
+    val deliveryState: PersistedChatMessage.DeliveryState,
+)
 
 /**
  * Minimal end-to-end chat screen for 3.0 development.
@@ -68,11 +76,61 @@ fun ChatScreen(onBack: () -> Unit) {
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("填写模型 ID 和 API 配置后即可测试聊天。") }
     val history = remember { mutableStateListOf<ChatLine>() }
+    val historyStore = remember(context) { ChatHistoryStore(context.applicationContext) }
     val listState = rememberLazyListState()
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val diagnosticStore = remember(context) { DiagnosticLogStore(context.applicationContext.filesDir) }
+
+    fun persistHistory() {
+        val snapshot = history.map { line ->
+            PersistedChatMessage(
+                id = line.id,
+                role = line.role,
+                content = line.content,
+                createdAtEpochMillis = line.createdAtEpochMillis,
+                deliveryState = line.deliveryState,
+            )
+        }
+        coroutineScope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) { historyStore.save(snapshot) }
+            }.onFailure { error ->
+                diagnosticStore.warn(
+                    "chat.history.save_failed",
+                    "reason=${error::class.java.simpleName}",
+                )
+            }
+        }
+    }
+
+    LaunchedEffect(historyStore) {
+        val loaded = withContext(Dispatchers.IO) { historyStore.load() }
+        when (loaded) {
+            ChatHistoryLoadResult.Missing -> Unit
+            is ChatHistoryLoadResult.Loaded -> {
+                history.clear()
+                history.addAll(loaded.messages.map { message ->
+                    ChatLine(
+                        id = message.id,
+                        role = message.role,
+                        content = message.content,
+                        createdAtEpochMillis = message.createdAtEpochMillis,
+                        deliveryState = message.deliveryState,
+                    )
+                })
+                if (history.any { it.deliveryState == PersistedChatMessage.DeliveryState.PENDING }) {
+                    status = "已恢复聊天记录；上次未完成的回复已保留为待处理状态。"
+                }
+            }
+            ChatHistoryLoadResult.Corrupt -> {
+                diagnosticStore.warn("chat.history.load_failed", "reason=corrupt_or_unsupported_format")
+                status = "聊天记录文件损坏或版本不兼容；为避免覆盖原文件，未自动清空记录。"
+            }
+        }
+    }
+
     val exportLogLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("text/plain"),
     ) { uri ->
@@ -203,8 +261,22 @@ fun ChatScreen(onBack: () -> Unit) {
                                 if (handle == "session-chat-key") secretForThisRequest else null
                             },
                         )
-                        history += ChatLine("user", userText)
-                        history += ChatLine("assistant", "")
+                        val now = System.currentTimeMillis()
+                        history += ChatLine(
+                            id = UUID.randomUUID().toString(),
+                            role = "user",
+                            content = userText,
+                            createdAtEpochMillis = now,
+                            deliveryState = PersistedChatMessage.DeliveryState.COMPLETE,
+                        )
+                        history += ChatLine(
+                            id = UUID.randomUUID().toString(),
+                            role = "assistant",
+                            content = "",
+                            createdAtEpochMillis = now,
+                            deliveryState = PersistedChatMessage.DeliveryState.PENDING,
+                        )
+                        persistHistory()
                         draft = ""
                         busy = true
                         status = "正在连接聊天 API……"
@@ -239,6 +311,13 @@ fun ChatScreen(onBack: () -> Unit) {
                                 mainHandler.post {
                                     busy = false
                                     status = "回复完成。"
+                                    val last = history.lastOrNull()
+                                    if (last?.role == "assistant") {
+                                        history[history.lastIndex] = last.copy(
+                                            deliveryState = PersistedChatMessage.DeliveryState.COMPLETE,
+                                        )
+                                    }
+                                    persistHistory()
                                 }
                             }
 
@@ -249,9 +328,13 @@ fun ChatScreen(onBack: () -> Unit) {
                                     busy = false
                                     status = failure.safeMessage
                                     val last = history.lastOrNull()
-                                    if (last?.role == "assistant" && last.content.isBlank()) {
-                                        history[history.lastIndex] = last.copy(content = failure.safeMessage)
+                                    if (last?.role == "assistant") {
+                                        history[history.lastIndex] = last.copy(
+                                            content = last.content.ifBlank { failure.safeMessage },
+                                            deliveryState = PersistedChatMessage.DeliveryState.FAILED,
+                                        )
                                     }
+                                    persistHistory()
                                 }
                             }
                         }
@@ -341,6 +424,7 @@ fun ChatScreen(onBack: () -> Unit) {
                 Button(
                     onClick = {
                         history.clear()
+                        persistHistory()
                         status = "会话已清空。"
                     },
                     enabled = !busy && history.isNotEmpty(),
