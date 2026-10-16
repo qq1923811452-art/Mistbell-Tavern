@@ -1,6 +1,7 @@
 package com.mistbell.tavern.v3.feature.embedding
 
 import android.content.Context
+import android.os.Build
 import com.google.ai.edge.litertlm.Backend
 import com.google.ai.edge.litertlm.EmbeddingEngine
 import com.google.ai.edge.litertlm.EmbeddingEngineConfig
@@ -34,12 +35,28 @@ class LiteRtLmEmbeddingGemma2Engine(
         InferenceBackend.GPU,
         InferenceBackend.CPU,
     ),
+    private val npuModelCompatible: Boolean = false,
     private val diagnostics: DiagnosticLogStore = DiagnosticLogStore(context.applicationContext.filesDir),
 ) : EmbeddingGemma2InferenceEngine, AutoCloseable {
     private val appContext = context.applicationContext
     private val cacheDirectory = File(appContext.cacheDir, "litertlm-embeddinggemma2")
     private val lock = ReentrantLock()
-    private val backendOrder = preferredBackends.filter { it != InferenceBackend.UNKNOWN }.distinct()
+    private val backendAvailability = LiteRtBackendAvailability.detect(
+        nativeLibraryDir = File(appContext.applicationInfo.nativeLibraryDir),
+        isArm64 = Build.SUPPORTED_ABIS.any { it == "arm64-v8a" },
+        npuModelCompatible = npuModelCompatible,
+    )
+    private val backendOrder = preferredBackends
+        .filter { it != InferenceBackend.UNKNOWN && backendAvailability.isAvailable(it) }
+        .distinct()
+    private val skippedBackendReasons = buildList {
+        if (InferenceBackend.NPU in preferredBackends && !backendAvailability.isAvailable(InferenceBackend.NPU)) {
+            add("NPU skipped: " + backendAvailability.npuReason)
+        }
+        if (InferenceBackend.GPU in preferredBackends && !backendAvailability.isAvailable(InferenceBackend.GPU)) {
+            add("GPU skipped: " + backendAvailability.gpuReason)
+        }
+    }
     private var engine: EmbeddingEngine? = null
     private var selectedBackend = InferenceBackend.UNKNOWN
     private var fallbackReason: String? = null
@@ -48,7 +65,8 @@ class LiteRtLmEmbeddingGemma2Engine(
     override val runtimeId: String = RUNTIME_ID
 
     init {
-        require(backendOrder.isNotEmpty()) { "At least one supported backend must be preferred." }
+        require(backendOrder.isNotEmpty()) { "No requested backend is available; CPU must remain enabled as a safe fallback." }
+        skippedBackendReasons.forEach { logWarn("embedding.backend.skipped.preflight", it) }
         require(modelFile.extension.equals("litertlm", ignoreCase = true)) {
             "EmbeddingGemma 2 model must be a .litertlm bundle."
         }
@@ -71,9 +89,12 @@ class LiteRtLmEmbeddingGemma2Engine(
                 throw error
             }
 
-            val failures = mutableListOf<String>()
+            val failures = skippedBackendReasons.toMutableList()
             lastError = null
-            logInfo("embedding.initialize.started", "backendOrder=${backendOrder.joinToString(",")}")
+            logInfo(
+                "embedding.initialize.started",
+                "backendOrder=${backendOrder.joinToString(",")}; nativeLibraryDir=${appContext.applicationInfo.nativeLibraryDir}",
+            )
             for (backend in backendOrder) {
                 logInfo("embedding.backend.initialize.started", "backend=${backend.name}")
                 val candidate = EmbeddingEngine(
