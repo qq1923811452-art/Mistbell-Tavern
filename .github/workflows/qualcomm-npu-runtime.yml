@@ -121,6 +121,12 @@ jobs:
 
       - name: Build arm64 APK with Qualcomm runtime payload
         shell: bash
+        env:
+          # Gradle's packageQualcommNpuRuntime Exec task runs in a separate process;
+          # pass the SDK locations into this step too, not only the earlier staging step.
+          QUALCOMM_QAIRT_ROOT: ${{ steps.runtime.outputs.qairt_root }}
+          QUALCOMM_QAIRT_VERSION: ${{ steps.runtime.outputs.qairt_version }}
+          LITERT_QUALCOMM_DISPATCH_SO: ${{ steps.runtime.outputs.dispatch_so }}
         run: |
           set -euo pipefail
           chmod +x ./gradlew
