@@ -313,7 +313,7 @@ class LiteRtLmEmbeddingGemma2Engine(
         val outcomes = mutableListOf<String>()
         logWarn(
             "embedding.npu.input_length_matrix.started",
-            "caseLengths=\${lengths.joinToString(",")}; modelProfile=QUALCOMM_SM8650; padding=not_applied; verified=false",
+            "caseLengths=${lengths.joinToString(",")}; modelProfile=QUALCOMM_SM8650; padding=not_applied; verified=false",
         )
         for (length in lengths) {
             close()
@@ -322,14 +322,14 @@ class LiteRtLmEmbeddingGemma2Engine(
                 initialize()
                 val result = infer(listOf(input))
                 val dimensions = result.vectors.firstOrNull()?.size ?: 0
-                val outcome = "chars=$length; result=success; dimensions=$dimensions; elapsedMs=\${result.status.lastExecutionMillis ?: -1}"
+                val outcome = "chars=$length; result=success; dimensions=$dimensions; elapsedMs=${result.status.lastExecutionMillis ?: -1}"
                 outcomes += outcome
                 logInfo("embedding.npu.input_length_matrix.case", outcome)
             } catch (cancelled: CancellationException) {
                 logWarn("embedding.npu.input_length_matrix.cancelled", "chars=$length")
                 throw cancelled
             } catch (error: Exception) {
-                val detail = "\${error::class.java.simpleName}: \${(error.message ?: "inference failed").take(180)}"
+                val detail = "${error::class.java.simpleName}: ${(error.message ?: "inference failed").take(180)}"
                 val outcome = "chars=$length; result=failed; error=$detail"
                 outcomes += outcome
                 logWarn("embedding.npu.input_length_matrix.case", outcome)
@@ -340,7 +340,7 @@ class LiteRtLmEmbeddingGemma2Engine(
         val successes = outcomes.count { "; result=success;" in it }
         logWarn(
             "embedding.npu.input_length_matrix.completed",
-            "cases=\${outcomes.size}; successes=$successes; failures=\${outcomes.size - successes}; verified=false",
+            "cases=${outcomes.size}; successes=$successes; failures=${outcomes.size - successes}; verified=false",
         )
         return outcomes
     }
