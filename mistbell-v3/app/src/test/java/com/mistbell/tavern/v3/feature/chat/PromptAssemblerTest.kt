@@ -50,7 +50,11 @@ class PromptAssemblerTest {
         val system = messages[0].content
         assertTrue(system.indexOf("Character: Mira") < system.indexOf("Activated worldbook entries"))
         assertTrue(system.indexOf("Activated worldbook entries") < system.indexOf("Relevant memory facts"))
-        assertTrue(system.indexOf("Relevant memory facts") < messages.indexOfFirst { it.role == PromptRole.USER })
+        assertTrue(system.indexOf("Relevant memory facts") > system.indexOf("Activated worldbook entries"))
+        assertEquals(PromptRole.USER, messages[1].role)
+        assertEquals("Earlier", messages[1].content)
+        assertEquals(PromptRole.ASSISTANT, messages[2].role)
+        assertEquals("Earlier reply", messages[2].content)
         assertEquals(PromptRole.USER, messages.last().role)
         assertEquals("Latest", messages.last().content)
     }
