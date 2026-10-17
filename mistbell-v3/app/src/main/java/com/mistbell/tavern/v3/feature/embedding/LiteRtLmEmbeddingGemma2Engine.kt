@@ -118,11 +118,12 @@ class LiteRtLmEmbeddingGemma2Engine(
                 throw error
             }
 
-            val failures = skippedBackendReasons.toMutableList()
+            // Preflight skips are diagnostic context, not proof that runtime fallback occurred.
+            // Only actual backend initialization/inference failures may set runtimeFallbackApplied.\n            val failures = mutableListOf<String>()
             lastError = null
             logInfo(
                 "embedding.initialize.started",
-                "backendOrder=${backendOrder.joinToString(",")}; nativeLibraryDir=${appContext.applicationInfo.nativeLibraryDir}",
+                "backendOrder=${backendOrder.joinToString(",")}; nativeLibraryDir=${appContext.applicationInfo.nativeLibraryDir}; runtimeFallbackApplied=false",
             )
             for (backend in backendOrder) {
                 logInfo("embedding.backend.initialize.started", "backend=${backend.name}")
@@ -146,7 +147,7 @@ class LiteRtLmEmbeddingGemma2Engine(
                     fallbackReason = failures.takeIf { it.isNotEmpty() }
                         ?.joinToString("; ")
                         ?.take(InferenceRuntimeStatus.MAX_DETAIL_LENGTH)
-                    logInfo("embedding.initialize.succeeded", "backend=${backend.name}; fallback=${fallbackReason != null}")
+                    logInfo("embedding.initialize.succeeded", "backend=${backend.name}; runtimeFallbackApplied=${fallbackReason != null}")
                     return@withLock
                 } catch (cancelled: CancellationException) {
                     candidate?.let { runCatching { it.close() } }
@@ -246,7 +247,7 @@ class LiteRtLmEmbeddingGemma2Engine(
                     fallbackReason = failures.takeIf { it.isNotEmpty() }?.joinToString("; ")
                         ?.take(InferenceRuntimeStatus.MAX_DETAIL_LENGTH)
                     lastError = null
-                    logInfo("embedding.inference.succeeded", "outputCount=${responses.size}; dimensions=${responses.firstOrNull()?.embedding?.size ?: 0}; elapsedMs=$elapsedMillis; backend=${backend.name}; fallback=${fallbackReason != null}")
+                    logInfo(\n                        "embedding.inference.succeeded",\n                        "outputCount=${responses.size}; dimensions=${responses.firstOrNull()?.embedding?.size ?: 0}; " +\n                            "elapsedMs=$elapsedMillis; backend=${backend.name}; runtimeFallbackApplied=${fallbackReason != null}; " +\n                            "inputCount=${formattedInputs.size}; inputBatchShape=${inputBatchShape}; " +\n                            "inputCharLengths=${inputCharLengths}; tokenLengths=unavailable; " +\n                            "backendEvidence=CONFIGURED_ONLY; hardwareExecutionVerified=false",\n                    )
                     return@withLock EmbeddingBatch(
                         vectors = responses.map { response -> response.embedding.toList() },
                         status = InferenceRuntimeStatus(
