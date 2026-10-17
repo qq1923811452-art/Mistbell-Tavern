@@ -40,14 +40,20 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Set up Android SDK and NDK r28b
-        uses: android-actions/setup-android@v3
+      - name: Verify preinstalled Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          test -x "${ANDROID_SDK_ROOT:-$ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" || find "${ANDROID_SDK_ROOT:-$ANDROID_HOME}/cmdline-tools" -type f -name sdkmanager -print -quit | grep -q sdkmanager
 
       - name: Install pinned Android NDK
         shell: bash
         run: |
           set -euo pipefail
-          sdkmanager "ndk;28.1.13356709"
+          sdkmanager_path="$(find "${ANDROID_SDK_ROOT:-$ANDROID_HOME}/cmdline-tools" -type f -name sdkmanager -print -quit)"
+          test -n "$sdkmanager_path"
+          "$sdkmanager_path" "ndk;28.1.13356709"
           echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/28.1.13356709" >> "$GITHUB_ENV"
           test -f "$ANDROID_SDK_ROOT/ndk/28.1.13356709/README.md"
 
