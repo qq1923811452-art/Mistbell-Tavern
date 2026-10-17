@@ -138,15 +138,15 @@ class LiteRtLmEmbeddingGemma2Engine(
                     logInfo("embedding.initialize.succeeded", "backend=${backend.name}; fallback=${fallbackReason != null}")
                     return@withLock
                 } catch (cancelled: CancellationException) {
-                    candidate?.let { runCatching { if (it.isInitialized()) it.close() } }
+                    candidate?.let { runCatching { it.close() } }
                     throw cancelled
                 } catch (error: Exception) {
-                    candidate?.let { runCatching { if (it.isInitialized()) it.close() } }
+                    candidate?.let { runCatching { it.close() } }
                     val reason = failureDetail(backend, error)
                     failures += reason
                     logWarn("embedding.backend.initialize.failed", reason)
                 } catch (error: LinkageError) {
-                    candidate?.let { runCatching { if (it.isInitialized()) it.close() } }
+                    candidate?.let { runCatching { it.close() } }
                     val reason = failureDetail(backend, error, fallbackMessage = "native runtime unavailable")
                     failures += reason
                     logWarn("embedding.backend.initialize.failed", reason)
@@ -190,14 +190,14 @@ class LiteRtLmEmbeddingGemma2Engine(
                         candidate?.let { runCatching { it.close() } }
                         throw cancelled
                     } catch (error: Exception) {
-                        candidate?.let { runCatching { if (it.isInitialized()) it.close() } }
+                        candidate?.let { runCatching { it.close() } }
                         val reason = failureDetail(backend, error)
                         failures += reason
                         logWarn("embedding.backend.fallback.initialize.failed", reason)
                         candidate = null
                         continue
                     } catch (error: LinkageError) {
-                        candidate?.let { runCatching { if (it.isInitialized()) it.close() } }
+                        candidate?.let { runCatching { it.close() } }
                         val reason = "${backend.name}: native runtime unavailable (${error::class.java.simpleName})"
                         failures += reason
                         logWarn("embedding.backend.fallback.initialize.failed", reason)
