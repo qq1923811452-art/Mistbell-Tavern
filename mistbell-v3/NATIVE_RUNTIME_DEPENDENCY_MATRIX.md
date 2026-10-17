@@ -24,7 +24,8 @@ This document deliberately distinguishes (1) libraries that belong in the APK, (
 
 ### Device-provided requirements
 - A compatible system OpenCL implementation/driver. **Do not bundle Qualcomm's proprietary device driver or copy random system-driver .so files from another phone.**
-- Android native-library declarations already present in `AndroidManifest.xml` for optional `libvndksupport.so` and `libOpenCL.so`; avoid duplicate declarations.
+- `AndroidManifest.xml` has optional `uses-native-library` declarations for `libvndksupport.so` and `libOpenCL.so`. These declarations only describe optional device-provided libraries; they do **not** make those files APK payloads or guarantee availability on every ROM.
+- The ELF audit classifies these two dependencies separately from public Android NDK libraries and now fails if either is accidentally placed in `jniLibs/arm64-v8a/`.
 
 ### Acceptance gate
 1. Build the manual device-test APK from the pinned source.
@@ -89,6 +90,7 @@ These must come from a mutually compatible, pinned LiteRT-LM/LiteRT/QAIRT combin
 - [x] Preserve the upstream LiteRT-LM license in the GPU device-test APK; additional notices remain required for any future third-party runtime.
 - [x] Validate the selected GPU prebuilt files are non-empty and expected plugin files exist; final APK ELF audit checks AArch64 and non-empty libraries.
 - [x] Inspect final APK ELF architecture, RPATH/RUNPATH and `DT_NEEDED` dependencies; fail build for unknown dependencies.
+- [x] Keep `libOpenCL.so` and `libvndksupport.so` classified as device/vendor-provided dependencies rather than public NDK libraries; reject accidentally bundling them in APK `jniLibs/`.
 - [ ] Keep GPU and NPU inventories/provenance separate.
 - [ ] Make Qualcomm runtime acquisition an explicit gated job until QAIRT source/version/license are approved; never fetch an unpinned SDK or silently accept a floating latest version.
 - [ ] Generate a runtime manifest in the APK with source revisions, versions, hashes and validation state. Presence of a file must not set `status=verified`.
