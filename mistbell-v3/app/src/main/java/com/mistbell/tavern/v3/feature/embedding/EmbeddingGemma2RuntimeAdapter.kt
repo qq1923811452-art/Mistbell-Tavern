@@ -30,10 +30,8 @@ class EmbeddingGemma2RuntimeAdapter(
 
     init {
         require(outputDimensions in EmbeddingGemma2TextPolicy.supportedDimensions) {
-            "Unsupported embedding output dimension."
-        }
-        require(outputDimensions <= EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS) {
-            "EmbeddingGemma 2 natively outputs ${EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS} dimensions; ${outputDimensions} requires a compatible higher-dimensional model."
+            "Unsupported embedding output dimension for EmbeddingGemma 2: $outputDimensions. " +
+                "Choose 128, 256, 512, or 768."
         }
         require(engine.runtimeId.isNotBlank()) { "Engine runtime ID must not be blank." }
         require(configuredBatchSize in 1..MAX_CONFIGURED_BATCH_SIZE) {
