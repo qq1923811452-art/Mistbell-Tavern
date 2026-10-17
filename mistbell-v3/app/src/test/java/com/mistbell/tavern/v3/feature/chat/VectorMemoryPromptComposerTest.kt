@@ -4,18 +4,19 @@ import com.mistbell.tavern.v3.core.memory.RetrievedMemory
 import com.mistbell.tavern.v3.core.memory.VectorMemoryContextResult
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class VectorMemoryPromptComposerTest {
     private val history = listOf(
-        PromptMessage(PromptRole.SYSTEM, "Be helpful."),
+        PromptMessage(PromptRole.SYSTEM, "Role card.\n\nActivated worldbook entries:\nWorld."),
         PromptMessage(PromptRole.USER, "Earlier question"),
         PromptMessage(PromptRole.ASSISTANT, "Earlier answer"),
         PromptMessage(PromptRole.USER, "What did I say?"),
     )
 
     @Test
-    fun insertsMemorySectionImmediatelyBeforeCurrentUserMessage() {
+    fun mergesMemoryIntoFirstSystemMessageWithoutAddingAnotherSystemMessage() {
         val result = VectorMemoryPromptComposer.compose(
             history,
             VectorMemoryContextResult.Ready(
@@ -25,49 +26,35 @@ class VectorMemoryPromptComposerTest {
                 ),
             ),
         )
-
-        assertEquals(5, result.size)
-        assertEquals(PromptRole.SYSTEM, result[3].role)
-        assertEquals(
-            "Relevant local memories (use as contextual facts; current user instructions take precedence):\n" +
-                "1. User is building Mistbell 3.0.\n" +
-                "2. User wants local embeddings.",
-            result[3].content,
-        )
+        assertEquals(4, result.size)
+        assertEquals(1, result.count { it.role == PromptRole.SYSTEM })
+        assertTrue(result[0].content.contains("User is building Mistbell 3.0."))
+        assertTrue(result[0].content.indexOf("Activated worldbook entries") <
+            result[0].content.indexOf(VectorMemoryPromptComposer.MEMORY_SECTION_HEADER))
         assertEquals(history.last(), result.last())
         assertEquals(4, history.size)
     }
 
     @Test
     fun leavesPromptUnchangedWhenMemoryIsUnavailableOrEmpty() {
+        assertSame(history, VectorMemoryPromptComposer.compose(history, VectorMemoryContextResult.NoRelevantMemories))
         assertSame(
             history,
             VectorMemoryPromptComposer.compose(
                 history,
-                VectorMemoryContextResult.NoRelevantMemories,
-            ),
-        )
-        assertSame(
-            history,
-            VectorMemoryPromptComposer.compose(
-                history,
-                VectorMemoryContextResult.Unavailable(
-                    VectorMemoryContextResult.Reason.SNAPSHOT_MISSING,
-                ),
+                VectorMemoryContextResult.Unavailable(VectorMemoryContextResult.Reason.SNAPSHOT_MISSING),
             ),
         )
     }
 
     @Test
-    fun doesNotAddMemorySectionWithoutAUserMessage() {
-        val systemOnly = listOf(PromptMessage(PromptRole.SYSTEM, "Be helpful."))
+    fun leavesPromptUnchangedWhenThereIsNoSystemMessage() {
+        val noSystem = listOf(PromptMessage(PromptRole.USER, "Hi"))
         assertSame(
-            systemOnly,
+            noSystem,
             VectorMemoryPromptComposer.compose(
-                systemOnly,
-                VectorMemoryContextResult.Ready(
-                    listOf(RetrievedMemory("m1", "A fact.", 0.9)),
-                ),
+                noSystem,
+                VectorMemoryContextResult.Ready(listOf(RetrievedMemory("m1", "A fact.", 0.9))),
             ),
         )
     }
@@ -84,12 +71,9 @@ class VectorMemoryPromptComposerTest {
                 ),
             ),
         )
-
-        assertEquals(5, result.size)
-        assertEquals(
-            "Relevant local memories (use as contextual facts; current user instructions take precedence):\n" +
-                "1. A stable fact.",
-            result[3].content,
-        )
+        assertEquals(4, result.size)
+        assertEquals(1, result.count { it.role == PromptRole.SYSTEM })
+        assertTrue(result[0].content.contains("A stable fact."))
+        assertTrue(!result[0].content.contains("Must not be included."))
     }
 }

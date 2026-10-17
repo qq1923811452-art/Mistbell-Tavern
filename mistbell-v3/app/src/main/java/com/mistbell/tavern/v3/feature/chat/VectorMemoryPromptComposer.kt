@@ -4,21 +4,16 @@ import com.mistbell.tavern.v3.core.memory.RetrievedMemory
 import com.mistbell.tavern.v3.core.memory.VectorMemoryContextResult
 
 /**
- * Adds retrieved local memories to the current request without changing stored chat history.
- *
- * Call this immediately before OpenAiCompatibleChatClient.stream. The returned prompt is an
- * ephemeral request value; callers must not append the generated memory section to conversation
- * history, otherwise it would be resent and duplicated on subsequent turns.
+ * Adds retrieved local memories to the existing first system message, never creating a second
+ * system message. The returned prompt is ephemeral and is not appended to chat history.
  */
 object VectorMemoryPromptComposer {
     fun compose(
         messages: List<PromptMessage>,
         memoryResult: VectorMemoryContextResult,
     ): List<PromptMessage> {
-        if (messages.isEmpty()) return messages
-        val userIndex = messages.indexOfLast { it.role == PromptRole.USER }
-        if (userIndex < 0) return messages
-
+        val systemIndex = messages.indexOfFirst { it.role == PromptRole.SYSTEM }
+        if (systemIndex < 0) return messages
         val memories = (memoryResult as? VectorMemoryContextResult.Ready)?.memories
             ?.filter { it.textIsUsable() }
             .orEmpty()
@@ -33,10 +28,9 @@ object VectorMemoryPromptComposer {
                 append(memory.text.trim())
             }
         }
-        return buildList(messages.size + 1) {
-            addAll(messages.subList(0, userIndex))
-            add(PromptMessage(PromptRole.SYSTEM, section))
-            addAll(messages.subList(userIndex, messages.size))
+        return messages.toMutableList().also { result ->
+            val system = result[systemIndex]
+            result[systemIndex] = system.copy(content = system.content.trimEnd() + "\n\n" + section)
         }
     }
 
