@@ -76,21 +76,22 @@ jobs:
         working-directory: upstream/litert-lm
         run: |
           set -euo pipefail
-          dispatch="$(find bazel-bin bazel-out -type f -name 'libLiteRtDispatch_Qualcomm.so' -print -quit 2>/dev/null || true)"
+          dispatch="$(find -L bazel-bin bazel-out -type f -name 'libLiteRtDispatch_Qualcomm.so' -print -quit 2>/dev/null || true)"
           if [[ -z "$dispatch" ]]; then
-            dispatch="$(find . -type f -name 'libLiteRtDispatch_Qualcomm.so' -print -quit)"
+            dispatch="$(find -L . -type f -name 'libLiteRtDispatch_Qualcomm.so' -print -quit)"
           fi
           test -n "$dispatch" && test -s "$dispatch"
 
-          qnn_system="$(find . -type f -path '*/lib/aarch64-android/libQnnSystem.so' -print -quit)"
+          qnn_system="$(find -L . -type f -path '*/lib/aarch64-android/libQnnSystem.so' -print -quit)"
           test -n "$qnn_system" && test -s "$qnn_system"
           qairt_root="${qnn_system%/lib/aarch64-android/libQnnSystem.so}"
           test -s "$qairt_root/lib/aarch64-android/libQnnHtp.so"
           test -s "$qairt_root/lib/aarch64-android/libQnnHtpPrepare.so"
           test -s "$qairt_root/lib/hexagon-v75/unsigned/libQnnHtpV75Skel.so"
 
-          echo "qairt_root=$PWD/$qairt_root" >> "$GITHUB_OUTPUT"
-          echo "dispatch_so=$PWD/$dispatch" >> "$GITHUB_OUTPUT"
+          echo "qairt_root=$PWD/${qairt_root#./}" >> "$GITHUB_OUTPUT"
+          echo "dispatch_so=$PWD/${dispatch#./}" >> "$GITHUB_OUTPUT"
+          echo "qairt_version=$(basename "$qairt_root")" >> "$GITHUB_OUTPUT"
           echo "QAIRT root found: $qairt_root"
           echo "Dispatch plugin found: $dispatch"
           sha256sum "$qnn_system" "$dispatch"
@@ -99,7 +100,7 @@ jobs:
         shell: bash
         env:
           QUALCOMM_QAIRT_ROOT: ${{ steps.runtime.outputs.qairt_root }}
-          QUALCOMM_QAIRT_VERSION: "pinned-by-litert-lm-v0.18.0"
+          QUALCOMM_QAIRT_VERSION: ${{ steps.runtime.outputs.qairt_version }}
           LITERT_QUALCOMM_DISPATCH_SO: ${{ steps.runtime.outputs.dispatch_so }}
         run: |
           set -euo pipefail
