@@ -118,6 +118,26 @@ class TemporalFactLedgerTest {
         assertNotEquals(TemporalFactLedger.stableId(first), TemporalFactLedger.stableId(second))
     }
 
+    @Test
+    fun indexedReductionPreservesIndependentPredicatesAcrossLargeBatch() {
+        val observations = (1..1_000).map { index ->
+            observation(
+                turn = "turn-$index",
+                subject = if (index % 2 == 0) "user" else "assistant",
+                predicate = if (index % 3 == 0) "likes" else "prefers",
+                value = "value-$index",
+                at = index.toLong(),
+            )
+        }
+
+        val facts = TemporalFactLedger.apply(emptyList(), observations)
+
+        assertEquals(1_000, facts.size)
+        assertEquals(1_000, facts.map { it.id }.toSet().size)
+        assertEquals(4, facts.count { it.isCurrent })
+        assertTrue(facts.all { it.validUntilEpochMillis == null || it.validUntilEpochMillis >= it.validFromEpochMillis })
+    }
+
     private fun observation(
         turn: String,
         conversation: String = "conversation-1",
