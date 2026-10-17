@@ -679,7 +679,14 @@ fun ChatScreen(onBack: () -> Unit) {
                         }
                         coroutineScope.launch {
                             try {
-                                val modelAssets = EmbeddingGemma2ModelAssetManager(File(context.filesDir, "models"))
+                                val embeddingSettings = context.getSharedPreferences("mistbell-v3-settings", Context.MODE_PRIVATE)
+                                val modelAssets = EmbeddingGemma2ModelAssetManager(
+                                    modelDirectory = File(context.filesDir, "models"),
+                                    preferQualcommSm8650Model = embeddingSettings.getBoolean(
+                                        "embedding_qualcomm_sm8650_model",
+                                        false,
+                                    ),
+                                )
                                 val installedModelResult = runCatching {
                                     withContext(Dispatchers.IO) { modelAssets.verifyInstalled() }
                                 }
