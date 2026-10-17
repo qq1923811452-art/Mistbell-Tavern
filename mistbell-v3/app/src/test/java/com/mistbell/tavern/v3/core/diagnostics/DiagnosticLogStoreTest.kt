@@ -48,6 +48,25 @@ class DiagnosticLogStoreTest {
     }
 
     @Test
+    fun boundsUntrustedDetailBeforeRedactionAndDoesNotLeakBoundaryCredential() {
+        val directory = kotlin.io.path.createTempDirectory(prefix = "mistbell-diagnostics-test").toFile()
+        try {
+            val store = DiagnosticLogStore(directory) { Instant.EPOCH }
+            val detail = "x".repeat(DiagnosticLogStore.MAX_DETAIL_CHARS - 12) +
+                " api_key=boundary-secret " + "z".repeat(2_000_000)
+            store.warn("oversized.detail", detail)
+            val text = File(directory, DiagnosticLogStore.LOG_FILE_NAME).readText()
+            val recordedDetail = text.substringAfter(" - ").trimEnd()
+
+            assertTrue(recordedDetail.length <= DiagnosticLogStore.MAX_DETAIL_CHARS)
+            assertFalse(text.contains("boundary-secret"))
+            assertTrue(text.contains("[REDACTED]"))
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
     fun stripsLineBreaksAndBoundsEventDetails() {
         val directory = kotlin.io.path.createTempDirectory(prefix = "mistbell-diagnostics-test").toFile()
         try {
