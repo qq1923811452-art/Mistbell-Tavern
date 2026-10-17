@@ -34,7 +34,21 @@ This document deliberately distinguishes (1) libraries that belong in the APK, (
 4. Confirm a finite, non-empty vector with expected model dimensions and record latency/backend/fallback.
 5. If GPU initialization succeeds but inference fails, report GPU as failed and preserve the root-cause logs.
 
-## 3. Qualcomm NPU path — SM8650 / Hexagon V75
+## 3. Architecture gate: validate the embedding API path before bundling NPU libraries
+
+**New priority: do not start by adding Qualcomm libraries to the current Kotlin LiteRT-LM engine.** The official LiteRT documentation separately lists an **EmbeddingGemma semantic-similarity C++ sample with CPU/GPU/NPU inference** using the LiteRT CompiledModel API, while the current Mistbell adapter uses LiteRT-LM's Kotlin EmbeddingEngine API. These are different runtime/API paths. The existence of an NPU dispatch library does not establish that the current Kotlin API exposes or can execute the required Qualcomm backend.
+
+Required sequence:
+
+1. Inspect the official EmbeddingGemma semantic-similarity C++ sample and pin its exact LiteRT revision, model format/revision, build steps, and Qualcomm runtime acquisition method.
+2. Establish whether the user's exact Qualcomm SM8650 EmbeddingGemma 2 model is supported by that sample/runtime path. Do not substitute a Gemma 3 LLM model as proof of embedding-model support.
+3. Build and run the official sample on an SM8650 device (or a reproducible device-test environment) with a small fixed embedding input. Capture the selected backend, output dimensions, finite-value check, latency, and QNN/HTP runtime logs. A successful build alone is not acceptance.
+4. If the reference sample performs real NPU inference, evaluate a small JNI bridge or a supported integration path for Mistbell. Keep it isolated behind the existing embedding interface; do not replace the current CPU/GPU path.
+5. Only then pin and package the exact required Qualcomm payload, subject to SDK redistribution terms and ELF dependency checks. If the sample cannot run the exact model, document the blocker and keep CPU/GPU usable rather than falsely enabling NPU.
+
+Official reference: https://developers.google.com/edge/litert/next/npu (lists the EmbeddingGemma semantic-similarity C++ app for CPU/GPU/NPU) and https://developers.google.com/edge/litert/next/litert_lm_npu (documents the distinct LiteRT-LM Qualcomm NPU path).
+
+## 4. Qualcomm NPU path — SM8650 / Hexagon V75
 
 ### Required core runtime candidates
 These must come from a mutually compatible, pinned LiteRT-LM/LiteRT/QAIRT combination. The list is a checklist, not a claim that every file is always required by every build:
