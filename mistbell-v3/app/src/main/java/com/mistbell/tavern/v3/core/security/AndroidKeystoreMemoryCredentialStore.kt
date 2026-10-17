@@ -71,7 +71,7 @@ class AndroidKeystoreMemoryCredentialStore(context: Context) : MemoryCredentialR
         val ivSize = payload[0].toInt() and 0xff
         // A valid AES-GCM payload may contain only the IV and authentication tag
         // when encrypting an empty plaintext, so the minimum length is inclusive.
-        require(ivSize == GCM_IV_BYTES && payload.size >= 1 + ivSize + GCM_TAG_BYTES) {
+        require(ivSize in MIN_GCM_IV_BYTES..MAX_GCM_IV_BYTES && payload.size >= 1 + ivSize + GCM_TAG_BYTES) {
             "Invalid credential payload."
         }
         val iv = payload.copyOfRange(1, 1 + ivSize)
@@ -108,6 +108,8 @@ class AndroidKeystoreMemoryCredentialStore(context: Context) : MemoryCredentialR
         private const val KEY_ALIAS = "mistbell-v3-memory-credential-aes-gcm"
         private const val TRANSFORMATION = "AES/GCM/NoPadding"
         private const val GCM_IV_BYTES = 12
+        private const val MIN_GCM_IV_BYTES = 12
+        private const val MAX_GCM_IV_BYTES = 16
         private const val GCM_TAG_BITS = 128
         private const val GCM_TAG_BYTES = GCM_TAG_BITS / 8
         private const val HANDLE_LENGTH = 36
