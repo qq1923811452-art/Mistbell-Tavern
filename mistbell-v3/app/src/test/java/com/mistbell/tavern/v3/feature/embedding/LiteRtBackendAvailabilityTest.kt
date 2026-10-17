@@ -104,6 +104,47 @@ class LiteRtBackendAvailabilityTest {
     }
 
     @Test
+    fun diagnosticNpuProbeBypassesOnlyManifestGateAndStillRequiresModelAndLibraries(): Unit {
+        val directory = kotlin.io.path.createTempDirectory(prefix = "litert-native-libs").toFile()
+        try {
+            LiteRtBackendAvailability.SM8650_NPU_REQUIRED_LIBRARIES.forEach {
+                File(directory, it).writeBytes(byteArrayOf(1))
+            }
+            val probe = LiteRtBackendAvailability.detect(
+                nativeLibraryDir = directory,
+                isArm64 = true,
+                npuModelCompatible = true,
+                npuRuntimeValidated = false,
+                allowDiagnosticNpuProbe = true,
+                androidApiLevel = 35,
+            )
+            assertTrue(probe.isAvailable(InferenceBackend.NPU))
+
+            val wrongModel = LiteRtBackendAvailability.detect(
+                nativeLibraryDir = directory,
+                isArm64 = true,
+                npuModelCompatible = false,
+                npuRuntimeValidated = false,
+                allowDiagnosticNpuProbe = true,
+                androidApiLevel = 35,
+            )
+            assertFalse(wrongModel.isAvailable(InferenceBackend.NPU))
+
+            val oldAndroid = LiteRtBackendAvailability.detect(
+                nativeLibraryDir = directory,
+                isArm64 = true,
+                npuModelCompatible = true,
+                npuRuntimeValidated = false,
+                allowDiagnosticNpuProbe = true,
+                androidApiLevel = 30,
+            )
+            assertFalse(oldAndroid.isAvailable(InferenceBackend.NPU))
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
     fun npuIsRejectedBelowAndroidApi31WhileCpuAndGpuRemainIndependent(): Unit {
         val directory = kotlin.io.path.createTempDirectory(prefix = "litert-native-libs").toFile()
         try {
