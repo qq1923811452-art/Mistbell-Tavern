@@ -33,11 +33,11 @@ readonly expected_libraries=(
   libLiteRtWebGpuAccelerator.so
   libwebgpu_dawn.so
 )
-actual_names="$(printf '%s\\n' "${libraries[@]##*/}" | sort)"
-expected_names="$(printf '%s\\n' "${expected_libraries[@]}" | sort)"
+actual_names="$(printf '%s\n' "${libraries[@]##*/}" | sort)"
+expected_names="$(printf '%s\n' "${expected_libraries[@]}" | sort)"
 if [[ "$actual_names" != "$expected_names" ]]; then
   echo "Upstream LiteRT-LM GPU library set differs from the reviewed allowlist." >&2
-  diff -u <(printf '%s\\n' "$expected_names") <(printf '%s\\n' "$actual_names") || true
+  diff -u <(printf '%s\n' "$expected_names") <(printf '%s\n' "$actual_names") || true
   exit 1
 fi
 
