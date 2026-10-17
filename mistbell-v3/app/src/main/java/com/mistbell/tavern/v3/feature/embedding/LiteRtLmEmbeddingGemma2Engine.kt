@@ -37,6 +37,8 @@ class LiteRtLmEmbeddingGemma2Engine(
         InferenceBackend.CPU,
     ),
     private val npuModelCompatible: Boolean = false,
+    /** Explicit one-shot diagnostic only; never marks the runtime as verified. */
+    private val allowDiagnosticNpuProbe: Boolean = false,
     private val diagnostics: DiagnosticLogStore = DiagnosticLogStore(context.applicationContext.filesDir),
 ) : EmbeddingGemma2InferenceEngine, AutoCloseable {
     private val appContext = context.applicationContext
@@ -47,6 +49,7 @@ class LiteRtLmEmbeddingGemma2Engine(
         isArm64 = Build.SUPPORTED_ABIS.any { it == "arm64-v8a" },
         npuModelCompatible = npuModelCompatible,
         npuRuntimeValidated = appContext.hasVerifiedNpuRuntimeManifest(),
+        allowDiagnosticNpuProbe = allowDiagnosticNpuProbe,
         apkFiles = buildList {
             add(File(appContext.applicationInfo.sourceDir))
             appContext.applicationInfo.splitSourceDirs.orEmpty().forEach { add(File(it)) }
@@ -90,6 +93,9 @@ class LiteRtLmEmbeddingGemma2Engine(
             }
         }
         skippedBackendReasons.forEach { logWarn("embedding.backend.skipped.preflight", it) }
+        if (allowDiagnosticNpuProbe && npuModelCompatible) {
+            logWarn("embedding.npu.diagnostic_probe.enabled", "manifestVerified=${appContext.hasVerifiedNpuRuntimeManifest()}; productionBackendVerification=unchanged")
+        }
         require(modelFile.extension.equals("litertlm", ignoreCase = true)) {
             "EmbeddingGemma 2 model must be a .litertlm bundle."
         }
