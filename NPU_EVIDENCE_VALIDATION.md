@@ -106,3 +106,10 @@ git revert a5c773f5c3db8f63ed3e3a17d49c60086808ccbc
 
 For a single feature rollback, prefer a new corrective commit that removes only that feature and
 preserves shared engine changes; do not cherry-pick or revert overlapping engine commits blindly.
+
+
+## 7. Additional AI-audit findings that were tested
+
+- The native-library audit previously used an over-escaped RPATH/RUNPATH regular expression. It now uses the ELF dynamic-tag syntax and runs a synthetic RUNPATH detector self-test before auditing libraries. Expected line: `RPATH/RUNPATH detector self-test passed.`
+- The optional generic device-test APK job previously depended on `mistbell-v3/BUILD_DEVICE_APK`, a marker that remained in the PR branch and therefore caused repeated APK builds on every PR update. The marker has been removed; the job is now gated by the explicit `workflow_dispatch` boolean input `build_device_test_apk`, default false. Routine PR CI remains compile plus JVM tests.
+- Other audit suggestions were checked against the actual source/workflow rather than automatically applied. For example, the final APK workflow checks out `github.sha` and runs compile/unit tests before packaging; the model import path also validates the full model SHA against the selected profile. Those claims did not justify weakening or replacing the existing checks.

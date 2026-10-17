@@ -14,6 +14,12 @@ for command in readelf sed grep; do
   fi
 done
 
+if ! grep -Eq '\((RPATH|RUNPATH)\)' <<< ' 0x0000001d (RUNPATH) Library runpath: [/tmp]'; then
+  echo "RPATH/RUNPATH detector self-test failed." >&2
+  exit 1
+fi
+echo "RPATH/RUNPATH detector self-test passed."
+
 # Public Android platform/NDK libraries that may legitimately be DT_NEEDED by
 # app-bundled arm64 libraries. Do not treat vendor/device libraries as public NDK
 # APIs merely because some phones expose them.
@@ -63,7 +69,7 @@ for lib in "${libraries[@]}"; do
     echo "Unable to read dynamic section for $lib: $dynamic" >&2
     exit 1
   fi
-  if grep -Eq '\\((RPATH|RUNPATH)\\)' <<< "$dynamic"; then
+  if grep -Eq '\((RPATH|RUNPATH)\)' <<< "$dynamic"; then
     echo "Unexpected RPATH/RUNPATH in $lib" >&2
     exit 1
   fi

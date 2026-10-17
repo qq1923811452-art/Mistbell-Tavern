@@ -24,6 +24,12 @@ on:
       - ".github/workflows/mistbell-v3-build-apk.yml"
       - ".github/scripts/**"
   workflow_dispatch:
+    inputs:
+      build_device_test_apk:
+        description: "Build the optional generic 3.0 device-test APK after tests pass"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -69,10 +75,9 @@ jobs:
           path: mistbell-v3/app/build/reports/
           if-no-files-found: ignore
 
-  # This job is normally a no-op. A one-time marker file enables APK packaging
-  # only after the exact same commit passes the compile-and-test quality gate.
+  # Optional packaging is manual-only. Routine PR CI stays compile + JVM tests.
   device-test-apk:
-    if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'codex/mistbell-3.0-core-features' && github.event.pull_request.head.repo.full_name == github.repository && needs.compile-and-test.result == 'success' }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_device_test_apk == true && needs.compile-and-test.result == 'success' }}
     needs: compile-and-test
     name: Optional final 3.0 device-test APK
     runs-on: ubuntu-latest
@@ -84,15 +89,10 @@ jobs:
           ref: ${{ needs.compile-and-test.outputs.tested_sha }}
           fetch-depth: 0
 
-      - name: Check one-time packaging request
+      - name: Confirm explicit manual packaging request
         id: request
         shell: bash
-        run: |
-          if [[ -f mistbell-v3/BUILD_DEVICE_APK ]]; then
-            echo "enabled=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "enabled=false" >> "$GITHUB_OUTPUT"
-          fi
+        run: echo "enabled=true" >> "$GITHUB_OUTPUT"
 
       - name: Set up JDK 17
         if: ${{ steps.request.outputs.enabled == 'true' }}
