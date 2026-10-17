@@ -1,0 +1,160 @@
+name: Qualcomm HTP V75 Runtime Package
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "mistbell-v3/**"
+      - ".github/scripts/package-litertlm-qualcomm-runtime.sh"
+      - ".github/workflows/qualcomm-npu-runtime.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: qualcomm-npu-runtime-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package-sm8650-runtime:
+    name: Build and package SM8650 HTP V75 dependencies
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout Mistbell source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Checkout the pinned LiteRT-LM source
+        uses: actions/checkout@v4
+        with:
+          repository: google-ai-edge/LiteRT-LM
+          ref: v0.18.0
+          path: upstream/litert-lm
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK and NDK r28b
+        uses: android-actions/setup-android@v3
+
+      - name: Install pinned Android NDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager "ndk;28.1.13356709"
+          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/28.1.13356709" >> "$GITHUB_ENV"
+          test -f "$ANDROID_SDK_ROOT/ndk/28.1.13356709/README.md"
+
+      - name: Set up Bazelisk
+        uses: bazelbuild/setup-bazelisk@v3
+
+      - name: Record exact source and SDK provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Mistbell source: $(git rev-parse HEAD)"
+          echo "LiteRT-LM source: $(git -C upstream/litert-lm rev-parse HEAD)"
+          echo "LiteRT-LM tag: v0.18.0"
+          echo "Android NDK: 28.1.13356709 (r28b)"
+
+      - name: Build the Qualcomm Dispatch plugin from the pinned LiteRT-LM tree
+        working-directory: upstream/litert-lm
+        shell: bash
+        run: |
+          set -euo pipefail
+          bazel build --config=android_arm64 @litert//litert/vendors/qualcomm/dispatch:dispatch_api_so
+
+      - name: Locate the exact QAIRT SDK and Dispatch build outputs
+        id: runtime
+        shell: bash
+        working-directory: upstream/litert-lm
+        run: |
+          set -euo pipefail
+          dispatch="$(find bazel-bin bazel-out -type f -name 'libLiteRtDispatch_Qualcomm.so' -print -quit 2>/dev/null || true)"
+          if [[ -z "$dispatch" ]]; then
+            dispatch="$(find . -type f -name 'libLiteRtDispatch_Qualcomm.so' -print -quit)"
+          fi
+          test -n "$dispatch" && test -s "$dispatch"
+
+          qnn_system="$(find . -type f -path '*/lib/aarch64-android/libQnnSystem.so' -print -quit)"
+          test -n "$qnn_system" && test -s "$qnn_system"
+          qairt_root="${qnn_system%/lib/aarch64-android/libQnnSystem.so}"
+          test -s "$qairt_root/lib/aarch64-android/libQnnHtp.so"
+          test -s "$qairt_root/lib/aarch64-android/libQnnHtpPrepare.so"
+          test -s "$qairt_root/lib/hexagon-v75/unsigned/libQnnHtpV75Skel.so"
+
+          echo "qairt_root=$PWD/$qairt_root" >> "$GITHUB_OUTPUT"
+          echo "dispatch_so=$PWD/$dispatch" >> "$GITHUB_OUTPUT"
+          echo "QAIRT root found: $qairt_root"
+          echo "Dispatch plugin found: $dispatch"
+          sha256sum "$qnn_system" "$dispatch"
+
+      - name: Stage the Qualcomm HTP V75 runtime into the Android project
+        shell: bash
+        env:
+          QUALCOMM_QAIRT_ROOT: ${{ steps.runtime.outputs.qairt_root }}
+          QUALCOMM_QAIRT_VERSION: "pinned-by-litert-lm-v0.18.0"
+          LITERT_QUALCOMM_DISPATCH_SO: ${{ steps.runtime.outputs.dispatch_so }}
+        run: |
+          set -euo pipefail
+          bash .github/scripts/package-litertlm-qualcomm-runtime.sh
+
+      - name: Build arm64 APK with Qualcomm runtime payload
+        working-directory: mistbell-v3
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew :app:assembleDebug -PenableQualcommNpuRuntime=true --no-daemon --no-parallel
+
+      - name: Verify APK contains the staged runtime and record hashes
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="$(find mistbell-v3/app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          test -n "$apk" && test -s "$apk"
+          mkdir -p build-artifacts
+          cp "$apk" build-artifacts/
+          unzip -Z1 "$apk" > build-artifacts/apk-entries.txt
+          for library in \
+            libLiteRtDispatch_Qualcomm.so \
+            libQnnSystem.so \
+            libQnnHtp.so \
+            libQnnHtpPrepare.so \
+            libQnnHtpV75Stub.so \
+            libQnnHtpV75Skel.so; do
+            grep -Fq "lib/arm64-v8a/$library" build-artifacts/apk-entries.txt || {
+              echo "APK is missing required runtime entry: $library" >&2
+              exit 1
+            }
+          done
+          (cd build-artifacts && sha256sum *.apk | tee SHA256SUMS.txt)
+          {
+            echo "mistbell_source_sha=$(git rev-parse HEAD)"
+            echo "litert_lm_tag=v0.18.0"
+            echo "litert_lm_sha=$(git -C upstream/litert-lm rev-parse HEAD)"
+            echo "android_ndk=28.1.13356709"
+            echo "runtime_status=packaged_not_device_verified"
+            echo "npu_status=disabled_until_real_sm8650_inference"
+          } > build-artifacts/SOURCE.txt
+
+      - name: Upload SM8650 device-test APK and provenance
+        uses: actions/upload-artifact@v4
+        with:
+          name: mistbell-sm8650-htp-v75-device-test-${{ github.run_number }}
+          path: |
+            build-artifacts/*.apk
+            build-artifacts/SHA256SUMS.txt
+            build-artifacts/SOURCE.txt
+            build-artifacts/apk-entries.txt
+            mistbell-v3/app/src/main/assets/native-runtime/qualcomm-sm8650.properties
+            mistbell-v3/app/src/main/assets/native-runtime/qualcomm-sm8650.sha256
+            mistbell-v3/app/src/main/assets/native-runtime/qualcomm-sm8650-inventory.txt
+          if-no-files-found: error
+          retention-days: 7
