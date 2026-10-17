@@ -297,6 +297,54 @@ class LiteRtLmEmbeddingGemma2Engine(
         }
     }
 
+    /**
+     * One-shot, diagnostic-only input-length matrix for Qualcomm model failures.
+     *
+     * Each case gets a fresh NPU engine so a failed native invocation cannot poison the next
+     * sample. This deliberately varies text length without inventing token IDs or padding:
+     * InputData.Text owns tokenization inside LiteRT-LM. The results can show whether failure
+     * correlates with input length, but cannot by themselves prove a tensor-shape root cause.
+     */
+    suspend fun runNpuInputLengthProbe(): List<String> {
+        check(allowDiagnosticNpuProbe && npuModelCompatible) {
+            "Input-length matrix is restricted to the one-shot Qualcomm NPU diagnostic probe."
+        }
+        val lengths = listOf(1, 32, 74, 128, 256, 512, 1024)
+        val outcomes = mutableListOf<String>()
+        logWarn(
+            "embedding.npu.input_length_matrix.started",
+            "caseLengths=\${lengths.joinToString(",")}; modelProfile=QUALCOMM_SM8650; padding=not_applied; verified=false",
+        )
+        for (length in lengths) {
+            close()
+            val input = EmbeddingGemma2TextPolicy.formatSearchQuery("x".repeat(length))
+            try {
+                initialize()
+                val result = infer(listOf(input))
+                val dimensions = result.vectors.firstOrNull()?.size ?: 0
+                val outcome = "chars=$length; result=success; dimensions=$dimensions; elapsedMs=\${result.status.lastExecutionMillis ?: -1}"
+                outcomes += outcome
+                logInfo("embedding.npu.input_length_matrix.case", outcome)
+            } catch (cancelled: CancellationException) {
+                logWarn("embedding.npu.input_length_matrix.cancelled", "chars=$length")
+                throw cancelled
+            } catch (error: Exception) {
+                val detail = "\${error::class.java.simpleName}: \${(error.message ?: "inference failed").take(180)}"
+                val outcome = "chars=$length; result=failed; error=$detail"
+                outcomes += outcome
+                logWarn("embedding.npu.input_length_matrix.case", outcome)
+            } finally {
+                close()
+            }
+        }
+        val successes = outcomes.count { "; result=success;" in it }
+        logWarn(
+            "embedding.npu.input_length_matrix.completed",
+            "cases=\${outcomes.size}; successes=$successes; failures=\${outcomes.size - successes}; verified=false",
+        )
+        return outcomes
+    }
+
     fun currentStatus(): InferenceRuntimeStatus = lock.withLock {
         if (engine == null) {
             return@withLock if (lastError == null) InferenceRuntimeStatus.idle() else InferenceRuntimeStatus(
