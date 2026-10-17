@@ -37,43 +37,9 @@ jobs:
       # LiteRT-LM 0.18.0's Android AAR does not include the separate GPU
       # accelerator plugins. Fetch matching upstream prebuilts at the exact
       # release tag and package them into the APK's arm64 native-library dir.
-      - name: Package matching LiteRT-LM GPU native libraries
+      - name: Package pinned LiteRT-LM GPU runtime
         shell: bash
-        run: |
-          set -euo pipefail
-          upstream_dir="$RUNNER_TEMP/LiteRT-LM"
-          git clone --depth 1 --branch v0.18.0 https://github.com/google-ai-edge/LiteRT-LM.git "$upstream_dir"
-          test "$(git -C "$upstream_dir" describe --tags --exact-match)" = "v0.18.0"
-          test "$(git -C "$upstream_dir" rev-parse HEAD)" = "b2f686e2ed4718fb84ec398a61dd59ca0f0aff27"
-          source_dir="$upstream_dir/prebuilt/android_arm64"
-          destination="mistbell-v3/app/src/main/jniLibs/arm64-v8a"
-          test -d "$source_dir"
-          mkdir -p "$destination" mistbell-v3/app/src/main/assets/native-runtime
-          shopt -s nullglob
-          libraries=("$source_dir"/*.so)
-          test "${#libraries[@]}" -gt 0
-          for library in "${libraries[@]}"; do
-            test -s "$library"
-            install -m 0644 "$library" "$destination/"
-          done
-          test -s "$destination/libLiteRtGpuAccelerator.so"
-          test -s "$destination/libLiteRtOpenClAccelerator.so"
-          install -m 0644 "$upstream_dir/LICENSE" \
-            mistbell-v3/app/src/main/assets/native-runtime/LITERT_LM_LICENSE.txt
-          printf 'source_url=https://github.com/google-ai-edge/LiteRT-LM\n' > mistbell-v3/app/src/main/assets/native-runtime/litertlm-gpu.properties
-          printf 'source_tag=v0.18.0\n' >> mistbell-v3/app/src/main/assets/native-runtime/litertlm-gpu.properties
-          printf 'source_commit=b2f686e2ed4718fb84ec398a61dd59ca0f0aff27\n' >> mistbell-v3/app/src/main/assets/native-runtime/litertlm-gpu.properties
-          printf 'source_directory=prebuilt/android_arm64\n' >> mistbell-v3/app/src/main/assets/native-runtime/litertlm-gpu.properties
-          printf 'validation_state=packaged_not_device_verified\n' >> mistbell-v3/app/src/main/assets/native-runtime/litertlm-gpu.properties
-          printf 'packaged_libraries=%s\n' "${#libraries[@]}" >> mistbell-v3/app/src/main/assets/native-runtime/litertlm-gpu.properties
-          for library in "${libraries[@]}"; do
-            (cd "$source_dir" && sha256sum "$(basename "$library")")
-          done > mistbell-v3/app/src/main/assets/native-runtime/litertlm-gpu.sha256
-          : > mistbell-v3/app/src/main/assets/native-runtime/litertlm-gpu-inventory.txt
-          for library in "${libraries[@]}"; do
-            printf '%s\t%s bytes\n' "$(basename "$library")" "$(stat -c '%s' "$library")" >> mistbell-v3/app/src/main/assets/native-runtime/litertlm-gpu-inventory.txt
-          done
-          echo "Packaged ${#libraries[@]} LiteRT-LM arm64 native libraries."
+        run: bash .github/scripts/package-litertlm-gpu-runtime.sh
 
       - name: Ensure root Gradle wrapper is executable
         run: chmod +x ./gradlew
