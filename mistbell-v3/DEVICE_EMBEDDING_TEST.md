@@ -23,6 +23,10 @@
 - 启用 SM8650 NPU 还必须把与该 LiteRT-LM 版本兼容的 `libLiteRtDispatch_Qualcomm.so`、QAIRT/QNN HTP 运行库和 Hexagon V75 组件放入 `app/src/main/jniLibs/arm64-v8a/`，并完成设备验证。只有实际验证后才能加入 `app/src/main/assets/native-runtime/qualcomm-sm8650.properties`，内容须包含 `status=verified`、`target_soc=SM8650`、`litertlm_android=0.18.0`、`qairt_abi=verified` 和 `dispatch_abi=verified`；不能只因文件存在就标记已验证。
 - 若要确认 Redmi K70 Pro 的 NPU 是否真正执行，还需要结合设备/系统级运行日志或可观测的后端遥测；不能只依据手机型号、后端配置或“初始化成功”下结论。
 - 最终用户实测需记录设备型号、Android 版本、结果状态、耗时、是否回退和导出的诊断日志。
+## 原生运行库完整清单
+
+GPU、Qualcomm SM8650 NPU、CPU 运行时、系统提供的驱动、条件依赖、ELF 动态依赖、版本固定、许可证和打包验收门槛统一记录在 [NATIVE_RUNTIME_DEPENDENCY_MATRIX.md](NATIVE_RUNTIME_DEPENDENCY_MATRIX.md)。添加或更新任何 native library 前必须先更新该清单；不能以“文件存在”作为后端可用的证明。
+
 ## APK 说明
 
 最终设备测试 APK 由 `Mistbell 3.0 Final Device-Test APK` 工作流生成。工作流会先对 `mistbell-v3` 执行 Kotlin 编译和 JVM 单元测试，只有两者通过后才会执行 `assembleDebug` 并上传 APK、SHA-256 和源代码提交号。该 APK 用于你的真实设备测试，不代表 NPU 已通过实测或应用已完成最终验收。
