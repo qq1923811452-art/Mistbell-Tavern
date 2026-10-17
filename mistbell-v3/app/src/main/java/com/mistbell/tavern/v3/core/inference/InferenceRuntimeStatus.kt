@@ -49,7 +49,7 @@ data class InferenceRuntimeStatus(
         require(phase != InferencePhase.READY || (modelId != null && runtimeId != null)) {
             "Ready status requires a model and runtime."
         }
-        require(backend != InferenceBackend.NPU || phase == InferencePhase.INITIALIZED ||
+        require(backend != InferenceBackend.NPU ||
             phase == InferencePhase.READY || phase == InferencePhase.RUNNING || phase == InferencePhase.FALLBACK) {
             "NPU cannot be reported while no runtime is active."
         }
