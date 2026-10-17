@@ -362,6 +362,19 @@ class LiteRtLmEmbeddingGemma2Engine(
                 "backend=${backend.name}; ${memory.removePrefix("; ")}",
             )
         }
+        // The runtime status is intentionally short, but native errors often put the
+        // actionable Qualcomm/QNN cause at the END of a long nested LiteRT-LM message.
+        // Preserve a separately bounded tail in the exportable diagnostic log so the
+        // status-size limit does not erase the root cause (for example, tensor allocation).
+        val diagnosticTail = message.takeLast(300)
+        val diagnosticCauses = causes.takeLast(100)
+        val diagnosticFrame = frame.takeLast(70)
+        logError(
+            "embedding.runtime.failure_detail",
+            "backend=${backend.name}; exception=${error::class.java.simpleName}; " +
+                "messageTail=$diagnosticTail$diagnosticCauses$diagnosticFrame",
+        )
+
         val compactMessage = message.take(260)
         val compactCauses = causes.take(150)
         val compactFrame = frame.take(90)
