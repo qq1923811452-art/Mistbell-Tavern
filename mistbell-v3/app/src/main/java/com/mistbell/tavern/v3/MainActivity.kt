@@ -99,20 +99,20 @@ class MainActivity : ComponentActivity() {
         val relativePath = "${Environment.DIRECTORY_DOWNLOADS}/向量模型/"
         val collection = MediaStore.Downloads.EXTERNAL_CONTENT_URI
 
-        fun findExisting(displayName: String): Uri? =
+        fun findExisting(displayName: String): List<Uri> =
             resolver.query(
                 collection,
                 arrayOf(MediaStore.MediaColumns._ID),
-                "${MediaStore.MediaColumns.DISPLAY_NAME} = ? AND ${MediaStore.MediaColumns.RELATIVE_PATH} = ?",
-                arrayOf(displayName, relativePath),
+                "${MediaStore.MediaColumns.DISPLAY_NAME} = ? AND (${MediaStore.MediaColumns.RELATIVE_PATH} = ? OR ${MediaStore.MediaColumns.RELATIVE_PATH} = ?)",
+                arrayOf(displayName, relativePath, relativePath.trimEnd('/')),
                 null,
             )?.use { cursor ->
-                if (cursor.moveToFirst()) {
-                    Uri.withAppendedPath(collection, cursor.getLong(0).toString())
-                } else {
-                    null
+                buildList {
+                    while (cursor.moveToNext()) {
+                        add(Uri.withAppendedPath(collection, cursor.getLong(0).toString()))
+                    }
                 }
-            }
+            }.orEmpty()
 
         fun publishFile(file: File) {
             val values = ContentValues().apply {
@@ -122,14 +122,17 @@ class MainActivity : ComponentActivity() {
                 put(MediaStore.MediaColumns.IS_PENDING, 1)
             }
             val existing = findExisting(file.name)
-            val uri = if (existing != null) {
-                resolver.update(existing, values, null, null)
-                existing
+            val reusedExisting = existing.isNotEmpty()
+            val uri = if (reusedExisting) {
+                existing.first()
             } else {
                 resolver.insert(collection, values)
                     ?: throw IllegalStateException("Android could not create the public model file.")
             }
             try {
+                check(resolver.update(uri, values, null, null) == 1) {
+                    "Android could not prepare the public model file."
+                }
                 val output = resolver.openOutputStream(uri, "wt")
                     ?: throw IllegalStateException("Android could not open the public model file.")
                 file.inputStream().buffered().use { input ->
@@ -141,8 +144,21 @@ class MainActivity : ComponentActivity() {
                 check(resolver.update(uri, ready, null, null) == 1) {
                     "Android could not finalize the public model file."
                 }
+                // Some Android providers may store RELATIVE_PATH with or without a trailing
+                // slash. Reuse the existing row and remove stale duplicate rows only after the
+                // replacement has been written successfully.
+                existing.drop(1).forEach { duplicateUri ->
+                    resolver.delete(duplicateUri, null, null)
+                }
             } catch (error: Exception) {
-                resolver.delete(uri, null, null)
+                if (!reusedExisting) {
+                    resolver.delete(uri, null, null)
+                } else {
+                    val notPending = ContentValues().apply {
+                        put(MediaStore.MediaColumns.IS_PENDING, 0)
+                    }
+                    resolver.update(uri, notPending, null, null)
+                }
                 throw error
             }
         }
