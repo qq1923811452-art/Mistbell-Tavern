@@ -94,7 +94,7 @@ jobs:
             echo "Cannot locate the pinned QAIRT workspace declaration in the v0.18.0 LiteRT-LM dependency tree." >&2
             exit 1
           fi
-          qairt_version="$(sed -nE 's/.*strip_prefix = "qairt\/([^"]+)".*/\\1/p' "$qairt_workspace" | head -n 1)"
+          qairt_version="$(grep -oE 'strip_prefix = "qairt/[^"]+"' "$qairt_workspace" | head -n 1 | cut -d/ -f2 | tr -d '" ')"
           test -n "$qairt_version" || { echo "Cannot parse the QAIRT version pinned by upstream." >&2; exit 1; }
           echo "qairt_root=$PWD/${qairt_root#./}" >> "$GITHUB_OUTPUT"
           echo "dispatch_so=$PWD/${dispatch#./}" >> "$GITHUB_OUTPUT"
