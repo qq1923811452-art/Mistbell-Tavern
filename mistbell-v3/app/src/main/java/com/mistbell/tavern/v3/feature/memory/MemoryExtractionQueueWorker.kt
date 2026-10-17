@@ -36,7 +36,6 @@ class MemoryExtractionQueueWorker(
             val historyStore = ChatHistoryStore(applicationContext)
             val inputFactory = MemoryExtractionBatchInputFactory()
             var processedJobs = 0
-            val successTurnByJobId = mutableMapOf<String, String>()
             while (!isStopped && processedJobs < MAX_JOBS_PER_RUN) {
                 val completion = CompletableDeferred<Boolean>()
                 runner.runNext(
@@ -109,7 +108,11 @@ class MemoryExtractionQueueWorker(
                             when (result) {
                                 MemoryExtractionQueueRunner.Result.Idle -> completion.complete(false)
                                 is MemoryExtractionQueueRunner.Result.Finished -> {
-                                    val turnId = successTurnByJobId.remove(result.jobId)
+                                    val turnId = if (result.state == MemoryExtractionJob.State.COMPLETED) {
+                                        repository.list().firstOrNull { it.id == result.jobId }?.turnIds?.lastOrNull()
+                                    } else {
+                                        null
+                                    }
                                     if (result.state == MemoryExtractionJob.State.COMPLETED && turnId != null) {
                                         applicationContext.getSharedPreferences(
                                             "mistbell-v3-settings",
