@@ -137,7 +137,14 @@ jobs:
           unzip -Z1 "$apk" > build-artifacts/apk-entries.txt
           inventory="mistbell-v3/app/src/main/assets/native-runtime/qualcomm-sm8650-inventory.txt"
           test -s "$inventory"
-          while IFS=          (cd build-artifacts && sha256sum *.apk | tee SHA256SUMS.txt)
+          while read -r library size; do
+            test -n "$library" || continue
+            grep -Fxq "lib/arm64-v8a/$library" build-artifacts/apk-entries.txt || {
+              echo "APK is missing staged runtime library: $library" >&2
+              exit 1
+            }
+          done < "$inventory"
+          (cd build-artifacts && sha256sum *.apk | tee SHA256SUMS.txt)
           {
             echo "mistbell_source_sha=$(git rev-parse HEAD)"
             echo "litert_lm_tag=v0.18.0"
@@ -146,7 +153,6 @@ jobs:
             echo "runtime_status=packaged_not_device_verified"
             echo "npu_status=disabled_until_real_sm8650_inference"
           } > build-artifacts/SOURCE.txt
-
       - name: Upload SM8650 device-test APK and provenance
         uses: actions/upload-artifact@v4
         with:
