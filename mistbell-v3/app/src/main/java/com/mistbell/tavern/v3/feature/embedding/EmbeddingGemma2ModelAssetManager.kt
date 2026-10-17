@@ -43,7 +43,6 @@ class EmbeddingGemma2ModelAssetManager(
     private val modelFile = File(modelDirectory, selectedModelFileName)
     private val digestFile = File(modelDirectory, "$selectedModelFileName.sha256")
     private val downloadLock = ReentrantLock()
-    @Volatile private var selectedLocalModelFile: File? = null
 
     suspend fun download(
         onProgress: (downloadedBytes: Long, totalBytes: Long?) -> Unit = { _, _ -> },
@@ -137,68 +136,6 @@ class EmbeddingGemma2ModelAssetManager(
             temporaryFile.delete()
             temporaryDigestFile.delete()
         }
-        } finally {
-            downloadLock.unlock()
-        }
-    }
-
-    /**
-     * Validates a model that already exists on disk without copying it into modelDirectory.
-     *
-     * Use this for "import from local storage": the selected file remains at its original path,
-     * including a file under the user's Download directory. Unlike download()/importModel(),
-     * this method never creates a second model bundle or a sidecar digest beside the source.
-     * The caller must retain this returned file as the active model path.
-     */
-    suspend fun useLocalModel(sourceFile: File): DownloadedEmbeddingModel = withContext(Dispatchers.IO) {
-        downloadLock.lock()
-        try {
-            require(sourceFile.isFile && sourceFile.canRead()) {
-                "The selected local model file cannot be read."
-            }
-            require(sourceFile.name.endsWith(".litertlm", ignoreCase = true) &&
-                (sourceFile.name.contains("embeddinggemma", ignoreCase = true) ||
-                    sourceFile.name.contains("embedding-gemma", ignoreCase = true))) {
-                "Select an EmbeddingGemma 2 .litertlm model file; its filename must identify EmbeddingGemma."
-            }
-            val sizeBytes = sourceFile.length()
-            require(sizeBytes in 1..MAX_MODEL_BYTES) {
-                "Selected model file is empty or exceeds the configured size limit."
-            }
-            val digest = MessageDigest.getInstance("SHA-256")
-            sourceFile.inputStream().buffered().use { input ->
-                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-                var total = 0L
-                while (true) {
-                    val count = input.read(buffer)
-                    if (count < 0) break
-                    total += count
-                    require(total <= MAX_MODEL_BYTES) {
-                        "Selected model exceeds the configured size limit."
-                    }
-                    digest.update(buffer, 0, count)
-                }
-                check(total == sizeBytes) {
-                    "Selected model changed while it was being verified; select it again."
-                }
-            }
-            val sha256 = digest.digest().toHex()
-            val isQualcommModel = sha256.equals(QUALCOMM_SM8650_MODEL_SHA256, ignoreCase = true)
-            require(isQualcommModel == preferQualcommSm8650Model) {
-                if (preferQualcommSm8650Model) {
-                    "The selected runtime profile requires the published Qualcomm SM8650 model bundle."
-                } else {
-                    "The Qualcomm SM8650-specific model requires a verified NPU runtime profile; use the portable model for CPU/GPU testing."
-                }
-            }
-            val verifiedFile = sourceFile.canonicalFile
-            selectedLocalModelFile = verifiedFile
-            DownloadedEmbeddingModel(
-                file = verifiedFile,
-                sizeBytes = sizeBytes,
-                sha256 = sha256,
-                isQualcommSm8650Optimized = isQualcommModel,
-            )
         } finally {
             downloadLock.unlock()
         }
@@ -302,33 +239,6 @@ class EmbeddingGemma2ModelAssetManager(
 
     suspend fun verifyInstalled(): DownloadedEmbeddingModel? = withContext(Dispatchers.IO) {
         try {
-            // Prefer an explicitly selected external file (e.g. the user's existing Downloads
-            // model). Re-hash it on verification; do not copy it into modelDirectory or create a
-            // digest sidecar next to the user's file.
-            val externalFile = selectedLocalModelFile
-            if (externalFile != null) {
-                if (!externalFile.isFile || !externalFile.canRead() ||
-                    externalFile.length() < 1L || externalFile.length() > MAX_MODEL_BYTES
-                ) return@withContext null
-                val externalDigest = MessageDigest.getInstance("SHA-256")
-                externalFile.inputStream().buffered().use { input ->
-                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-                    while (true) {
-                        val count = input.read(buffer)
-                        if (count < 0) break
-                        externalDigest.update(buffer, 0, count)
-                    }
-                }
-                val actualExternal = externalDigest.digest().toHex()
-                val isQualcommExternal = actualExternal.equals(QUALCOMM_SM8650_MODEL_SHA256, ignoreCase = true)
-                if (isQualcommExternal != preferQualcommSm8650Model) return@withContext null
-                return@withContext DownloadedEmbeddingModel(
-                    file = externalFile,
-                    sizeBytes = externalFile.length(),
-                    sha256 = actualExternal,
-                    isQualcommSm8650Optimized = isQualcommExternal,
-                )
-            }
             if (!modelFile.isFile || !digestFile.isFile || (modelFile.length() < 1L || modelFile.length() > MAX_MODEL_BYTES)) return@withContext null
             val expected = digestFile.readText(Charsets.UTF_8).trim().substringBefore(' ').trim()
             if (!expected.matches(Regex("[0-9a-fA-F]{64}"))) return@withContext null
