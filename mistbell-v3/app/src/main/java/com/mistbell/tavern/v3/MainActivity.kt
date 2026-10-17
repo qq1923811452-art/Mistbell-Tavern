@@ -234,6 +234,7 @@ class MainActivity : ComponentActivity() {
                             onCycleEmbeddingDimensions = ::cycleEmbeddingDimensions,
                             onRunEmbeddingTest = { runEmbeddingSelfTest() },
                             onRunNpuDiagnosticProbe = { runEmbeddingSelfTest(allowDiagnosticNpuProbe = true) },
+                            onRunAlternateBackendBenchmark = { runAlternateBackendBenchmark() },
                             onExportLogs = { exportDiagnostics.launch("mistbell-diagnostics.txt") },
                         )
                     }
@@ -433,6 +434,56 @@ class MainActivity : ComponentActivity() {
         operationMessage = "已选择 ${selectedEmbeddingDimensions} 维输出；下次本地向量测试将使用此档位。已有向量需要按新维度重建后才能混合检索。"
     }
 
+    private fun runAlternateBackendBenchmark() {
+        if (operationBusy) return
+        if (!qualcommModelSelected) {
+            operationMessage = "GPU/CPU 对照实验需要先选择 Qualcomm SM8650 专用模型。"
+            return
+        }
+        operationBusy = true
+        operationMessage = "正在尝试用同一 Qualcomm 模型执行 GPU/CPU 基准；这是隔离实验，不改变生产回退策略……"
+        lifecycleScope.launch {
+            val summaries = mutableListOf<String>()
+            try {
+                val asset = withContext(Dispatchers.IO) { modelAssets.verifyInstalled() }
+                    ?: throw IllegalStateException("模型不存在或 SHA-256 校验失败。")
+                check(asset.isQualcommSm8650Optimized) { "当前安装模型不是 Qualcomm SM8650 专用模型。" }
+                for (backend in listOf(InferenceBackend.GPU, InferenceBackend.CPU)) {
+                    var benchmark: LiteRtLmEmbeddingGemma2Engine? = null
+                    try {
+                        benchmark = LiteRtLmEmbeddingGemma2Engine(
+                            context = applicationContext,
+                            modelFile = asset.file,
+                            preferredBackends = listOf(backend),
+                            npuModelCompatible = true,
+                            diagnostics = diagnostics,
+                            allowDiagnosticAlternateBackendProbe = true,
+                        )
+                        val outcomes = benchmark.runBackendInputLengthBenchmark(backend)
+                        val successes = outcomes.count { "; result=success;" in it }
+                        summaries += "${backend.name}: $successes/${outcomes.size} cases"
+                    } catch (error: Exception) {
+                        val detail = "${error::class.java.simpleName}: ${error.message ?: "backend unavailable"}".take(180)
+                        summaries += "${backend.name}: experiment failed ($detail)"
+                        diagnostics.warn("embedding.benchmark.backend.unavailable", "backend=${backend.name}; $detail")
+                    } finally {
+                        benchmark?.close()
+                    }
+                }
+                operationMessage = "Qualcomm 同模型 GPU/CPU 实验结束：${summaries.joinToString("；")}。各档预热 1 次、测量 5 次，p50/p90 已写入诊断日志。实验失败不影响 NPU/GPU 生产路径。"
+                diagnostics.info("embedding.benchmark.summary", summaries.joinToString("; "))
+            } catch (cancelled: CancellationException) {
+                diagnostics.warn("embedding.benchmark.cancelled")
+                throw cancelled
+            } catch (error: Exception) {
+                operationMessage = "GPU/CPU 对照实验无法启动：${error::class.java.simpleName}: ${error.message ?: "unknown error"}"
+                diagnostics.error("embedding.benchmark.failed", operationMessage)
+            } finally {
+                operationBusy = false
+            }
+        }
+    }
+
     private fun runEmbeddingSelfTest(allowDiagnosticNpuProbe: Boolean = false) {
         if (operationBusy) return
         if (allowDiagnosticNpuProbe && !qualcommModelSelected) {
@@ -563,6 +614,7 @@ private fun DevelopmentHome(
     onCycleEmbeddingDimensions: () -> Unit,
     onRunEmbeddingTest: () -> Unit,
     onRunNpuDiagnosticProbe: () -> Unit,
+    onRunAlternateBackendBenchmark: () -> Unit,
     onExportLogs: () -> Unit,
 ) {
     Scaffold(
@@ -667,6 +719,10 @@ private fun DevelopmentHome(
                             Spacer(Modifier.height(6.dp))
                             Button(onClick = onRunNpuDiagnosticProbe, enabled = !operationBusy, modifier = Modifier.fillMaxWidth()) {
                                 Text("运行 NPU 输入长度矩阵（7 档，未验证）")
+                            }
+                            Spacer(Modifier.height(6.dp))
+                            Button(onClick = onRunAlternateBackendBenchmark, enabled = !operationBusy, modifier = Modifier.fillMaxWidth()) {
+                                Text("实验：同一 Qualcomm 模型 GPU / CPU 基准")
                             }
                         }
                     }

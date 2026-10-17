@@ -40,6 +40,8 @@ class LiteRtLmEmbeddingGemma2Engine(
     /** Explicit one-shot diagnostic only; never marks the runtime as verified. */
     private val allowDiagnosticNpuProbe: Boolean = false,
     private val diagnostics: DiagnosticLogStore = DiagnosticLogStore(context.applicationContext.filesDir),
+    /** Explicit experimental route for GPU/CPU baselines using the Qualcomm-targeted model. */
+    private val allowDiagnosticAlternateBackendProbe: Boolean = false,
 ) : EmbeddingGemma2InferenceEngine, AutoCloseable {
     private val appContext = context.applicationContext
     private val cacheDirectory = File(appContext.cacheDir, "litertlm-embeddinggemma2")
@@ -63,15 +65,17 @@ class LiteRtLmEmbeddingGemma2Engine(
     // retain the normal NPU -> GPU -> CPU fallback order.
     private val backendOrder = preferredBackends
         .filter { it != InferenceBackend.UNKNOWN && backendAvailability.isAvailable(it) }
-        .filter { !npuModelCompatible || it == InferenceBackend.NPU }
+        .filter { !npuModelCompatible || it == InferenceBackend.NPU || allowDiagnosticAlternateBackendProbe }
         .distinct()
 
     private val skippedBackendReasons = buildList {
         if (InferenceBackend.NPU in preferredBackends && !backendAvailability.isAvailable(InferenceBackend.NPU)) {
             add("NPU skipped: " + backendAvailability.npuReason)
         }
-        if (npuModelCompatible) {
-            add("Qualcomm SM8650 model is NPU-only; GPU/CPU fallback is disabled. Select the portable model for CPU/GPU testing.")
+        if (npuModelCompatible && !allowDiagnosticAlternateBackendProbe) {
+            add("Qualcomm SM8650 model is NPU-only in production; GPU/CPU fallback is disabled.")
+        } else if (npuModelCompatible && allowDiagnosticAlternateBackendProbe) {
+            add("Diagnostic-only alternate backend experiment enabled; this does not enable production fallback.")
         } else if (InferenceBackend.GPU in preferredBackends && !backendAvailability.isAvailable(InferenceBackend.GPU)) {
             add("GPU skipped: " + backendAvailability.gpuReason)
         }
@@ -346,6 +350,56 @@ class LiteRtLmEmbeddingGemma2Engine(
             "embedding.npu.input_length_matrix.completed",
             "cases=${outcomes.size}; successes=${evidence.successes}; failures=${outcomes.size - evidence.successes}; status=${evidence.status}; evidence=${evidence.file.name}; apkSha256MatchesCurrent=${evidence.apkSha256MatchesCurrent}",
         )
+        return outcomes
+    }
+
+    /**
+     * Experimental GPU/CPU baseline using the same Qualcomm model bundle.
+     * This is deliberately opt-in and never changes the production backend policy.
+     * Each input size gets one warm-up and five timed repeats; p50/p90 use the five measured calls.
+     */
+    suspend fun runBackendInputLengthBenchmark(backend: InferenceBackend): List<String> {
+        check(allowDiagnosticAlternateBackendProbe && npuModelCompatible) {
+            "Alternate-backend benchmark is restricted to the explicit Qualcomm diagnostic experiment."
+        }
+        require(backend == InferenceBackend.GPU || backend == InferenceBackend.CPU) {
+            "Choose GPU or CPU for the alternate-backend benchmark."
+        }
+        check(backendOrder == listOf(backend)) {
+            "Create a benchmark engine with preferredBackends=listOf(backend) to prevent fallback."
+        }
+        val lengths = listOf(1, 32, 74, 128, 256, 512, 1024)
+        val outcomes = mutableListOf<String>()
+        logWarn("embedding.benchmark.started", "backend=${backend.name}; modelProfile=QUALCOMM_SM8650; warmup=1; repeats=5")
+        for (length in lengths) {
+            val input = EmbeddingGemma2TextPolicy.formatSearchQuery("x".repeat(length))
+            try {
+                initialize()
+                infer(listOf(input)) // one untimed warm-up
+                val samples = mutableListOf<Long>()
+                repeat(5) {
+                    val result = infer(listOf(input))
+                    samples += result.status.lastExecutionMillis ?: -1L
+                }
+                val sorted = samples.sorted()
+                val p50 = sorted[((kotlin.math.ceil(sorted.size * 0.50).toInt() - 1).coerceAtLeast(0))]
+                val p90 = sorted[((kotlin.math.ceil(sorted.size * 0.90).toInt() - 1).coerceAtLeast(0))]
+                val outcome = "backend=${backend.name}; payloadChars=$length; formattedChars=${input.length}; warmup=1; repeats=5; p50Ms=$p50; p90Ms=$p90; result=success; dimensions=${EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS}"
+                outcomes += outcome
+                logInfo("embedding.benchmark.case", outcome)
+            } catch (cancelled: CancellationException) {
+                logWarn("embedding.benchmark.cancelled", "backend=${backend.name}; payloadChars=$length")
+                throw cancelled
+            } catch (error: Exception) {
+                val outcome = "backend=${backend.name}; payloadChars=$length; warmup=1; repeats=5; result=failed; error=${error::class.java.simpleName}: ${(error.message ?: "benchmark failed").take(180)}"
+                outcomes += outcome
+                logWarn("embedding.benchmark.case", outcome)
+            } finally {
+                close()
+            }
+        }
+        val successes = outcomes.count { "; result=success;" in it }
+        logInfo("embedding.benchmark.completed", "backend=${backend.name}; cases=${outcomes.size}; successes=$successes; failures=${outcomes.size - successes}")
         return outcomes
     }
 
