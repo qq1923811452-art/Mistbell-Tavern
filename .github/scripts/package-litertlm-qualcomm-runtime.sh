@@ -129,7 +129,7 @@ inventory_tmp="$metadata_tmp/qualcomm-sm8650-inventory.txt"
 for name in "${host_libraries[@]}" "${stub_libraries[@]}" "${dsp_libraries[@]}" libLiteRtDispatch_Qualcomm.so; do
   library="$destination/$name"
   sha256sum "$library" >> "$checksum_tmp"
-  printf '%s\t%s bytes\n' "$name" "$(stat -c '%s' "$library")" >> "$inventory_tmp"
+  printf '%s\t%s\n' "$name" "$(stat -c '%s' "$library")" >> "$inventory_tmp"
 done
 
 for name in qualcomm-sm8650.properties qualcomm-sm8650.sha256 qualcomm-sm8650-inventory.txt; do
