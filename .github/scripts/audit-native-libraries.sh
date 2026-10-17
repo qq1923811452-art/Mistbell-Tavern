@@ -4,6 +4,13 @@ set -euo pipefail
 root="${1:-mistbell-v3/app/src/main/jniLibs/arm64-v8a}"
 test -d "$root"
 
+for command in readelf sed grep; do
+  if ! command -v "$command" >/dev/null 2>&1; then
+    echo "Native library audit requires '$command' in PATH (install the Android/ELF binutils tools)." >&2
+    exit 127
+  fi
+done
+
 # Public Android platform/NDK libraries that may legitimately be DT_NEEDED by
 # app-bundled arm64 libraries. Do not treat vendor/device libraries as public NDK
 # APIs merely because some phones expose them.
