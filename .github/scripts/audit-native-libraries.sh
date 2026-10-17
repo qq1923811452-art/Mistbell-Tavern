@@ -13,7 +13,6 @@ for name in \
   libEGL.so libGLESv1_CM.so libGLESv2.so libGLESv3.so libvulkan.so \
   libOpenSLES.so libaaudio.so libmediandk.so libnativewindow.so libsync.so \
   libcamera2ndk.so libamidi.so libneuralnetworks.so libbinder_ndk.so \
-  libicu.so libicui18n.so libicuuc.so libutils.so libbase.so libnativehelper.so \
   libvndksupport.so libOpenCL.so; do
   android_system["$name"]=1
 done
