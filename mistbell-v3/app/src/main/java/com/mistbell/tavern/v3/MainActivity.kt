@@ -48,6 +48,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.mistbell.tavern.v3.core.inference.BackendEvidence
 import com.mistbell.tavern.v3.feature.embedding.EmbeddingGemma2ModelAssetManager
+import com.mistbell.tavern.v3.feature.embedding.DownloadedEmbeddingModel
 import com.mistbell.tavern.v3.feature.embedding.EmbeddingGemma2RuntimeAdapter
 import com.mistbell.tavern.v3.feature.embedding.LiteRtLmEmbeddingGemma2Engine
 import com.mistbell.tavern.v3.core.diagnostics.DiagnosticLogStore
