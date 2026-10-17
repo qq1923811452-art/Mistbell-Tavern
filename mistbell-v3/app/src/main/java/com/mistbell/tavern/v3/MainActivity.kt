@@ -2,10 +2,7 @@ package com.mistbell.tavern.v3
 
 import android.os.Bundle
 import android.os.Build
-import android.os.Environment
-import android.content.ContentValues
 import android.net.Uri
-import android.provider.MediaStore
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import android.provider.OpenableColumns
@@ -80,9 +77,6 @@ class MainActivity : ComponentActivity() {
     private var qualcommModelSelected by mutableStateOf(false)
     private var modelProfileGeneration = 0
 
-    private fun publicModelDirectoryLabel(): String =
-        "/storage/emulated/0/Download/向量模型/"
-
     /**
      * Some Android document providers expose a readable filesystem path (notably MediaStore
      * entries in Downloads). Use it when available so selecting an existing model does not
@@ -104,258 +98,6 @@ class MainActivity : ComponentActivity() {
             modelDirectory = File(filesDir, "models"),
             preferQualcommSm8650Model = qualcomm,
         )
-
-    /**
-     * Publish the verified model into Downloads/向量模型 without duplicating an imported
-     * model that already exists there under its original filename.
-     */
-    private suspend fun publishModelToPublicDownloads(source: File): String = withContext(Dispatchers.IO) {
-        check(Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            "Public model publishing requires Android 10 or newer."
-        }
-        val resolver = contentResolver
-        val relativePath = "${Environment.DIRECTORY_DOWNLOADS}/向量模型/"
-        val collection = MediaStore.Downloads.EXTERNAL_CONTENT_URI
-
-        data class PublicFile(val uri: Uri, val name: String)
-
-        fun findExisting(displayName: String? = null): List<PublicFile> {
-            // Normalize RELATIVE_PATH in Kotlin because MediaStore providers may differ on
-            // trailing slashes. This keeps content-hash deduplication reliable across imports.
-            val selection = displayName?.let { MediaStore.MediaColumns.DISPLAY_NAME + " = ?" }
-            val args = displayName?.let { arrayOf(it) }
-            return resolver.query(
-                collection,
-                arrayOf(
-                    MediaStore.MediaColumns._ID,
-                    MediaStore.MediaColumns.DISPLAY_NAME,
-                    MediaStore.MediaColumns.RELATIVE_PATH,
-                    MediaStore.MediaColumns.IS_PENDING,
-                ),
-                selection,
-                args,
-                null,
-            )?.use { cursor ->
-                val idColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
-                val nameColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
-                val pathColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.RELATIVE_PATH)
-                val pendingColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.IS_PENDING)
-                val expectedPath = relativePath.trimEnd('/') + "/"
-                buildList {
-                    while (cursor.moveToNext()) {
-                        val storedPath = cursor.getString(pathColumn).orEmpty().trimEnd('/') + "/"
-                        if (!storedPath.equals(expectedPath, ignoreCase = true) || cursor.getInt(pendingColumn) != 0) continue
-                        add(PublicFile(
-                            Uri.withAppendedPath(collection, cursor.getLong(idColumn).toString()),
-                            cursor.getString(nameColumn),
-                        ))
-                    }
-                }
-            }.orEmpty()
-        }
-
-        fun sha256(input: java.io.InputStream): String =
-            input.use { stream ->
-                val digest = java.security.MessageDigest.getInstance("SHA-256")
-                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-                while (true) {
-                    val count = stream.read(buffer)
-                    if (count < 0) break
-                    digest.update(buffer, 0, count)
-                }
-                digest.digest().joinToString("") { "%02x".format(it) }
-            }
-
-        fun digestOf(publicFile: PublicFile): String? =
-            runCatching {
-                resolver.openInputStream(publicFile.uri)?.buffered()?.use { sha256(it) }
-            }.getOrNull()
-
-        fun publishFile(file: File, displayName: String = file.name): String {
-            val sourceDigest = file.inputStream().buffered().use { sha256(it) }
-            val existingFiles = findExisting()
-            // Match content across the whole target directory, not only by name. Import
-            // first stages bytes in app-private storage, so the source filename may differ
-            // from the existing public file's name.
-            val identicalExisting = existingFiles.firstOrNull { digestOf(it) == sourceDigest }
-            if (identicalExisting != null) return identicalExisting.name
-
-            check(findExisting(displayName).isEmpty()) {
-                "A different file named $displayName already exists in $relativePath. To avoid overwriting user data, rename or remove that conflicting file and retry."
-            }
-            val values = ContentValues().apply {
-                put(MediaStore.MediaColumns.DISPLAY_NAME, displayName)
-                put(MediaStore.MediaColumns.MIME_TYPE, "application/octet-stream")
-                put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath)
-                put(MediaStore.MediaColumns.IS_PENDING, 1)
-            }
-            val uri = resolver.insert(collection, values)
-                ?: throw IllegalStateException("Android could not create the public model file.")
-            try {
-                check(resolver.update(uri, values, null, null) == 1) {
-                    "Android could not prepare the public model file."
-                }
-                val output = resolver.openOutputStream(uri, "wt")
-                    ?: throw IllegalStateException("Android could not open the public model file.")
-                file.inputStream().buffered().use { input ->
-                    output.buffered().use { target -> input.copyTo(target) }
-                }
-                val ready = ContentValues().apply {
-                    put(MediaStore.MediaColumns.IS_PENDING, 0)
-                }
-                check(resolver.update(uri, ready, null, null) == 1) {
-                    "Android could not finalize the public model file."
-                }
-                return displayName
-            } catch (error: Exception) {
-                resolver.delete(uri, null, null)
-                throw error
-            }
-        }
-
-        val publishedModelName = publishFile(source)
-        val modelDigest = source.inputStream().buffered().use { sha256(it) }
-        val digestSidecar = File(cacheDir, "mistbell-model-$modelDigest.sha256")
-        try {
-            digestSidecar.writeText("$modelDigest  $publishedModelName\n", Charsets.UTF_8)
-            publishFile(digestSidecar, "$publishedModelName.sha256")
-        } finally {
-            digestSidecar.delete()
-        }
-        publishedModelName
-    }
-
-    /** Restore the public model and its digest sidecar into app-private runtime storage if needed. */
-    private suspend fun restorePublicModelIfPresent(qualcomm: Boolean) = withContext(Dispatchers.IO) {
-        val settings = getSharedPreferences("mistbell-v3-settings", MODE_PRIVATE)
-        val localPathKey = if (qualcomm) "embedding_local_model_path_qualcomm" else "embedding_local_model_path_portable"
-        val savedLocalPath = settings.getString(localPathKey, null)
-        if (!savedLocalPath.isNullOrBlank()) {
-            val savedFile = File(savedLocalPath)
-            if (savedFile.isFile && savedFile.canRead()) {
-                modelAssets.useLocalModel(savedFile)
-                diagnostics.info("embedding.model.local_path.reused", "profile=${if (qualcomm) "QUALCOMM_SM8650" else "PORTABLE"}; source=existing_file")
-                return@withContext
-            }
-            settings.edit().remove(localPathKey).apply()
-        }
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return@withContext
-        val canonicalModelName = if (qualcomm) {
-            EmbeddingGemma2ModelAssetManager.QUALCOMM_SM8650_MODEL_FILE_NAME
-        } else {
-            EmbeddingGemma2ModelAssetManager.MODEL_FILE_NAME
-        }
-        val profileKey = if (qualcomm) "embedding_public_model_name_qualcomm" else "embedding_public_model_name_portable"
-        val publicModelName = getSharedPreferences("mistbell-v3-settings", MODE_PRIVATE)
-            .getString(profileKey, null)
-            ?.takeIf { it.endsWith(".litertlm", ignoreCase = true) }
-            ?: canonicalModelName
-        val directory = File(filesDir, "models")
-        if (!directory.isDirectory && !directory.mkdirs()) return@withContext
-        val relativePath = "${Environment.DIRECTORY_DOWNLOADS}/向量模型/"
-        val collection = MediaStore.Downloads.EXTERNAL_CONTENT_URI
-
-        fun findDownloads(displayName: String): List<Uri> =
-            contentResolver.query(
-                collection,
-                arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.RELATIVE_PATH),
-                "${MediaStore.MediaColumns.DISPLAY_NAME} = ? AND ${MediaStore.MediaColumns.IS_PENDING} = 0",
-                arrayOf(displayName),
-                null,
-            )?.use { cursor ->
-                val idColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
-                val pathColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.RELATIVE_PATH)
-                buildList {
-                    while (cursor.moveToNext()) {
-                        val storedPath = cursor.getString(pathColumn).orEmpty().trimEnd('/') + "/"
-                        val expectedPath = relativePath.trimEnd('/') + "/"
-                        if (storedPath.equals(expectedPath, ignoreCase = true)) {
-                            add(Uri.withAppendedPath(collection, cursor.getLong(idColumn).toString()))
-                        }
-                    }
-                }
-            }.orEmpty()
-
-        val modelDownloads = findDownloads(publicModelName)
-        val modelUri = modelDownloads.firstOrNull() ?: return@withContext
-        val localPublicFile = resolveReadableModelFile(modelUri)
-        if (localPublicFile != null) {
-            // The public Downloads file is already the canonical model. Verify and use it
-            // directly instead of restoring a duplicate into filesDir/models.
-            modelAssets.useLocalModel(localPublicFile)
-            settings.edit().putString(localPathKey, localPublicFile.canonicalPath).apply()
-            diagnostics.info("embedding.model.public_path.reused", "filename=$publicModelName")
-            return@withContext
-        }
-        val digestDownloads = findDownloads("$publicModelName.sha256")
-        val digestUri = digestDownloads.firstOrNull() ?: return@withContext
-        // The public file keeps its original name, while runtime storage uses the
-        // canonical name expected by EmbeddingGemma2ModelAssetManager.
-        val modelTarget = File(directory, canonicalModelName)
-        val digestTarget = File(directory, "$canonicalModelName.sha256")
-        val modelTemporary = File(directory, "$canonicalModelName.restore")
-        val digestTemporary = File(directory, "$canonicalModelName.sha256.restore")
-        try {
-            val modelInput = contentResolver.openInputStream(modelUri)
-                ?: throw IllegalStateException("Public model file could not be opened.")
-            modelInput.use { source ->
-                modelTemporary.outputStream().buffered().use { output -> source.copyTo(output) }
-            }
-            val digestInput = contentResolver.openInputStream(digestUri)
-                ?: throw IllegalStateException("Public model checksum could not be opened.")
-            digestInput.use { source ->
-                digestTemporary.outputStream().buffered().use { output -> source.copyTo(output) }
-            }
-
-            val expectedDigest = digestTemporary.readText(Charsets.UTF_8)
-                .trim()
-                .substringBefore(' ')
-                .trim()
-            check(expectedDigest.matches(Regex("[0-9a-fA-F]{64}"))) {
-                "Public model checksum file is malformed."
-            }
-            val digest = java.security.MessageDigest.getInstance("SHA-256")
-            modelTemporary.inputStream().buffered().use { input ->
-                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-                while (true) {
-                    val count = input.read(buffer)
-                    if (count < 0) break
-                    digest.update(buffer, 0, count)
-                }
-            }
-            val actualDigest = digest.digest().joinToString("") { "%02x".format(it) }
-            check(actualDigest.equals(expectedDigest, ignoreCase = true)) {
-                "Public model checksum does not match its file; preserving the installed model."
-            }
-            check(actualDigest.equals(
-                if (qualcomm) EmbeddingGemma2ModelAssetManager.QUALCOMM_SM8650_MODEL_SHA256
-                else EmbeddingGemma2ModelAssetManager.PORTABLE_MODEL_SHA256,
-                ignoreCase = true,
-            )) {
-                "Public model does not match the selected runtime profile; preserving the installed model."
-            }
-
-            java.nio.file.Files.move(
-                modelTemporary.toPath(),
-                modelTarget.toPath(),
-                java.nio.file.StandardCopyOption.REPLACE_EXISTING,
-                java.nio.file.StandardCopyOption.ATOMIC_MOVE,
-            )
-            java.nio.file.Files.move(
-                digestTemporary.toPath(),
-                digestTarget.toPath(),
-                java.nio.file.StandardCopyOption.REPLACE_EXISTING,
-                java.nio.file.StandardCopyOption.ATOMIC_MOVE,
-            )
-            // Remove duplicate MediaStore rows only after both files are restored and verified.
-            (modelDownloads.drop(1) + digestDownloads.drop(1)).forEach { duplicateUri ->
-                contentResolver.delete(duplicateUri, null, null)
-            }
-        } finally {
-            modelTemporary.delete()
-            digestTemporary.delete()
-        }
-    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -420,34 +162,21 @@ class MainActivity : ComponentActivity() {
                         ) {
                             "请选择文件名标明 EmbeddingGemma 的 .litertlm 模型文件。"
                         }
-                        val selectedFile = withContext(Dispatchers.IO) { resolveReadableModelFile(uri) }
-                        val imported = if (selectedFile != null) {
-                            operationMessage = "正在原路径校验模型，不复制文件……"
-                            modelAssets.useLocalModel(selectedFile)
-                        } else {
-                            val input = withContext(Dispatchers.IO) { contentResolver.openInputStream(uri) }
-                                ?: throw IllegalStateException("所选文件无法打开。")
-                            modelAssets.importModel(sourceName, input) { bytes, _ ->
-                                runOnUiThread { operationMessage = "模型导入中：${bytes / (1024 * 1024)} MiB" }
-                            }
+                        val input = withContext(Dispatchers.IO) { contentResolver.openInputStream(uri) }
+                            ?: throw IllegalStateException("所选文件无法打开。")
+                        operationMessage = "正在验证并复制到软件内部目录……"
+                        val imported = modelAssets.importModel(sourceName, input) { bytes, _ ->
+                            runOnUiThread { operationMessage = "模型导入中：${bytes / (1024 * 1024)} MiB" }
                         }
                         val settings = getSharedPreferences("mistbell-v3-settings", MODE_PRIVATE)
                         val profileKey = if (qualcommModelSelected) "embedding_public_model_name_qualcomm" else "embedding_public_model_name_portable"
                         val localPathKey = if (qualcommModelSelected) "embedding_local_model_path_qualcomm" else "embedding_local_model_path_portable"
-                        if (selectedFile != null) {
-                            settings.edit()
-                                .putString(localPathKey, imported.file.canonicalPath)
-                                .putString(profileKey, imported.file.name)
-                                .apply()
-                            operationMessage = "本地模型已在原路径校验完成，没有复制或另存：${imported.file.absolutePath}\nSHA-256：${imported.sha256}"
-                            diagnostics.info("embedding.model.import.local_path_reused", "pathSource=filesystem; bytes=${imported.sizeBytes}; sha256=${imported.sha256}")
-                        } else {
-                            // SAF providers without a real path require one app-private staging copy
-                            // because LiteRT-LM's current API consumes a filesystem path. Do not
-                            // publish a second copy into Downloads automatically.
-                            settings.edit().remove(localPathKey).apply()
-                            operationMessage = "模型已校验并暂存到应用私有目录（所选文件提供方未暴露可用路径）：${imported.file.name}\nSHA-256：${imported.sha256}"
-                        }
+                        settings.edit()
+                            .remove(localPathKey)
+                            .remove(profileKey)
+                            .apply()
+                        operationMessage = "模型已校验并复制到软件内部目录：${imported.file.absolutePath}\nSHA-256：${imported.sha256}"
+                        diagnostics.info("embedding.model.import.private_copy", "bytes=${imported.sizeBytes}; sha256=${imported.sha256}")
                         diagnostics.info("embedding.model.import.succeeded", "bytes=${imported.sizeBytes}; sha256=${imported.sha256}")
                     } catch (cancelled: CancellationException) {
                         diagnostics.warn("embedding.model.import.cancelled")
@@ -596,12 +325,11 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 }
-                val publicModelName = publishModelToPublicDownloads(downloaded.file)
-                val profileKey = if (qualcommModelSelected) "embedding_public_model_name_qualcomm" else "embedding_public_model_name_portable"
                 getSharedPreferences("mistbell-v3-settings", MODE_PRIVATE).edit()
-                    .putString(profileKey, publicModelName)
+                    .remove(if (qualcommModelSelected) "embedding_local_model_path_qualcomm" else "embedding_local_model_path_portable")
+                    .remove(if (qualcommModelSelected) "embedding_public_model_name_qualcomm" else "embedding_public_model_name_portable")
                     .apply()
-                operationMessage = "模型下载并校验完成，已保存到：${publicModelDirectoryLabel()}\n文件：$publicModelName\nSHA-256：${downloaded.sha256}"
+                operationMessage = "模型已下载、校验并保存到软件内部目录：${downloaded.file.absolutePath}\nSHA-256：${downloaded.sha256}"
                 diagnostics.info(
                     "embedding.model.download.succeeded",
                     "bytes=${downloaded.sizeBytes}; sha256=${downloaded.sha256}",
@@ -791,7 +519,7 @@ private fun DevelopmentHome(
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text("本地模型与实测", style = MaterialTheme.typography.titleMedium)
                         Spacer(Modifier.height(6.dp))
-                        Text("模型保存位置：/storage/emulated/0/Download/向量模型/", style = MaterialTheme.typography.bodyMedium)
+                        Text("模型保存位置：软件内部私有目录（无需公共目录副本）", style = MaterialTheme.typography.bodyMedium)
                         Spacer(Modifier.height(4.dp))
                         Text("请选择要下载的模型版本：", style = MaterialTheme.typography.bodyMedium)
                         Spacer(Modifier.height(6.dp))
@@ -811,7 +539,7 @@ private fun DevelopmentHome(
                             Text(if (qualcommModelSelected) "✓ 已选：Qualcomm SM8650 专用版（约 563 MB）" else "选择 Qualcomm SM8650 专用版（约 563 MB）")
                         }
                         Text(
-                            "专用版针对骁龙 8 Gen 3/SM8650；NPU 是否可用仍取决于 APK 中的运行库与真机验证。应用会在校验后将模型发布到公共下载目录，无需授予“所有文件访问”权限。",
+                            "专用版针对骁龙 8 Gen 3/SM8650；NPU 是否可用仍取决于 APK 中的运行库与真机验证。模型校验后只保存在软件内部目录，不会另存到公共下载目录。",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
