@@ -60,6 +60,7 @@ class EmbeddingGemma2ModelAssetManagerTest {
             assertEquals(source.canonicalFile, result.file)
             assertEquals(source.canonicalFile, result.file.canonicalFile)
             assertEquals(bytes.size.toLong(), result.sizeBytes)
+            assertEquals(source.canonicalFile, manager.verifyInstalled()!!.file.canonicalFile)
             assertEquals(
                 MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) },
                 result.sha256,
