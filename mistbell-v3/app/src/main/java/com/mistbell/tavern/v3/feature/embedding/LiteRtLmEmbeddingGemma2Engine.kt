@@ -218,11 +218,25 @@ class LiteRtLmEmbeddingGemma2Engine(
                 }
                 val active = candidate ?: continue
                 val startedAt = System.nanoTime()
-                logInfo("embedding.inference.started", "inputCount=${formattedInputs.size}; backend=${backend.name}")
+                val inputCharLengths = formattedInputs.joinToString(",") { it.length.toString() }
+                val inputBatchShape = formattedInputs.joinToString(",") { "1" }
+                val options = EmbeddingOptions(
+                    normalize = true,
+                    outputSize = EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS,
+                )
+                logInfo(
+                    "embedding.inference.started",
+                    "inputCount=${formattedInputs.size}; backend=${backend.name}; " +
+                        "inputBatchShape=${inputBatchShape}; inputCharLengths=${inputCharLengths}; " +
+                        "tokenLengths=unavailable; normalize=true; outputSize=${EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS}",
+                )
+                if (backend == InferenceBackend.NPU) {
+                    logInfo("embedding.npu.resource_snapshot.before", "backend=NPU; ${runtimeMemoryEvidence().removePrefix("; ")}")
+                }
                 try {
                     val responses = active.computeEmbeddingBatch(
                         formattedInputs.map { listOf(InputData.Text(it)) },
-                        EmbeddingOptions(normalize = true, outputSize = EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS),
+                        options,
                     )
                     val elapsedMillis = ((System.nanoTime() - startedAt) / 1_000_000L).coerceAtLeast(0L)
                     selectedBackend = backend
