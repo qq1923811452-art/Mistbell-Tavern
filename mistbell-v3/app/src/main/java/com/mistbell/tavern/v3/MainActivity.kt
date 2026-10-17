@@ -202,20 +202,73 @@ class MainActivity : ComponentActivity() {
                 }
             }.orEmpty()
 
-        listOf(modelName, "$modelName.sha256").forEach { name ->
-            val matchingDownloads = findDownloads(name)
-            val uri = matchingDownloads.firstOrNull() ?: return@forEach
-            val target = File(directory, name)
-            val input = contentResolver.openInputStream(uri) ?: return@forEach
-            input.use { source ->
-                target.outputStream().buffered().use { output -> source.copyTo(output) }
+        val modelDownloads = findDownloads(modelName)
+        val digestDownloads = findDownloads("$modelName.sha256")
+        val modelUri = modelDownloads.firstOrNull() ?: return@withContext
+        val digestUri = digestDownloads.firstOrNull() ?: return@withContext
+        val modelTarget = File(directory, modelName)
+        val digestTarget = File(directory, "$modelName.sha256")
+        val modelTemporary = File(directory, "$modelName.restore")
+        val digestTemporary = File(directory, "$modelName.sha256.restore")
+        try {
+            val modelInput = contentResolver.openInputStream(modelUri)
+                ?: throw IllegalStateException("Public model file could not be opened.")
+            modelInput.use { source ->
+                modelTemporary.outputStream().buffered().use { output -> source.copyTo(output) }
             }
-            // If Android has multiple MediaStore rows for the same filename and normalized
-            // Downloads/向量模型 path, keep the successfully restored row and remove stale
-            // duplicate entries. Do not touch same-named files in any other directory.
-            matchingDownloads.drop(1).forEach { duplicateUri ->
+            val digestInput = contentResolver.openInputStream(digestUri)
+                ?: throw IllegalStateException("Public model checksum could not be opened.")
+            digestInput.use { source ->
+                digestTemporary.outputStream().buffered().use { output -> source.copyTo(output) }
+            }
+
+            val expectedDigest = digestTemporary.readText(Charsets.UTF_8)
+                .trim()
+                .substringBefore(' ')
+                .trim()
+            check(expectedDigest.matches(Regex("[0-9a-fA-F]{64}"))) {
+                "Public model checksum file is malformed."
+            }
+            val digest = java.security.MessageDigest.getInstance("SHA-256")
+            modelTemporary.inputStream().buffered().use { input ->
+                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                while (true) {
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    digest.update(buffer, 0, count)
+                }
+            }
+            val actualDigest = digest.digest().joinToString("") { "%02x".format(it) }
+            check(actualDigest.equals(expectedDigest, ignoreCase = true)) {
+                "Public model checksum does not match its file; preserving the installed model."
+            }
+            check(actualDigest.equals(
+                if (qualcomm) EmbeddingGemma2ModelAssetManager.QUALCOMM_SM8650_MODEL_SHA256
+                else EmbeddingGemma2ModelAssetManager.PORTABLE_MODEL_SHA256,
+                ignoreCase = true,
+            )) {
+                "Public model does not match the selected runtime profile; preserving the installed model."
+            }
+
+            java.nio.file.Files.move(
+                modelTemporary.toPath(),
+                modelTarget.toPath(),
+                java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+            )
+            java.nio.file.Files.move(
+                digestTemporary.toPath(),
+                digestTarget.toPath(),
+                java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+            )
+            // Remove duplicate MediaStore rows only after both files are restored and verified.
+            (modelDownloads.drop(1) + digestDownloads.drop(1)).forEach { duplicateUri ->
                 contentResolver.delete(duplicateUri, null, null)
             }
+        } finally {
+            modelTemporary.delete()
+            digestTemporary.delete()
         }
     }
 
