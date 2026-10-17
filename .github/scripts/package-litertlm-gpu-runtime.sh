@@ -106,4 +106,4 @@ for name in LITERT_LM_LICENSE.txt litertlm-gpu.properties litertlm-gpu.sha256 li
 done
 
 echo "Pinned LiteRT-LM GPU runtime staged: tag=$upstream_tag commit=$upstream_commit libraries=${#libraries[@]}."
-echo "This records packaging only; real GPU inference on the Redmi K70 Pro is still required."
+echo "Packaged the pinned GPU runtime (7 libraries); this is packaging evidence only, not proof of GPU execution. The final APK native dependency audit and real Redmi K70 Pro inference are separate checks."
