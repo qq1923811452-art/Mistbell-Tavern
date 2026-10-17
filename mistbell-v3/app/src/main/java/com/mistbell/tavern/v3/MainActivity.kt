@@ -129,17 +129,19 @@ class MainActivity : ComponentActivity() {
         fun publishFile(file: File) {
             val existing = findExisting(file.name)
             val sourceDigest = file.inputStream().buffered().use { sha256(it) }
-            val identicalExisting = existing.firstOrNull { uri ->
+            fun digestOf(uri: Uri): String? =
                 runCatching {
                     resolver.openInputStream(uri)?.buffered()?.use { sha256(it) }
-                }.getOrNull() == sourceDigest
-            }
+                }.getOrNull()
+
+            val identicalExisting = existing.firstOrNull { digestOf(it) == sourceDigest }
             if (identicalExisting != null) {
                 // Importing a file already in Download/向量模型 must be a no-op, not
                 // another write/copy of the same bytes into the same public directory.
-                existing.filter { it != identicalExisting }.forEach { duplicateUri ->
-                    resolver.delete(duplicateUri, null, null)
-                }
+                // Preserve same-name files with different bytes: the name alone does not
+                // prove they are duplicates.
+                existing.filter { it != identicalExisting && digestOf(it) == sourceDigest }
+                    .forEach { duplicateUri -> resolver.delete(duplicateUri, null, null) }
                 return
             }
 
@@ -171,12 +173,10 @@ class MainActivity : ComponentActivity() {
                 check(resolver.update(uri, ready, null, null) == 1) {
                     "Android could not finalize the public model file."
                 }
-                // Some Android providers may store RELATIVE_PATH with or without a trailing
-                // slash. Reuse the existing row and remove stale duplicate rows only after the
-                // replacement has been written successfully.
-                existing.drop(1).forEach { duplicateUri ->
-                    resolver.delete(duplicateUri, null, null)
-                }
+                // Remove only byte-identical duplicate rows after a successful write.
+                // Same-name entries with different bytes may be separate user files.
+                existing.filter { it != uri && digestOf(it) == sourceDigest }
+                    .forEach { duplicateUri -> resolver.delete(duplicateUri, null, null) }
             } catch (error: Exception) {
                 if (!reusedExisting) {
                     resolver.delete(uri, null, null)
