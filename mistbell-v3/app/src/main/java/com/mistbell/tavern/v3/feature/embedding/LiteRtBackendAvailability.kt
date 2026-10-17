@@ -75,6 +75,7 @@ data class LiteRtBackendAvailability private constructor(
                     add("missing or empty LiteRT GPU accelerator libraries: ${missingGpu.joinToString(",")}")
                 }
             }
+            val gpuReason = gpuReasons.takeIf { it.isNotEmpty() }?.joinToString("; ")
             val available = buildSet {
                 add(InferenceBackend.CPU)
                 if (npuReason == null) add(InferenceBackend.NPU)
