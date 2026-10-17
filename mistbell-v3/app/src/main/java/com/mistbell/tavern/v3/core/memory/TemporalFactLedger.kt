@@ -72,45 +72,54 @@ object TemporalFactLedger {
                 it.predicate.length <= MAX_FIELD_CHARS &&
                 it.value.length <= MAX_FIELD_CHARS
         })
-        var facts = existing.toMutableList()
-        // Stable tie-breaking makes same-millisecond observations deterministic.
-        // At most one conflicting value can become current for a predicate at a given millisecond.
-        for (observation in observations.sortedWith(
-            compareBy<TemporalFactObservation> { it.observedAtEpochMillis }
-                .thenBy { it.sourceTurnId }
-                .thenBy { stableId(it) },
-        )) {
-            val id = stableId(observation)
-            if (facts.any { it.id == id }) continue
+        data class PredicateKey(val conversationId: String, val subject: String, val predicate: String)
 
-            val subjectKey = normalize(observation.subject)
-            val predicateKey = normalize(observation.predicate)
-            val currentForPredicate = facts.filter {
-                it.isCurrent &&
-                    it.conversationId == observation.conversationId &&
-                    normalize(it.subject) == subjectKey &&
-                    normalize(it.predicate) == predicateKey
+        var facts = existing.toMutableList()
+        val knownIds = existing.mapTo(mutableSetOf(), TemporalMemoryFact::id)
+        val currentByPredicate = mutableMapOf<PredicateKey, MutableList<Int>>()
+
+        fun key(conversationId: String, subject: String, predicate: String) =
+            PredicateKey(conversationId, normalize(subject), normalize(predicate))
+
+        facts.forEachIndexed { index, fact ->
+            if (fact.isCurrent) {
+                currentByPredicate.getOrPut(key(fact.conversationId, fact.subject, fact.predicate)) { mutableListOf() }
+                    .add(index)
             }
+        }
+
+        // Stable tie-breaking makes same-millisecond observations deterministic.
+        // Precompute IDs once and inspect only current facts for the affected predicate.
+        val orderedObservations = observations.map { it to stableId(it) }.sortedWith(
+            compareBy<Pair<TemporalFactObservation, String>> { it.first.observedAtEpochMillis }
+                .thenBy { it.first.sourceTurnId }
+                .thenBy { it.second },
+        )
+        for ((observation, id) in orderedObservations) {
+            if (id in knownIds) continue
+
+            val predicateKey = key(observation.conversationId, observation.subject, observation.predicate)
+            val currentIndices = currentByPredicate[predicateKey].orEmpty()
+            val currentForPredicate = currentIndices.mapNotNull(facts::getOrNull).filter(TemporalMemoryFact::isCurrent)
             if (currentForPredicate.any { it.validFromEpochMillis >= observation.observedAtEpochMillis }) {
                 // A delayed/backdated or same-millisecond extraction must not overwrite a current observation.
                 continue
             }
-            if (currentForPredicate.any { normalize(it.value) == normalize(observation.value) }) {
+            val valueKey = normalize(observation.value)
+            if (currentForPredicate.any { normalize(it.value) == valueKey }) {
                 // Same current fact: do not create another active duplicate for another turn.
                 continue
             }
 
-            facts = facts.map { fact ->
-                if (fact.isCurrent &&
-                    fact.conversationId == observation.conversationId &&
-                    normalize(fact.subject) == subjectKey &&
-                    normalize(fact.predicate) == predicateKey
-                ) {
-                    fact.copy(validUntilEpochMillis = maxOf(fact.validFromEpochMillis, observation.observedAtEpochMillis))
-                } else {
-                    fact
+            currentIndices.forEach { index ->
+                val fact = facts[index]
+                if (fact.isCurrent) {
+                    facts[index] = fact.copy(
+                        validUntilEpochMillis = maxOf(fact.validFromEpochMillis, observation.observedAtEpochMillis),
+                    )
                 }
-            }.toMutableList()
+            }
+            currentByPredicate.remove(predicateKey)
 
             facts += TemporalMemoryFact(
                 id = id,
@@ -122,6 +131,8 @@ object TemporalFactLedger {
                 observedAtEpochMillis = observation.observedAtEpochMillis,
                 validFromEpochMillis = observation.observedAtEpochMillis,
             )
+            knownIds.add(id)
+            currentByPredicate.getOrPut(predicateKey) { mutableListOf() }.add(facts.lastIndex)
             require(facts.size <= MAX_FACTS) { "Temporal fact ledger exceeds the size limit." }
         }
         return facts.sortedWith(compareBy<TemporalMemoryFact> { it.validFromEpochMillis }.thenBy { it.id })
