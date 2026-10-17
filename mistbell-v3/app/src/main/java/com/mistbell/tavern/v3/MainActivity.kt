@@ -113,15 +113,8 @@ class MainActivity : ComponentActivity() {
             val profileAtStart = qualcommModelSelected
             val assetsAtStart = modelAssets
             val generationAtStart = modelProfileGeneration
-            var installed = withContext(Dispatchers.IO) { assetsAtStart.verifyInstalled() }
-            if (installed == null) {
-                try {
-                    restorePublicModelIfPresent(profileAtStart)
-                } catch (error: Exception) {
-                    val detail = "${error::class.java.simpleName}: ${error.message ?: "public model restore failed"}"
-                        .take(InferenceRuntimeStatus.MAX_DETAIL_LENGTH)
-                    diagnostics.error("embedding.model.restore.failed", "profile=${if (profileAtStart) "QUALCOMM_SM8650" else "PORTABLE"}; $detail")
-                    if (generationAtStart == modelProfileGeneration) {
+            val installed = withContext(Dispatchers.IO) { assetsAtStart.verifyInstalled() }
+            if (generationAtStart == modelProfileGeneration) {
                         operationMessage = "公共模型恢复失败：$detail"
                     }
                 }
@@ -129,9 +122,9 @@ class MainActivity : ComponentActivity() {
             }
             if (generationAtStart == modelProfileGeneration && !operationBusy) {
                 operationMessage = if (installed == null) {
-                    "所选模型尚未安装或校验失败。下载位置：${publicModelDirectoryLabel()}"
+                    "软件内部尚未安装所选模型。可联网下载（自动备份到公共目录），或从公共目录选择已有模型导入。"
                 } else {
-                    "本地模型已校验：${installed.sizeBytes} bytes；SHA-256 一致。公共目录：${publicModelDirectoryLabel()}"
+                    "软件内部模型已校验：${installed.sizeBytes} bytes；SHA-256 一致。公共备份目录：${publicModelDirectoryLabel()}"
                 }
             }
             diagnostics.info(
@@ -276,20 +269,10 @@ class MainActivity : ComponentActivity() {
         operationBusy = true
         lifecycleScope.launch {
             try {
-                try {
-                    restorePublicModelIfPresent(qualcomm)
-                } catch (error: Exception) {
-                    val detail = "${error::class.java.simpleName}: ${error.message ?: "public model restore failed"}"
-                        .take(InferenceRuntimeStatus.MAX_DETAIL_LENGTH)
-                    diagnostics.error("embedding.model.restore.failed", "profile=${if (qualcomm) "QUALCOMM_SM8650" else "PORTABLE"}; $detail")
-                    if (generationAtSelection == modelProfileGeneration) {
-                        operationMessage = "公共模型恢复失败：$detail"
-                    }
-                }
                 val installed = withContext(Dispatchers.IO) { assetsAtSelection.verifyInstalled() }
                 if (generationAtSelection == modelProfileGeneration) {
                     if (installed != null) {
-                        operationMessage = "所选模型已从公共目录恢复并校验：${publicModelDirectoryLabel()}"
+                        operationMessage = "所选模型已在软件内部目录校验通过。公共目录备份仍保留：${publicModelDirectoryLabel()}"
                     } else if (!operationMessage.startsWith("公共模型恢复失败：")) {
                         operationMessage += " 尚未找到已安装的此版本，可点击下载。"
                     }
@@ -396,7 +379,7 @@ class MainActivity : ComponentActivity() {
     private fun downloadEmbeddingModel() {
         if (operationBusy) return
         operationBusy = true
-        operationMessage = "开始下载模型；校验后将保存到 ${publicModelDirectoryLabel()}；请保持应用在前台并连接稳定网络。"
+        operationMessage = "开始下载模型；校验后保存到软件内部目录，并备份到 ${publicModelDirectoryLabel()}；请保持应用在前台并连接稳定网络。"
         diagnostics.info("embedding.model.download.started", "source=official-model-host")
         lifecycleScope.launch {
             try {
@@ -413,10 +396,11 @@ class MainActivity : ComponentActivity() {
                     .remove(if (qualcommModelSelected) "embedding_local_model_path_qualcomm" else "embedding_local_model_path_portable")
                     .remove(if (qualcommModelSelected) "embedding_public_model_name_qualcomm" else "embedding_public_model_name_portable")
                     .apply()
-                operationMessage = "模型已下载、校验并保存到软件内部目录：${downloaded.file.absolutePath}\nSHA-256：${downloaded.sha256}"
+                val backup = withContext(Dispatchers.IO) { backupModelToPublicDownloads(downloaded) }
+                operationMessage = "模型已校验并安装到软件内部目录：${downloaded.file.absolutePath}\n公共目录备份：${backup.displayName}\nSHA-256：${downloaded.sha256}"
                 diagnostics.info(
                     "embedding.model.download.succeeded",
-                    "bytes=${downloaded.sizeBytes}; sha256=${downloaded.sha256}",
+                    "bytes=${downloaded.sizeBytes}; sha256=${downloaded.sha256}; publicBackup=${backup.displayName}; reused=${backup.reused}",
                 )
             } catch (cancelled: CancellationException) {
                 diagnostics.warn("embedding.model.download.cancelled")
@@ -603,7 +587,7 @@ private fun DevelopmentHome(
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text("本地模型与实测", style = MaterialTheme.typography.titleMedium)
                         Spacer(Modifier.height(6.dp))
-                        Text("模型保存位置：软件内部私有目录（无需公共目录副本）", style = MaterialTheme.typography.bodyMedium)
+                        Text("运行副本：软件内部私有目录。联网下载会另备份到 Download/向量模型，重装后可从文件导入；本地导入不会另建公共副本。", style = MaterialTheme.typography.bodyMedium)
                         Spacer(Modifier.height(4.dp))
                         Text("请选择要下载的模型版本：", style = MaterialTheme.typography.bodyMedium)
                         Spacer(Modifier.height(6.dp))
@@ -623,7 +607,7 @@ private fun DevelopmentHome(
                             Text(if (qualcommModelSelected) "✓ 已选：Qualcomm SM8650 专用版（约 563 MB）" else "选择 Qualcomm SM8650 专用版（约 563 MB）")
                         }
                         Text(
-                            "专用版针对骁龙 8 Gen 3/SM8650；NPU 是否可用仍取决于 APK 中的运行库与真机验证。模型校验后只保存在软件内部目录，不会另存到公共下载目录。",
+                            "专用版针对骁龙 8 Gen 3/SM8650；NPU 是否可用仍取决于 APK 中的运行库与真机验证。联网下载会保留内部运行副本和公共目录备份；从文件导入只复制到内部目录。",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
