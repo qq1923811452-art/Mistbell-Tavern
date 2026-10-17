@@ -673,6 +673,13 @@ fun ChatScreen(onBack: () -> Unit) {
                                 }
                             }
 
+                            override fun onUsage(usage: ChatTokenUsage) {
+                                diagnosticStore.info(
+                                    "chat.usage",
+                                    "promptTokens=${usage.promptTokens}; completionTokens=${usage.completionTokens}; totalTokens=${usage.totalTokens}; cachedPromptTokens=${usage.cachedPromptTokens ?: "unknown"}",
+                                )
+                            }
+
                             override fun onComplete() {
                                 closeTrackedMemoryEngine(memoryEngine)
                                 memoryEngine = null
