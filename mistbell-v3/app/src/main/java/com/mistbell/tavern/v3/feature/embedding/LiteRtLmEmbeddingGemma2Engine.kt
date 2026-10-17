@@ -1,5 +1,6 @@
 package com.mistbell.tavern.v3.feature.embedding
 
+import android.app.ActivityManager
 import android.content.Context
 import android.os.Build
 import com.google.ai.edge.litertlm.Backend
@@ -299,15 +300,39 @@ class LiteRtLmEmbeddingGemma2Engine(
         fallbackMessage: String = "runtime failure",
     ): String {
         val message = error.message?.takeIf(String::isNotBlank) ?: fallbackMessage
-        val cause = error.cause?.let {
-            "; cause=${it::class.java.simpleName}: ${it.message ?: "no message"}"
-        }.orEmpty()
+        val causes = generateSequence(error.cause) { it.cause }
+            .take(3)
+            .joinToString(" <- ") { "${it::class.java.simpleName}: ${it.message ?: "no message"}" }
+            .takeIf(String::isNotBlank)
+            ?.let { "; causes=$it }
+            .orEmpty()
         val frame = error.stackTrace.firstOrNull()?.let {
             "; at ${it.className}.${it.methodName}(${it.fileName}:${it.lineNumber})"
         }.orEmpty()
-        return "${backend.name}: ${error::class.java.simpleName}: $message$cause$frame"
+        val memory = runtimeMemoryEvidence()
+        return "${backend.name}: ${error::class.java.simpleName}: $message$causes$frame$memory"
             .take(InferenceRuntimeStatus.MAX_DETAIL_LENGTH)
     }
+
+    /**
+     * Snapshot resource indicators when native tensor allocation or inference fails.
+     * These are diagnostic clues only; they do not prove that low memory caused the failure.
+     */
+    private fun runtimeMemoryEvidence(): String = runCatching {
+        val activityManager = appContext.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+        val memoryInfo = ActivityManager.MemoryInfo()
+        activityManager?.getMemoryInfo(memoryInfo)
+        val runtime = Runtime.getRuntime()
+        val mib = 1024L * 1024L
+        val deviceAvailable = memoryInfo.availMem / mib
+        val heapUsed = (runtime.totalMemory() - runtime.freeMemory()) / mib
+        val heapMax = runtime.maxMemory() / mib
+        val modelBytes = modelFile.length().coerceAtLeast(0L)
+        val cacheFreeBytes = cacheDirectory.usableSpace.coerceAtLeast(0L)
+        "; resources{deviceAvailMiB=$deviceAvailable,lowMemory=${memoryInfo.lowMemory}," +
+            "appHeapUsedMiB=$heapUsed,appHeapMaxMiB=$heapMax,modelBytes=$modelBytes,cacheFreeBytes=$cacheFreeBytes}"
+    }.getOrDefault("")
+
     private fun logInfo(event: String, detail: String = "") { runCatching { diagnostics.info(event, detail) } }
     private fun logWarn(event: String, detail: String = "") { runCatching { diagnostics.warn(event, detail) } }
     private fun logError(event: String, detail: String = "") { runCatching { diagnostics.error(event, detail) } }
