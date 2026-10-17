@@ -1,6 +1,7 @@
 package com.mistbell.tavern.v3.feature.embedding
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -26,6 +27,17 @@ class EmbeddingGemma2TextPolicyTest {
     }
 
     @Test
+    fun supportedDimensionTiersNeverExceedNativeModelOutput() {
+        assertEquals(setOf(128, 256, 512, 768), EmbeddingGemma2TextPolicy.supportedDimensions)
+        assertTrue(EmbeddingGemma2TextPolicy.supportedDimensions.all {
+            it <= EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS
+        })
+        assertFalse(1024 in EmbeddingGemma2TextPolicy.supportedDimensions)
+        assertFalse(1536 in EmbeddingGemma2TextPolicy.supportedDimensions)
+        assertFalse(2048 in EmbeddingGemma2TextPolicy.supportedDimensions)
+    }
+
+    @Test
     fun truncatedVectorsAreRenormalized() {
         val vector = List(EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS) { 1f }
         val result = EmbeddingGemma2TextPolicy.truncateAndNormalize(vector, 128)
@@ -35,24 +47,13 @@ class EmbeddingGemma2TextPolicyTest {
     }
 
     @Test
-    fun higherDimensionsAreListedButCannotBeFakedFromEmbeddingGemma2Output() {
-        assertTrue(1024 in EmbeddingGemma2TextPolicy.supportedDimensions)
-        assertTrue(1536 in EmbeddingGemma2TextPolicy.supportedDimensions)
-        assertTrue(2048 in EmbeddingGemma2TextPolicy.supportedDimensions)
-        val nativeVector = List(EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS) { 1f }
-        for (dimension in listOf(1024, 1536, 2048)) {
-            assertTrue(runCatching {
-                EmbeddingGemma2TextPolicy.truncateAndNormalize(nativeVector, dimension)
-            }.isFailure)
-        }
-    }
-
-    @Test
     fun unsupportedDimensionsAndInvalidVectorsAreRejected() {
         val vector = List(EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS) { 1f }
-        assertTrue(runCatching {
-            EmbeddingGemma2TextPolicy.truncateAndNormalize(vector, 300)
-        }.isFailure)
+        for (dimension in listOf(300, 1024, 1536, 2048)) {
+            assertTrue(runCatching {
+                EmbeddingGemma2TextPolicy.truncateAndNormalize(vector, dimension)
+            }.isFailure)
+        }
         assertTrue(runCatching {
             EmbeddingGemma2TextPolicy.truncateAndNormalize(List(10) { 1f }, 128)
         }.isFailure)
