@@ -2,6 +2,7 @@ package com.mistbell.tavern.v3.feature.embedding
 
 import com.mistbell.tavern.v3.core.inference.InferenceBackend
 import java.io.File
+import java.util.zip.ZipFile
 
 /**
  * Prevents asking LiteRT-LM to initialize an accelerator whose native plugin/runtime is not packaged.
@@ -40,9 +41,16 @@ data class LiteRtBackendAvailability private constructor(
             isArm64: Boolean,
             npuModelCompatible: Boolean,
             npuRuntimeValidated: Boolean = false,
+            apkFiles: List<File> = emptyList(),
         ): LiteRtBackendAvailability {
-            val missingNpu = SM8650_NPU_REQUIRED_LIBRARIES.filterNot { nativeLibraryDir.hasNonEmptyLibrary(it) }
-            val missingGpu = GPU_REQUIRED_LIBRARIES.filterNot { nativeLibraryDir.hasNonEmptyLibrary(it) }
+            // Android may load uncompressed native libraries directly from an APK instead of
+            // extracting them into nativeLibraryDir. Check both installed representations so
+            // preflight does not report packaged plugins as missing on such devices.
+            fun isPackaged(name: String): Boolean =
+                nativeLibraryDir.hasNonEmptyLibrary(name) || apkFiles.any { it.hasNonEmptyApkLibrary(name) }
+
+            val missingNpu = SM8650_NPU_REQUIRED_LIBRARIES.filterNot(::isPackaged)
+            val missingGpu = GPU_REQUIRED_LIBRARIES.filterNot(::isPackaged)
             val npuReasons = buildList {
                 if (!npuModelCompatible) add("installed model SHA-256 does not match the pinned Qualcomm SM8650 model")
                 if (!isArm64) add("device ABI does not include arm64-v8a")
@@ -72,6 +80,16 @@ data class LiteRtBackendAvailability private constructor(
         private fun File.hasNonEmptyLibrary(name: String): Boolean {
             val library = File(this, name)
             return library.isFile && library.length() > 0L
+        }
+
+        private fun File.hasNonEmptyApkLibrary(name: String): Boolean {
+            if (!isFile || length() <= 0L) return false
+            return runCatching {
+                ZipFile(this).use { apk ->
+                    val entry = apk.getEntry("lib/arm64-v8a/" + name)
+                    entry != null && !entry.isDirectory && entry.size > 0L
+                }
+            }.getOrDefault(false)
         }
     }
 }
