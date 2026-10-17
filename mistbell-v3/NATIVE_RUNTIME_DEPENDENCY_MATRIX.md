@@ -93,13 +93,14 @@ These must come from a mutually compatible, pinned LiteRT-LM/LiteRT/QAIRT combin
 - [x] Keep `libOpenCL.so` and `libvndksupport.so` classified as device/vendor-provided dependencies rather than public NDK libraries; reject accidentally bundling them in APK `jniLibs/`.
 - [ ] Keep GPU and NPU inventories/provenance separate.
 - [ ] Make Qualcomm runtime acquisition an explicit gated job until QAIRT source/version/license are approved; never fetch an unpinned SDK or silently accept a floating latest version.
-- [ ] Generate a runtime manifest in the APK with source revisions, versions, hashes and validation state. Presence of a file must not set `status=verified`.
+- [x] Generate a GPU runtime manifest in the APK with upstream source revision, library hashes and `validation_state=packaged_not_device_verified`; manifest presence does not imply device verification.
+- [ ] Generate a separate Qualcomm/NPU runtime manifest only after the exact QAIRT/dispatch versions, complete inventory, license review and device evidence are verified.
 - [ ] Add tests for missing file, zero-byte file, wrong SoC generation, missing manifest, incompatible version, and unverified runtime.
 - [ ] Final device acceptance separately verifies CPU, GPU and NPU real inference and records each backend's actual result/fallback reason.
 
 ## 6. Current state
 
-- GPU: workflow fetches LiteRT-LM v0.18.0 prebuilts pinned to commit `b2f686e2ed4718fb84ec398a61dd59ca0f0aff27`, records provenance/license/hash/inventory, then audits the merged APK's ELF architecture and dependencies. This workflow has not yet been run successfully; real Redmi K70 Pro inference is still required.
+- GPU packaging: Clean-Room CI run `38992442688` succeeded for source `f16ee722cf281707701fca0bbc5c23cc1aad9b4b` and published device-test artifact `mistbell-v3-device-test-apk-436` (artifact ID `12086265080`). The APK's `SOURCE.txt` matches that exact commit; `SHA256SUMS.txt` validates the APK; all seven GPU library hashes embedded in `assets/native-runtime/litertlm-gpu.sha256` match the actual `lib/arm64-v8a/*.so` bytes. This verifies reproducible packaging and integrity checks only. Real GPU inference on the Redmi K70 Pro is still required.
 - NPU: not yet packaged; QAIRT/dispatch version compatibility and redistribution conditions are not yet verified.
 - CPU: engine initialization previously succeeded, but a real inference call failed in the device diagnostic. CPU is not accepted until that is fixed and a real vector is returned.
 - PR #61 must remain Open + Draft until CI, runtime verification and the user's device acceptance are complete.
