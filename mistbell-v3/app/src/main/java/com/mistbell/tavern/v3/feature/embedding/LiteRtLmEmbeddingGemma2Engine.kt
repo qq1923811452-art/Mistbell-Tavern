@@ -228,7 +228,7 @@ class LiteRtLmEmbeddingGemma2Engine(
                             modelId = EmbeddingGemma2TextPolicy.MODEL_ID,
                             // LiteRT-LM exposes the configured delegate, not proof that the NPU
                             // executed this operation. Do not label NPU as an active backend without evidence.
-                            backend = selectedBackend.takeUnless { it == InferenceBackend.NPU },
+                            backend = if (selectedBackend == InferenceBackend.NPU) InferenceBackend.UNKNOWN else selectedBackend,
                             runtimeId = runtimeId,
                             backendEvidence = BackendEvidence.CONFIGURED_ONLY,
                             acceleratorName = selectedBackend.name,
@@ -281,7 +281,7 @@ class LiteRtLmEmbeddingGemma2Engine(
             },
             modelId = EmbeddingGemma2TextPolicy.MODEL_ID,
             // Initialization alone is not execution evidence for Qualcomm NPU.
-            backend = selectedBackend.takeUnless { it == InferenceBackend.NPU },
+            backend = if (selectedBackend == InferenceBackend.NPU) InferenceBackend.UNKNOWN else selectedBackend,
             runtimeId = runtimeId,
             backendEvidence = BackendEvidence.CONFIGURED_ONLY,
             acceleratorName = selectedBackend.name,
