@@ -119,12 +119,6 @@ class MainActivity : ComponentActivity() {
             val assetsAtStart = modelAssets
             val generationAtStart = modelProfileGeneration
             val installed = withContext(Dispatchers.IO) { assetsAtStart.verifyInstalled() }
-            if (generationAtStart == modelProfileGeneration) {
-                        operationMessage = "公共模型恢复失败：$detail"
-                    }
-                }
-                installed = withContext(Dispatchers.IO) { assetsAtStart.verifyInstalled() }
-            }
             if (generationAtStart == modelProfileGeneration && !operationBusy) {
                 operationMessage = if (installed == null) {
                     "软件内部尚未安装所选模型。可联网下载（自动备份到公共目录），或从公共目录选择已有模型导入。"
