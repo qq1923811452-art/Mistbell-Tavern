@@ -1,7 +1,6 @@
 package com.mistbell.tavern.v3.feature.embedding
 
 import com.mistbell.tavern.v3.core.inference.BackendEvidence
-import com.mistbell.tavern.v3.core.inference.InferenceBackend
 import com.mistbell.tavern.v3.core.inference.InferencePhase
 
 /**
