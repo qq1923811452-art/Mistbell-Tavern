@@ -522,9 +522,11 @@ class MainActivity : ComponentActivity() {
         operationMessage = "正在准备本地 EmbeddingGemma 2 推理……"
         lifecycleScope.launch {
             var runtime: LiteRtLmEmbeddingGemma2Engine? = null
+            var verifiedAsset: DownloadedEmbeddingModel? = null
             try {
                 val asset = withContext(Dispatchers.IO) { modelAssets.verifyInstalled() }
                     ?: throw IllegalStateException("模型不存在或 SHA-256 校验失败；请重新下载模型。")
+                verifiedAsset = asset
                 activeEmbeddingEngine?.close()
                 val initializedRuntime = LiteRtLmEmbeddingGemma2Engine(
                     context = applicationContext,
@@ -570,8 +572,21 @@ class MainActivity : ComponentActivity() {
                     runtimeId = null,
                     lastError = detail,
                 )
-                operationMessage = "本地推理测试失败：$detail"
-                diagnostics.error("embedding.selftest.failed", detail)
+                val blockedByUnverifiedQualcommRuntime =
+                    verifiedAsset?.isQualcommSm8650Optimized == true &&
+                        error is IllegalArgumentException &&
+                        error.message.orEmpty().contains("requires a verified NPU runtime", ignoreCase = true)
+                if (blockedByUnverifiedQualcommRuntime) {
+                    operationMessage =
+                        "Qualcomm 专用模型已导入且 SHA-256 校验通过，但当前 APK 没有经过验证的 NPU 运行库，因此暂时不能执行该模型。已导入模型不会被删除。请切换到通用版，下载/导入通用模型后进行 CPU/GPU 测试；Qualcomm 专用模型仍保留在公共下载目录。"
+                    diagnostics.warn(
+                        "embedding.selftest.blocked.npu_runtime_unverified",
+                        "modelSha256=${verifiedAsset.sha256}; action=select_portable_model_for_cpu_gpu_test",
+                    )
+                } else {
+                    operationMessage = "本地推理测试失败：$detail"
+                    diagnostics.error("embedding.selftest.failed", detail)
+                }
             } finally {
                 operationBusy = false
             }
