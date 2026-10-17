@@ -285,7 +285,14 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             var installed = withContext(Dispatchers.IO) { modelAssets.verifyInstalled() }
             if (installed == null) {
-                restorePublicModelIfPresent(qualcommModelSelected)
+                try {
+                    restorePublicModelIfPresent(qualcommModelSelected)
+                } catch (error: Exception) {
+                    val detail = "${error::class.java.simpleName}: ${error.message ?: "public model restore failed"}"
+                        .take(InferenceRuntimeStatus.MAX_DETAIL_LENGTH)
+                    diagnostics.error("embedding.model.restore.failed", detail)
+                    operationMessage = "公共模型恢复失败：$detail"
+                }
                 installed = withContext(Dispatchers.IO) { modelAssets.verifyInstalled() }
             }
             if (!operationBusy) operationMessage = if (installed == null) {
@@ -416,11 +423,18 @@ class MainActivity : ComponentActivity() {
             "已选择通用模型，适合先进行 CPU/GPU 兼容性测试。"
         }
         lifecycleScope.launch {
-            restorePublicModelIfPresent(qualcomm)
+            try {
+                restorePublicModelIfPresent(qualcomm)
+            } catch (error: Exception) {
+                val detail = "${error::class.java.simpleName}: ${error.message ?: "public model restore failed"}"
+                    .take(InferenceRuntimeStatus.MAX_DETAIL_LENGTH)
+                diagnostics.error("embedding.model.restore.failed", detail)
+                operationMessage = "公共模型恢复失败：$detail"
+            }
             val installed = withContext(Dispatchers.IO) { modelAssets.verifyInstalled() }
             if (installed != null) {
                 operationMessage = "所选模型已从公共目录恢复并校验：${publicModelDirectoryLabel()}"
-            } else {
+            } else if (!operationMessage.startsWith("公共模型恢复失败：")) {
                 operationMessage += " 尚未找到已安装的此版本，可点击下载。"
             }
         }
