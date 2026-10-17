@@ -119,7 +119,7 @@ class LiteRtLmEmbeddingGemma2Engine(
                     throw cancelled
                 } catch (error: Exception) {
                     if (candidate.isInitialized()) runCatching { candidate.close() }
-                    val reason = "${backend.name}: ${error.message ?: error::class.java.simpleName}".take(180)
+                    val reason = failureDetail(backend, error)
                     failures += reason
                     logWarn("embedding.backend.initialize.failed", reason)
                 } catch (error: LinkageError) {
@@ -168,7 +168,7 @@ class LiteRtLmEmbeddingGemma2Engine(
                         throw cancelled
                     } catch (error: Exception) {
                         candidate?.let { runCatching { if (it.isInitialized()) it.close() } }
-                        val reason = "${backend.name}: ${error.message ?: error::class.java.simpleName}".take(180)
+                        val reason = failureDetail(backend, error)
                         failures += reason
                         logWarn("embedding.backend.fallback.initialize.failed", reason)
                         candidate = null
@@ -214,7 +214,7 @@ class LiteRtLmEmbeddingGemma2Engine(
                     logWarn("embedding.inference.cancelled", "backend=${backend.name}")
                     throw cancelled
                 } catch (error: Exception) {
-                    val reason = "${backend.name}: ${error::class.java.simpleName}: ${error.message ?: "inference failed"}".take(180)
+                    val reason = failureDetail(backend, error, fallbackMessage = "inference failed")
                     failures += reason
                     logError("embedding.inference.failed", reason)
                     runCatching { active.close() }
@@ -268,6 +268,22 @@ class LiteRtLmEmbeddingGemma2Engine(
         }
     }
 
+    /** Keep enough native/JNI context to diagnose model/runtime failures without logging input text. */
+    private fun failureDetail(
+        backend: InferenceBackend,
+        error: Throwable,
+        fallbackMessage: String = "runtime failure",
+    ): String {
+        val message = error.message?.takeIf(String::isNotBlank) ?: fallbackMessage
+        val cause = error.cause?.let {
+            "; cause=${it::class.java.simpleName}: ${it.message ?: "no message"}"
+        }.orEmpty()
+        val frame = error.stackTrace.firstOrNull()?.let {
+            "; at ${it.className}.${it.methodName}(${it.fileName}:${it.lineNumber})"
+        }.orEmpty()
+        return "${backend.name}: ${error::class.java.simpleName}: $message$cause$frame"
+            .take(InferenceRuntimeStatus.MAX_DETAIL_LENGTH)
+    }
     private fun logInfo(event: String, detail: String = "") { runCatching { diagnostics.info(event, detail) } }
     private fun logWarn(event: String, detail: String = "") { runCatching { diagnostics.warn(event, detail) } }
     private fun logError(event: String, detail: String = "") { runCatching { diagnostics.error(event, detail) } }
