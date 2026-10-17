@@ -14,6 +14,12 @@ android {
         targetSdk = 37
         versionCode = 1
         versionName = "3.0.0-dev"
+
+        // Qualcomm HTP runtime payloads and LiteRT-LM native plugins are arm64-only.
+        // Keep minSdk=26 for CPU/GPU compatibility; the app gates NPU at API 31+.
+        ndk {
+            abiFilters += setOf("arm64-v8a")
+        }
     }
 
     buildFeatures {
@@ -24,6 +30,15 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    // Native runtime payloads staged under app/src/main/jniLibs/arm64-v8a are copied
+    // into the APK as real ELF libraries. Legacy packaging also makes the files available
+    // under nativeLibraryDir for runtime loaders that require extracted .so files.
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
     }
 
 
