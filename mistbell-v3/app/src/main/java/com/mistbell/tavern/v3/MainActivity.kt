@@ -478,10 +478,10 @@ class MainActivity : ComponentActivity() {
                     val outcomes = initializedRuntime.runNpuInputLengthProbe()
                     val successes = outcomes.count { "; result=success;" in it }
                     inferenceStatus = initializedRuntime.currentStatus()
-                    operationMessage = "NPU 输入长度矩阵结束：成功 $successes/\${outcomes.size}，失败 \${outcomes.size - successes}。详细每档结果和 native 错误已写入诊断日志；此实验不代表 NPU 已验证。"
+                    operationMessage = "NPU 输入长度矩阵结束：成功 $successes/${outcomes.size}，失败 ${outcomes.size - successes}。详细每档结果和 native 错误已写入诊断日志；此实验不代表 NPU 已验证。"
                     diagnostics.info(
                         "embedding.npu.diagnostic_probe.matrix_summary",
-                        "cases=\${outcomes.size}; successes=$successes; failures=\${outcomes.size - successes}; verified=false",
+                        "cases=${outcomes.size}; successes=$successes; failures=${outcomes.size - successes}; verified=false",
                     )
                 } else {
                     initializedRuntime.initialize()
@@ -496,10 +496,10 @@ class MainActivity : ComponentActivity() {
                     )
                     inferenceStatus = result.status
                     operationMessage =
-                        "真实本地推理成功：\${result.vectors.single().size} 维向量；配置后端 \${result.status.backend}。硬件实际调用仍需结合设备日志确认。"
+                        "真实本地推理成功：${result.vectors.single().size} 维向量；配置后端 ${result.status.backend}。硬件实际调用仍需结合设备日志确认。"
                     diagnostics.info(
                         "embedding.selftest.succeeded",
-                        "dimensions=\${result.vectors.single().size}; configuredBackend=\${result.status.backend}; evidence=\${result.status.backendEvidence}; elapsedMs=\${result.status.lastExecutionMillis}",
+                        "dimensions=${result.vectors.single().size}; configuredBackend=${result.status.backend}; evidence=${result.status.backendEvidence}; elapsedMs=${result.status.lastExecutionMillis}",
                     )
                 }
             } catch (cancelled: CancellationException) {
