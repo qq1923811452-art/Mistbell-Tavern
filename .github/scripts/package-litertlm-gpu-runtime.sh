@@ -41,21 +41,48 @@ for required in libLiteRtGpuAccelerator.so libLiteRtOpenClAccelerator.so; do
   }
 done
 
-install -m 0644 "$upstream_dir/LICENSE" "$asset_dir/LITERT_LM_LICENSE.txt"
-printf 'source_url=https://github.com/google-ai-edge/LiteRT-LM\n' > "$asset_dir/litertlm-gpu.properties"
-printf 'source_tag=%s\n' "$upstream_tag" >> "$asset_dir/litertlm-gpu.properties"
-printf 'source_commit=%s\n' "$upstream_commit" >> "$asset_dir/litertlm-gpu.properties"
-printf 'source_directory=prebuilt/android_arm64\n' >> "$asset_dir/litertlm-gpu.properties"
-printf 'validation_state=packaged_not_device_verified\n' >> "$asset_dir/litertlm-gpu.properties"
-printf 'packaged_libraries=%s\n' "${#libraries[@]}" >> "$asset_dir/litertlm-gpu.properties"
+metadata_tmp="$(mktemp -d "$temp_root/mistbell-litertlm-metadata.XXXXXX")"
+trap 'rm -rf "$metadata_tmp"' EXIT
+license_tmp="$metadata_tmp/LITERT_LM_LICENSE.txt"
+properties_tmp="$metadata_tmp/litertlm-gpu.properties"
+checksum_tmp="$metadata_tmp/litertlm-gpu.sha256"
+inventory_tmp="$metadata_tmp/litertlm-gpu-inventory.txt"
+
+cp "$upstream_dir/LICENSE" "$license_tmp"
+printf 'source_url=https://github.com/google-ai-edge/LiteRT-LM\n' > "$properties_tmp"
+printf 'source_tag=%s\n' "$upstream_tag" >> "$properties_tmp"
+printf 'source_commit=%s\n' "$upstream_commit" >> "$properties_tmp"
+printf 'source_directory=prebuilt/android_arm64\n' >> "$properties_tmp"
+printf 'validation_state=packaged_not_device_verified\n' >> "$properties_tmp"
+printf 'packaged_libraries=%s\n' "${#libraries[@]}" >> "$properties_tmp"
 
 for library in "${libraries[@]}"; do
   (cd "$source_dir" && sha256sum "$(basename "$library")")
-done > "$asset_dir/litertlm-gpu.sha256"
+done > "$checksum_tmp"
 
-: > "$asset_dir/litertlm-gpu-inventory.txt"
+: > "$inventory_tmp"
 for library in "${libraries[@]}"; do
-  printf '%s\t%s bytes\n' "$(basename "$library")" "$(stat -c '%s' "$library")" >> "$asset_dir/litertlm-gpu-inventory.txt"
+  printf '%s\t%s bytes\n' "$(basename "$library")" "$(stat -c '%s' "$library")" >> "$inventory_tmp"
+done
+
+# Generated metadata is treated like a native library: never silently overwrite
+# a different existing file or license notice in the working tree.
+for name in LITERT_LM_LICENSE.txt litertlm-gpu.properties litertlm-gpu.sha256 litertlm-gpu-inventory.txt; do
+  case "$name" in
+    LITERT_LM_LICENSE.txt) generated="$license_tmp" ;;
+    litertlm-gpu.properties) generated="$properties_tmp" ;;
+    litertlm-gpu.sha256) generated="$checksum_tmp" ;;
+    litertlm-gpu-inventory.txt) generated="$inventory_tmp" ;;
+  esac
+  target="$asset_dir/$name"
+  if [[ -e "$target" ]]; then
+    cmp -s "$generated" "$target" || {
+      echo "Refusing to overwrite conflicting runtime metadata/license: $target" >&2
+      exit 1
+    }
+  else
+    install -m 0644 "$generated" "$target"
+  fi
 done
 
 echo "Pinned LiteRT-LM GPU runtime staged: tag=$upstream_tag commit=$upstream_commit libraries=${#libraries[@]}."
