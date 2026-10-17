@@ -229,7 +229,8 @@ jobs:
             echo "litert_lm_sha=$(git -C upstream/litert-lm rev-parse HEAD)"
             echo "android_ndk=28.1.13356709"
             echo "runtime_status=packaged_not_device_verified"
-            echo "npu_status=disabled_until_real_sm8650_inference"
+            echo "npu_status=packaged_not_device_verified"
+            echo "npu_evidence_policy=runtime-generated-json-must-match-current-apk"
           } > build-artifacts/SOURCE.txt
       - name: Upload SM8650 device-test APK and provenance
         uses: actions/upload-artifact@v4

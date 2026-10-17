@@ -24,6 +24,11 @@ class VectorSnapshotCodecTest {
     }
 
     @Test
+    fun recordLimitMatchesMemoryTextStoreLimit() {
+        assertEquals(MemoryTextCodec.MAX_RECORDS, VectorSnapshotCodec.MAX_RECORDS)
+    }
+
+    @Test
     fun rejectsChecksumMismatch() {
         val encoded = VectorSnapshotCodec.encode(
             VectorSnapshot(
