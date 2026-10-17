@@ -187,17 +187,39 @@ fun ChatScreen(onBack: () -> Unit) {
             ChatHistoryLoadResult.Missing -> Unit
             is ChatHistoryLoadResult.Loaded -> {
                 history.clear()
+                var recoveredInterruptedReply = false
                 history.addAll(loaded.messages.map { message ->
+                    val interruptedAssistant = message.role == "assistant" &&
+                        message.deliveryState == PersistedChatMessage.DeliveryState.PENDING
+                    if (interruptedAssistant) recoveredInterruptedReply = true
                     ChatLine(
                         id = message.id,
                         role = message.role,
-                        content = message.content,
+                        content = if (interruptedAssistant && message.content.isBlank()) {
+                            "上次回复未完成，未生成完整回答。"
+                        } else {
+                            message.content
+                        },
                         createdAtEpochMillis = message.createdAtEpochMillis,
-                        deliveryState = message.deliveryState,
+                        deliveryState = if (interruptedAssistant) {
+                            PersistedChatMessage.DeliveryState.FAILED
+                        } else {
+                            message.deliveryState
+                        },
                     )
                 })
-                if (history.any { it.deliveryState == PersistedChatMessage.DeliveryState.PENDING }) {
-                    status = "已恢复聊天记录；上次未完成的回复已保留为待处理状态。"
+                if (recoveredInterruptedReply) {
+                    status = "已恢复聊天记录；上次未完成的回复已标记为失败，可继续发送新消息。"
+                    val recoveredSnapshot = history.map { line ->
+                        PersistedChatMessage(
+                            id = line.id,
+                            role = line.role,
+                            content = line.content,
+                            createdAtEpochMillis = line.createdAtEpochMillis,
+                            deliveryState = line.deliveryState,
+                        )
+                    }
+                    withContext(Dispatchers.IO) { historyStore.save(recoveredSnapshot) }
                 }
             }
             ChatHistoryLoadResult.Corrupt -> {
