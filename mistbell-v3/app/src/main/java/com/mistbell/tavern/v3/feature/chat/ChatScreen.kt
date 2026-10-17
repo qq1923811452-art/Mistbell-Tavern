@@ -219,7 +219,15 @@ fun ChatScreen(onBack: () -> Unit) {
                             deliveryState = line.deliveryState,
                         )
                     }
-                    withContext(Dispatchers.IO) { historyStore.save(recoveredSnapshot) }
+                    runCatching {
+                        withContext(Dispatchers.IO) { historyStore.save(recoveredSnapshot) }
+                    }.onFailure { error ->
+                        diagnosticStore.warn(
+                            "chat.history.recovery_save_failed",
+                            "reason=${error::class.java.simpleName}",
+                        )
+                        status = "已恢复未完成回复，但恢复状态暂未保存；请导出诊断日志并稍后重试。"
+                    }
                 }
             }
             ChatHistoryLoadResult.Corrupt -> {
