@@ -62,6 +62,35 @@ jobs:
           chmod +x .github/scripts/audit-native-libraries.sh
           .github/scripts/audit-native-libraries.sh "$audit_dir/lib/arm64-v8a"
 
+      - name: Verify packaged LiteRT-LM GPU library hashes
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="$(find mistbell-v3/app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          test -n "$apk"
+          checksums="$RUNNER_TEMP/litertlm-gpu.sha256"
+          unzip -p "$apk" assets/native-runtime/litertlm-gpu.sha256 > "$checksums"
+          test -s "$checksums"
+          count=0
+          declare -A seen=()
+          while read -r expected name; do
+            [[ "$expected" =~ ^[0-9a-fA-F]{64}$ ]]
+            [[ "$name" =~ ^[A-Za-z0-9._+-]+\\.so$ ]]
+            [[ -z "${seen[$name]+x}" ]] || { echo "Duplicate runtime checksum entry: $name" >&2; exit 1; }
+            seen["$name"]=1
+            actual="$(unzip -p "$apk" "lib/arm64-v8a/$name" | sha256sum | awk '{print $1}')"
+            [[ "$actual" == "$expected" ]] || {
+              echo "Packaged GPU runtime hash mismatch for $name" >&2
+              exit 1
+            }
+            count=$((count + 1))
+          done < "$checksums"
+          test "$count" -eq 7 || {
+            echo "Expected 7 reviewed LiteRT-LM GPU runtime libraries; found $count." >&2
+            exit 1
+          }
+          echo "Verified all $count LiteRT-LM GPU library hashes inside the final APK."
+
       - name: Generate APK checksum and source provenance
         shell: bash
         run: |
