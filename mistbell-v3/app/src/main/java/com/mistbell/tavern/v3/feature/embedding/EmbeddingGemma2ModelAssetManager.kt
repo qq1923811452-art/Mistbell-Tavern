@@ -141,6 +141,66 @@ class EmbeddingGemma2ModelAssetManager(
         }
     }
 
+    /**
+     * Validates a model that already exists on disk without copying it into modelDirectory.
+     *
+     * Use this for "import from local storage": the selected file remains at its original path,
+     * including a file under the user's Download directory. Unlike download()/importModel(),
+     * this method never creates a second model bundle or a sidecar digest beside the source.
+     * The caller must retain this returned file as the active model path.
+     */
+    suspend fun useLocalModel(sourceFile: File): DownloadedEmbeddingModel = withContext(Dispatchers.IO) {
+        downloadLock.lock()
+        try {
+            require(sourceFile.isFile && sourceFile.canRead()) {
+                "The selected local model file cannot be read."
+            }
+            require(sourceFile.name.endsWith(".litertlm", ignoreCase = true) &&
+                (sourceFile.name.contains("embeddinggemma", ignoreCase = true) ||
+                    sourceFile.name.contains("embedding-gemma", ignoreCase = true))) {
+                "Select an EmbeddingGemma 2 .litertlm model file; its filename must identify EmbeddingGemma."
+            }
+            val sizeBytes = sourceFile.length()
+            require(sizeBytes in 1..MAX_MODEL_BYTES) {
+                "Selected model file is empty or exceeds the configured size limit."
+            }
+            val digest = MessageDigest.getInstance("SHA-256")
+            sourceFile.inputStream().buffered().use { input ->
+                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                var total = 0L
+                while (true) {
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    total += count
+                    require(total <= MAX_MODEL_BYTES) {
+                        "Selected model exceeds the configured size limit."
+                    }
+                    digest.update(buffer, 0, count)
+                }
+                check(total == sizeBytes) {
+                    "Selected model changed while it was being verified; select it again."
+                }
+            }
+            val sha256 = digest.digest().toHex()
+            val isQualcommModel = sha256.equals(QUALCOMM_SM8650_MODEL_SHA256, ignoreCase = true)
+            require(isQualcommModel == preferQualcommSm8650Model) {
+                if (preferQualcommSm8650Model) {
+                    "The selected runtime profile requires the published Qualcomm SM8650 model bundle."
+                } else {
+                    "The Qualcomm SM8650-specific model requires a verified NPU runtime profile; use the portable model for CPU/GPU testing."
+                }
+            }
+            DownloadedEmbeddingModel(
+                file = sourceFile.canonicalFile,
+                sizeBytes = sizeBytes,
+                sha256 = sha256,
+                isQualcommSm8650Optimized = isQualcommModel,
+            )
+        } finally {
+            downloadLock.unlock()
+        }
+    }
+
     /** Imports a user-selected .litertlm bundle without requiring a public model download URL. */
     suspend fun importModel(
         sourceName: String,
