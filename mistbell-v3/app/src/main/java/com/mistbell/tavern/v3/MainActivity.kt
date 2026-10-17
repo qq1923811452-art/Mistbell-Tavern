@@ -83,6 +83,22 @@ class MainActivity : ComponentActivity() {
     private fun publicModelDirectoryLabel(): String =
         "/storage/emulated/0/Download/向量模型/"
 
+    /**
+     * Some Android document providers expose a readable filesystem path (notably MediaStore
+     * entries in Downloads). Use it when available so selecting an existing model does not
+     * force a second copy. Providers that expose only a content URI use the private staging
+     * fallback because LiteRT-LM's model API currently requires a filesystem path.
+     */
+    @Suppress("DEPRECATION")
+    private fun resolveReadableModelFile(uri: Uri): File? = runCatching {
+        contentResolver.query(uri, arrayOf(MediaStore.MediaColumns.DATA), null, null, null)?.use { cursor ->
+            val column = cursor.getColumnIndex(MediaStore.MediaColumns.DATA)
+            if (!cursor.moveToFirst() || column < 0) return@use null
+            cursor.getString(column)?.takeIf(String::isNotBlank)?.let(::File)
+                ?.takeIf { it.isFile && it.canRead() }
+        }
+    }.getOrNull()
+
     private fun createModelAssetManager(qualcomm: Boolean) =
         EmbeddingGemma2ModelAssetManager(
             modelDirectory = File(filesDir, "models"),
@@ -211,6 +227,18 @@ class MainActivity : ComponentActivity() {
 
     /** Restore the public model and its digest sidecar into app-private runtime storage if needed. */
     private suspend fun restorePublicModelIfPresent(qualcomm: Boolean) = withContext(Dispatchers.IO) {
+        val settings = getSharedPreferences("mistbell-v3-settings", MODE_PRIVATE)
+        val localPathKey = if (qualcomm) "embedding_local_model_path_qualcomm" else "embedding_local_model_path_portable"
+        val savedLocalPath = settings.getString(localPathKey, null)
+        if (!savedLocalPath.isNullOrBlank()) {
+            val savedFile = File(savedLocalPath)
+            if (savedFile.isFile && savedFile.canRead()) {
+                modelAssets.useLocalModel(savedFile)
+                diagnostics.info("embedding.model.local_path.reused", "profile=${if (qualcomm) "QUALCOMM_SM8650" else "PORTABLE"}; source=existing_file")
+                return@withContext
+            }
+            settings.edit().remove(localPathKey).apply()
+        }
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return@withContext
         val canonicalModelName = if (qualcomm) {
             EmbeddingGemma2ModelAssetManager.QUALCOMM_SM8650_MODEL_FILE_NAME
@@ -249,8 +277,17 @@ class MainActivity : ComponentActivity() {
             }.orEmpty()
 
         val modelDownloads = findDownloads(publicModelName)
-        val digestDownloads = findDownloads("$publicModelName.sha256")
         val modelUri = modelDownloads.firstOrNull() ?: return@withContext
+        val localPublicFile = resolveReadableModelFile(modelUri)
+        if (localPublicFile != null) {
+            // The public Downloads file is already the canonical model. Verify and use it
+            // directly instead of restoring a duplicate into filesDir/models.
+            modelAssets.useLocalModel(localPublicFile)
+            settings.edit().putString(localPathKey, localPublicFile.canonicalPath).apply()
+            diagnostics.info("embedding.model.public_path.reused", "filename=$publicModelName")
+            return@withContext
+        }
+        val digestDownloads = findDownloads("$publicModelName.sha256")
         val digestUri = digestDownloads.firstOrNull() ?: return@withContext
         // The public file keeps its original name, while runtime storage uses the
         // canonical name expected by EmbeddingGemma2ModelAssetManager.
@@ -383,17 +420,34 @@ class MainActivity : ComponentActivity() {
                         ) {
                             "请选择文件名标明 EmbeddingGemma 的 .litertlm 模型文件。"
                         }
-                        val input = withContext(Dispatchers.IO) { contentResolver.openInputStream(uri) }
-                            ?: throw IllegalStateException("所选文件无法打开。")
-                        val imported = modelAssets.importModel(sourceName, input) { bytes, _ ->
-                            runOnUiThread { operationMessage = "模型导入中：${bytes / (1024 * 1024)} MiB" }
+                        val selectedFile = withContext(Dispatchers.IO) { resolveReadableModelFile(uri) }
+                        val imported = if (selectedFile != null) {
+                            operationMessage = "正在原路径校验模型，不复制文件……"
+                            modelAssets.useLocalModel(selectedFile)
+                        } else {
+                            val input = withContext(Dispatchers.IO) { contentResolver.openInputStream(uri) }
+                                ?: throw IllegalStateException("所选文件无法打开。")
+                            modelAssets.importModel(sourceName, input) { bytes, _ ->
+                                runOnUiThread { operationMessage = "模型导入中：${bytes / (1024 * 1024)} MiB" }
+                            }
                         }
-                        val publicModelName = publishModelToPublicDownloads(imported.file)
+                        val settings = getSharedPreferences("mistbell-v3-settings", MODE_PRIVATE)
                         val profileKey = if (qualcommModelSelected) "embedding_public_model_name_qualcomm" else "embedding_public_model_name_portable"
-                        getSharedPreferences("mistbell-v3-settings", MODE_PRIVATE).edit()
-                            .putString(profileKey, publicModelName)
-                            .apply()
-                        operationMessage = "模型已校验并保存在公共目录：${publicModelDirectoryLabel()}\n文件：$publicModelName\nSHA-256：${imported.sha256}"
+                        val localPathKey = if (qualcommModelSelected) "embedding_local_model_path_qualcomm" else "embedding_local_model_path_portable"
+                        if (selectedFile != null) {
+                            settings.edit()
+                                .putString(localPathKey, imported.file.canonicalPath)
+                                .putString(profileKey, imported.file.name)
+                                .apply()
+                            operationMessage = "本地模型已在原路径校验完成，没有复制或另存：${imported.file.absolutePath}\nSHA-256：${imported.sha256}"
+                            diagnostics.info("embedding.model.import.local_path_reused", "pathSource=filesystem; bytes=${imported.sizeBytes}; sha256=${imported.sha256}")
+                        } else {
+                            // SAF providers without a real path require one app-private staging copy
+                            // because LiteRT-LM's current API consumes a filesystem path. Do not
+                            // publish a second copy into Downloads automatically.
+                            settings.edit().remove(localPathKey).apply()
+                            operationMessage = "模型已校验并暂存到应用私有目录（所选文件提供方未暴露可用路径）：${imported.file.name}\nSHA-256：${imported.sha256}"
+                        }
                         diagnostics.info("embedding.model.import.succeeded", "bytes=${imported.sizeBytes}; sha256=${imported.sha256}")
                     } catch (cancelled: CancellationException) {
                         diagnostics.warn("embedding.model.import.cancelled")
