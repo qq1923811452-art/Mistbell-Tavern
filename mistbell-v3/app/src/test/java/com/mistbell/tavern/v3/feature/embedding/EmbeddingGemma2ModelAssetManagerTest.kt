@@ -46,6 +46,34 @@ class EmbeddingGemma2ModelAssetManagerTest {
             directory.deleteRecursively()
         }
     }
+
+    @Test
+    fun usingLocalModelKeepsOriginalFileAndDoesNotCreateDuplicateOrDigest(): Unit = runBlocking {
+        val directory = kotlin.io.path.createTempDirectory(prefix = "embedding-model-local-source").toFile()
+        val appDirectory = kotlin.io.path.createTempDirectory(prefix = "embedding-model-app-cache").toFile()
+        try {
+            val bytes = "existing-local-model-bundle".toByteArray()
+            val source = File(directory, "embeddinggemma-2-740m.litertlm").apply { writeBytes(bytes) }
+            val manager = EmbeddingGemma2ModelAssetManager(appDirectory)
+            val result = manager.useLocalModel(source)
+
+            assertEquals(source.canonicalFile, result.file)
+            assertEquals(source.canonicalFile, result.file.canonicalFile)
+            assertEquals(bytes.size.toLong(), result.sizeBytes)
+            assertEquals(
+                MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) },
+                result.sha256,
+            )
+            assertTrue(source.exists())
+            assertEquals(listOf(source.name), directory.list()?.toList())
+            assertFalse(File(appDirectory, EmbeddingGemma2ModelAssetManager.MODEL_FILE_NAME).exists())
+            assertFalse(File(appDirectory, "${EmbeddingGemma2ModelAssetManager.MODEL_FILE_NAME}.sha256").exists())
+        } finally {
+            directory.deleteRecursively()
+            appDirectory.deleteRecursively()
+        }
+    }
+
     @Test
     fun rejectsUnrelatedLitertlmFilename(): Unit = runBlocking {
         val directory = kotlin.io.path.createTempDirectory(prefix = "embedding-model-import-test").toFile()
