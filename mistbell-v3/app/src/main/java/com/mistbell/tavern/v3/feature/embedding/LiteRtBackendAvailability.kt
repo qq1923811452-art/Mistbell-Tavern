@@ -5,8 +5,9 @@ import java.io.File
 import java.util.zip.ZipFile
 
 /**
- * Prevents asking LiteRT-LM to initialize an accelerator whose native plugin/runtime is not packaged.
- * This is a packaging preflight only; it does not prove the hardware actually executes an operation.
+ * Prevents asking LiteRT-LM to initialize an accelerator whose platform or native runtime
+ * prerequisites are not met. This is a packaging/platform preflight only; it does not prove
+ * that hardware actually executes an operation.
  */
 data class LiteRtBackendAvailability private constructor(
     private val availableBackends: Set<InferenceBackend>,
@@ -16,6 +17,8 @@ data class LiteRtBackendAvailability private constructor(
     fun isAvailable(backend: InferenceBackend): Boolean = backend in availableBackends
 
     companion object {
+        const val NPU_MIN_ANDROID_API = 31
+
         /**
          * SM8650 NPU requires the Qualcomm dispatch plugin plus matching QAIRT/QNN runtime files.
          * These names are a conservative minimum for the SM8650 / Hexagon V75 target.
@@ -42,6 +45,7 @@ data class LiteRtBackendAvailability private constructor(
             npuModelCompatible: Boolean,
             npuRuntimeValidated: Boolean = false,
             apkFiles: List<File> = emptyList(),
+            androidApiLevel: Int = Int.MAX_VALUE,
         ): LiteRtBackendAvailability {
             // Android may load uncompressed native libraries directly from an APK instead of
             // extracting them into nativeLibraryDir. Check both installed representations so
@@ -52,6 +56,9 @@ data class LiteRtBackendAvailability private constructor(
             val missingNpu = SM8650_NPU_REQUIRED_LIBRARIES.filterNot(::isPackaged)
             val missingGpu = GPU_REQUIRED_LIBRARIES.filterNot(::isPackaged)
             val npuReasons = buildList {
+                if (androidApiLevel < NPU_MIN_ANDROID_API) {
+                    add("Android API $NPU_MIN_ANDROID_API or newer is required for LiteRT NPU; device API is $androidApiLevel")
+                }
                 if (!npuModelCompatible) add("installed model SHA-256 does not match the pinned Qualcomm SM8650 model")
                 if (!isArm64) add("device ABI does not include arm64-v8a")
                 if (!npuRuntimeValidated) {
@@ -68,7 +75,6 @@ data class LiteRtBackendAvailability private constructor(
                     add("missing or empty LiteRT GPU accelerator libraries: ${missingGpu.joinToString(",")}")
                 }
             }
-            val gpuReason = gpuReasons.takeIf { it.isNotEmpty() }?.joinToString("; ")
             val available = buildSet {
                 add(InferenceBackend.CPU)
                 if (npuReason == null) add(InferenceBackend.NPU)
