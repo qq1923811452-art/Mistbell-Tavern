@@ -269,10 +269,16 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun closeActiveEmbeddingEngine() {
+        // Clear ownership before close so lifecycle transitions cannot close the same engine twice.
+        val engine = activeEmbeddingEngine
+        activeEmbeddingEngine = null
+        engine?.close()
+    }
+
     private fun selectModelProfile(qualcomm: Boolean) {
         if (operationBusy || qualcommModelSelected == qualcomm) return
-        activeEmbeddingEngine?.close()
-        activeEmbeddingEngine = null
+        closeActiveEmbeddingEngine()
         qualcommModelSelected = qualcomm
         modelProfileGeneration += 1
         val generationAtSelection = modelProfileGeneration
@@ -534,7 +540,7 @@ class MainActivity : ComponentActivity() {
                 val asset = withContext(Dispatchers.IO) { modelAssets.verifyInstalled() }
                     ?: throw IllegalStateException("模型不存在或 SHA-256 校验失败；请重新下载模型。")
                 verifiedAsset = asset
-                activeEmbeddingEngine?.close()
+                closeActiveEmbeddingEngine()
                 val initializedRuntime = LiteRtLmEmbeddingGemma2Engine(
                     context = applicationContext,
                     modelFile = asset.file,
@@ -622,8 +628,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-        activeEmbeddingEngine?.close()
-        activeEmbeddingEngine = null
+        closeActiveEmbeddingEngine()
         super.onDestroy()
     }
 }
