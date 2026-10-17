@@ -39,8 +39,13 @@ readonly host_libraries=(
 )
 # The exact stub/skeleton set is QAIRT-version-specific. Stage every V75 HTP stub
 # and DSP skeleton shipped by that same SDK instead of guessing optional filenames.
-mapfile -t stub_libraries < <(find "$qairt_host_dir" -maxdepth 1 -type f -name 'libQnnHtpV75*Stub.so' -printf '%f\\n' | sort)
-mapfile -t dsp_libraries < <(find "$qairt_hexagon_dir" -maxdepth 1 -type f -name 'libQnnHtpV75*Skel.so' -printf '%f\\n' | sort)
+shopt -s nullglob
+stub_paths=("$qairt_host_dir"/libQnnHtpV75*Stub.so)
+dsp_paths=("$qairt_hexagon_dir"/libQnnHtpV75*Skel.so)
+stub_libraries=()
+dsp_libraries=()
+for path in "${stub_paths[@]}"; do stub_libraries+=("$(basename "$path")"); done
+for path in "${dsp_paths[@]}"; do dsp_libraries+=("$(basename "$path")"); done
 test "${#stub_libraries[@]}" -gt 0 || { echo "No V75 HTP stub libraries found in $qairt_host_dir" >&2; exit 1; }
 test "${#dsp_libraries[@]}" -gt 0 || { echo "No V75 HTP DSP skeletons found in $qairt_hexagon_dir" >&2; exit 1; }
 
