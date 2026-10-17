@@ -66,13 +66,6 @@ jobs:
           sha256sum "${libraries[@]}" > mistbell-v3/app/src/main/assets/native-runtime/litertlm-gpu.sha256
           echo "Packaged ${#libraries[@]} LiteRT-LM arm64 native libraries."
 
-      - name: Audit packaged native-library ABI and dependencies
-        shell: bash
-        run: |
-          set -euo pipefail
-          chmod +x .github/scripts/audit-native-libraries.sh
-          .github/scripts/audit-native-libraries.sh mistbell-v3/app/src/main/jniLibs/arm64-v8a
-
       - name: Ensure root Gradle wrapper is executable
         run: chmod +x ./gradlew
 
@@ -81,6 +74,18 @@ jobs:
 
       - name: Package final debug APK only after tests pass
         run: ./gradlew -p mistbell-v3 :app:assembleDebug --no-daemon --no-parallel
+
+      - name: Audit native libraries merged into final APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="$(find mistbell-v3/app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          test -n "$apk"
+          audit_dir="$RUNNER_TEMP/apk-native-audit"
+          mkdir -p "$audit_dir"
+          unzip -q "$apk" 'lib/arm64-v8a/*.so' -d "$audit_dir"
+          chmod +x .github/scripts/audit-native-libraries.sh
+          .github/scripts/audit-native-libraries.sh "$audit_dir/lib/arm64-v8a"
 
       - name: Generate APK checksum and source provenance
         shell: bash
