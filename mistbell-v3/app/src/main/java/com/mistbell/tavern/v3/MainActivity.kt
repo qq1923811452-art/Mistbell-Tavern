@@ -90,10 +90,10 @@ class MainActivity : ComponentActivity() {
         )
 
     /**
-     * Publish the verified model into the public Downloads/向量模型 folder using MediaStore.
-     * This avoids the broad MANAGE_EXTERNAL_STORAGE permission on modern Android versions.
+     * Publish the verified model into Downloads/向量模型 without duplicating an imported
+     * model that already exists there under its original filename.
      */
-    private suspend fun publishModelToPublicDownloads(source: File) = withContext(Dispatchers.IO) {
+    private suspend fun publishModelToPublicDownloads(source: File): String = withContext(Dispatchers.IO) {
         check(Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             "Public model publishing requires Android 10 or newer."
         }
@@ -101,20 +101,35 @@ class MainActivity : ComponentActivity() {
         val relativePath = "${Environment.DIRECTORY_DOWNLOADS}/向量模型/"
         val collection = MediaStore.Downloads.EXTERNAL_CONTENT_URI
 
-        fun findExisting(displayName: String): List<Uri> =
-            resolver.query(
+        data class PublicFile(val uri: Uri, val name: String)
+
+        fun findExisting(displayName: String? = null): List<PublicFile> {
+            val selection = "(${MediaStore.MediaColumns.RELATIVE_PATH} = ? OR ${MediaStore.MediaColumns.RELATIVE_PATH} = ?)" +
+                (displayName?.let { " AND ${MediaStore.MediaColumns.DISPLAY_NAME} = ?" } ?: "")
+            val args = buildList {
+                add(relativePath)
+                add(relativePath.trimEnd('/'))
+                if (displayName != null) add(displayName)
+            }.toTypedArray()
+            return resolver.query(
                 collection,
-                arrayOf(MediaStore.MediaColumns._ID),
-                "${MediaStore.MediaColumns.DISPLAY_NAME} = ? AND (${MediaStore.MediaColumns.RELATIVE_PATH} = ? OR ${MediaStore.MediaColumns.RELATIVE_PATH} = ?)",
-                arrayOf(displayName, relativePath, relativePath.trimEnd('/')),
+                arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DISPLAY_NAME),
+                selection,
+                args,
                 null,
             )?.use { cursor ->
+                val idColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
+                val nameColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
                 buildList {
                     while (cursor.moveToNext()) {
-                        add(Uri.withAppendedPath(collection, cursor.getLong(0).toString()))
+                        add(PublicFile(
+                            Uri.withAppendedPath(collection, cursor.getLong(idColumn).toString()),
+                            cursor.getString(nameColumn),
+                        ))
                     }
                 }
             }.orEmpty()
+        }
 
         fun sha256(input: java.io.InputStream): String =
             input.use { stream ->
@@ -128,30 +143,25 @@ class MainActivity : ComponentActivity() {
                 digest.digest().joinToString("") { "%02x".format(it) }
             }
 
-        fun publishFile(file: File) {
-            val existing = findExisting(file.name)
+        fun digestOf(publicFile: PublicFile): String? =
+            runCatching {
+                resolver.openInputStream(publicFile.uri)?.buffered()?.use { sha256(it) }
+            }.getOrNull()
+
+        fun publishFile(file: File, displayName: String = file.name): String {
             val sourceDigest = file.inputStream().buffered().use { sha256(it) }
-            fun digestOf(uri: Uri): String? =
-                runCatching {
-                    resolver.openInputStream(uri)?.buffered()?.use { sha256(it) }
-                }.getOrNull()
+            val existingFiles = findExisting()
+            // Match content across the whole target directory, not only by name. Import
+            // first stages bytes in app-private storage, so the source filename may differ
+            // from the existing public file's name.
+            val identicalExisting = existingFiles.firstOrNull { digestOf(it) == sourceDigest }
+            if (identicalExisting != null) return identicalExisting.name
 
-            val identicalExisting = existing.firstOrNull { digestOf(it) == sourceDigest }
-            if (identicalExisting != null) {
-                // Importing a file already in Download/向量模型 must be a no-op, not
-                // another write/copy of the same bytes into the same public directory.
-                // Preserve same-name files with different bytes: the name alone does not
-                // prove they are duplicates.
-                existing.filter { it != identicalExisting && digestOf(it) == sourceDigest }
-                    .forEach { duplicateUri -> resolver.delete(duplicateUri, null, null) }
-                return
-            }
-
-            check(existing.isEmpty()) {
-                "A different file named ${file.name} already exists in $relativePath. To avoid overwriting user data, rename or remove that conflicting file and retry."
+            check(findExisting(displayName).isEmpty()) {
+                "A different file named $displayName already exists in $relativePath. To avoid overwriting user data, rename or remove that conflicting file and retry."
             }
             val values = ContentValues().apply {
-                put(MediaStore.MediaColumns.DISPLAY_NAME, file.name)
+                put(MediaStore.MediaColumns.DISPLAY_NAME, displayName)
                 put(MediaStore.MediaColumns.MIME_TYPE, "application/octet-stream")
                 put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath)
                 put(MediaStore.MediaColumns.IS_PENDING, 1)
@@ -173,19 +183,23 @@ class MainActivity : ComponentActivity() {
                 check(resolver.update(uri, ready, null, null) == 1) {
                     "Android could not finalize the public model file."
                 }
-                // Remove only byte-identical duplicate rows after a successful write.
-                // Same-name entries with different bytes may be separate user files.
-                existing.filter { it != uri && digestOf(it) == sourceDigest }
-                    .forEach { duplicateUri -> resolver.delete(duplicateUri, null, null) }
+                return displayName
             } catch (error: Exception) {
                 resolver.delete(uri, null, null)
                 throw error
             }
         }
 
-        publishFile(source)
-        val digestSidecar = File(source.parentFile, "${source.name}.sha256")
-        if (digestSidecar.isFile) publishFile(digestSidecar)
+        val publishedModelName = publishFile(source)
+        val modelDigest = source.inputStream().buffered().use { sha256(it) }
+        val digestSidecar = File(cacheDir, "mistbell-model-$modelDigest.sha256")
+        try {
+            digestSidecar.writeText("$modelDigest  $publishedModelName\n", Charsets.UTF_8)
+            publishFile(digestSidecar, "$publishedModelName.sha256")
+        } finally {
+            digestSidecar.delete()
+        }
+        publishedModelName
     }
 
     /** Restore the public model and its digest sidecar into app-private runtime storage if needed. */
