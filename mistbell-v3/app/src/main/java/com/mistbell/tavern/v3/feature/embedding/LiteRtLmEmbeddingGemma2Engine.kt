@@ -231,7 +231,8 @@ class LiteRtLmEmbeddingGemma2Engine(
                         "tokenLengths=unavailable; normalize=true; outputSize=${EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS}",
                 )
                 if (backend == InferenceBackend.NPU) {
-                    logInfo("embedding.npu.resource_snapshot.before", "backend=NPU; ${runtimeMemoryEvidence().removePrefix("; ")}")
+                    val resourceEvidence = runtimeMemoryEvidence().removePrefix("; ")
+                    logInfo("embedding.npu.resource_snapshot.before", "backend=NPU; $resourceEvidence")
                 }
                 try {
                     val responses = active.computeEmbeddingBatch(
