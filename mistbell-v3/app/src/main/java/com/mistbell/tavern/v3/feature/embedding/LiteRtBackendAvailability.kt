@@ -46,6 +46,7 @@ data class LiteRtBackendAvailability private constructor(
             npuRuntimeValidated: Boolean = false,
             apkFiles: List<File> = emptyList(),
             androidApiLevel: Int = Int.MAX_VALUE,
+            allowDiagnosticNpuProbe: Boolean = false,
         ): LiteRtBackendAvailability {
             // Android may load uncompressed native libraries directly from an APK instead of
             // extracting them into nativeLibraryDir. Check both installed representations so
@@ -61,7 +62,7 @@ data class LiteRtBackendAvailability private constructor(
                 }
                 if (!npuModelCompatible) add("installed model SHA-256 does not match the pinned Qualcomm SM8650 model")
                 if (!isArm64) add("device ABI does not include arm64-v8a")
-                if (!npuRuntimeValidated) {
+                if (!npuRuntimeValidated && !allowDiagnosticNpuProbe) {
                     add("no validated LiteRT-LM 0.18.0 / QAIRT runtime manifest is packaged")
                 }
                 if (missingNpu.isNotEmpty()) {
