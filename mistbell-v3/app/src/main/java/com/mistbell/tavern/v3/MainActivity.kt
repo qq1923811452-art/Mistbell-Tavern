@@ -666,7 +666,7 @@ private fun DevelopmentHome(
                             Text("仅供开发诊断：将尝试初始化 Qualcomm NPU，不会把运行库标记为已验证，也不会自动启用聊天生产路径。若 SDK/ABI 不兼容，可能失败；失败日志可用于定位。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Spacer(Modifier.height(6.dp))
                             Button(onClick = onRunNpuDiagnosticProbe, enabled = !operationBusy, modifier = Modifier.fillMaxWidth()) {
-                                Text("尝试 Qualcomm NPU 诊断探测（未验证）")
+                                Text("运行 NPU 输入长度矩阵（7 档，未验证）")
                             }
                         }
                     }
