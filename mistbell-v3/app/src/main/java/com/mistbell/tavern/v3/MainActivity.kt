@@ -104,24 +104,31 @@ class MainActivity : ComponentActivity() {
         data class PublicFile(val uri: Uri, val name: String)
 
         fun findExisting(displayName: String? = null): List<PublicFile> {
-            val selection = "(${MediaStore.MediaColumns.RELATIVE_PATH} = ? OR ${MediaStore.MediaColumns.RELATIVE_PATH} = ?)" +
-                (displayName?.let { " AND ${MediaStore.MediaColumns.DISPLAY_NAME} = ?" } ?: "")
-            val args = buildList {
-                add(relativePath)
-                add(relativePath.trimEnd('/'))
-                if (displayName != null) add(displayName)
-            }.toTypedArray()
+            // Normalize RELATIVE_PATH in Kotlin because MediaStore providers may differ on
+            // trailing slashes. This keeps content-hash deduplication reliable across imports.
+            val selection = displayName?.let { MediaStore.MediaColumns.DISPLAY_NAME + " = ?" }
+            val args = displayName?.let { arrayOf(it) }
             return resolver.query(
                 collection,
-                arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DISPLAY_NAME),
+                arrayOf(
+                    MediaStore.MediaColumns._ID,
+                    MediaStore.MediaColumns.DISPLAY_NAME,
+                    MediaStore.MediaColumns.RELATIVE_PATH,
+                    MediaStore.MediaColumns.IS_PENDING,
+                ),
                 selection,
                 args,
                 null,
             )?.use { cursor ->
                 val idColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
                 val nameColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
+                val pathColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.RELATIVE_PATH)
+                val pendingColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.IS_PENDING)
+                val expectedPath = relativePath.trimEnd('/') + "/"
                 buildList {
                     while (cursor.moveToNext()) {
+                        val storedPath = cursor.getString(pathColumn).orEmpty().trimEnd('/') + "/"
+                        if (!storedPath.equals(expectedPath, ignoreCase = true) || cursor.getInt(pendingColumn) != 0) continue
                         add(PublicFile(
                             Uri.withAppendedPath(collection, cursor.getLong(idColumn).toString()),
                             cursor.getString(nameColumn),
