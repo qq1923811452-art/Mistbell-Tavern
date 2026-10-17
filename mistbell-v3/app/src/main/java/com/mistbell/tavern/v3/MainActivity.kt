@@ -205,11 +205,16 @@ class MainActivity : ComponentActivity() {
     /** Restore the public model and its digest sidecar into app-private runtime storage if needed. */
     private suspend fun restorePublicModelIfPresent(qualcomm: Boolean) = withContext(Dispatchers.IO) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return@withContext
-        val modelName = if (qualcomm) {
+        val canonicalModelName = if (qualcomm) {
             EmbeddingGemma2ModelAssetManager.QUALCOMM_SM8650_MODEL_FILE_NAME
         } else {
             EmbeddingGemma2ModelAssetManager.MODEL_FILE_NAME
         }
+        val profileKey = if (qualcomm) "embedding_public_model_name_qualcomm" else "embedding_public_model_name_portable"
+        val modelName = getSharedPreferences("mistbell-v3-settings", MODE_PRIVATE)
+            .getString(profileKey, null)
+            ?.takeIf { it.endsWith(".litertlm", ignoreCase = true) }
+            ?: canonicalModelName
         val directory = File(filesDir, "models")
         if (!directory.isDirectory && !directory.mkdirs()) return@withContext
         val relativePath = "${Environment.DIRECTORY_DOWNLOADS}/向量模型/"
