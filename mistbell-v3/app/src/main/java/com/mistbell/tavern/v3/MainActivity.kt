@@ -379,8 +379,12 @@ class MainActivity : ComponentActivity() {
                         val imported = modelAssets.importModel(sourceName, input) { bytes, _ ->
                             runOnUiThread { operationMessage = "模型导入中：${bytes / (1024 * 1024)} MiB" }
                         }
-                        publishModelToPublicDownloads(imported.file)
-                        operationMessage = "模型导入并发布到公共目录：${publicModelDirectoryLabel()}\nSHA-256：${imported.sha256}"
+                        val publicModelName = publishModelToPublicDownloads(imported.file)
+                        val profileKey = if (qualcommModelSelected) "embedding_public_model_name_qualcomm" else "embedding_public_model_name_portable"
+                        getSharedPreferences("mistbell-v3-settings", MODE_PRIVATE).edit()
+                            .putString(profileKey, publicModelName)
+                            .apply()
+                        operationMessage = "模型已校验并保存在公共目录：${publicModelDirectoryLabel()}\n文件：$publicModelName\nSHA-256：${imported.sha256}"
                         diagnostics.info("embedding.model.import.succeeded", "bytes=${imported.sizeBytes}; sha256=${imported.sha256}")
                     } catch (cancelled: CancellationException) {
                         diagnostics.warn("embedding.model.import.cancelled")
@@ -529,8 +533,12 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 }
-                publishModelToPublicDownloads(downloaded.file)
-                operationMessage = "模型下载并校验完成，已保存到：${publicModelDirectoryLabel()}\nSHA-256：${downloaded.sha256}"
+                val publicModelName = publishModelToPublicDownloads(downloaded.file)
+                val profileKey = if (qualcommModelSelected) "embedding_public_model_name_qualcomm" else "embedding_public_model_name_portable"
+                getSharedPreferences("mistbell-v3-settings", MODE_PRIVATE).edit()
+                    .putString(profileKey, publicModelName)
+                    .apply()
+                operationMessage = "模型下载并校验完成，已保存到：${publicModelDirectoryLabel()}\n文件：$publicModelName\nSHA-256：${downloaded.sha256}"
                 diagnostics.info(
                     "embedding.model.download.succeeded",
                     "bytes=${downloaded.sizeBytes}; sha256=${downloaded.sha256}",
