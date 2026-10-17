@@ -21,6 +21,26 @@ shopt -s nullglob
 libraries=("$source_dir"/*.so)
 test "${#libraries[@]}" -gt 0 || { echo "No LiteRT-LM arm64 GPU runtime libraries found." >&2; exit 1; }
 
+# Treat the upstream native payload as an explicit allowlist. A new library in
+# a future upstream tag must be reviewed for purpose, dependencies and license
+# before it can enter the APK.
+readonly expected_libraries=(
+  libGemmaModelConstraintProvider.so
+  libLiteRtGpuAccelerator.so
+  libLiteRtOpenClAccelerator.so
+  libLiteRtTopKOpenClSampler.so
+  libLiteRtTopKWebGpuSampler.so
+  libLiteRtWebGpuAccelerator.so
+  libwebgpu_dawn.so
+)
+actual_names="$(printf '%s\\n' "${libraries[@]##*/}" | sort)"
+expected_names="$(printf '%s\\n' "${expected_libraries[@]}" | sort)"
+if [[ "$actual_names" != "$expected_names" ]]; then
+  echo "Upstream LiteRT-LM GPU library set differs from the reviewed allowlist." >&2
+  diff -u <(printf '%s\\n' "$expected_names") <(printf '%s\\n' "$actual_names") || true
+  exit 1
+fi
+
 for library in "${libraries[@]}"; do
   test -s "$library" || { echo "Empty upstream library: $library" >&2; exit 1; }
   target="$destination/$(basename "$library")"
