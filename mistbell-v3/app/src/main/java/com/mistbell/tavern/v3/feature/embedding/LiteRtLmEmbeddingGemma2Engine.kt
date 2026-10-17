@@ -47,6 +47,10 @@ class LiteRtLmEmbeddingGemma2Engine(
         isArm64 = Build.SUPPORTED_ABIS.any { it == "arm64-v8a" },
         npuModelCompatible = npuModelCompatible,
         npuRuntimeValidated = appContext.hasVerifiedNpuRuntimeManifest(),
+        apkFiles = buildList {
+            add(File(appContext.applicationInfo.sourceDir))
+            appContext.applicationInfo.splitSourceDirs.orEmpty().forEach { add(File(it)) }
+        },
     )
 
     // The Qualcomm SM8650 bundle is an NPU-targeted model. Never try to run it through
