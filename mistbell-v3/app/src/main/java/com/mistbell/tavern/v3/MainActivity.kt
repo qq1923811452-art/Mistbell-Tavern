@@ -2,7 +2,10 @@ package com.mistbell.tavern.v3
 
 import android.os.Bundle
 import android.os.Build
+import android.os.Environment
 import android.net.Uri
+import android.content.ContentValues
+import android.provider.MediaStore
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import android.provider.OpenableColumns
@@ -35,6 +38,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import android.widget.Toast
 import java.io.File
+import java.io.FileInputStream
+import java.security.MessageDigest
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
