@@ -51,6 +51,7 @@ class LiteRtLmEmbeddingGemma2Engine(
             add(File(appContext.applicationInfo.sourceDir))
             appContext.applicationInfo.splitSourceDirs.orEmpty().forEach { add(File(it)) }
         },
+        androidApiLevel = Build.VERSION.SDK_INT,
     )
 
     // The Qualcomm SM8650 bundle is an NPU-targeted model. Never try to run it through
