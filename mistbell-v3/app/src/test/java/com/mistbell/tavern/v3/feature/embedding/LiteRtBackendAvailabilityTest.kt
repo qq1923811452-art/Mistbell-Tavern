@@ -2,6 +2,8 @@ package com.mistbell.tavern.v3.feature.embedding
 
 import com.mistbell.tavern.v3.core.inference.InferenceBackend
 import java.io.File
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -25,6 +27,36 @@ class LiteRtBackendAvailabilityTest {
             assertTrue(result.npuReason.orEmpty().contains("validated"))
         } finally {
             directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun gpuPluginsPackagedInsideApkCountWhenNotExtractedToNativeLibraryDir(): Unit {
+        val directory = kotlin.io.path.createTempDirectory(prefix = "litert-native-libs").toFile()
+        val apk = kotlin.io.path.createTempFile(prefix = "litert-test", suffix = ".apk").toFile()
+        try {
+            ZipOutputStream(apk.outputStream()).use { zip ->
+                LiteRtBackendAvailability.GPU_REQUIRED_LIBRARIES.forEach { name ->
+                    zip.putNextEntry(ZipEntry("lib/arm64-v8a/$name"))
+                    zip.write(byteArrayOf(1, 2, 3))
+                    zip.closeEntry()
+                }
+            }
+
+            val result = LiteRtBackendAvailability.detect(
+                nativeLibraryDir = directory,
+                isArm64 = true,
+                npuModelCompatible = false,
+                npuRuntimeValidated = false,
+                apkFiles = listOf(apk),
+            )
+
+            assertTrue(result.isAvailable(InferenceBackend.GPU))
+            assertFalse(result.isAvailable(InferenceBackend.NPU))
+            assertTrue(result.npuReason.orEmpty().contains("missing or empty"))
+        } finally {
+            directory.deleteRecursively()
+            apk.delete()
         }
     }
 
