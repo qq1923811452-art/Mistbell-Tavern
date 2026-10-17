@@ -73,7 +73,13 @@ object TemporalFactLedger {
                 it.value.length <= MAX_FIELD_CHARS
         })
         var facts = existing.toMutableList()
-        for (observation in observations.sortedBy(TemporalFactObservation::observedAtEpochMillis)) {
+        // Stable tie-breaking makes same-millisecond observations deterministic.
+        // At most one conflicting value can become current for a predicate at a given millisecond.
+        for (observation in observations.sortedWith(
+            compareBy<TemporalFactObservation> { it.observedAtEpochMillis }
+                .thenBy { it.sourceTurnId }
+                .thenBy { stableId(it) },
+        )) {
             val id = stableId(observation)
             if (facts.any { it.id == id }) continue
 
@@ -85,8 +91,8 @@ object TemporalFactLedger {
                     normalize(it.subject) == subjectKey &&
                     normalize(it.predicate) == predicateKey
             }
-            if (currentForPredicate.any { it.validFromEpochMillis > observation.observedAtEpochMillis }) {
-                // A delayed/backdated extraction must not overwrite a newer current observation.
+            if (currentForPredicate.any { it.validFromEpochMillis >= observation.observedAtEpochMillis }) {
+                // A delayed/backdated or same-millisecond extraction must not overwrite a current observation.
                 continue
             }
             if (currentForPredicate.any { normalize(it.value) == normalize(observation.value) }) {
