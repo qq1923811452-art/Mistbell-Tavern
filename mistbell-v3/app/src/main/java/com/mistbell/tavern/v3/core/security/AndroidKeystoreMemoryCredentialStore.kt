@@ -107,7 +107,6 @@ class AndroidKeystoreMemoryCredentialStore(context: Context) : MemoryCredentialR
         private const val ANDROID_KEYSTORE = "AndroidKeyStore"
         private const val KEY_ALIAS = "mistbell-v3-memory-credential-aes-gcm"
         private const val TRANSFORMATION = "AES/GCM/NoPadding"
-        private const val GCM_IV_BYTES = 12
         private const val MIN_GCM_IV_BYTES = 12
         private const val MAX_GCM_IV_BYTES = 16
         private const val GCM_TAG_BITS = 128
