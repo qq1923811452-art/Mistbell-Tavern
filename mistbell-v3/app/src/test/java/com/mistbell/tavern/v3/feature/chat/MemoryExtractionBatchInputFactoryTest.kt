@@ -1,6 +1,7 @@
 package com.mistbell.tavern.v3.feature.chat
 
 import com.mistbell.tavern.v3.feature.memory.MemoryExtractionJob
+import com.mistbell.tavern.v3.feature.memory.MemoryExtractionQueueRunner
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Test
@@ -43,7 +44,7 @@ class MemoryExtractionBatchInputFactoryTest {
                 PersistedChatMessage.DeliveryState.FAILED,
             ),
         )
-        assertThrows(IllegalArgumentException::class.java) {
+        assertThrows(MemoryExtractionQueueRunner.RetryableInputException::class.java) {
             factory.create(job(listOf("user-1")), history)
         }
     }
