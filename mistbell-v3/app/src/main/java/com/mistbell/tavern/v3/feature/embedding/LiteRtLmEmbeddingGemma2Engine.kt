@@ -115,14 +115,18 @@ class LiteRtLmEmbeddingGemma2Engine(
             )
             for (backend in backendOrder) {
                 logInfo("embedding.backend.initialize.started", "backend=${backend.name}")
-                val candidate = EmbeddingEngine(
-                    EmbeddingEngineConfig(
-                        modelPath = modelFile.absolutePath,
-                        backend = backend.toLiteRtBackend(),
-                        cacheDir = cacheDirectory.absolutePath,
-                    ),
-                )
+                var candidate: EmbeddingEngine? = null
                 try {
+                    // Keep construction inside the guarded block too: JNI/native loading can fail
+                    // before initialize() is reached, and that failure must still be diagnosed
+                    // and allow the next configured backend to be tried.
+                    candidate = EmbeddingEngine(
+                        EmbeddingEngineConfig(
+                            modelPath = modelFile.absolutePath,
+                            backend = backend.toLiteRtBackend(),
+                            cacheDir = cacheDirectory.absolutePath,
+                        ),
+                    )
                     candidate.initialize()
                     engine = candidate
                     selectedBackend = backend
@@ -133,16 +137,16 @@ class LiteRtLmEmbeddingGemma2Engine(
                     logInfo("embedding.initialize.succeeded", "backend=${backend.name}; fallback=${fallbackReason != null}")
                     return@withLock
                 } catch (cancelled: CancellationException) {
-                    if (candidate.isInitialized()) runCatching { candidate.close() }
+                    candidate?.let { runCatching { if (it.isInitialized()) it.close() } }
                     throw cancelled
                 } catch (error: Exception) {
-                    if (candidate.isInitialized()) runCatching { candidate.close() }
+                    candidate?.let { runCatching { if (it.isInitialized()) it.close() } }
                     val reason = failureDetail(backend, error)
                     failures += reason
                     logWarn("embedding.backend.initialize.failed", reason)
                 } catch (error: LinkageError) {
-                    if (candidate.isInitialized()) runCatching { candidate.close() }
-                    val reason = "${backend.name}: native runtime unavailable (${error::class.java.simpleName})"
+                    candidate?.let { runCatching { if (it.isInitialized()) it.close() } }
+                    val reason = failureDetail(backend, error, fallbackMessage = "native runtime unavailable")
                     failures += reason
                     logWarn("embedding.backend.initialize.failed", reason)
                 }
