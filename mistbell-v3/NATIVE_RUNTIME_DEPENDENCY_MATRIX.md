@@ -77,11 +77,11 @@ These must come from a mutually compatible, pinned LiteRT-LM/LiteRT/QAIRT combin
 
 ## 5. Build pipeline gates to implement
 
-- [ ] Pin full upstream commit SHA for LiteRT-LM v0.18.0 in addition to checking the tag name.
-- [ ] Download official prebuilts reproducibly; generate an inventory containing source URL, tag/commit, file name, byte size and SHA-256.
-- [ ] Preserve the upstream license and add any additional required notices.
-- [ ] Validate all files are non-empty and target `arm64-v8a`; reject unexpected files and filename collisions.
-- [ ] Inspect ELF architecture and `DT_NEEDED` dependencies; fail build for unresolved or conflicting dependencies.
+- [x] Pin full upstream commit SHA for LiteRT-LM v0.18.0 in addition to checking the tag name.
+- [x] Download official GPU prebuilts reproducibly; record source URL, tag/commit, file name, byte size and SHA-256. (NPU inventory remains blocked on approved QAIRT/dispatch source.)
+- [x] Preserve the upstream LiteRT-LM license in the GPU device-test APK; additional notices remain required for any future third-party runtime.
+- [x] Validate the selected GPU prebuilt files are non-empty and expected plugin files exist; final APK ELF audit checks AArch64 and non-empty libraries.
+- [x] Inspect final APK ELF architecture, RPATH/RUNPATH and `DT_NEEDED` dependencies; fail build for unknown dependencies.
 - [ ] Keep GPU and NPU inventories/provenance separate.
 - [ ] Make Qualcomm runtime acquisition an explicit gated job until QAIRT source/version/license are approved; never fetch an unpinned SDK or silently accept a floating latest version.
 - [ ] Generate a runtime manifest in the APK with source revisions, versions, hashes and validation state. Presence of a file must not set `status=verified`.
@@ -90,7 +90,7 @@ These must come from a mutually compatible, pinned LiteRT-LM/LiteRT/QAIRT combin
 
 ## 6. Current state
 
-- GPU: workflow fetches LiteRT-LM v0.18.0 upstream Android arm64 prebuilts and packages the .so files for the manual device-test APK. Real Redmi K70 Pro inference is still required.
+- GPU: workflow fetches LiteRT-LM v0.18.0 prebuilts pinned to commit `b2f686e2ed4718fb84ec398a61dd59ca0f0aff27`, records provenance/license/hash/inventory, then audits the merged APK's ELF architecture and dependencies. This workflow has not yet been run successfully; real Redmi K70 Pro inference is still required.
 - NPU: not yet packaged; QAIRT/dispatch version compatibility and redistribution conditions are not yet verified.
 - CPU: engine initialization previously succeeded, but a real inference call failed in the device diagnostic. CPU is not accepted until that is fixed and a real vector is returned.
 - PR #61 must remain Open + Draft until CI, runtime verification and the user's device acceptance are complete.
