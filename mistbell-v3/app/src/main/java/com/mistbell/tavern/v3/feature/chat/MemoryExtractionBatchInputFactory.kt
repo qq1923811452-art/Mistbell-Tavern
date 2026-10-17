@@ -2,8 +2,8 @@ package com.mistbell.tavern.v3.feature.chat
 
 import com.mistbell.tavern.v3.core.memory.EligibleConversationTurn
 import com.mistbell.tavern.v3.feature.memory.MemoryExtractionInput
-import com.mistbell.tavern.v3.feature.memory.MemoryExtractionQueueRunner
 import com.mistbell.tavern.v3.feature.memory.MemoryExtractionJob
+import com.mistbell.tavern.v3.feature.memory.MemoryExtractionQueueRunner
 import com.mistbell.tavern.v3.feature.memory.formatMemoryExtractionTurn
 
 /**
