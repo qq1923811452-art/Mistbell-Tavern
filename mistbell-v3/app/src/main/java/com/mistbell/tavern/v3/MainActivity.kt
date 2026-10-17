@@ -455,24 +455,41 @@ class MainActivity : ComponentActivity() {
         } else {
             "已选择通用模型，适合先进行 CPU/GPU 兼容性测试。"
         }
+        // Keep model selection, restore, download/import and self-test mutually exclusive.
+        // Without this guard, another operation could verify/read a model while restore atomically
+        // replaces its private copy, or a second profile selection could start a competing restore.
+        operationBusy = true
         lifecycleScope.launch {
             try {
-                restorePublicModelIfPresent(qualcomm)
-            } catch (error: Exception) {
-                val detail = "${error::class.java.simpleName}: ${error.message ?: "public model restore failed"}"
-                    .take(InferenceRuntimeStatus.MAX_DETAIL_LENGTH)
-                diagnostics.error("embedding.model.restore.failed", "profile=${if (qualcomm) "QUALCOMM_SM8650" else "PORTABLE"}; $detail")
+                try {
+                    restorePublicModelIfPresent(qualcomm)
+                } catch (error: Exception) {
+                    val detail = "${error::class.java.simpleName}: ${error.message ?: "public model restore failed"}"
+                        .take(InferenceRuntimeStatus.MAX_DETAIL_LENGTH)
+                    diagnostics.error("embedding.model.restore.failed", "profile=${if (qualcomm) "QUALCOMM_SM8650" else "PORTABLE"}; $detail")
+                    if (generationAtSelection == modelProfileGeneration) {
+                        operationMessage = "公共模型恢复失败：$detail"
+                    }
+                }
+                val installed = withContext(Dispatchers.IO) { assetsAtSelection.verifyInstalled() }
                 if (generationAtSelection == modelProfileGeneration) {
-                    operationMessage = "公共模型恢复失败：$detail"
+                    if (installed != null) {
+                        operationMessage = "所选模型已从公共目录恢复并校验：${publicModelDirectoryLabel()}"
+                    } else if (!operationMessage.startsWith("公共模型恢复失败：")) {
+                        operationMessage += " 尚未找到已安装的此版本，可点击下载。"
+                    }
                 }
-            }
-            val installed = withContext(Dispatchers.IO) { assetsAtSelection.verifyInstalled() }
-            if (generationAtSelection == modelProfileGeneration) {
-                if (installed != null) {
-                    operationMessage = "所选模型已从公共目录恢复并校验：${publicModelDirectoryLabel()}"
-                } else if (!operationMessage.startsWith("公共模型恢复失败：")) {
-                    operationMessage += " 尚未找到已安装的此版本，可点击下载。"
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                val detail = "${error::class.java.simpleName}: ${error.message ?: "model profile verification failed"}"
+                    .take(InferenceRuntimeStatus.MAX_DETAIL_LENGTH)
+                diagnostics.error("embedding.model.profile.verify.failed", "profile=${if (qualcomm) "QUALCOMM_SM8650" else "PORTABLE"}; $detail")
+                if (generationAtSelection == modelProfileGeneration) {
+                    operationMessage = "模型配置检查失败：$detail"
                 }
+            } finally {
+                if (generationAtSelection == modelProfileGeneration) operationBusy = false
             }
         }
     }
