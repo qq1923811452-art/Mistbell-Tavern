@@ -19,7 +19,7 @@
 
 - 诊断日志不应包含聊天正文、完整提示词、API 密钥或 HTTP 请求/响应正文。
 - 模型下载后会保存 SHA-256 sidecar，用于检测本地文件之后是否被改动。该 sidecar 是下载时生成的本地摘要，不是模型发布者签名或独立可信校验和。
-- 当前仓库中的 LiteRT-LM 0.18.0 AAR 只在 APK 内看到 `liblitertlm_jni.so`，没有打包 Qualcomm dispatch/QNN 库，也没有 LiteRT GPU accelerator 插件。因此，在这些库及其 ABI 兼容性未验证前，NPU/GPU 后端会被预检禁用；这轮 APK 预期使用通用模型验证下载/哈希校验、CPU 本地推理、向量记忆与日志链路，但不能作为 NPU/GPU 性能测试结果。
+- LiteRT-LM 0.18.0 Android AAR 本身不包含独立 GPU accelerator 插件。设备测试 APK 工作流现在会从官方 LiteRT-LM `v0.18.0` 源码标签获取匹配的 `prebuilt/android_arm64/*.so`，放入 APK 的 `lib/arm64-v8a`，并记录库文件 SHA-256 与上游许可证。此举只完成 GPU 运行库打包，仍需在 Redmi K70 Pro 上验证初始化和真实推理；系统还必须提供兼容的 OpenCL 驱动。NPU 的 Qualcomm dispatch 与 QAIRT/QNN 运行库尚未打包，需先确认精确兼容版本及再分发许可，再做设备验证。
 - 启用 SM8650 NPU 还必须把与该 LiteRT-LM 版本兼容的 `libLiteRtDispatch_Qualcomm.so`、QAIRT/QNN HTP 运行库和 Hexagon V75 组件放入 `app/src/main/jniLibs/arm64-v8a/`，并完成设备验证。只有实际验证后才能加入 `app/src/main/assets/native-runtime/qualcomm-sm8650.properties`，内容须包含 `status=verified`、`target_soc=SM8650`、`litertlm_android=0.18.0`、`qairt_abi=verified` 和 `dispatch_abi=verified`；不能只因文件存在就标记已验证。
 - 若要确认 Redmi K70 Pro 的 NPU 是否真正执行，还需要结合设备/系统级运行日志或可观测的后端遥测；不能只依据手机型号、后端配置或“初始化成功”下结论。
 - 最终用户实测需记录设备型号、Android 版本、结果状态、耗时、是否回退和导出的诊断日志。
