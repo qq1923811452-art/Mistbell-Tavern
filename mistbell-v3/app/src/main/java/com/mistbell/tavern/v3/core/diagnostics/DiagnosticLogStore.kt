@@ -73,7 +73,11 @@ class DiagnosticLogStore(
     }
 
     private fun sanitize(value: String, maxChars: Int): String {
-        val singleLine = value.replace(Regex("[\\r\\n\\t]+"), " ").trim()
+        // Bound work before applying regexes to untrusted exception/provider text. Keep a small
+        // redaction window beyond the output limit so credentials crossing the boundary are still
+        // recognized before the final output is truncated.
+        val boundedInput = value.take(maxChars + REDACTION_WINDOW_CHARS)
+        val singleLine = boundedInput.replace(Regex("[\\r\\n\\t]+"), " ").trim()
         val redacted = singleLine
             .replace(Regex("(?i)(authorization\\s*[:=]\\s*bearer\\s+)[^\\s,;&}]+")) { match -> "${match.groupValues[1]}[REDACTED]" }
             .replace(Regex("(?i)(authorization\\s*[:=]\\s*basic\\s+)[A-Za-z0-9+/=]+")) { match -> "${match.groupValues[1]}[REDACTED]" }
@@ -94,6 +98,7 @@ class DiagnosticLogStore(
         const val MAX_LOG_BYTES = 1024 * 1024
         const val MAX_EVENT_CHARS = 100
         const val MAX_DETAIL_CHARS = 500
+        private const val REDACTION_WINDOW_CHARS = 256
         private val LEVELS = setOf("INFO", "WARN", "ERROR")
     }
 }
