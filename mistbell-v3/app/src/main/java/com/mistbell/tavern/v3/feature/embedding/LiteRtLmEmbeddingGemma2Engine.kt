@@ -328,8 +328,23 @@ class LiteRtLmEmbeddingGemma2Engine(
         val frame = error.stackTrace.firstOrNull()?.let {
             "; at ${it.className}.${it.methodName}(${it.fileName}:${it.lineNumber})"
         }.orEmpty()
+        // Keep resource telemetry in its own bounded event. Appending it after a long
+        // JNI message and then truncating the combined string silently discarded the very
+        // memory evidence needed to diagnose native tensor-allocation failures.
         val memory = runtimeMemoryEvidence()
-        return "${backend.name}: ${error::class.java.simpleName}: $message$causes$frame$memory"
+        if (memory.isNotBlank()) {
+            logWarn(
+                "embedding.runtime.resource_snapshot",
+                "backend=${backend.name}; ${memory.removePrefix("; ")}",
+            )
+        }
+        val compactMessage = message.take(260)
+        val compactCauses = causes.take(150)
+        val compactFrame = frame.take(90)
+        val prefix = "${backend.name}: ${error::class.java.simpleName}: "
+        val suffix = "$compactCauses$compactFrame"
+        val messageBudget = (InferenceRuntimeStatus.MAX_DETAIL_LENGTH - prefix.length - suffix.length).coerceAtLeast(40)
+        return (prefix + compactMessage.take(messageBudget) + suffix)
             .take(InferenceRuntimeStatus.MAX_DETAIL_LENGTH)
     }
 
