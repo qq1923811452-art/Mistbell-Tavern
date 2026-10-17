@@ -384,7 +384,7 @@ fun ChatScreen(onBack: () -> Unit) {
                         visualTransformation = PasswordVisualTransformation(),
                     )
                     Text(
-                        "Base URL 和模型 ID 会保存在本机设置中；API Key 不会持久保存，离开页面后需要重新输入。",
+                        "聊天 API Key 仅保存在当前页面内存中，离开页面后需要重新输入；独立记忆 API Key 可选择加密保存到 Android Keystore。Base URL 和模型 ID 会保存在本机设置中。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
