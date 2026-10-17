@@ -2,7 +2,7 @@ package com.mistbell.tavern.v3.core.memory
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MemoryScaleTestProfileTest {
@@ -25,8 +25,8 @@ class MemoryScaleTestProfileTest {
     @Test
     fun everyProfileExplainsItsPurpose() {
         MemoryScaleTestProfile.entries.forEach { profile ->
-            assertNotNull(profile.label.takeIf(String::isNotBlank))
-            assertNotNull(profile.purpose.takeIf(String::isNotBlank))
+            assertTrue(profile.label.isNotBlank())
+            assertTrue(profile.purpose.isNotBlank())
         }
     }
 }
