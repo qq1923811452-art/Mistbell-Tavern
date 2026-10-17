@@ -232,7 +232,8 @@ class MainActivity : ComponentActivity() {
                             onSelectModelProfile = ::selectModelProfile,
                             selectedEmbeddingDimensions = selectedEmbeddingDimensions,
                             onCycleEmbeddingDimensions = ::cycleEmbeddingDimensions,
-                            onRunEmbeddingTest = ::runEmbeddingSelfTest,
+                            onRunEmbeddingTest = { runEmbeddingSelfTest() },
+                            onRunNpuDiagnosticProbe = { runEmbeddingSelfTest(allowDiagnosticNpuProbe = true) },
                             onExportLogs = { exportDiagnostics.launch("mistbell-diagnostics.txt") },
                         )
                     }
@@ -432,8 +433,16 @@ class MainActivity : ComponentActivity() {
         operationMessage = "已选择 ${selectedEmbeddingDimensions} 维输出；下次本地向量测试将使用此档位。已有向量需要按新维度重建后才能混合检索。"
     }
 
-    private fun runEmbeddingSelfTest() {
+    private fun runEmbeddingSelfTest(allowDiagnosticNpuProbe: Boolean = false) {
         if (operationBusy) return
+        if (allowDiagnosticNpuProbe && !qualcommModelSelected) {
+            operationMessage = "NPU 诊断探测只适用于已选择并通过 SHA-256 校验的 Qualcomm SM8650 专用模型。"
+            diagnostics.warn("embedding.npu.diagnostic_probe.rejected", "reason=qualcomm_model_profile_not_selected")
+            return
+        }
+        if (allowDiagnosticNpuProbe) {
+            diagnostics.warn("embedding.npu.diagnostic_probe.started", "modelProfile=QUALCOMM_SM8650; purpose=one_shot_runtime_diagnosis; verifiedStatus=unchanged")
+        }
         if (selectedEmbeddingDimensions > com.mistbell.tavern.v3.feature.embedding.EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS) {
             operationMessage = "当前 EmbeddingGemma 2 原生最高支持 768 维；已保留 ${selectedEmbeddingDimensions} 维选项，但需要切换到原生支持该维度的模型后才能测试。未启动不兼容的推理任务。"
             diagnostics.warn("embedding.selftest.unsupported_dimension_for_model", "model=EmbeddingGemma2; nativeDimensions=768; selectedDimensions=$selectedEmbeddingDimensions")
@@ -453,6 +462,7 @@ class MainActivity : ComponentActivity() {
                     context = applicationContext,
                     modelFile = asset.file,
                     npuModelCompatible = asset.isQualcommSm8650Optimized,
+                    allowDiagnosticNpuProbe = allowDiagnosticNpuProbe && asset.isQualcommSm8650Optimized,
                     diagnostics = diagnostics,
                 )
                 runtime = initializedRuntime
@@ -476,6 +486,9 @@ class MainActivity : ComponentActivity() {
                 inferenceStatus = result.status
                 operationMessage =
                     "真实本地推理成功：${result.vectors.single().size} 维向量；配置后端 ${result.status.backend}。硬件实际调用仍需结合设备日志确认。"
+                if (allowDiagnosticNpuProbe) {
+                    diagnostics.info("embedding.npu.diagnostic_probe.inference_succeeded", "configuredBackend=${result.status.acceleratorName}; evidence=${result.status.backendEvidence}; verified=false")
+                }
                 diagnostics.info(
                     "embedding.selftest.succeeded",
                     "dimensions=${result.vectors.single().size}; configuredBackend=${result.status.backend}; evidence=${result.status.backendEvidence}; elapsedMs=${result.status.lastExecutionMillis}",
@@ -494,7 +507,7 @@ class MainActivity : ComponentActivity() {
                     lastError = detail,
                 )
                 val blockedByUnverifiedQualcommRuntime =
-                    verifiedAsset?.isQualcommSm8650Optimized == true &&
+                    !allowDiagnosticNpuProbe && verifiedAsset?.isQualcommSm8650Optimized == true &&
                         error is IllegalArgumentException &&
                         error.message.orEmpty().contains("requires a verified NPU runtime", ignoreCase = true)
                 if (blockedByUnverifiedQualcommRuntime) {
@@ -505,7 +518,12 @@ class MainActivity : ComponentActivity() {
                         "modelSha256=${verifiedAsset?.sha256.orEmpty()}; action=select_portable_model_for_cpu_gpu_test",
                     )
                 } else {
-                    operationMessage = "本地推理测试失败：$detail"
+                    operationMessage = if (allowDiagnosticNpuProbe) {
+                        "Qualcomm NPU 诊断探测失败：$detail。运行库仍保持未验证状态；请导出诊断日志检查 native/QAIRT 错误。"
+                    } else "本地推理测试失败：$detail"
+                    if (allowDiagnosticNpuProbe) {
+                        diagnostics.error("embedding.npu.diagnostic_probe.inference_failed", "verified=false; $detail")
+                    }
                     diagnostics.error("embedding.selftest.failed", detail)
                 }
             } finally {
@@ -535,6 +553,7 @@ private fun DevelopmentHome(
     selectedEmbeddingDimensions: Int,
     onCycleEmbeddingDimensions: () -> Unit,
     onRunEmbeddingTest: () -> Unit,
+    onRunNpuDiagnosticProbe: () -> Unit,
     onExportLogs: () -> Unit,
 ) {
     Scaffold(
@@ -632,6 +651,14 @@ private fun DevelopmentHome(
                         Spacer(Modifier.height(8.dp))
                         Button(onClick = onRunEmbeddingTest, enabled = !operationBusy, modifier = Modifier.fillMaxWidth()) {
                             Text("初始化后执行真实向量测试")
+                        }
+                        if (qualcommModelSelected) {
+                            Spacer(Modifier.height(8.dp))
+                            Text("仅供开发诊断：将尝试初始化 Qualcomm NPU，不会把运行库标记为已验证，也不会自动启用聊天生产路径。若 SDK/ABI 不兼容，可能失败；失败日志可用于定位。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Spacer(Modifier.height(6.dp))
+                            Button(onClick = onRunNpuDiagnosticProbe, enabled = !operationBusy, modifier = Modifier.fillMaxWidth()) {
+                                Text("尝试 Qualcomm NPU 诊断探测（未验证）")
+                            }
                         }
                     }
                 }
