@@ -101,69 +101,7 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
-  # Build the real application APK during routine CI, in parallel with the quality gate.
-  # This validates packaging on every PR without delaying unit/static checks behind emulator boot.
-  apk-build:
-    if: ${{ (github.event_name == 'push' && github.ref_name != 'codex/mistbell-development-3.0' && github.ref_name != 'codex/mistbell-3.0-core-features') || (github.event_name == 'pull_request' && github.event.pull_request.head.ref != 'codex/mistbell-development-3.0' && github.event.pull_request.head.ref != 'codex/mistbell-3.0-core-features') }}
-    name: Build debug APK (parallel CI gate)
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - name: Checkout exact source commit
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          fetch-depth: 0
-
-      - name: Confirm source commit
-        shell: bash
-        env:
-          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: |
-          set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
-
-      - name: Ensure Gradle wrapper is executable
-        run: chmod +x ./gradlew
-
-      - name: Assemble debug APK
-        run: ./gradlew :app:assembleDebug --no-daemon --no-parallel
-
-      # Publish the routine build output so a successful packaging job is downloadable.
-      # This is deliberately labeled build-only: the quality gate and emulator tests
-      # may still fail. The separate verified artifact is published only after all gates pass.
-      - name: Prepare build-only APK artifact
-        shell: bash
-        env:
-          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: |
-          set -euo pipefail
-          actual_sha="$(git rev-parse HEAD)"
-          test "$actual_sha" = "$SOURCE_SHA"
-          mkdir -p build-artifacts
-          find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' -exec cp {} build-artifacts/ \;
-          test -n "$(find build-artifacts -maxdepth 1 -type f -name '*.apk' -print -quit)"
-          cd build-artifacts
-          sha256sum *.apk | tee SHA256SUMS.txt
-          printf 'source_sha=%s\nworkflow_run_id=%s\nartifact_role=build-only-not-quality-gate-verified\n' "$SOURCE_SHA" "$GITHUB_RUN_ID" > SOURCE.txt
-
-      - name: Upload build-only debug APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: mistbell-debug-apk-build-${{ github.run_number }}
-          path: build-artifacts/*
-          if-no-files-found: error
-          retention-days: 14
-
+  # PR #57 policy: routine CI does not package APKs. Keep PR #61's branch exclusions on instrumented-tests.
   # Emulator/instrumentation tests are a normal CI gate, not an opt-in release step.
   # Gradle builds the debug/test APKs required to execute tests, but no APK is
   # copied or published as a release artifact during routine verification.

@@ -5,6 +5,7 @@ import java.io.File
 import java.io.OutputStream
 import java.nio.charset.StandardCharsets
 import java.time.Instant
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Small, bounded, local-only diagnostic log. Callers must log events and error summaries, never
@@ -39,6 +40,9 @@ class DiagnosticLogStore(
     }
 
     fun exportTo(output: OutputStream) {
+        check(!isNpuMatrixRunning()) {
+            "Diagnostic export is paused while the NPU input matrix is running."
+        }
         val snapshot = synchronized(lock) {
             ByteArrayOutputStream().apply {
                 write("Mistbell Tavern 3.0 diagnostic log\n".toByteArray(StandardCharsets.UTF_8))
@@ -94,6 +98,18 @@ class DiagnosticLogStore(
     }
 
     companion object {
+        private val activeNpuMatrices = AtomicInteger(0)
+
+        fun beginNpuMatrix() {
+            activeNpuMatrices.incrementAndGet()
+        }
+
+        fun endNpuMatrix() {
+            check(activeNpuMatrices.decrementAndGet() >= 0) { "NPU matrix lock underflow." }
+        }
+
+        fun isNpuMatrixRunning(): Boolean = activeNpuMatrices.get() > 0
+
         const val LOG_FILE_NAME = "mistbell-diagnostics.log"
         const val MAX_LOG_BYTES = 1024 * 1024
         const val MAX_EVENT_CHARS = 100

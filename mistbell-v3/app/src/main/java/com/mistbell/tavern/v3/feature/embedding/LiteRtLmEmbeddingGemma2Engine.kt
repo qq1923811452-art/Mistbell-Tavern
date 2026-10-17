@@ -315,7 +315,9 @@ class LiteRtLmEmbeddingGemma2Engine(
             "embedding.npu.input_length_matrix.started",
             "caseLengths=${lengths.joinToString(",")}; modelProfile=QUALCOMM_SM8650; padding=not_applied; evidenceStatus=pending",
         )
-        for (length in lengths) {
+        DiagnosticLogStore.beginNpuMatrix()
+        try {
+            for (length in lengths) {
             val input = EmbeddingGemma2TextPolicy.formatSearchQuery("x".repeat(length))
             try {
                 initialize()
@@ -335,6 +337,9 @@ class LiteRtLmEmbeddingGemma2Engine(
             } finally {
                 close()
             }
+            }
+        } finally {
+            DiagnosticLogStore.endNpuMatrix()
         }
         val evidence = NpuEvidenceStore.write(appContext, modelFile, outcomes)
         logWarn(

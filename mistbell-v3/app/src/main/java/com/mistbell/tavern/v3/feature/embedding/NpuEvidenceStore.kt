@@ -108,11 +108,13 @@ internal object NpuEvidenceStore {
 
     fun hasValidEvidence(context: Context, modelFile: File): Boolean = runCatching {
         val directory = File(context.filesDir, "npu-evidence")
+        val evidenceFiles = directory.listFiles { candidate ->
+            candidate.name.startsWith("npu-evidence-") && candidate.name.endsWith(".json")
+        }.orEmpty().sortedByDescending(File::lastModified)
+        if (evidenceFiles.isEmpty()) return@runCatching false
         val currentApkHash = File(context.applicationInfo.sourceDir).sha256()
         val currentModelHash = modelFile.sha256()
-        directory.listFiles { candidate ->
-            candidate.name.startsWith("npu-evidence-") && candidate.name.endsWith(".json")
-        }.orEmpty().sortedByDescending(File::lastModified).any { file ->
+        evidenceFiles.any { file ->
             val sidecar = File(file.parentFile, file.name + ".sha256")
             val expectedFileHash = sidecar.readText(Charsets.UTF_8).trim().substringBefore(' ')
             if (expectedFileHash != file.sha256()) return@any false
