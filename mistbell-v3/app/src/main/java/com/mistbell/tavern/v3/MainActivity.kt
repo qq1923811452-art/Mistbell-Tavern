@@ -211,7 +211,7 @@ class MainActivity : ComponentActivity() {
             EmbeddingGemma2ModelAssetManager.MODEL_FILE_NAME
         }
         val profileKey = if (qualcomm) "embedding_public_model_name_qualcomm" else "embedding_public_model_name_portable"
-        val modelName = getSharedPreferences("mistbell-v3-settings", MODE_PRIVATE)
+        val publicModelName = getSharedPreferences("mistbell-v3-settings", MODE_PRIVATE)
             .getString(profileKey, null)
             ?.takeIf { it.endsWith(".litertlm", ignoreCase = true) }
             ?: canonicalModelName
@@ -241,14 +241,16 @@ class MainActivity : ComponentActivity() {
                 }
             }.orEmpty()
 
-        val modelDownloads = findDownloads(modelName)
-        val digestDownloads = findDownloads("$modelName.sha256")
+        val modelDownloads = findDownloads(publicModelName)
+        val digestDownloads = findDownloads("$publicModelName.sha256")
         val modelUri = modelDownloads.firstOrNull() ?: return@withContext
         val digestUri = digestDownloads.firstOrNull() ?: return@withContext
-        val modelTarget = File(directory, modelName)
-        val digestTarget = File(directory, "$modelName.sha256")
-        val modelTemporary = File(directory, "$modelName.restore")
-        val digestTemporary = File(directory, "$modelName.sha256.restore")
+        // The public file keeps its original name, while runtime storage uses the
+        // canonical name expected by EmbeddingGemma2ModelAssetManager.
+        val modelTarget = File(directory, canonicalModelName)
+        val digestTarget = File(directory, "$canonicalModelName.sha256")
+        val modelTemporary = File(directory, "$canonicalModelName.restore")
+        val digestTemporary = File(directory, "$canonicalModelName.sha256.restore")
         try {
             val modelInput = contentResolver.openInputStream(modelUri)
                 ?: throw IllegalStateException("Public model file could not be opened.")
