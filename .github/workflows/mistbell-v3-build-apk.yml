@@ -66,6 +66,13 @@ jobs:
           sha256sum "${libraries[@]}" > mistbell-v3/app/src/main/assets/native-runtime/litertlm-gpu.sha256
           echo "Packaged ${#libraries[@]} LiteRT-LM arm64 native libraries."
 
+      - name: Audit packaged native-library ABI and dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x .github/scripts/audit-native-libraries.sh
+          .github/scripts/audit-native-libraries.sh mistbell-v3/app/src/main/jniLibs/arm64-v8a
+
       - name: Ensure root Gradle wrapper is executable
         run: chmod +x ./gradlew
 
