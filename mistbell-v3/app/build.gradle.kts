@@ -53,6 +53,19 @@ kotlin {
     }
 }
 
+// Opt-in staging of the proprietary/local QAIRT payload and the matching LiteRT Qualcomm
+// dispatch plugin. Normal CI/builds remain usable without a local SDK; when enabled, preBuild
+// runs the strict allowlist/checksum staging script before Android packages jniLibs.
+val packageQualcommNpuRuntime = tasks.register<Exec>("packageQualcommNpuRuntime") {
+    onlyIf { providers.gradleProperty("enableQualcommNpuRuntime").orNull == "true" }
+    workingDir(rootProject.projectDir.parentFile)
+    commandLine("bash", ".github/scripts/package-litertlm-qualcomm-runtime.sh")
+}
+
+tasks.named("preBuild").configure {
+    dependsOn(packageQualcommNpuRuntime)
+}
+
 dependencies {
     val composeBom = platform("androidx.compose:compose-bom:2026.09.00")
     implementation(composeBom)
