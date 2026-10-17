@@ -180,34 +180,46 @@ jobs:
           unzip -Z1 "$apk" > build-artifacts/apk-entries.txt
           inventory="mistbell-v3/app/src/main/assets/native-runtime/qualcomm-sm8650-inventory.txt"
           test -s "$inventory"
-          while read -r library size; do
-            test -n "$library" || continue
+          mapfile -t inventory_lines < "$inventory"
+          [[ "${#inventory_lines[@]}" -gt 0 ]] || { echo "Qualcomm runtime inventory is empty." >&2; exit 1; }
+          for line in "${inventory_lines[@]}"; do
+            read -r library size extra <<< "$line"
+            [[ -n "${library:-}" && "$library" =~ ^[A-Za-z0-9._+-]+\.so$ && "${size:-}" =~ ^[0-9]+$ && -z "${extra:-}" ]] || {
+              echo "Malformed Qualcomm runtime inventory row." >&2
+              exit 1
+            }
             grep -Fxq "lib/arm64-v8a/$library" build-artifacts/apk-entries.txt || {
               echo "APK is missing staged runtime library: $library" >&2
               exit 1
             }
-          done < "$inventory"
+          done
 
           # Verify the GPU plugins are present and byte-for-byte match the pinned upstream
           # prebuilt manifest, so the device APK cannot silently regress to CPU-only packaging.
           gpu_checksums="$RUNNER_TEMP/litertlm-gpu.sha256"
           unzip -p "$apk" assets/native-runtime/litertlm-gpu.sha256 > "$gpu_checksums"
           test -s "$gpu_checksums"
+          mapfile -t gpu_checksum_lines < "$gpu_checksums"
+          [[ "${#gpu_checksum_lines[@]}" -eq 7 ]] || {
+            echo "Expected exactly 7 GPU checksum rows; found ${#gpu_checksum_lines[@]}." >&2
+            exit 1
+          }
           gpu_count=0
-          while read -r expected name; do
-            [[ "$expected" =~ ^[0-9a-fA-F]{64}$ ]]
-            [[ "$name" =~ ^[A-Za-z0-9._+-]+\.so$ ]]
+          for line in "${gpu_checksum_lines[@]}"; do
+            read -r expected name extra <<< "$line"
+            [[ -n "${expected:-}" && -n "${name:-}" && -z "${extra:-}" ]] || {
+              echo "Malformed GPU checksum row." >&2
+              exit 1
+            }
+            [[ "$expected" =~ ^[0-9a-fA-F]{64}$ ]] || { echo "Malformed SHA-256 for $name." >&2; exit 1; }
+            [[ "$name" =~ ^[A-Za-z0-9._+-]+\.so$ ]] || { echo "Malformed GPU library name: $name" >&2; exit 1; }
             actual="$(unzip -p "$apk" "lib/arm64-v8a/$name" | sha256sum | awk '{print $1}')"
             [[ "$actual" == "$expected" ]] || {
               echo "Packaged GPU runtime hash mismatch for $name" >&2
               exit 1
             }
             gpu_count=$((gpu_count + 1))
-          done < "$gpu_checksums"
-          test "$gpu_count" -eq 7 || {
-            echo "Expected 7 reviewed LiteRT-LM GPU libraries; found $gpu_count." >&2
-            exit 1
-          }
+          done
           echo "Verified all $gpu_count pinned LiteRT-LM GPU library hashes inside the device APK."
 
           (cd build-artifacts && sha256sum *.apk | tee SHA256SUMS.txt)
