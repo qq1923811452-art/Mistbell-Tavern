@@ -102,4 +102,32 @@ class LiteRtBackendAvailabilityTest {
             directory.deleteRecursively()
         }
     }
+
+    @Test
+    fun npuIsRejectedBelowAndroidApi31WhileCpuAndGpuRemainIndependent(): Unit {
+        val directory = kotlin.io.path.createTempDirectory(prefix = "litert-native-libs").toFile()
+        try {
+            LiteRtBackendAvailability.SM8650_NPU_REQUIRED_LIBRARIES.forEach {
+                File(directory, it).writeBytes(byteArrayOf(1))
+            }
+            LiteRtBackendAvailability.GPU_REQUIRED_LIBRARIES.forEach {
+                File(directory, it).writeBytes(byteArrayOf(1))
+            }
+
+            val result = LiteRtBackendAvailability.detect(
+                nativeLibraryDir = directory,
+                isArm64 = true,
+                npuModelCompatible = true,
+                npuRuntimeValidated = true,
+                androidApiLevel = 30,
+            )
+
+            assertTrue(result.isAvailable(InferenceBackend.CPU))
+            assertTrue(result.isAvailable(InferenceBackend.GPU))
+            assertFalse(result.isAvailable(InferenceBackend.NPU))
+            assertTrue(result.npuReason.orEmpty().contains("Android API 31"))
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
 }
