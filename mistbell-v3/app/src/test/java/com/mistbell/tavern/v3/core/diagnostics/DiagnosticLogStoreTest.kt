@@ -52,7 +52,7 @@ class DiagnosticLogStoreTest {
         val directory = kotlin.io.path.createTempDirectory(prefix = "mistbell-diagnostics-test").toFile()
         try {
             val store = DiagnosticLogStore(directory) { Instant.EPOCH }
-            val detail = "x".repeat(DiagnosticLogStore.MAX_DETAIL_CHARS - 80) +
+            val detail = "x".repeat(DiagnosticLogStore.MAX_DETAIL_CHARS - 20) +
                 " api_key=boundary-secret " + "z".repeat(2_000_000)
             store.warn("oversized.detail", detail)
             val text = File(directory, DiagnosticLogStore.LOG_FILE_NAME).readText()
