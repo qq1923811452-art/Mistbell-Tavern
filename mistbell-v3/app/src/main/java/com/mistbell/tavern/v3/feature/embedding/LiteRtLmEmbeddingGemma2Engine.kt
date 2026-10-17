@@ -46,11 +46,13 @@ class LiteRtLmEmbeddingGemma2Engine(
     private val appContext = context.applicationContext
     private val cacheDirectory = File(appContext.cacheDir, "litertlm-embeddinggemma2")
     private val lock = ReentrantLock()
+    private val npuEvidenceVerified = appContext.hasVerifiedNpuRuntimeManifest()
+    internal var lastNpuEvidenceResult: NpuEvidenceStore.WriteResult? = null
     private val backendAvailability = LiteRtBackendAvailability.detect(
         nativeLibraryDir = File(appContext.applicationInfo.nativeLibraryDir),
         isArm64 = Build.SUPPORTED_ABIS.any { it == "arm64-v8a" },
         npuModelCompatible = npuModelCompatible,
-        npuRuntimeValidated = appContext.hasVerifiedNpuRuntimeManifest(),
+        npuRuntimeValidated = npuEvidenceVerified,
         allowDiagnosticNpuProbe = allowDiagnosticNpuProbe,
         apkFiles = buildList {
             add(File(appContext.applicationInfo.sourceDir))
@@ -267,9 +269,9 @@ class LiteRtLmEmbeddingGemma2Engine(
                             modelId = EmbeddingGemma2TextPolicy.MODEL_ID,
                             // LiteRT-LM exposes the configured delegate, not proof that the NPU
                             // executed this operation. Do not label NPU as an active backend without evidence.
-                            backend = if (selectedBackend == InferenceBackend.NPU) InferenceBackend.UNKNOWN else selectedBackend,
+                            backend = if (selectedBackend == InferenceBackend.NPU && !npuEvidenceVerified) InferenceBackend.UNKNOWN else selectedBackend,
                             runtimeId = runtimeId,
-                            backendEvidence = BackendEvidence.CONFIGURED_ONLY,
+                            backendEvidence = if (selectedBackend == InferenceBackend.NPU && npuEvidenceVerified) BackendEvidence.DEVICE_VERIFIED else BackendEvidence.CONFIGURED_ONLY,
                             acceleratorName = selectedBackend.name,
                             fallbackReason = fallbackReason,
                             lastExecutionMillis = elapsedMillis,
@@ -346,6 +348,7 @@ class LiteRtLmEmbeddingGemma2Engine(
             DiagnosticLogStore.endNpuMatrix()
         }
         val evidence = NpuEvidenceStore.write(appContext, modelFile, outcomes)
+        lastNpuEvidenceResult = evidence
         logWarn(
             "embedding.npu.input_length_matrix.completed",
             "cases=${outcomes.size}; successes=${evidence.successes}; failures=${outcomes.size - evidence.successes}; status=${evidence.status}; evidence=${evidence.file.name}; apkSha256MatchesCurrent=${evidence.apkSha256MatchesCurrent}",

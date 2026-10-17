@@ -84,10 +84,7 @@ internal object NpuEvidenceStore {
             .put("mappedLibraries", mappings)
             .put("runtimeLibrarySha256", libraryHashes)
             .put("cases", cases)
-        val temp = File(directory, file.name + ".tmp")
-        temp.writeText(json.toString(2), Charsets.UTF_8)
-        check(temp.renameTo(file)) { "NPU evidence JSON could not be finalized." }
-        checksum.writeText(file.sha256() + "  " + file.name + "\n", Charsets.UTF_8)
+        writeAtomicEvidence(file, checksum, json)
 
         val currentApkHash = apk.sha256OrEmpty()
         val apkStillMatches = apkAfter.isNotBlank() && apkAfter == currentApkHash
@@ -97,8 +94,7 @@ internal object NpuEvidenceStore {
         if (status == "verified" && (!apkStillMatches || !evidenceHashMatches)) {
             json.put("status", "packaged_not_device_verified")
                 .put("apkSha256MatchesCurrent", apkStillMatches)
-            file.writeText(json.toString(2), Charsets.UTF_8)
-            checksum.writeText(file.sha256() + "  " + file.name + "\n", Charsets.UTF_8)
+            writeAtomicEvidence(file, checksum, json)
         }
         val finalStatus = runCatching {
             JSONObject(file.readText(Charsets.UTF_8)).optString("status", "packaged_not_device_verified")
@@ -132,6 +128,17 @@ internal object NpuEvidenceStore {
                 NpuEvidenceStatusPolicy.shouldVerify(true, true, cases, mappings, requiredMappings)
         }
     }.getOrDefault(false)
+
+    private fun writeAtomicEvidence(file: File, checksum: File, json: JSONObject) {
+        val temp = File(file.parentFile, file.name + ".tmp")
+        val tempChecksum = File(file.parentFile, file.name + ".sha256.tmp")
+        temp.writeText(json.toString(2), Charsets.UTF_8)
+        tempChecksum.writeText(temp.sha256() + "  " + file.name + "\n", Charsets.UTF_8)
+        if (checksum.exists()) check(checksum.delete()) { "Old NPU evidence checksum could not be replaced." }
+        if (file.exists()) check(file.delete()) { "Old NPU evidence could not be replaced." }
+        check(tempChecksum.renameTo(checksum)) { "NPU evidence checksum could not be finalized." }
+        check(temp.renameTo(file)) { "NPU evidence JSON could not be finalized." }
+    }
 
     private fun collectLibraryHashes(context: Context, mapsText: String): JSONObject {
         val mappedFiles = mapsText.lineSequence().mapNotNull { line ->
@@ -198,6 +205,8 @@ internal object NpuEvidenceStore {
 }
 
 internal object NpuEvidenceStatusPolicy {
+    private val expectedInputLengths = listOf(1, 32, 74, 128, 256, 512, 1024)
+
     fun shouldVerify(
         modelHashMatches: Boolean,
         apkHashMatches: Boolean,
@@ -205,10 +214,14 @@ internal object NpuEvidenceStatusPolicy {
         mappedLibraries: JSONObject,
         requiredMappings: List<String>,
     ): Boolean {
-        if (!modelHashMatches || !apkHashMatches || cases.length() != 7) return false
+        if (!modelHashMatches || !apkHashMatches || cases.length() != expectedInputLengths.size) return false
+        val actualInputLengths = (0 until cases.length()).map { index ->
+            cases.optJSONObject(index)?.optInt("inputChars", -1) ?: -1
+        }
+        if (actualInputLengths != expectedInputLengths) return false
         val allSucceeded = (0 until cases.length()).all { index ->
             val case = cases.optJSONObject(index)
-            case?.optString("result") == "success" && case.optInt("dimensions", -1) == 768
+            case != null && case.optString("result") == "success" && case.optInt("dimensions", -1) == 768
         }
         return allSucceeded && requiredMappings.all { mappedLibraries.optBoolean(it, false) }
     }

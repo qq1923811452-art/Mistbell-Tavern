@@ -25,10 +25,12 @@ class NpuEvidenceStatusPolicyTest {
         }
         assertFalse(NpuEvidenceStatusPolicy.shouldVerify(true, true, failed, mappings(true), REQUIRED))
         assertFalse(NpuEvidenceStatusPolicy.shouldVerify(true, true, cases(), mappings(false), REQUIRED))
+        val wrongLengths = cases().apply { put(0, JSONObject().put("inputChars", 2).put("result", "success").put("dimensions", 768)) }
+        assertFalse(NpuEvidenceStatusPolicy.shouldVerify(true, true, wrongLengths, mappings(true), REQUIRED))
     }
 
     private fun cases(): JSONArray = JSONArray().apply {
-        repeat(7) { put(JSONObject().put("result", "success").put("dimensions", 768)) }
+        listOf(1, 32, 74, 128, 256, 512, 1024).forEach { chars -> put(JSONObject().put("inputChars", chars).put("result", "success").put("dimensions", 768)) }
     }
 
     private fun mappings(value: Boolean): JSONObject = JSONObject().apply {

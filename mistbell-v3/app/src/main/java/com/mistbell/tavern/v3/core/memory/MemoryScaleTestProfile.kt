@@ -12,19 +12,19 @@ enum class MemoryScaleTestProfile(
     val purpose: String,
 ) {
     SMALL(
-        recordCount = 10_000,
-        label = "Small · 10k",
+        recordCount = 1_000,
+        label = "Small · 1k",
         purpose = "Establish baseline retrieval quality, latency, and storage.",
     ),
     MEDIUM(
-        recordCount = 50_000,
-        label = "Medium · 50k",
+        recordCount = 5_000,
+        label = "Medium · 5k",
         purpose = "Measure growth in lookup latency and memory use.",
     ),
     LARGE(
-        recordCount = 100_000,
-        label = "Large · 100k",
-        purpose = "Stress-test larger indexes and verify retrieval remains useful.",
+        recordCount = 10_000,
+        label = "Large · 10k",
+        purpose = "Stress-test the largest snapshot that fits the current 8,000,000-value budget at 768 dimensions.",
     );
 
     companion object {
