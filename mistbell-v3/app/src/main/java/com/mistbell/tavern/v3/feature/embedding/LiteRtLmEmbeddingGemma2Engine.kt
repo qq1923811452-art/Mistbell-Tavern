@@ -47,14 +47,23 @@ class LiteRtLmEmbeddingGemma2Engine(
         npuModelCompatible = npuModelCompatible,
         npuRuntimeValidated = appContext.hasVerifiedNpuRuntimeManifest(),
     )
+
+    // The Qualcomm SM8650 bundle is an NPU-targeted model. Never try to run it through
+    // GPU/CPU just because the NPU runtime is missing: that can fail deep inside tensor
+    // allocation and misleadingly looks like a generic memory problem. Portable bundles
+    // retain the normal NPU -> GPU -> CPU fallback order.
     private val backendOrder = preferredBackends
         .filter { it != InferenceBackend.UNKNOWN && backendAvailability.isAvailable(it) }
+        .filter { !npuModelCompatible || it == InferenceBackend.NPU }
         .distinct()
+
     private val skippedBackendReasons = buildList {
         if (InferenceBackend.NPU in preferredBackends && !backendAvailability.isAvailable(InferenceBackend.NPU)) {
             add("NPU skipped: " + backendAvailability.npuReason)
         }
-        if (InferenceBackend.GPU in preferredBackends && !backendAvailability.isAvailable(InferenceBackend.GPU)) {
+        if (npuModelCompatible) {
+            add("Qualcomm SM8650 model is NPU-only; GPU/CPU fallback is disabled. Select the portable model for CPU/GPU testing.")
+        } else if (InferenceBackend.GPU in preferredBackends && !backendAvailability.isAvailable(InferenceBackend.GPU)) {
             add("GPU skipped: " + backendAvailability.gpuReason)
         }
     }
@@ -67,7 +76,13 @@ class LiteRtLmEmbeddingGemma2Engine(
     override val runtimeId: String = RUNTIME_ID
 
     init {
-        require(backendOrder.isNotEmpty()) { "No requested backend is available; CPU must remain enabled as a safe fallback." }
+        require(backendOrder.isNotEmpty()) {
+            if (npuModelCompatible) {
+                "The Qualcomm SM8650 model requires a verified NPU runtime. Install a compatible runtime or select the portable EmbeddingGemma model for CPU/GPU testing."
+            } else {
+                "No requested embedding backend is available. Check the packaged GPU runtime; CPU fallback is available only for the portable model."
+            }
+        }
         skippedBackendReasons.forEach { logWarn("embedding.backend.skipped.preflight", it) }
         require(modelFile.extension.equals("litertlm", ignoreCase = true)) {
             "EmbeddingGemma 2 model must be a .litertlm bundle."
