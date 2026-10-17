@@ -44,6 +44,7 @@ jobs:
           upstream_dir="$RUNNER_TEMP/LiteRT-LM"
           git clone --depth 1 --branch v0.18.0 https://github.com/google-ai-edge/LiteRT-LM.git "$upstream_dir"
           test "$(git -C "$upstream_dir" describe --tags --exact-match)" = "v0.18.0"
+          test "$(git -C "$upstream_dir" rev-parse HEAD)" = "b2f686e2ed4718fb84ec398a61dd59ca0f0aff27"
           source_dir="$upstream_dir/prebuilt/android_arm64"
           destination="mistbell-v3/app/src/main/jniLibs/arm64-v8a"
           test -d "$source_dir"
@@ -59,7 +60,8 @@ jobs:
           test -s "$destination/libLiteRtOpenClAccelerator.so"
           install -m 0644 "$upstream_dir/LICENSE" \
             mistbell-v3/app/src/main/assets/native-runtime/LITERT_LM_LICENSE.txt
-          printf 'source=v0.18.0\n' > mistbell-v3/app/src/main/assets/native-runtime/litertlm-gpu.properties
+          printf 'source_tag=v0.18.0\n' > mistbell-v3/app/src/main/assets/native-runtime/litertlm-gpu.properties
+          printf 'source_commit=b2f686e2ed4718fb84ec398a61dd59ca0f0aff27\n' >> mistbell-v3/app/src/main/assets/native-runtime/litertlm-gpu.properties
           printf 'packaged_libraries=%s\n' "${#libraries[@]}" >> mistbell-v3/app/src/main/assets/native-runtime/litertlm-gpu.properties
           sha256sum "${libraries[@]}" > mistbell-v3/app/src/main/assets/native-runtime/litertlm-gpu.sha256
           echo "Packaged ${#libraries[@]} LiteRT-LM arm64 native libraries."
