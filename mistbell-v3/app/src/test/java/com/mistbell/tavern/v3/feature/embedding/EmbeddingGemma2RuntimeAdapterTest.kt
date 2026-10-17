@@ -63,7 +63,7 @@ class EmbeddingGemma2RuntimeAdapterTest {
                 outputDimensions = 1024,
             )
         }
-        assertTrue(error.message!!.contains("natively outputs 768 dimensions"))
+        assertTrue(error.message!!.contains("Choose 128, 256, 512, or 768."))
         assertEquals(0, calls)
     }
 
