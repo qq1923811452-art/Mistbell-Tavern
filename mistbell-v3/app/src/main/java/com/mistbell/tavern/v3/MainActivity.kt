@@ -192,6 +192,31 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        val exportNpuEvidence = registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+            if (uri == null) {
+                diagnostics.info("npu.evidence.export.cancelled")
+            } else {
+                lifecycleScope.launch {
+                    try {
+                        withContext(Dispatchers.IO) {
+                            val directory = File(filesDir, "npu-evidence")
+                            val latest = directory.listFiles { file ->
+                                file.name.startsWith("npu-evidence-") && file.name.endsWith(".json")
+                            }.orEmpty().maxByOrNull(File::lastModified)
+                                ?: throw IllegalStateException("No NPU evidence file exists yet.")
+                            val output = contentResolver.openOutputStream(uri)
+                                ?: throw IllegalStateException("Selected export destination could not be opened.")
+                            output.use { target -> latest.inputStream().use { it.copyTo(target) } }
+                        }
+                        diagnostics.info("npu.evidence.export.succeeded")
+                        Toast.makeText(this@MainActivity, "NPU 证据 JSON 已导出", Toast.LENGTH_LONG).show()
+                    } catch (error: Exception) {
+                        diagnostics.warn("npu.evidence.export.failed", error::class.java.simpleName)
+                        Toast.makeText(this@MainActivity, "暂无可导出的 NPU 证据，或导出失败", Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+        }
         val exportDiagnostics = registerForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
             if (uri == null) {
                 diagnostics.info("diagnostics.export.cancelled")
@@ -235,6 +260,7 @@ class MainActivity : ComponentActivity() {
                             onRunEmbeddingTest = { runEmbeddingSelfTest() },
                             onRunNpuDiagnosticProbe = { runEmbeddingSelfTest(allowDiagnosticNpuProbe = true) },
                             onRunAlternateBackendBenchmark = { runAlternateBackendBenchmark() },
+                            onExportNpuEvidence = { exportNpuEvidence.launch("npu-evidence.json") },
                             onExportLogs = { exportDiagnostics.launch("mistbell-diagnostics.txt") },
                         )
                     }
@@ -492,7 +518,7 @@ class MainActivity : ComponentActivity() {
             return
         }
         if (allowDiagnosticNpuProbe) {
-            diagnostics.warn("embedding.npu.diagnostic_probe.started", "modelProfile=QUALCOMM_SM8650; purpose=one_shot_runtime_diagnosis; verifiedStatus=unchanged")
+            diagnostics.warn("embedding.npu.diagnostic_probe.started", "modelProfile=QUALCOMM_SM8650; purpose=one_shot_runtime_diagnosis; evidencePolicy=runtime_generated_only")
         }
         if (selectedEmbeddingDimensions > com.mistbell.tavern.v3.feature.embedding.EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS) {
             operationMessage = "当前 EmbeddingGemma 2 原生最高支持 768 维；已保留 ${selectedEmbeddingDimensions} 维选项，但需要切换到原生支持该维度的模型后才能测试。未启动不兼容的推理任务。"
@@ -529,10 +555,13 @@ class MainActivity : ComponentActivity() {
                     val outcomes = initializedRuntime.runNpuInputLengthProbe()
                     val successes = outcomes.count { "; result=success;" in it }
                     inferenceStatus = initializedRuntime.currentStatus()
-                    operationMessage = "NPU 输入长度矩阵结束：成功 $successes/${outcomes.size}，失败 ${outcomes.size - successes}。详细每档结果和 native 错误已写入诊断日志；此实验不代表 NPU 已验证。"
+                    val evidence = initializedRuntime.lastNpuEvidenceResult
+                    val evidenceStatus = evidence?.status ?: "not_generated"
+                    val evidenceName = evidence?.file?.name ?: "none"
+                    operationMessage = "NPU 输入长度矩阵结束：成功 $successes/${outcomes.size}，失败 ${outcomes.size - successes}；证据状态=$evidenceStatus；文件=$evidenceName。可导出证据 JSON。"
                     diagnostics.info(
                         "embedding.npu.diagnostic_probe.matrix_summary",
-                        "cases=${outcomes.size}; successes=$successes; failures=${outcomes.size - successes}; verified=false",
+                        "cases=${outcomes.size}; successes=$successes; failures=${outcomes.size - successes}; status=$evidenceStatus; evidenceFile=$evidenceName; apkSha256MatchesCurrent=${evidence?.apkSha256MatchesCurrent}",
                     )
                 } else {
                     initializedRuntime.initialize()
@@ -582,7 +611,7 @@ class MainActivity : ComponentActivity() {
                         "Qualcomm NPU 诊断探测失败：$detail。运行库仍保持未验证状态；请导出诊断日志检查 native/QAIRT 错误。"
                     } else "本地推理测试失败：$detail"
                     if (allowDiagnosticNpuProbe) {
-                        diagnostics.error("embedding.npu.diagnostic_probe.inference_failed", "verified=false; $detail")
+                        diagnostics.error("embedding.npu.diagnostic_probe.inference_failed", "evidenceStatus=not_generated; $detail")
                     }
                     diagnostics.error("embedding.selftest.failed", detail)
                 }
@@ -615,6 +644,7 @@ private fun DevelopmentHome(
     onRunEmbeddingTest: () -> Unit,
     onRunNpuDiagnosticProbe: () -> Unit,
     onRunAlternateBackendBenchmark: () -> Unit,
+    onExportNpuEvidence: () -> Unit,
     onExportLogs: () -> Unit,
 ) {
     Scaffold(
@@ -718,7 +748,7 @@ private fun DevelopmentHome(
                             Text("仅供开发诊断：将尝试初始化 Qualcomm NPU，不会把运行库标记为已验证，也不会自动启用聊天生产路径。若 SDK/ABI 不兼容，可能失败；失败日志可用于定位。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Spacer(Modifier.height(6.dp))
                             Button(onClick = onRunNpuDiagnosticProbe, enabled = !operationBusy, modifier = Modifier.fillMaxWidth()) {
-                                Text("运行 NPU 输入长度矩阵（7 档，未验证）")
+                                Text("运行 NPU 输入长度矩阵（7 档并生成证据）")
                             }
                             Spacer(Modifier.height(6.dp))
                             Button(onClick = onRunAlternateBackendBenchmark, enabled = !operationBusy, modifier = Modifier.fillMaxWidth()) {
@@ -738,8 +768,12 @@ private fun DevelopmentHome(
                             style = MaterialTheme.typography.bodyMedium,
                         )
                         Spacer(Modifier.height(10.dp))
-                        Button(onClick = onExportLogs, modifier = Modifier.fillMaxWidth()) {
+                        Button(onClick = onExportLogs, enabled = !operationBusy, modifier = Modifier.fillMaxWidth()) {
                             Text("导出诊断日志")
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Button(onClick = onExportNpuEvidence, enabled = !operationBusy, modifier = Modifier.fillMaxWidth()) {
+                            Text("导出最新 NPU 证据 JSON")
                         }
                     }
                 }
