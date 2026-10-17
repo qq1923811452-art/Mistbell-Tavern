@@ -3,6 +3,8 @@ package com.mistbell.tavern.v3.feature.embedding
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.security.MessageDigest
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -106,6 +108,40 @@ class EmbeddingGemma2ModelAssetManagerTest {
         assertEquals(64, EmbeddingGemma2ModelAssetManager.PORTABLE_MODEL_SHA256.length)
         assertTrue(EmbeddingGemma2ModelAssetManager.QUALCOMM_SM8650_MODEL_DOWNLOAD_URL.contains("ed3f5e1/embeddinggemma-2-740m_Qualcomm_SM8650.litertlm"))
         assertEquals(64, EmbeddingGemma2ModelAssetManager.QUALCOMM_SM8650_MODEL_SHA256.length)
+    }
+
+    @Test
+    fun cancelledImportRemovesTemporaryFilesAndReleasesTransferLock(): Unit = runBlocking {
+        val directory = kotlin.io.path.createTempDirectory(prefix = "embedding-model-cancel-test").toFile()
+        try {
+            val manager = EmbeddingGemma2ModelAssetManager(directory)
+            val largeBytes = ByteArray(2 * 1024 * 1024) { (it % 251).toByte() }
+            lateinit var importJob: Job
+
+            importJob = launch {
+                manager.importModel(
+                    "embeddinggemma-2-740m.litertlm",
+                    ByteArrayInputStream(largeBytes),
+                    onProgress = { _, _ -> importJob.cancel() },
+                )
+            }
+            importJob.join()
+
+            assertTrue(importJob.isCancelled)
+            assertFalse(File(directory, "${EmbeddingGemma2ModelAssetManager.MODEL_FILE_NAME}.import").exists())
+            assertFalse(File(directory, "${EmbeddingGemma2ModelAssetManager.MODEL_FILE_NAME}.sha256.tmp").exists())
+            assertFalse(File(directory, EmbeddingGemma2ModelAssetManager.MODEL_FILE_NAME).exists())
+
+            val validRetryBytes = "retry-after-cancellation".toByteArray()
+            val retried = manager.importModel(
+                "embeddinggemma-2-740m.litertlm",
+                ByteArrayInputStream(validRetryBytes),
+            )
+            assertEquals(validRetryBytes.size.toLong(), retried.sizeBytes)
+            assertEquals(retried.sha256, manager.verifyInstalled()!!.sha256)
+        } finally {
+            directory.deleteRecursively()
+        }
     }
 
     private fun writeModelAndDigest(directory: File, bytes: ByteArray): File {
