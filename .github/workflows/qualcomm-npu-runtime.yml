@@ -148,7 +148,26 @@ jobs:
           audit_dir="$RUNNER_TEMP/qualcomm-apk-native-audit"
           mkdir -p "$audit_dir"
           unzip -q "$apk" 'lib/arm64-v8a/*.so' -d "$audit_dir"
-          bash .github/scripts/audit-native-libraries.sh "$audit_dir/lib/arm64-v8a"
+          extracted="$audit_dir/lib/arm64-v8a"
+          host_libs="$audit_dir/host-arm64"
+          mkdir -p "$host_libs"
+          shopt -s nullglob
+          dsp_skeletons=("$extracted"/libQnnHtpV75*Skel.so)
+          test "${#dsp_skeletons[@]}" -gt 0 || { echo "No Qualcomm HTP V75 DSP skeleton found in the APK." >&2; exit 1; }
+          for library in "$extracted"/*.so; do
+            case "$(basename "$library")" in
+              libQnnHtpV75*Skel.so) ;; # Hexagon DSP ELF, not an Android AArch64 host library.
+              *) cp "$library" "$host_libs/" ;;
+            esac
+          done
+          bash .github/scripts/audit-native-libraries.sh "$host_libs"
+          for skeleton in "${dsp_skeletons[@]}"; do
+            readelf -h "$skeleton" | grep -Eq "Machine:[[:space:]]*QUALCOMM DSP6 Processor" || {
+              echo "Expected a Qualcomm DSP6/V75 skeleton, got an unexpected ELF architecture: $skeleton" >&2
+              exit 1
+            }
+            echo "Verified Qualcomm DSP skeleton architecture: $(basename "$skeleton")"
+          done
 
       - name: Verify APK contains the staged runtime and record hashes
         shell: bash
