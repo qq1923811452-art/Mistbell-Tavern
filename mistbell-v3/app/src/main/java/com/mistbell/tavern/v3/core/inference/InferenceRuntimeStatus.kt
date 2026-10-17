@@ -53,6 +53,13 @@ data class InferenceRuntimeStatus(
             phase == InferencePhase.READY || phase == InferencePhase.RUNNING || phase == InferencePhase.FALLBACK) {
             "NPU cannot be reported while no runtime is active."
         }
+        require(
+            backend != InferenceBackend.NPU ||
+                backendEvidence == BackendEvidence.RUNTIME_REPORTED ||
+                backendEvidence == BackendEvidence.DEVICE_VERIFIED,
+        ) {
+            "NPU cannot be reported as active without runtime-reported or device-verified execution evidence."
+        }
     }
 
     companion object {
