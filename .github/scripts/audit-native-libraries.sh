@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Keep ELF header parsing stable across runners with different locales.
+export LC_ALL=C
+
 root="${1:-mistbell-v3/app/src/main/jniLibs/arm64-v8a}"
 test -d "$root"
 
@@ -44,7 +47,7 @@ for lib in "${libraries[@]}"; do
   fi
   packaged["$name"]=1
   header="$(readelf -h "$lib")"
-  grep -q 'Machine:.*AArch64' <<< "$header" || {
+  grep -Eq '^[[:space:]]*Machine:[[:space:]]*AArch64([[:space:]]|$)' <<< "$header" || {
     echo "Wrong ELF architecture (expected AArch64): $lib" >&2
     exit 1
   }
