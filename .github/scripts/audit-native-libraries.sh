@@ -78,7 +78,7 @@ for lib in "${libraries[@]}"; do
   dynamic="${dynamic_info[$name]}"
   while IFS= read -r needed; do
     [[ -n "$needed" ]] || continue
-    printf '%s -> %s\\n' "$name" "$needed" >> "$report"
+    printf '%s -> %s\n' "$name" "$needed" >> "$report"
     if [[ -n "${packaged[$needed]+x}" || -n "${android_system[$needed]+x}" ]]; then
       continue
     fi
@@ -88,7 +88,7 @@ for lib in "${libraries[@]}"; do
     fi
     echo "Unresolved/unknown DT_NEEDED dependency: $name -> $needed"
     missing=1
-  done < <(sed -n 's/.*Shared library: \\[(.*)\\].*/\\1/p' <<< "$dynamic")
+  done < <(sed -n 's/.*Shared library: \[\(.*\)\].*/\1/p' <<< "$dynamic")
 done
 
 echo "ELF architecture and dependency report:"
