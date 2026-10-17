@@ -25,7 +25,7 @@ object EmbeddingGemma2TextPolicy {
     fun formatDocument(text: String, title: String? = null): String {
         require(text.isNotBlank()) { "Document text must not be blank." }
         val safeTitle = title?.trim()?.takeIf(String::isNotEmpty) ?: "none"
-        require('\\n' !in safeTitle && '\\r' !in safeTitle) {
+        require('\n' !in safeTitle && '\r' !in safeTitle) {
             "Document title must be a single line."
         }
         return "task: search result | title: $safeTitle | text: ${text.trim()}"
