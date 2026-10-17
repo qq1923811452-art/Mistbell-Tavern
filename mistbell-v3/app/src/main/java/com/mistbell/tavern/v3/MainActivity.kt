@@ -181,23 +181,40 @@ class MainActivity : ComponentActivity() {
         val relativePath = "${Environment.DIRECTORY_DOWNLOADS}/向量模型/"
         val collection = MediaStore.Downloads.EXTERNAL_CONTENT_URI
 
-        fun findDownload(displayName: String): Uri? =
+        fun findDownloads(displayName: String): List<Uri> =
             contentResolver.query(
                 collection,
-                arrayOf(MediaStore.MediaColumns._ID),
-                "${MediaStore.MediaColumns.DISPLAY_NAME} = ? AND ${MediaStore.MediaColumns.RELATIVE_PATH} = ?",
-                arrayOf(displayName, relativePath),
+                arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.RELATIVE_PATH),
+                "${MediaStore.MediaColumns.DISPLAY_NAME} = ?",
+                arrayOf(displayName),
                 null,
             )?.use { cursor ->
-                if (cursor.moveToFirst()) Uri.withAppendedPath(collection, cursor.getLong(0).toString()) else null
-            }
+                val idColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
+                val pathColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.RELATIVE_PATH)
+                buildList {
+                    while (cursor.moveToNext()) {
+                        val storedPath = cursor.getString(pathColumn).orEmpty().trimEnd('/') + "/"
+                        val expectedPath = relativePath.trimEnd('/') + "/"
+                        if (storedPath.equals(expectedPath, ignoreCase = true)) {
+                            add(Uri.withAppendedPath(collection, cursor.getLong(idColumn).toString()))
+                        }
+                    }
+                }
+            }.orEmpty()
 
         listOf(modelName, "$modelName.sha256").forEach { name ->
-            val uri = findDownload(name) ?: return@forEach
+            val matchingDownloads = findDownloads(name)
+            val uri = matchingDownloads.firstOrNull() ?: return@forEach
             val target = File(directory, name)
             val input = contentResolver.openInputStream(uri) ?: return@forEach
             input.use { source ->
                 target.outputStream().buffered().use { output -> source.copyTo(output) }
+            }
+            // If Android has multiple MediaStore rows for the same filename and normalized
+            // Downloads/向量模型 path, keep the successfully restored row and remove stale
+            // duplicate entries. Do not touch same-named files in any other directory.
+            matchingDownloads.drop(1).forEach { duplicateUri ->
+                contentResolver.delete(duplicateUri, null, null)
             }
         }
     }
