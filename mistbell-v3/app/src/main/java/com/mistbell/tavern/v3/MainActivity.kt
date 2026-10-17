@@ -627,6 +627,7 @@ private fun InferenceStatusCard(status: InferenceRuntimeStatus) {
     val phaseLabel = when (status.phase) {
         InferencePhase.NOT_INITIALIZED -> "尚未初始化"
         InferencePhase.LOADING_MODEL -> "正在加载模型"
+        InferencePhase.INITIALIZED -> "已初始化，尚未验证真实推理"
         InferencePhase.READY -> "已就绪"
         InferencePhase.RUNNING -> "正在推理"
         InferencePhase.FALLBACK -> "已回退"
