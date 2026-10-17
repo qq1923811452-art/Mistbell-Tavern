@@ -17,11 +17,11 @@ done
 # A RUNPATH/RPATH is acceptable only when every colon-separated entry is
 # relocatable relative to the library via $ORIGIN (or a subdirectory of it).
 # Keep this check's self-tests independent of any actual APK libraries.
-if ! grep -Eq '\\((RPATH|RUNPATH)\\)' <<< ' 0x0000001d (RUNPATH) Library runpath: [$ORIGIN/lib]'; then
+if ! grep -Eq '\((RPATH|RUNPATH)\)' <<< ' 0x0000001d (RUNPATH) Library runpath: [$ORIGIN/lib]'; then
   echo "RPATH/RUNPATH detector self-test failed." >&2
   exit 1
 fi
-if grep -Eq '\\((RPATH|RUNPATH)\\)' <<< ' 0x0000001d (RUNPATH) Library runpath: [/tmp]' && [[ '$ORIGIN/lib' != '$ORIGIN' && '$ORIGIN/lib' != '$ORIGIN/'* ]]; then
+if grep -Eq '\((RPATH|RUNPATH)\)' <<< ' 0x0000001d (RUNPATH) Library runpath: [/tmp]' && [[ '$ORIGIN/lib' != '$ORIGIN' && '$ORIGIN/lib' != '$ORIGIN/'* ]]; then
   echo "RPATH/RUNPATH policy self-test failed." >&2
   exit 1
 fi
@@ -82,7 +82,7 @@ for lib in "${libraries[@]}"; do
   # all offending libraries in one run makes the dependency fix complete.
   while IFS= read -r path_line; do
     [[ -n "$path_line" ]] || continue
-    if [[ "$path_line" =~ \\[(.*)\\] ]]; then
+    if [[ "$path_line" =~ \[(.*)\] ]]; then
       path_value="${BASH_REMATCH[1]}"
       IFS=: read -r -a path_entries <<< "$path_value"
       for path_entry in "${path_entries[@]}"; do
@@ -93,14 +93,14 @@ for lib in "${libraries[@]}"; do
     else
       rpath_violations+=("$lib: unable to parse RPATH/RUNPATH entry: $path_line")
     fi
-  done < <(grep -E '\\((RPATH|RUNPATH)\\)' <<< "$dynamic" || true)
+  done < <(grep -E '\((RPATH|RUNPATH)\)' <<< "$dynamic" || true)
 
   dynamic_info["$name"]="$dynamic"
 done
 
 if [[ "${#rpath_violations[@]}" -gt 0 ]]; then
-  echo "Unexpected RPATH/RUNPATH entries (only \\$ORIGIN and \\$ORIGIN/... are allowed):" >&2
-  printf '  - %s\\n' "${rpath_violations[@]}" >&2
+  echo "Unexpected RPATH/RUNPATH entries (only \$ORIGIN and \$ORIGIN/... are allowed):" >&2
+  printf '  - %s\n' "${rpath_violations[@]}" >&2
   echo "Native library audit failed: found ${#rpath_violations[@]} disallowed RPATH/RUNPATH entr(y/ies)." >&2
   exit 1
 fi
@@ -113,7 +113,7 @@ for lib in "${libraries[@]}"; do
   dynamic="${dynamic_info[$name]}"
   while IFS= read -r needed; do
     [[ -n "$needed" ]] || continue
-    printf '%s -> %s\\n' "$name" "$needed" >> "$report"
+    printf '%s -> %s\n' "$name" "$needed" >> "$report"
     if [[ -n "${packaged[$needed]+x}" || -n "${android_system[$needed]+x}" ]]; then
       continue
     fi
@@ -123,7 +123,7 @@ for lib in "${libraries[@]}"; do
     fi
     echo "Unresolved/unknown DT_NEEDED dependency: $name -> $needed"
     missing=1
-  done < <(sed -n 's/.*Shared library: \\[\\(.*\\)\\].*/\\1/p' <<< "$dynamic")
+  done < <(sed -n 's/.*Shared library: \[\(.*\)\].*/\1/p' <<< "$dynamic")
 done
 
 echo "ELF architecture and dependency report:"
