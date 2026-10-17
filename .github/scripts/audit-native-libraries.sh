@@ -29,7 +29,7 @@ done
 # These are device/vendor-provided dependencies on relevant devices, not APK
 # payloads. Manifest uses-native-library declarations do not mean to bundle them.
 declare -A device_provided=()
-for name in libvndksupport.so libOpenCL.so; do
+for name in libvndksupport.so libOpenCL.so libcdsprpc.so; do
   device_provided["$name"]=1
 done
 
