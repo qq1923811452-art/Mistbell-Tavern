@@ -139,6 +139,17 @@ jobs:
           chmod +x ./gradlew
           ./gradlew -p mistbell-v3 :app:assembleDebug -PenableQualcommNpuRuntime=true --no-daemon --no-parallel
 
+      - name: Audit native library dependencies in the final APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="$(find mistbell-v3/app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          test -n "$apk" && test -s "$apk"
+          audit_dir="$RUNNER_TEMP/qualcomm-apk-native-audit"
+          mkdir -p "$audit_dir"
+          unzip -q "$apk" 'lib/arm64-v8a/*.so' -d "$audit_dir"
+          bash .github/scripts/audit-native-libraries.sh "$audit_dir/lib/arm64-v8a"
+
       - name: Verify APK contains the staged runtime and record hashes
         shell: bash
         run: |
