@@ -581,7 +581,7 @@ class MainActivity : ComponentActivity() {
                         "Qualcomm 专用模型已导入且 SHA-256 校验通过，但当前 APK 没有经过验证的 NPU 运行库，因此暂时不能执行该模型。已导入模型不会被删除。请切换到通用版，下载/导入通用模型后进行 CPU/GPU 测试；Qualcomm 专用模型仍保留在公共下载目录。"
                     diagnostics.warn(
                         "embedding.selftest.blocked.npu_runtime_unverified",
-                        "modelSha256=${verifiedAsset.sha256}; action=select_portable_model_for_cpu_gpu_test",
+                        "modelSha256=${verifiedAsset?.sha256.orEmpty()}; action=select_portable_model_for_cpu_gpu_test",
                     )
                 } else {
                     operationMessage = "本地推理测试失败：$detail"
