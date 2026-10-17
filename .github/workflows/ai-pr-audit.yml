@@ -244,11 +244,11 @@ jobs:
                       err_body = "<unreadable>"
                   err_body = err_body.replace(api_key, "[REDACTED API KEY]")
                   err_body = re.sub(
-                      r"(?i)(authorization\\s*:\\s*bearer\\s+)[^\\s\\\"'<>]+",
-                      r"\\1[REDACTED]",
+                      r"(?i)(authorization\s*:\s*bearer\s+)[^\s\\"'<>]+",
+                      r"\1[REDACTED]",
                       err_body,
                   )
-                  err_body = re.sub(r"[\\x00-\\x08\\x0b-\\x1f\\x7f]", " ", err_body)
+                  err_body = re.sub(r"[\x00-\x08\x0b-\x1f\x7f]", " ", err_body)
                   print(f"AI relay request failed on chunk {chunk_index}/{len(diff_chunks)} with HTTP {exc.code}: {err_body}")
                   raise SystemExit(1)
               except Exception as exc:
@@ -267,8 +267,8 @@ jobs:
                       raise ValueError("relay response has empty or non-text content")
                   cleaned = answer.strip()
                   if cleaned.startswith("```"):
-                      cleaned = re.sub(r"^```(?:json)?\\s*", "", cleaned)
-                      cleaned = re.sub(r"\\s*```$", "", cleaned)
+                      cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
+                      cleaned = re.sub(r"\s*```$", "", cleaned)
                   chunk_report = json.loads(cleaned)
                   if not isinstance(chunk_report, dict) or not isinstance(chunk_report.get("summary"), str):
                       raise ValueError("chunk response has invalid summary")
