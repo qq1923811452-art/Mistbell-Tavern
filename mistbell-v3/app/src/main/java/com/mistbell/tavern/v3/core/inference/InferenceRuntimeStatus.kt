@@ -3,7 +3,7 @@ package com.mistbell.tavern.v3.core.inference
 /** Backend selected/reported by the adapter; consult backendEvidence before inferring hardware execution. */
 enum class InferenceBackend { CPU, GPU, NPU, UNKNOWN }
 
-enum class InferencePhase { NOT_INITIALIZED, LOADING_MODEL, READY, RUNNING, FALLBACK, FAILED }
+enum class InferencePhase { NOT_INITIALIZED, LOADING_MODEL, INITIALIZED, READY, RUNNING, FALLBACK, FAILED }
 
 /** Evidence level for a backend label; a configured delegate is not proof of hardware execution. */
 enum class BackendEvidence { NOT_AVAILABLE, CONFIGURED_ONLY, RUNTIME_REPORTED, DEVICE_VERIFIED }
@@ -49,8 +49,8 @@ data class InferenceRuntimeStatus(
         require(phase != InferencePhase.READY || (modelId != null && runtimeId != null)) {
             "Ready status requires a model and runtime."
         }
-        require(backend != InferenceBackend.NPU || phase == InferencePhase.READY ||
-            phase == InferencePhase.RUNNING || phase == InferencePhase.FALLBACK) {
+        require(backend != InferenceBackend.NPU || phase == InferencePhase.INITIALIZED ||
+            phase == InferencePhase.READY || phase == InferencePhase.RUNNING || phase == InferencePhase.FALLBACK) {
             "NPU cannot be reported while no runtime is active."
         }
     }
