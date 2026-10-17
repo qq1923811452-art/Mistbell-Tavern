@@ -64,6 +64,7 @@ jobs:
           printf 'source_tag=v0.18.0\n' > mistbell-v3/app/src/main/assets/native-runtime/litertlm-gpu.properties
           printf 'source_commit=b2f686e2ed4718fb84ec398a61dd59ca0f0aff27\n' >> mistbell-v3/app/src/main/assets/native-runtime/litertlm-gpu.properties
           printf 'source_directory=prebuilt/android_arm64\n' >> mistbell-v3/app/src/main/assets/native-runtime/litertlm-gpu.properties
+          printf 'validation_state=packaged_not_device_verified\n' >> mistbell-v3/app/src/main/assets/native-runtime/litertlm-gpu.properties
           printf 'packaged_libraries=%s\n' "${#libraries[@]}" >> mistbell-v3/app/src/main/assets/native-runtime/litertlm-gpu.properties
           sha256sum "${libraries[@]}" > mistbell-v3/app/src/main/assets/native-runtime/litertlm-gpu.sha256
           : > mistbell-v3/app/src/main/assets/native-runtime/litertlm-gpu-inventory.txt
