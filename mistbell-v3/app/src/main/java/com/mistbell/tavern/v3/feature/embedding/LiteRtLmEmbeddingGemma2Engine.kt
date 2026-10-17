@@ -304,7 +304,7 @@ class LiteRtLmEmbeddingGemma2Engine(
             .take(3)
             .joinToString(" <- ") { "${it::class.java.simpleName}: ${it.message ?: "no message"}" }
             .takeIf(String::isNotBlank)
-            ?.let { "; causes=$it }
+            ?.let { "; causes=$it" }
             .orEmpty()
         val frame = error.stackTrace.firstOrNull()?.let {
             "; at ${it.className}.${it.methodName}(${it.fileName}:${it.lineNumber})"
