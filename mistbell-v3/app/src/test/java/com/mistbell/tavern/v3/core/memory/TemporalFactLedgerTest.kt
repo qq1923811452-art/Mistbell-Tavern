@@ -77,6 +77,22 @@ class TemporalFactLedgerTest {
     }
 
     @Test
+    fun conflictingObservationsAtSameMillisecondDoNotCreateZeroLengthHistory() {
+        val tea = observation(turn = "turn-1", value = "tea", at = 100L)
+        val coffee = observation(turn = "turn-2", value = "coffee", at = 100L)
+
+        val forward = TemporalFactLedger.apply(emptyList(), listOf(tea, coffee))
+        val reversed = TemporalFactLedger.apply(emptyList(), listOf(coffee, tea))
+
+        assertEquals(1, forward.size)
+        assertEquals(forward, reversed)
+        assertEquals("tea", forward.single().value)
+        assertTrue(forward.single().isCurrent)
+        assertNull(forward.single().validUntilEpochMillis)
+        assertEquals(forward, TemporalFactLedger.apply(forward, listOf(coffee)))
+    }
+
+    @Test
     fun sourceTurnContributesToStableIdentity() {
         val first = observation(turn = "turn-1", value = "tea", at = 100L)
         val second = observation(turn = "turn-2", value = "tea", at = 100L)
