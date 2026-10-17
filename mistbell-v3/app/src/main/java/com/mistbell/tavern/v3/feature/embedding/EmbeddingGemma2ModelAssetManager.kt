@@ -11,6 +11,8 @@ import java.security.MessageDigest
 import java.util.concurrent.locks.ReentrantLock
 import java.util.concurrent.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 
 data class DownloadedEmbeddingModel(
@@ -77,6 +79,7 @@ class EmbeddingGemma2ModelAssetManager(
                 FileOutputStream(temporaryFile).use { output ->
                     val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
                     while (true) {
+                        currentCoroutineContext().ensureActive()
                         val count = input.read(buffer)
                         if (count < 0) break
                         downloadedBytes += count
@@ -175,6 +178,7 @@ class EmbeddingGemma2ModelAssetManager(
                     FileOutputStream(temporaryFile).use { output ->
                         val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
                         while (true) {
+                            currentCoroutineContext().ensureActive()
                             val count = source.read(buffer)
                             if (count < 0) break
                             importedBytes += count
