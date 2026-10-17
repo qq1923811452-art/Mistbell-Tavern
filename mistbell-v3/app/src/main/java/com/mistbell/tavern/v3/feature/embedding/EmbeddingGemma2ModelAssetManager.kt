@@ -43,6 +43,7 @@ class EmbeddingGemma2ModelAssetManager(
     private val modelFile = File(modelDirectory, selectedModelFileName)
     private val digestFile = File(modelDirectory, "$selectedModelFileName.sha256")
     private val downloadLock = ReentrantLock()
+    @Volatile private var selectedLocalModelFile: File? = null
 
     suspend fun download(
         onProgress: (downloadedBytes: Long, totalBytes: Long?) -> Unit = { _, _ -> },
@@ -190,8 +191,10 @@ class EmbeddingGemma2ModelAssetManager(
                     "The Qualcomm SM8650-specific model requires a verified NPU runtime profile; use the portable model for CPU/GPU testing."
                 }
             }
+            val verifiedFile = sourceFile.canonicalFile
+            selectedLocalModelFile = verifiedFile
             DownloadedEmbeddingModel(
-                file = sourceFile.canonicalFile,
+                file = verifiedFile,
                 sizeBytes = sizeBytes,
                 sha256 = sha256,
                 isQualcommSm8650Optimized = isQualcommModel,
@@ -299,6 +302,33 @@ class EmbeddingGemma2ModelAssetManager(
 
     suspend fun verifyInstalled(): DownloadedEmbeddingModel? = withContext(Dispatchers.IO) {
         try {
+            // Prefer an explicitly selected external file (e.g. the user's existing Downloads
+            // model). Re-hash it on verification; do not copy it into modelDirectory or create a
+            // digest sidecar next to the user's file.
+            val externalFile = selectedLocalModelFile
+            if (externalFile != null) {
+                if (!externalFile.isFile || !externalFile.canRead() ||
+                    externalFile.length() < 1L || externalFile.length() > MAX_MODEL_BYTES
+                ) return@withContext null
+                val externalDigest = MessageDigest.getInstance("SHA-256")
+                externalFile.inputStream().buffered().use { input ->
+                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        externalDigest.update(buffer, 0, count)
+                    }
+                }
+                val actualExternal = externalDigest.digest().toHex()
+                val isQualcommExternal = actualExternal.equals(QUALCOMM_SM8650_MODEL_SHA256, ignoreCase = true)
+                if (isQualcommExternal != preferQualcommSm8650Model) return@withContext null
+                return@withContext DownloadedEmbeddingModel(
+                    file = externalFile,
+                    sizeBytes = externalFile.length(),
+                    sha256 = actualExternal,
+                    isQualcommSm8650Optimized = isQualcommExternal,
+                )
+            }
             if (!modelFile.isFile || !digestFile.isFile || (modelFile.length() < 1L || modelFile.length() > MAX_MODEL_BYTES)) return@withContext null
             val expected = digestFile.readText(Charsets.UTF_8).trim().substringBefore(' ').trim()
             if (!expected.matches(Regex("[0-9a-fA-F]{64}"))) return@withContext null
