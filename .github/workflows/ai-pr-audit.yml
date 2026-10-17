@@ -238,18 +238,8 @@ jobs:
                   with urllib.request.urlopen(request, timeout=300) as response:
                       response_body = response.read().decode("utf-8", errors="replace")
               except urllib.error.HTTPError as exc:
-                  try:
-                      err_body = exc.read().decode("utf-8", errors="replace")[:500]
-                  except Exception:
-                      err_body = "<unreadable>"
-                  err_body = err_body.replace(api_key, "[REDACTED API KEY]")
-                  err_body = re.sub(
-                      r"(?i)(authorization\s*:\s*bearer\s+)[^\s\\"'<>]+",
-                      r"\1[REDACTED]",
-                      err_body,
-                  )
-                  err_body = re.sub(r"[\x00-\x08\x0b-\x1f\x7f]", " ", err_body)
-                  print(f"AI relay request failed on chunk {chunk_index}/{len(diff_chunks)} with HTTP {exc.code}: {err_body}")
+                  # Do not print untrusted relay error bodies; they may contain sensitive details.
+                  print(f"AI relay request failed on chunk {chunk_index}/{len(diff_chunks)} with HTTP {exc.code}")
                   raise SystemExit(1)
               except Exception as exc:
                   print(f"AI relay request failed on chunk {chunk_index}/{len(diff_chunks)}:", type(exc).__name__)
