@@ -41,7 +41,6 @@ class MemoryExtractionQueueWorker(
                 val completion = CompletableDeferred<Boolean>()
                 runner.runNext(
                         buildInput = { job ->
-                            successTurnByJobId[job.id] = job.turnIds.last()
                             val handle = requireNotNull(job.credentialHandle) {
                                 "Durable queue jobs require a saved credential handle."
                             }
