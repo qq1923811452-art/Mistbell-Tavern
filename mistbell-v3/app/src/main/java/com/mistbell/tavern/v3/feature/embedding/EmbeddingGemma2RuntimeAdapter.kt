@@ -89,7 +89,6 @@ class EmbeddingGemma2RuntimeAdapter(
         }
         if (raw.status.runtimeId != engine.runtimeId ||
             raw.status.runtimeId.isNullOrBlank() ||
-            raw.status.backend == InferenceBackend.UNKNOWN ||
             raw.status.backendEvidence == BackendEvidence.NOT_AVAILABLE
         ) {
             throw EmbeddingOutputException("Engine did not report a runtime ID and backend evidence.")
