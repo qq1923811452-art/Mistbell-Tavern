@@ -120,15 +120,16 @@ class LiteRtLmEmbeddingGemma2Engine(
                     // Keep construction inside the guarded block too: JNI/native loading can fail
                     // before initialize() is reached, and that failure must still be diagnosed
                     // and allow the next configured backend to be tried.
-                    candidate = EmbeddingEngine(
+                    val created = EmbeddingEngine(
                         EmbeddingEngineConfig(
                             modelPath = modelFile.absolutePath,
                             backend = backend.toLiteRtBackend(),
                             cacheDir = cacheDirectory.absolutePath,
                         ),
                     )
-                    candidate.initialize()
-                    engine = candidate
+                    candidate = created
+                    created.initialize()
+                    engine = created
                     selectedBackend = backend
                     hasSuccessfulInference = false
                     fallbackReason = failures.takeIf { it.isNotEmpty() }
