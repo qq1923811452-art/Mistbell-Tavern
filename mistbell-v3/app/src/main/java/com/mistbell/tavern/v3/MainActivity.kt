@@ -473,26 +473,35 @@ class MainActivity : ComponentActivity() {
                     backend = InferenceBackend.UNKNOWN,
                     runtimeId = initializedRuntime.runtimeId,
                 )
-                initializedRuntime.initialize()
-                inferenceStatus = initializedRuntime.currentStatus()
-                operationMessage = "模型已初始化，正在执行真实文本向量测试……"
-                inferenceStatus = initializedRuntime.currentStatus().copy(phase = InferencePhase.RUNNING)
-                val result = EmbeddingGemma2RuntimeAdapter(
-                    initializedRuntime,
-                    outputDimensions = selectedEmbeddingDimensions,
-                ).embedQueries(
-                    listOf("Mistbell Tavern local embedding diagnostic test"),
-                )
-                inferenceStatus = result.status
-                operationMessage =
-                    "真实本地推理成功：${result.vectors.single().size} 维向量；配置后端 ${result.status.backend}。硬件实际调用仍需结合设备日志确认。"
                 if (allowDiagnosticNpuProbe) {
-                    diagnostics.info("embedding.npu.diagnostic_probe.inference_succeeded", "configuredBackend=${result.status.acceleratorName}; evidence=${result.status.backendEvidence}; verified=false")
+                    operationMessage = "正在运行 Qualcomm NPU 输入长度对照矩阵（7 次独立初始化/推理）……"
+                    val outcomes = initializedRuntime.runNpuInputLengthProbe()
+                    val successes = outcomes.count { "; result=success;" in it }
+                    inferenceStatus = initializedRuntime.currentStatus()
+                    operationMessage = "NPU 输入长度矩阵结束：成功 $successes/\${outcomes.size}，失败 \${outcomes.size - successes}。详细每档结果和 native 错误已写入诊断日志；此实验不代表 NPU 已验证。"
+                    diagnostics.info(
+                        "embedding.npu.diagnostic_probe.matrix_summary",
+                        "cases=\${outcomes.size}; successes=$successes; failures=\${outcomes.size - successes}; verified=false",
+                    )
+                } else {
+                    initializedRuntime.initialize()
+                    inferenceStatus = initializedRuntime.currentStatus()
+                    operationMessage = "模型已初始化，正在执行真实文本向量测试……"
+                    inferenceStatus = initializedRuntime.currentStatus().copy(phase = InferencePhase.RUNNING)
+                    val result = EmbeddingGemma2RuntimeAdapter(
+                        initializedRuntime,
+                        outputDimensions = selectedEmbeddingDimensions,
+                    ).embedQueries(
+                        listOf("Mistbell Tavern local embedding diagnostic test"),
+                    )
+                    inferenceStatus = result.status
+                    operationMessage =
+                        "真实本地推理成功：\${result.vectors.single().size} 维向量；配置后端 \${result.status.backend}。硬件实际调用仍需结合设备日志确认。"
+                    diagnostics.info(
+                        "embedding.selftest.succeeded",
+                        "dimensions=\${result.vectors.single().size}; configuredBackend=\${result.status.backend}; evidence=\${result.status.backendEvidence}; elapsedMs=\${result.status.lastExecutionMillis}",
+                    )
                 }
-                diagnostics.info(
-                    "embedding.selftest.succeeded",
-                    "dimensions=${result.vectors.single().size}; configuredBackend=${result.status.backend}; evidence=${result.status.backendEvidence}; elapsedMs=${result.status.lastExecutionMillis}",
-                )
             } catch (cancelled: CancellationException) {
                 diagnostics.warn("embedding.selftest.cancelled")
                 throw cancelled
