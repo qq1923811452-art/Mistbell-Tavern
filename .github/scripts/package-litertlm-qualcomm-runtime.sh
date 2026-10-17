@@ -36,12 +36,13 @@ readonly host_libraries=(
   libQnnSystem.so
   libQnnHtp.so
   libQnnHtpPrepare.so
-  libQnnHtpV75Stub.so
-  libQnnHtpV75CalculatorStub.so
 )
-readonly dsp_libraries=(
-  libQnnHtpV75Skel.so
-)
+# The exact stub/skeleton set is QAIRT-version-specific. Stage every V75 HTP stub
+# and DSP skeleton shipped by that same SDK instead of guessing optional filenames.
+mapfile -t stub_libraries < <(find "$qairt_host_dir" -maxdepth 1 -type f -name 'libQnnHtpV75*Stub.so' -printf '%f\\n' | sort)
+mapfile -t dsp_libraries < <(find "$qairt_hexagon_dir" -maxdepth 1 -type f -name 'libQnnHtpV75*Skel.so' -printf '%f\\n' | sort)
+test "${#stub_libraries[@]}" -gt 0 || { echo "No V75 HTP stub libraries found in $qairt_host_dir" >&2; exit 1; }
+test "${#dsp_libraries[@]}" -gt 0 || { echo "No V75 HTP DSP skeletons found in $qairt_hexagon_dir" >&2; exit 1; }
 
 mkdir -p "$destination" "$asset_dir"
 
@@ -51,6 +52,10 @@ for name in "${host_libraries[@]}"; do
     echo "Required SM8650/V75 QAIRT host library is missing: $source" >&2
     exit 1
   }
+done
+for name in "${stub_libraries[@]}"; do
+  source="$qairt_host_dir/$name"
+  test -s "$source" || { echo "Required V75 stub library is missing: $source" >&2; exit 1; }
 done
 for name in "${dsp_libraries[@]}"; do
   source="$qairt_hexagon_dir/$name"
@@ -62,7 +67,7 @@ done
 
 # Stage only the reviewed SM8650/V75 allowlist plus the explicitly supplied
 # Qualcomm dispatch plugin. Never rename a V73/V79 binary to make it look like V75.
-for name in "${host_libraries[@]}"; do
+for name in "${host_libraries[@]}" "${stub_libraries[@]}"; do
   source="$qairt_host_dir/$name"
   target="$destination/$name"
   if [[ -e "$target" ]]; then
@@ -116,7 +121,7 @@ inventory_tmp="$metadata_tmp/qualcomm-sm8650-inventory.txt"
 
 : > "$checksum_tmp"
 : > "$inventory_tmp"
-for name in "${host_libraries[@]}" "${dsp_libraries[@]}" libLiteRtDispatch_Qualcomm.so; do
+for name in "${host_libraries[@]}" "${stub_libraries[@]}" "${dsp_libraries[@]}" libLiteRtDispatch_Qualcomm.so; do
   library="$destination/$name"
   sha256sum "$library" >> "$checksum_tmp"
   printf '%s\t%s bytes\n' "$name" "$(stat -c '%s' "$library")" >> "$inventory_tmp"
