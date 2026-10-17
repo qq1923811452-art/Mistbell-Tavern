@@ -82,6 +82,21 @@ These must come from a mutually compatible, pinned LiteRT-LM/LiteRT/QAIRT combin
 - The guide currently lists a Gemma 3 1B Qualcomm model for SM8650. It does **not** by itself prove that the selected EmbeddingGemma 2 model can execute on the NPU through the same path. Confirm the exact EmbeddingGemma 2 model card/runtime requirements and run that exact model on SM8650 before advertising NPU support.
 - QAIRT versions are released separately from LiteRT-LM. Use the version explicitly validated with the chosen LiteRT/LiteRT-LM source and model; a version number shown as an example in docs is not an automatic compatibility guarantee.
 
+### Build integration added (not yet device-verified)
+
+- `mistbell-v3/app/build.gradle.kts` now configures legacy JNI packaging and an opt-in `packageQualcommNpuRuntime` Gradle task. Ordinary builds keep emulator/CPU-GPU ABI flexibility; NPU packaging builds are arm64-only.
+- `.github/scripts/package-litertlm-qualcomm-runtime.sh stages an explicit HTP V75 allowlist from a locally installed QAIRT SDK plus a separately built `libLiteRtDispatch_Qualcomm.so`. It writes a separate `qualcomm-sm8650.properties` manifest and SHA-256 inventory. The manifest is deliberately set to `packaged_not_device_verified` with ABI fields unverified, so the existing runtime gate continues to reject NPU until compatibility and real device inference are proven.
+- This script does **not** download QAIRT, build the dispatch plugin, or assert that any arbitrary QAIRT version is compatible. Those inputs must be pinned and reviewed first. Invoke the opt-in build only after setting `QUALCOMM_QAIRT_ROOT`, `QUALCOMM_QAIRT_VERSION` and `LITERT_QUALCOMM_DISPATCH_SO`:
+
+  ```bash
+  QUALCOMM_QAIRT_ROOT=/path/to/qairt/<exact-version> \\
+  QUALCOMM_QAIRT_VERSION=<exact-version> \\
+  LITERT_QUALCOMM_DISPATCH_SO=/path/to/libLiteRtDispatch_Qualcomm.so \\
+  ./gradlew :app:assembleDebug -PenableQualcommNpuRuntime=true
+  ```
+
+- After staging, run the native ELF audit and inspect the final APK's `lib/arm64-v8a/` entries. Do not set manifest fields to `verified` until the exact LiteRT-LM 0.18.0 + QAIRT/dispatch combination passes real inference on the Redmi K70 Pro.
+
 ### Required compatibility evidence before packaging
 - Exact LiteRT-LM v0.18.0 source tag **and full tag commit SHA**.
 - The LiteRT revision used by that tag/AAR and the matching Qualcomm dispatch build provenance.
@@ -109,17 +124,18 @@ These must come from a mutually compatible, pinned LiteRT-LM/LiteRT/QAIRT combin
 - [x] Validate the selected GPU prebuilt files are non-empty and expected plugin files exist; final APK ELF audit checks AArch64 and non-empty libraries.
 - [x] Inspect final APK ELF architecture, RPATH/RUNPATH and `DT_NEEDED` dependencies; fail build for unknown dependencies.
 - [x] Keep `libOpenCL.so` and `libvndksupport.so` classified as device/vendor-provided dependencies rather than public NDK libraries; reject accidentally bundling them in APK `jniLibs/`.
-- [ ] Keep GPU and NPU inventories/provenance separate.
-- [ ] Make Qualcomm runtime acquisition an explicit gated job until QAIRT source/version/license are approved; never fetch an unpinned SDK or silently accept a floating latest version.
+- [x] Keep GPU and NPU inventories/provenance separate.
+- [x] Add an opt-in Gradle packaging task and a strict local-QAIRT staging script; normal CI does not require proprietary SDK files.
+- [ ] Make a reproducible Qualcomm runtime acquisition/build job available after QAIRT source/version/license and dispatch compatibility are approved; never fetch an unpinned SDK or silently accept a floating latest version.
 - [x] Generate a GPU runtime manifest in the APK with upstream source revision, library hashes and `validation_state=packaged_not_device_verified`; manifest presence does not imply device verification.
-- [ ] Generate a separate Qualcomm/NPU runtime manifest only after the exact QAIRT/dispatch versions, complete inventory, license review and device evidence are verified.
+- [x] Generate a separate Qualcomm/NPU runtime manifest and SHA-256 inventory during opt-in staging; it remains explicitly unverified and cannot enable NPU yet.
 - [ ] Add tests for missing file, zero-byte file, wrong SoC generation, missing manifest, incompatible version, and unverified runtime.
 - [ ] Final device acceptance separately verifies CPU, GPU and NPU real inference and records each backend's actual result/fallback reason.
 
 ## 6. Current state
 
 - GPU packaging: Clean-Room CI run `38992442688` succeeded for source `f16ee722cf281707701fca0bbc5c23cc1aad9b4b` and published device-test artifact `mistbell-v3-device-test-apk-436` (artifact ID `12086265080`). The APK's `SOURCE.txt` matches that exact commit; `SHA256SUMS.txt` validates the APK; all seven GPU library hashes embedded in `assets/native-runtime/litertlm-gpu.sha256` match the actual `lib/arm64-v8a/*.so` bytes. This verifies reproducible packaging and integrity checks only. Real GPU inference on the Redmi K70 Pro is still required.
-- NPU: not yet packaged; QAIRT/dispatch version compatibility and redistribution conditions are not yet verified.
+- NPU: Gradle packaging integration and a strict staging script now exist. The actual Qualcomm .so payload is **not yet staged in this branch** because no approved local QAIRT SDK and matching dispatch build were available to this edit. QAIRT/dispatch compatibility, redistribution conditions and device inference remain unverified; NPU remains disabled.
 - CPU: engine initialization previously succeeded, but a real inference call failed in the device diagnostic. CPU is not accepted until that is fixed and a real vector is returned.
 - PR #61 must remain Open + Draft until CI, runtime verification and the user's device acceptance are complete.
 
