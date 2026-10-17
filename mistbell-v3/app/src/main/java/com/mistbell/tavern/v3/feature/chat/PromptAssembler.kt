@@ -1,10 +1,6 @@
 package com.mistbell.tavern.v3.feature.chat
 
-/**
- * Only the stable system prefix is eligible to remain byte-for-byte identical across turns.
- * Memories and activated worldbook entries are deliberately appended after that prefix so
- * volatile context does not churn the cacheable prefix.
- */
+/** A deterministic prompt layout with exactly one system message. */
 enum class PromptRole {
     SYSTEM,
     USER,
@@ -30,8 +26,8 @@ data class PromptAssemblyInput(
 )
 
 /**
- * Deterministic prompt ordering policy. Selection and token budgeting happen upstream; this
- * class never silently truncates content or changes the meaning of selected facts.
+ * Assembles role card -> worldbook -> memory into one system message, followed by history and
+ * the current user message. Selection and token budgeting happen upstream.
  */
 object PromptAssembler {
     fun assemble(input: PromptAssemblyInput): List<PromptMessage> {
@@ -47,26 +43,25 @@ object PromptAssembler {
             "Conversation history may contain only user and assistant messages."
         }
 
-        val stableParts = listOfNotNull(
-            input.stableSystemPrefix.trimEnd(),
-            input.stableCharacterDefinition?.trim()?.takeIf(String::isNotEmpty),
-        )
-        val result = mutableListOf(PromptMessage(PromptRole.SYSTEM, stableParts.joinToString("\n\n")))
+        val systemSections = buildList {
+            add(input.stableSystemPrefix.trimEnd())
+            input.stableCharacterDefinition?.trim()?.takeIf(String::isNotEmpty)?.let(::add)
 
-        val memoryFacts = input.activeMemoryFacts.map(String::trim).filter(String::isNotEmpty)
-        val worldbookEntries = input.activatedWorldbookEntries.map(String::trim).filter(String::isNotEmpty)
-        val dynamicSections = buildList {
-            if (memoryFacts.isNotEmpty()) {
-                add("Relevant memory facts:\n" + memoryFacts.joinToString("\n") { "- $it" })
-            }
+            val worldbookEntries = input.activatedWorldbookEntries
+                .map(String::trim)
+                .filter(String::isNotEmpty)
             if (worldbookEntries.isNotEmpty()) {
                 add("Activated worldbook entries:\n" + worldbookEntries.joinToString("\n\n"))
             }
-        }
-        if (dynamicSections.isNotEmpty()) {
-            result += PromptMessage(PromptRole.SYSTEM, dynamicSections.joinToString("\n\n"))
-        }
 
+            val memoryFacts = input.activeMemoryFacts.map(String::trim).filter(String::isNotEmpty)
+            if (memoryFacts.isNotEmpty()) {
+                add("Relevant memory facts:\n" + memoryFacts.joinToString("\n") { "- $it" })
+            }
+        }
+        val result = mutableListOf(
+            PromptMessage(PromptRole.SYSTEM, systemSections.joinToString("\n\n")),
+        )
         result += input.conversationHistory
         result += PromptMessage(PromptRole.USER, input.latestUserMessage.trim())
         return result.toList()

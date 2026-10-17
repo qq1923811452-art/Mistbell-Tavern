@@ -36,10 +36,31 @@ data class ChatStreamFailure(
     val safeMessage: String,
 )
 
+data class ChatTokenUsage(
+    val promptTokens: Int,
+    val completionTokens: Int,
+    val totalTokens: Int,
+    val cachedPromptTokens: Int? = null,
+)
+
+data class ChatGenerationOptions(
+    val temperature: Double = 0.7,
+    val maxTokens: Int = 4096,
+    val includeUsage: Boolean = true,
+) {
+    init {
+        require(temperature.isFinite() && temperature in 0.0..2.0) {
+            "Temperature must be finite and between 0.0 and 2.0."
+        }
+        require(maxTokens in 1..200_000) { "maxTokens must be between 1 and 200000." }
+    }
+}
+
 interface ChatStreamObserver {
     fun onDelta(text: String)
     fun onComplete()
     fun onFailure(failure: ChatStreamFailure)
+    fun onUsage(usage: ChatTokenUsage) = Unit
 }
 
 class ChatClientConfigurationException(message: String) : IllegalStateException(message)
@@ -64,7 +85,11 @@ class OpenAiCompatibleChatClient(
         .readTimeout(0, TimeUnit.MILLISECONDS)
         .build()
 
-    fun stream(messages: List<PromptMessage>, observer: ChatStreamObserver): Call {
+    fun stream(
+        messages: List<PromptMessage>,
+        observer: ChatStreamObserver,
+        options: ChatGenerationOptions = ChatGenerationOptions(),
+    ): Call {
         require(messages.isNotEmpty()) { "At least one prompt message is required." }
         val profile = providers.profileFor(ProviderKind.CHAT)
             ?: throw ChatClientConfigurationException("No enabled chat provider is explicitly selected.")
@@ -113,7 +138,14 @@ class OpenAiCompatibleChatClient(
         val body = JSONObject()
             .put("model", profile.modelId)
             .put("stream", true)
+            .put("temperature", options.temperature)
+            .put("max_tokens", options.maxTokens)
             .put("messages", messagesJson)
+            .also { payload ->
+                if (options.includeUsage) {
+                    payload.put("stream_options", JSONObject().put("include_usage", true))
+                }
+            }
             .toString()
             .toRequestBody(JSON_MEDIA_TYPE)
 
@@ -178,6 +210,29 @@ class OpenAiCompatibleChatClient(
                                 )
                                 return
                             }
+                            if (options.includeUsage) {
+                                event.optJSONObject("usage")?.let { usage ->
+                                    val promptTokens = usage.optInt("prompt_tokens", usage.optInt("input_tokens", 0))
+                                    val completionTokens = usage.optInt("completion_tokens", usage.optInt("output_tokens", 0))
+                                    val totalTokens = usage.optInt("total_tokens", promptTokens + completionTokens)
+                                    val details = usage.optJSONObject("prompt_tokens_details")
+                                    val cachedTokens = details?.let {
+                                        when {
+                                            it.has("cached_tokens") -> it.optInt("cached_tokens")
+                                            it.has("cache_read_input_tokens") -> it.optInt("cache_read_input_tokens")
+                                            else -> null
+                                        }
+                                    }
+                                    observer.onUsage(
+                                        ChatTokenUsage(
+                                            promptTokens = promptTokens.coerceAtLeast(0),
+                                            completionTokens = completionTokens.coerceAtLeast(0),
+                                            totalTokens = totalTokens.coerceAtLeast(0),
+                                            cachedPromptTokens = cachedTokens?.coerceAtLeast(0),
+                                        ),
+                                    )
+                                }
+                            }
                             val choices = event.optJSONArray("choices") ?: continue
                             val delta = choices.optJSONObject(0)?.optJSONObject("delta") ?: continue
                             val content = delta.opt("content")
@@ -191,7 +246,7 @@ class OpenAiCompatibleChatClient(
                                 safeMessage = if (call.isCanceled()) {
                                     "Generation was cancelled."
                                 } else {
-                                    "Chat stream was interrupted.",
+                                    "Chat stream was interrupted."
                                 },
                             ),
                         )

@@ -1,5 +1,6 @@
 package com.mistbell.tavern.v3.feature.embedding
 
+import com.mistbell.tavern.v3.core.inference.BackendEvidence
 import com.mistbell.tavern.v3.core.inference.InferenceBackend
 import com.mistbell.tavern.v3.core.inference.InferencePhase
 import com.mistbell.tavern.v3.core.inference.InferenceRuntimeStatus
@@ -15,16 +16,21 @@ class EmbeddingOutputValidatorTest {
         override suspend fun embed(texts: List<String>) = result(texts.size)
     }
 
-    private fun result(count: Int, dimensions: Int = 3, backend: InferenceBackend = InferenceBackend.CPU) =
-        EmbeddingBatch(
-            vectors = List(count) { List(dimensions) { 0.25f } },
-            status = InferenceRuntimeStatus(
-                phase = InferencePhase.READY,
-                modelId = model.modelId,
-                backend = backend,
-                runtimeId = runtime.runtimeId,
-            ),
-        )
+    private fun result(
+        count: Int,
+        dimensions: Int = 3,
+        backend: InferenceBackend = InferenceBackend.CPU,
+        vectorValue: Float = 0.25f,
+    ) = EmbeddingBatch(
+        vectors = List(count) { List(dimensions) { vectorValue } },
+        status = InferenceRuntimeStatus(
+            phase = InferencePhase.READY,
+            modelId = model.modelId,
+            backend = backend,
+            runtimeId = "test-runtime",
+            backendEvidence = BackendEvidence.RUNTIME_REPORTED,
+        ),
+    )
 
     @Test
     fun acceptsMatchingFiniteVectorsAndVerifiedRuntime() {
@@ -52,6 +58,22 @@ class EmbeddingOutputValidatorTest {
     fun rejectsUnverifiedBackend() {
         assertThrows(EmbeddingOutputException::class.java) {
             EmbeddingOutputValidator.validate(runtime, listOf("hello"), result(1, backend = InferenceBackend.UNKNOWN))
+        }
+    }
+
+    @Test
+    fun rejectsBackendWithoutEvidence() {
+        val output = result(1).copy(
+            status = result(1).status.copy(backendEvidence = BackendEvidence.NOT_AVAILABLE),
+        )
+        assertThrows(EmbeddingOutputException::class.java) {
+            EmbeddingOutputValidator.validate(runtime, listOf("hello"), output)
+        }
+    }
+    @Test
+    fun rejectsZeroVector() {
+        assertThrows(EmbeddingOutputException::class.java) {
+            EmbeddingOutputValidator.validate(runtime, listOf("hello"), result(1, vectorValue = 0f))
         }
     }
 

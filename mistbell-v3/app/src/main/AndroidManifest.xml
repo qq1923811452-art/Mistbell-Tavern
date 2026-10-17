@@ -8,6 +8,9 @@
         android:label="Mistbell Tavern 3.0 Dev"
         android:supportsRtl="true"
         android:usesCleartextTraffic="false">
+        <uses-native-library android:name="libvndksupport.so" android:required="false" />
+        <uses-native-library android:name="libOpenCL.so" android:required="false" />
+        <uses-native-library android:name="libcdsprpc.so" android:required="false" />
         <activity
             android:name=".MainActivity"
             android:exported="true">

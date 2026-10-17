@@ -1,8 +1,19 @@
 package com.mistbell.tavern.v3
 
 import android.os.Bundle
+import android.os.Build
+import android.os.Environment
+import android.net.Uri
+import android.content.ContentValues
+import android.provider.MediaStore
 import androidx.activity.ComponentActivity
+import androidx.activity.result.contract.ActivityResultContracts
+import android.provider.OpenableColumns
 import androidx.activity.compose.setContent
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -15,6 +26,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -24,9 +36,28 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import android.widget.Toast
+import java.io.File
+import java.io.FileInputStream
+import java.security.MessageDigest
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import com.mistbell.tavern.v3.core.inference.BackendEvidence
+import com.mistbell.tavern.v3.feature.embedding.EmbeddingGemma2ModelAssetManager
+import com.mistbell.tavern.v3.feature.embedding.DownloadedEmbeddingModel
+import com.mistbell.tavern.v3.feature.embedding.EmbeddingGemma2RuntimeAdapter
+import com.mistbell.tavern.v3.feature.embedding.LiteRtLmEmbeddingGemma2Engine
+import com.mistbell.tavern.v3.core.diagnostics.DiagnosticLogStore
 import com.mistbell.tavern.v3.core.inference.InferenceBackend
 import com.mistbell.tavern.v3.core.inference.InferencePhase
 import com.mistbell.tavern.v3.core.inference.InferenceRuntimeStatus
+import com.mistbell.tavern.v3.feature.chat.ChatScreen
 
 private data class BuildStage(val title: String, val detail: String)
 
@@ -39,27 +70,588 @@ private val initialStages = listOf(
 )
 
 class MainActivity : ComponentActivity() {
+    private lateinit var diagnostics: DiagnosticLogStore
+    private lateinit var modelAssets: EmbeddingGemma2ModelAssetManager
+    private var activeEmbeddingEngine: LiteRtLmEmbeddingGemma2Engine? = null
+    private var inferenceStatus by mutableStateOf(InferenceRuntimeStatus.idle())
+    private var operationMessage by mutableStateOf("正在检查本地模型……")
+    private var operationBusy by mutableStateOf(false)
+    private var showChat by mutableStateOf(true)
+    private val embeddingDimensionOptions = listOf(128, 256, 512, 768, 1024, 1536, 2048)
+    private var selectedEmbeddingDimensions by mutableStateOf(768)
+    private var qualcommModelSelected by mutableStateOf(false)
+    private var modelProfileGeneration = 0
+
+    /**
+     * Some Android document providers expose a readable filesystem path (notably MediaStore
+     * entries in Downloads). Use it when available so selecting an existing model does not
+     * force a second copy. Providers that expose only a content URI use the private staging
+     * fallback because LiteRT-LM's model API currently requires a filesystem path.
+     */
+    @Suppress("DEPRECATION")
+    private fun resolveReadableModelFile(uri: Uri): File? = runCatching {
+        contentResolver.query(uri, arrayOf(MediaStore.MediaColumns.DATA), null, null, null)?.use { cursor ->
+            val column = cursor.getColumnIndex(MediaStore.MediaColumns.DATA)
+            if (!cursor.moveToFirst() || column < 0) return@use null
+            cursor.getString(column)?.takeIf(String::isNotBlank)?.let(::File)
+                ?.takeIf { it.isFile && it.canRead() }
+        }
+    }.getOrNull()
+
+    private fun createModelAssetManager(qualcomm: Boolean) =
+        EmbeddingGemma2ModelAssetManager(
+            modelDirectory = File(filesDir, "models"),
+            preferQualcommSm8650Model = qualcomm,
+        )
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        diagnostics = DiagnosticLogStore(filesDir)
+        val settings = getSharedPreferences("mistbell-v3-settings", MODE_PRIVATE)
+        selectedEmbeddingDimensions = settings
+            .getInt("embedding_output_dimensions", 768)
+            .takeIf { it in embeddingDimensionOptions } ?: 768
+        qualcommModelSelected = settings.getBoolean("embedding_qualcomm_sm8650_model", false)
+        modelAssets = createModelAssetManager(qualcommModelSelected)
+        diagnostics.info("app.started", "build=3.0.0-dev")
+        lifecycleScope.launch {
+            val profileAtStart = qualcommModelSelected
+            val assetsAtStart = modelAssets
+            val generationAtStart = modelProfileGeneration
+            val installed = withContext(Dispatchers.IO) { assetsAtStart.verifyInstalled() }
+            if (generationAtStart == modelProfileGeneration && !operationBusy) {
+                operationMessage = if (installed == null) {
+                    "软件内部尚未安装所选模型。可联网下载（自动备份到公共目录），或从公共目录选择已有模型导入。"
+                } else {
+                    "软件内部模型已校验：${installed.sizeBytes} bytes；SHA-256 一致。公共备份目录：${publicModelDirectoryLabel()}"
+                }
+            }
+            diagnostics.info(
+                "embedding.model.startup.check",
+                "profile=${if (profileAtStart) "QUALCOMM_SM8650" else "PORTABLE"}; installed=${installed != null}; stale=${generationAtStart != modelProfileGeneration}",
+            )
+        }
+        val importModel = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            if (uri == null) {
+                diagnostics.info("embedding.model.import.cancelled")
+            } else if (operationBusy) {
+                Toast.makeText(this, "当前操作尚未完成", Toast.LENGTH_LONG).show()
+            } else {
+                operationBusy = true
+                operationMessage = "正在导入本地 .litertlm 模型……"
+                lifecycleScope.launch {
+                    try {
+                        val sourceName = withContext(Dispatchers.IO) {
+                            contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                                val column = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                                if (cursor.moveToFirst() && column >= 0) cursor.getString(column) else null
+                            }
+                        } ?: throw IllegalStateException("无法读取所选文件名。")
+                        require(
+                            sourceName.endsWith(".litertlm", ignoreCase = true) &&
+                                (sourceName.contains("embeddinggemma", ignoreCase = true) ||
+                                    sourceName.contains("embedding-gemma", ignoreCase = true)),
+                        ) {
+                            "请选择文件名标明 EmbeddingGemma 的 .litertlm 模型文件。"
+                        }
+                        val input = withContext(Dispatchers.IO) { contentResolver.openInputStream(uri) }
+                            ?: throw IllegalStateException("所选文件无法打开。")
+                        operationMessage = "正在验证并复制到软件内部目录……"
+                        val imported = modelAssets.importModel(sourceName, input) { bytes, _ ->
+                            runOnUiThread { operationMessage = "模型导入中：${bytes / (1024 * 1024)} MiB" }
+                        }
+                        val settings = getSharedPreferences("mistbell-v3-settings", MODE_PRIVATE)
+                        val profileKey = if (qualcommModelSelected) "embedding_public_model_name_qualcomm" else "embedding_public_model_name_portable"
+                        val localPathKey = if (qualcommModelSelected) "embedding_local_model_path_qualcomm" else "embedding_local_model_path_portable"
+                        settings.edit()
+                            .remove(localPathKey)
+                            .remove(profileKey)
+                            .apply()
+                        operationMessage = "模型已校验并复制到软件内部目录：${imported.file.absolutePath}\nSHA-256：${imported.sha256}"
+                        diagnostics.info("embedding.model.import.private_copy", "bytes=${imported.sizeBytes}; sha256=${imported.sha256}")
+                        diagnostics.info("embedding.model.import.succeeded", "bytes=${imported.sizeBytes}; sha256=${imported.sha256}")
+                    } catch (cancelled: CancellationException) {
+                        diagnostics.warn("embedding.model.import.cancelled")
+                        throw cancelled
+                    } catch (error: Exception) {
+                        val detail = "${error::class.java.simpleName}: ${error.message ?: "model import failed"}"
+                            .take(InferenceRuntimeStatus.MAX_DETAIL_LENGTH)
+                        operationMessage = "模型导入失败：$detail"
+                        inferenceStatus = InferenceRuntimeStatus(
+                            phase = InferencePhase.FAILED,
+                            modelId = com.mistbell.tavern.v3.feature.embedding.EmbeddingGemma2TextPolicy.MODEL_ID,
+                            backend = InferenceBackend.UNKNOWN,
+                            runtimeId = null,
+                            lastError = detail,
+                        )
+                        diagnostics.error("embedding.model.import.failed", detail)
+                    } finally {
+                        operationBusy = false
+                    }
+                }
+            }
+        }
+
+        val exportNpuEvidence = registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+            if (uri == null) {
+                diagnostics.info("npu.evidence.export.cancelled")
+            } else {
+                lifecycleScope.launch {
+                    try {
+                        withContext(Dispatchers.IO) {
+                            val directory = File(filesDir, "npu-evidence")
+                            val latest = directory.listFiles { file ->
+                                file.name.startsWith("npu-evidence-") && file.name.endsWith(".json")
+                            }.orEmpty().maxByOrNull(File::lastModified)
+                                ?: throw IllegalStateException("No NPU evidence file exists yet.")
+                            val output = contentResolver.openOutputStream(uri)
+                                ?: throw IllegalStateException("Selected export destination could not be opened.")
+                            output.use { target -> latest.inputStream().use { it.copyTo(target) } }
+                        }
+                        diagnostics.info("npu.evidence.export.succeeded")
+                        Toast.makeText(this@MainActivity, "NPU 证据 JSON 已导出", Toast.LENGTH_LONG).show()
+                    } catch (error: Exception) {
+                        diagnostics.warn("npu.evidence.export.failed", error::class.java.simpleName)
+                        Toast.makeText(this@MainActivity, "暂无可导出的 NPU 证据，或导出失败", Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+        }
+        val exportDiagnostics = registerForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
+            if (uri == null) {
+                diagnostics.info("diagnostics.export.cancelled")
+            } else {
+                lifecycleScope.launch {
+                    try {
+                        withContext(Dispatchers.IO) {
+                            val output = contentResolver.openOutputStream(uri)
+                                ?: throw IllegalStateException("Selected export destination could not be opened.")
+                            output.use { diagnostics.exportTo(it) }
+                        }
+                        Toast.makeText(this@MainActivity, "诊断日志已导出", Toast.LENGTH_LONG).show()
+                        diagnostics.info("diagnostics.export.succeeded")
+                    } catch (error: Exception) {
+                        diagnostics.error("diagnostics.export.failed", error::class.java.simpleName + ": " + (error.message ?: "unknown error"))
+                        Toast.makeText(this@MainActivity, "日志导出失败，请重试", Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+        }
         setContent {
             MaterialTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background,
                 ) {
-                    DevelopmentHome()
+                    if (showChat) {
+                        ChatScreen(onBack = { showChat = false })
+                    } else {
+                        DevelopmentHome(
+                            inferenceStatus = inferenceStatus,
+                            operationMessage = operationMessage,
+                            operationBusy = operationBusy,
+                            onOpenChat = { showChat = true },
+                            onDownloadModel = ::downloadEmbeddingModel,
+                            onImportModel = { importModel.launch(arrayOf("*/*")) },
+                            qualcommModelSelected = qualcommModelSelected,
+                            onSelectModelProfile = ::selectModelProfile,
+                            selectedEmbeddingDimensions = selectedEmbeddingDimensions,
+                            onCycleEmbeddingDimensions = ::cycleEmbeddingDimensions,
+                            onRunEmbeddingTest = { runEmbeddingSelfTest() },
+                            onRunNpuDiagnosticProbe = { runEmbeddingSelfTest(allowDiagnosticNpuProbe = true) },
+                            onRunAlternateBackendBenchmark = { runAlternateBackendBenchmark() },
+                            onExportNpuEvidence = { exportNpuEvidence.launch("npu-evidence.json") },
+                            onExportLogs = { exportDiagnostics.launch("mistbell-diagnostics.txt") },
+                        )
+                    }
                 }
             }
         }
+    }
+
+    private fun closeActiveEmbeddingEngine() {
+        // Clear ownership before close so lifecycle transitions cannot close the same engine twice.
+        val engine = activeEmbeddingEngine
+        activeEmbeddingEngine = null
+        engine?.close()
+    }
+
+    private fun selectModelProfile(qualcomm: Boolean) {
+        if (operationBusy || qualcommModelSelected == qualcomm) return
+        closeActiveEmbeddingEngine()
+        qualcommModelSelected = qualcomm
+        modelProfileGeneration += 1
+        val generationAtSelection = modelProfileGeneration
+        val assetsAtSelection = createModelAssetManager(qualcomm)
+        modelAssets = assetsAtSelection
+        getSharedPreferences("mistbell-v3-settings", MODE_PRIVATE).edit()
+            .putBoolean("embedding_qualcomm_sm8650_model", qualcomm)
+            .apply()
+        diagnostics.info(
+            "embedding.model.profile.selected",
+            "profile=${if (qualcomm) "QUALCOMM_SM8650" else "PORTABLE"}",
+        )
+        operationMessage = if (qualcomm) {
+            "已选择 Qualcomm SM8650 专用模型。注意：选择专用模型不代表 NPU 运行库已就绪；下载后仍需实测。"
+        } else {
+            "已选择通用模型，适合先进行 CPU/GPU 兼容性测试。"
+        }
+        // Keep model selection, restore, download/import and self-test mutually exclusive.
+        // Without this guard, another operation could verify/read a model while restore atomically
+        // replaces its private copy, or a second profile selection could start a competing restore.
+        operationBusy = true
+        lifecycleScope.launch {
+            try {
+                val installed = withContext(Dispatchers.IO) { assetsAtSelection.verifyInstalled() }
+                if (generationAtSelection == modelProfileGeneration) {
+                    if (installed != null) {
+                        operationMessage = "所选模型已在软件内部目录校验通过。公共目录备份仍保留：${publicModelDirectoryLabel()}"
+                    } else if (!operationMessage.startsWith("公共模型恢复失败：")) {
+                        operationMessage += " 尚未找到已安装的此版本，可点击下载。"
+                    }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                val detail = "${error::class.java.simpleName}: ${error.message ?: "model profile verification failed"}"
+                    .take(InferenceRuntimeStatus.MAX_DETAIL_LENGTH)
+                diagnostics.error("embedding.model.profile.verify.failed", "profile=${if (qualcomm) "QUALCOMM_SM8650" else "PORTABLE"}; $detail")
+                if (generationAtSelection == modelProfileGeneration) {
+                    operationMessage = "模型配置检查失败：$detail"
+                }
+            } finally {
+                if (generationAtSelection == modelProfileGeneration) operationBusy = false
+            }
+        }
+    }
+
+    private data class PublicModelBackup(val displayName: String, val reused: Boolean)
+
+    private fun publicModelDirectoryLabel(): String =
+        "Download/向量模型/"
+
+    /** Saves a second, verified copy to public Downloads without overwriting existing files. */
+    private suspend fun backupModelToPublicDownloads(model: DownloadedEmbeddingModel): PublicModelBackup =
+        withContext(Dispatchers.IO) {
+            check(Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                "自动公共目录备份需要 Android 10 或更高版本；内部模型已安装，但备份未完成。"
+            }
+            val relativePath = Environment.DIRECTORY_DOWNLOADS + "/向量模型/"
+            val resolver = contentResolver
+            val baseName = model.file.name
+            var candidateIndex = 0
+            while (candidateIndex < 100) {
+                val candidateName = if (candidateIndex == 0) baseName else {
+                    val extension = baseName.substringAfterLast('.', "")
+                    val stem = baseName.substringBeforeLast('.', baseName)
+                    "$stem-backup-$candidateIndex.$extension"
+                }
+                val existing = resolver.query(
+                    MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                    arrayOf(MediaStore.Downloads._ID),
+                    "${MediaStore.Downloads.DISPLAY_NAME} = ? AND ${MediaStore.Downloads.RELATIVE_PATH} = ?",
+                    arrayOf(candidateName, relativePath),
+                    null,
+                )?.use { cursor ->
+                    if (cursor.moveToFirst()) Uri.withAppendedPath(
+                        MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                        cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Downloads._ID)).toString(),
+                    ) else null
+                }
+                if (existing != null) {
+                    val existingHash = resolver.openInputStream(existing)?.use { input ->
+                        val digest = MessageDigest.getInstance("SHA-256")
+                        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                        while (true) {
+                            val count = input.read(buffer)
+                            if (count < 0) break
+                            digest.update(buffer, 0, count)
+                        }
+                        digest.digest().joinToString("") { "%02x".format(it) }
+                    }
+                    if (existingHash.equals(model.sha256, ignoreCase = true)) {
+                        return@withContext PublicModelBackup(candidateName, reused = true)
+                    }
+                    candidateIndex++
+                    continue
+                }
+                val values = ContentValues().apply {
+                    put(MediaStore.Downloads.DISPLAY_NAME, candidateName)
+                    put(MediaStore.Downloads.MIME_TYPE, "application/octet-stream")
+                    put(MediaStore.Downloads.RELATIVE_PATH, relativePath)
+                    put(MediaStore.Downloads.IS_PENDING, 1)
+                }
+                val destination = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                    ?: throw IllegalStateException("无法在公共目录创建模型备份文件。")
+                try {
+                    resolver.openOutputStream(destination, "w")?.use { output ->
+                        FileInputStream(model.file).use { input -> input.copyTo(output) }
+                    } ?: throw IllegalStateException("无法写入公共目录模型备份。")
+                    val savedHash = resolver.openInputStream(destination)?.use { input ->
+                        val digest = MessageDigest.getInstance("SHA-256")
+                        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                        while (true) {
+                            val count = input.read(buffer)
+                            if (count < 0) break
+                            digest.update(buffer, 0, count)
+                        }
+                        digest.digest().joinToString("") { "%02x".format(it) }
+                    }
+                    check(savedHash.equals(model.sha256, ignoreCase = true)) { "公共目录备份写入后 SHA-256 校验失败。" }
+                    resolver.update(destination, ContentValues().apply {
+                        put(MediaStore.Downloads.IS_PENDING, 0)
+                    }, null, null)
+                    return@withContext PublicModelBackup(candidateName, reused = false)
+                } catch (error: Exception) {
+                    resolver.delete(destination, null, null)
+                    throw error
+                }
+            }
+            throw IllegalStateException("公共目录存在过多同名模型备份，未覆盖任何现有文件。")
+        }
+    private fun downloadEmbeddingModel() {
+        if (operationBusy) return
+        operationBusy = true
+        operationMessage = "开始下载模型；校验后保存到软件内部目录，并备份到 ${publicModelDirectoryLabel()}；请保持应用在前台并连接稳定网络。"
+        diagnostics.info("embedding.model.download.started", "source=official-model-host")
+        lifecycleScope.launch {
+            try {
+                val downloaded = modelAssets.download { bytes, total ->
+                    runOnUiThread {
+                        operationMessage = if (total == null) {
+                            "模型下载中：${bytes / (1024 * 1024)} MiB"
+                        } else {
+                            "模型下载中：${(bytes * 100 / total).coerceIn(0, 100)}% (${bytes / (1024 * 1024)} MiB)"
+                        }
+                    }
+                }
+                getSharedPreferences("mistbell-v3-settings", MODE_PRIVATE).edit()
+                    .remove(if (qualcommModelSelected) "embedding_local_model_path_qualcomm" else "embedding_local_model_path_portable")
+                    .remove(if (qualcommModelSelected) "embedding_public_model_name_qualcomm" else "embedding_public_model_name_portable")
+                    .apply()
+                val backup = withContext(Dispatchers.IO) { backupModelToPublicDownloads(downloaded) }
+                operationMessage = "模型已校验并安装到软件内部目录：${downloaded.file.absolutePath}\n公共目录备份：${backup.displayName}\nSHA-256：${downloaded.sha256}"
+                diagnostics.info(
+                    "embedding.model.download.succeeded",
+                    "bytes=${downloaded.sizeBytes}; sha256=${downloaded.sha256}; publicBackup=${backup.displayName}; reused=${backup.reused}",
+                )
+            } catch (cancelled: CancellationException) {
+                diagnostics.warn("embedding.model.download.cancelled")
+                throw cancelled
+            } catch (error: Exception) {
+                val detail = "${error::class.java.simpleName}: ${error.message ?: "download failed"}"
+                    .take(InferenceRuntimeStatus.MAX_DETAIL_LENGTH)
+                operationMessage = "模型下载失败：$detail"
+                inferenceStatus = InferenceRuntimeStatus(
+                    phase = InferencePhase.FAILED,
+                    modelId = com.mistbell.tavern.v3.feature.embedding.EmbeddingGemma2TextPolicy.MODEL_ID,
+                    backend = InferenceBackend.UNKNOWN,
+                    runtimeId = null,
+                    lastError = detail,
+                )
+                diagnostics.error("embedding.model.download.failed", detail)
+            } finally {
+                operationBusy = false
+            }
+        }
+    }
+
+    private fun cycleEmbeddingDimensions() {
+        val currentIndex = embeddingDimensionOptions.indexOf(selectedEmbeddingDimensions).coerceAtLeast(0)
+        selectedEmbeddingDimensions = embeddingDimensionOptions[(currentIndex + 1) % embeddingDimensionOptions.size]
+        getSharedPreferences("mistbell-v3-settings", MODE_PRIVATE).edit()
+            .putInt("embedding_output_dimensions", selectedEmbeddingDimensions)
+            .apply()
+        diagnostics.info("embedding.dimensions.changed", "dimensions=$selectedEmbeddingDimensions")
+        operationMessage = "已选择 ${selectedEmbeddingDimensions} 维输出；下次本地向量测试将使用此档位。已有向量需要按新维度重建后才能混合检索。"
+    }
+
+    private fun runAlternateBackendBenchmark() {
+        if (operationBusy) return
+        if (!qualcommModelSelected) {
+            operationMessage = "GPU/CPU 对照实验需要先选择 Qualcomm SM8650 专用模型。"
+            return
+        }
+        operationBusy = true
+        operationMessage = "正在尝试用同一 Qualcomm 模型执行 GPU/CPU 基准；这是隔离实验，不改变生产回退策略……"
+        lifecycleScope.launch {
+            val summaries = mutableListOf<String>()
+            try {
+                val asset = withContext(Dispatchers.IO) { modelAssets.verifyInstalled() }
+                    ?: throw IllegalStateException("模型不存在或 SHA-256 校验失败。")
+                check(asset.isQualcommSm8650Optimized) { "当前安装模型不是 Qualcomm SM8650 专用模型。" }
+                for (backend in listOf(InferenceBackend.GPU, InferenceBackend.CPU)) {
+                    var benchmark: LiteRtLmEmbeddingGemma2Engine? = null
+                    try {
+                        benchmark = LiteRtLmEmbeddingGemma2Engine(
+                            context = applicationContext,
+                            modelFile = asset.file,
+                            preferredBackends = listOf(backend),
+                            npuModelCompatible = true,
+                            diagnostics = diagnostics,
+                            allowDiagnosticAlternateBackendProbe = true,
+                        )
+                        val outcomes = benchmark.runBackendInputLengthBenchmark(backend)
+                        val successes = outcomes.count { "; result=success;" in it }
+                        summaries += "${backend.name}: $successes/${outcomes.size} cases"
+                    } catch (error: Exception) {
+                        val detail = "${error::class.java.simpleName}: ${error.message ?: "backend unavailable"}".take(180)
+                        summaries += "${backend.name}: experiment failed ($detail)"
+                        diagnostics.warn("embedding.benchmark.backend.unavailable", "backend=${backend.name}; $detail")
+                    } finally {
+                        benchmark?.close()
+                    }
+                }
+                operationMessage = "Qualcomm 同模型 GPU/CPU 实验结束：${summaries.joinToString("；")}。各档预热 1 次、测量 5 次，p50/p90 已写入诊断日志。实验失败不影响 NPU/GPU 生产路径。"
+                diagnostics.info("embedding.benchmark.summary", summaries.joinToString("; "))
+            } catch (cancelled: CancellationException) {
+                diagnostics.warn("embedding.benchmark.cancelled")
+                throw cancelled
+            } catch (error: Exception) {
+                operationMessage = "GPU/CPU 对照实验无法启动：${error::class.java.simpleName}: ${error.message ?: "unknown error"}"
+                diagnostics.error("embedding.benchmark.failed", operationMessage)
+            } finally {
+                operationBusy = false
+            }
+        }
+    }
+
+    private fun runEmbeddingSelfTest(allowDiagnosticNpuProbe: Boolean = false) {
+        if (operationBusy) return
+        if (allowDiagnosticNpuProbe && !qualcommModelSelected) {
+            operationMessage = "NPU 诊断探测只适用于已选择并通过 SHA-256 校验的 Qualcomm SM8650 专用模型。"
+            diagnostics.warn("embedding.npu.diagnostic_probe.rejected", "reason=qualcomm_model_profile_not_selected")
+            return
+        }
+        if (allowDiagnosticNpuProbe) {
+            diagnostics.warn("embedding.npu.diagnostic_probe.started", "modelProfile=QUALCOMM_SM8650; purpose=one_shot_runtime_diagnosis; evidencePolicy=runtime_generated_only")
+        }
+        if (selectedEmbeddingDimensions > com.mistbell.tavern.v3.feature.embedding.EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS) {
+            operationMessage = "当前 EmbeddingGemma 2 原生最高支持 768 维；已保留 ${selectedEmbeddingDimensions} 维选项，但需要切换到原生支持该维度的模型后才能测试。未启动不兼容的推理任务。"
+            diagnostics.warn("embedding.selftest.unsupported_dimension_for_model", "model=EmbeddingGemma2; nativeDimensions=768; selectedDimensions=$selectedEmbeddingDimensions")
+            return
+        }
+        operationBusy = true
+        operationMessage = "正在准备本地 EmbeddingGemma 2 推理……"
+        lifecycleScope.launch {
+            var runtime: LiteRtLmEmbeddingGemma2Engine? = null
+            var verifiedAsset: DownloadedEmbeddingModel? = null
+            try {
+                val asset = withContext(Dispatchers.IO) { modelAssets.verifyInstalled() }
+                    ?: throw IllegalStateException("模型不存在或 SHA-256 校验失败；请重新下载模型。")
+                verifiedAsset = asset
+                closeActiveEmbeddingEngine()
+                val initializedRuntime = LiteRtLmEmbeddingGemma2Engine(
+                    context = applicationContext,
+                    modelFile = asset.file,
+                    npuModelCompatible = asset.isQualcommSm8650Optimized,
+                    allowDiagnosticNpuProbe = allowDiagnosticNpuProbe && asset.isQualcommSm8650Optimized,
+                    diagnostics = diagnostics,
+                )
+                runtime = initializedRuntime
+                activeEmbeddingEngine = initializedRuntime
+                inferenceStatus = InferenceRuntimeStatus(
+                    phase = InferencePhase.LOADING_MODEL,
+                    modelId = com.mistbell.tavern.v3.feature.embedding.EmbeddingGemma2TextPolicy.MODEL_ID,
+                    backend = InferenceBackend.UNKNOWN,
+                    runtimeId = initializedRuntime.runtimeId,
+                )
+                if (allowDiagnosticNpuProbe) {
+                    operationMessage = "正在运行 Qualcomm NPU 输入长度对照矩阵（7 次独立初始化/推理）……"
+                    val outcomes = initializedRuntime.runNpuInputLengthProbe()
+                    val successes = outcomes.count { "; result=success;" in it }
+                    inferenceStatus = initializedRuntime.currentStatus()
+                    val evidence = initializedRuntime.lastNpuEvidenceResult
+                    val evidenceStatus = evidence?.status ?: "not_generated"
+                    val evidenceName = evidence?.file?.name ?: "none"
+                    operationMessage = "NPU 输入长度矩阵结束：成功 $successes/${outcomes.size}，失败 ${outcomes.size - successes}；证据状态=$evidenceStatus；文件=$evidenceName。可导出证据 JSON。"
+                    diagnostics.info(
+                        "embedding.npu.diagnostic_probe.matrix_summary",
+                        "cases=${outcomes.size}; successes=$successes; failures=${outcomes.size - successes}; status=$evidenceStatus; evidenceFile=$evidenceName; apkSha256MatchesCurrent=${evidence?.apkSha256MatchesCurrent}",
+                    )
+                } else {
+                    initializedRuntime.initialize()
+                    inferenceStatus = initializedRuntime.currentStatus()
+                    operationMessage = "模型已初始化，正在执行真实文本向量测试……"
+                    inferenceStatus = initializedRuntime.currentStatus().copy(phase = InferencePhase.RUNNING)
+                    val result = EmbeddingGemma2RuntimeAdapter(
+                        initializedRuntime,
+                        outputDimensions = selectedEmbeddingDimensions,
+                    ).embedQueries(
+                        listOf("Mistbell Tavern local embedding diagnostic test"),
+                    )
+                    inferenceStatus = result.status
+                    operationMessage =
+                        "真实本地推理成功：${result.vectors.single().size} 维向量；配置后端 ${result.status.backend}。硬件实际调用仍需结合设备日志确认。"
+                    diagnostics.info(
+                        "embedding.selftest.succeeded",
+                        "dimensions=${result.vectors.single().size}; configuredBackend=${result.status.backend}; evidence=${result.status.backendEvidence}; elapsedMs=${result.status.lastExecutionMillis}",
+                    )
+                }
+            } catch (cancelled: CancellationException) {
+                diagnostics.warn("embedding.selftest.cancelled")
+                throw cancelled
+            } catch (error: Exception) {
+                val detail = "${error::class.java.simpleName}: ${error.message ?: "embedding test failed"}"
+                    .take(InferenceRuntimeStatus.MAX_DETAIL_LENGTH)
+                inferenceStatus = runtime?.currentStatus() ?: InferenceRuntimeStatus(
+                    phase = InferencePhase.FAILED,
+                    modelId = com.mistbell.tavern.v3.feature.embedding.EmbeddingGemma2TextPolicy.MODEL_ID,
+                    backend = InferenceBackend.UNKNOWN,
+                    runtimeId = null,
+                    lastError = detail,
+                )
+                val blockedByUnverifiedQualcommRuntime =
+                    !allowDiagnosticNpuProbe && verifiedAsset?.isQualcommSm8650Optimized == true &&
+                        error is IllegalArgumentException &&
+                        error.message.orEmpty().contains("requires a verified NPU runtime", ignoreCase = true)
+                if (blockedByUnverifiedQualcommRuntime) {
+                    operationMessage =
+                        "Qualcomm 专用模型已导入且 SHA-256 校验通过，但当前 APK 没有经过验证的 NPU 运行库，因此暂时不能执行该模型。已导入模型不会被删除。请切换到通用版，下载/导入通用模型后进行 CPU/GPU 测试；Qualcomm 专用模型仍保留在公共下载目录。"
+                    diagnostics.warn(
+                        "embedding.selftest.blocked.npu_runtime_unverified",
+                        "modelSha256=${verifiedAsset?.sha256.orEmpty()}; action=select_portable_model_for_cpu_gpu_test",
+                    )
+                } else {
+                    operationMessage = if (allowDiagnosticNpuProbe) {
+                        "Qualcomm NPU 诊断探测失败：$detail。运行库仍保持未验证状态；请导出诊断日志检查 native/QAIRT 错误。"
+                    } else "本地推理测试失败：$detail"
+                    if (allowDiagnosticNpuProbe) {
+                        diagnostics.error("embedding.npu.diagnostic_probe.inference_failed", "evidenceStatus=not_generated; $detail")
+                    }
+                    diagnostics.error("embedding.selftest.failed", detail)
+                }
+            } finally {
+                operationBusy = false
+            }
+        }
+    }
+
+    override fun onDestroy() {
+        closeActiveEmbeddingEngine()
+        super.onDestroy()
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun DevelopmentHome() {
-    // This is deliberately an idle status until a real runtime adapter reports execution.
-    // The UI must never infer NPU/GPU use from the phone model or a requested delegate.
-    val inferenceStatus = InferenceRuntimeStatus.idle()
+private fun DevelopmentHome(
+    inferenceStatus: InferenceRuntimeStatus,
+    operationMessage: String,
+    operationBusy: Boolean,
+    onOpenChat: () -> Unit,
+    onDownloadModel: () -> Unit,
+    onImportModel: () -> Unit,
+    qualcommModelSelected: Boolean,
+    onSelectModelProfile: (Boolean) -> Unit,
+    selectedEmbeddingDimensions: Int,
+    onCycleEmbeddingDimensions: () -> Unit,
+    onRunEmbeddingTest: () -> Unit,
+    onRunNpuDiagnosticProbe: () -> Unit,
+    onRunAlternateBackendBenchmark: () -> Unit,
+    onExportNpuEvidence: () -> Unit,
+    onExportLogs: () -> Unit,
+) {
     Scaffold(
         topBar = {
             TopAppBar(
@@ -91,6 +683,106 @@ private fun DevelopmentHome() {
                 )
             }
             item { InferenceStatusCard(inferenceStatus) }
+            item {
+                Card(modifier = Modifier.fillMaxWidth().animateContentSize(animationSpec = tween(durationMillis = 240, easing = FastOutSlowInEasing))) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text("聊天与 API", style = MaterialTheme.typography.titleMedium)
+                        Spacer(Modifier.height(6.dp))
+                        Text("进入独立聊天测试页面，配置 OpenAI 兼容 API 并验证流式回复。API 密钥仅保存在当前页面的内存状态中。", style = MaterialTheme.typography.bodyMedium)
+                        Spacer(Modifier.height(10.dp))
+                        Button(onClick = onOpenChat, modifier = Modifier.fillMaxWidth()) {
+                            Text("进入聊天")
+                        }
+                    }
+                }
+            }
+            item {
+                Card(modifier = Modifier.fillMaxWidth().animateContentSize(animationSpec = tween(durationMillis = 240, easing = FastOutSlowInEasing))) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text("本地模型与实测", style = MaterialTheme.typography.titleMedium)
+                        Spacer(Modifier.height(6.dp))
+                        Text("运行副本：软件内部私有目录。联网下载会另备份到 Download/向量模型，重装后可从文件导入；本地导入不会另建公共副本。", style = MaterialTheme.typography.bodyMedium)
+                        Spacer(Modifier.height(4.dp))
+                        Text("请选择要下载的模型版本：", style = MaterialTheme.typography.bodyMedium)
+                        Spacer(Modifier.height(6.dp))
+                        Button(
+                            onClick = { onSelectModelProfile(false) },
+                            enabled = !operationBusy,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(if (!qualcommModelSelected) "✓ 已选：通用版（约 485 MB）" else "选择通用版（约 485 MB）")
+                        }
+                        Spacer(Modifier.height(6.dp))
+                        Button(
+                            onClick = { onSelectModelProfile(true) },
+                            enabled = !operationBusy,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(if (qualcommModelSelected) "✓ 已选：Qualcomm SM8650 专用版（约 563 MB）" else "选择 Qualcomm SM8650 专用版（约 563 MB）")
+                        }
+                        Text(
+                            "专用版针对骁龙 8 Gen 3/SM8650；NPU 是否可用仍取决于 APK 中的运行库与真机验证。联网下载会保留内部运行副本和公共目录备份；从文件导入只复制到内部目录。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Text("向量维度档位：${selectedEmbeddingDimensions} 维", style = MaterialTheme.typography.bodyMedium)
+                        Spacer(Modifier.height(6.dp))
+                        Button(onClick = onCycleEmbeddingDimensions, enabled = !operationBusy, modifier = Modifier.fillMaxWidth()) {
+                            Text("切换向量维度（128 → 256 → 512 → 768 → 1024 → 1536 → 2048）")
+                        }
+                        Text("EmbeddingGemma 2 原生最高为 768 维，768 档可直接使用；1024 / 1536 / 2048 档为未来兼容更高维模型预留，当前选择这些档位时会明确提示模型不兼容，不会伪造高维向量。设置保存在本机；更换维度后需要重建旧向量索引。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(Modifier.height(6.dp))
+                        AnimatedContent(targetState = operationMessage, label = "operation-message") { message ->
+                            Text(message, style = MaterialTheme.typography.bodyMedium)
+                        }
+                        Spacer(Modifier.height(10.dp))
+                        Button(onClick = onDownloadModel, enabled = !operationBusy, modifier = Modifier.fillMaxWidth()) {
+                            Text("下载 / 重新下载 EmbeddingGemma 2 模型")
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Button(onClick = onImportModel, enabled = !operationBusy, modifier = Modifier.fillMaxWidth()) {
+                            Text("从文件导入 .litertlm 模型")
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Button(onClick = onRunEmbeddingTest, enabled = !operationBusy, modifier = Modifier.fillMaxWidth()) {
+                            Text("初始化后执行真实向量测试")
+                        }
+                        if (qualcommModelSelected) {
+                            Spacer(Modifier.height(8.dp))
+                            Text("仅供开发诊断：将尝试初始化 Qualcomm NPU，不会把运行库标记为已验证，也不会自动启用聊天生产路径。若 SDK/ABI 不兼容，可能失败；失败日志可用于定位。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Spacer(Modifier.height(6.dp))
+                            Button(onClick = onRunNpuDiagnosticProbe, enabled = !operationBusy, modifier = Modifier.fillMaxWidth()) {
+                                Text("运行 NPU 输入长度矩阵（7 档并生成证据）")
+                            }
+                            Spacer(Modifier.height(6.dp))
+                            Button(onClick = onRunAlternateBackendBenchmark, enabled = !operationBusy, modifier = Modifier.fillMaxWidth()) {
+                                Text("实验：同一 Qualcomm 模型 GPU / CPU 基准")
+                            }
+                        }
+                    }
+                }
+            }
+            item {
+                Card(modifier = Modifier.fillMaxWidth().animateContentSize(animationSpec = tween(durationMillis = 240, easing = FastOutSlowInEasing))) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text("诊断与故障排查", style = MaterialTheme.typography.titleMedium)
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            "导出的日志包含运行阶段、后端初始化结果、错误摘要和耗时；不会主动记录聊天正文、提示词或 API 密钥。",
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        Button(onClick = onExportLogs, enabled = !operationBusy, modifier = Modifier.fillMaxWidth()) {
+                            Text("导出诊断日志")
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Button(onClick = onExportNpuEvidence, enabled = !operationBusy, modifier = Modifier.fillMaxWidth()) {
+                            Text("导出最新 NPU 证据 JSON")
+                        }
+                    }
+                }
+            }
             items(initialStages, key = BuildStage::title) { stage ->
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -120,13 +812,14 @@ private fun InferenceStatusCard(status: InferenceRuntimeStatus) {
     val phaseLabel = when (status.phase) {
         InferencePhase.NOT_INITIALIZED -> "尚未初始化"
         InferencePhase.LOADING_MODEL -> "正在加载模型"
+        InferencePhase.INITIALIZED -> "已初始化，尚未验证真实推理"
         InferencePhase.READY -> "已就绪"
         InferencePhase.RUNNING -> "正在推理"
         InferencePhase.FALLBACK -> "已回退"
         InferencePhase.FAILED -> "初始化/推理失败"
     }
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().animateContentSize(animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing)),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.secondaryContainer,
         ),
@@ -134,10 +827,11 @@ private fun InferenceStatusCard(status: InferenceRuntimeStatus) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text("本地 Embedding / NPU 状态", style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(6.dp))
-            Text("$phaseLabel · 后端：$backendLabel", style = MaterialTheme.typography.bodyMedium)
+            Text("$phaseLabel · 配置后端：$backendLabel", style = MaterialTheme.typography.bodyMedium)
             val details = listOfNotNull(
                 status.modelId?.let { "模型：$it" },
-                status.acceleratorName?.let { "设备：$it" },
+                status.acceleratorName?.let { "配置后端：$it" },
+                status.backendEvidence.takeIf { it != BackendEvidence.NOT_AVAILABLE }?.let { "硬件证据：${when (it) { BackendEvidence.NOT_AVAILABLE -> "无"; BackendEvidence.CONFIGURED_ONLY -> "仅配置成功，未独立确认实际硬件调用"; BackendEvidence.RUNTIME_REPORTED -> "运行时报告"; BackendEvidence.DEVICE_VERIFIED -> "设备实测确认" }}" },
                 status.lastExecutionMillis?.let { "最近耗时：$it ms" },
                 status.fallbackReason?.let { "回退原因：$it" },
                 status.lastError?.let { "错误：$it" },

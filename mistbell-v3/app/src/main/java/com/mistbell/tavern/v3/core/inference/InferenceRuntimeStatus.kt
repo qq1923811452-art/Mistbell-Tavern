@@ -1,9 +1,12 @@
 package com.mistbell.tavern.v3.core.inference
 
-/** Backend actually reported by the runtime for a completed operation. */
+/** Backend selected/reported by the adapter; consult backendEvidence before inferring hardware execution. */
 enum class InferenceBackend { CPU, GPU, NPU, UNKNOWN }
 
-enum class InferencePhase { NOT_INITIALIZED, LOADING_MODEL, READY, RUNNING, FALLBACK, FAILED }
+enum class InferencePhase { NOT_INITIALIZED, LOADING_MODEL, INITIALIZED, READY, RUNNING, FALLBACK, FAILED }
+
+/** Evidence level for a backend label; a configured delegate is not proof of hardware execution. */
+enum class BackendEvidence { NOT_AVAILABLE, CONFIGURED_ONLY, RUNTIME_REPORTED, DEVICE_VERIFIED }
 
 data class RuntimeProbe(
     val runtimeId: String,
@@ -24,6 +27,7 @@ data class InferenceRuntimeStatus(
     val modelId: String?,
     val backend: InferenceBackend,
     val runtimeId: String?,
+    val backendEvidence: BackendEvidence = BackendEvidence.NOT_AVAILABLE,
     val acceleratorName: String? = null,
     val fallbackReason: String? = null,
     val lastError: String? = null,
@@ -45,9 +49,16 @@ data class InferenceRuntimeStatus(
         require(phase != InferencePhase.READY || (modelId != null && runtimeId != null)) {
             "Ready status requires a model and runtime."
         }
-        require(backend != InferenceBackend.NPU || phase == InferencePhase.READY ||
-            phase == InferencePhase.RUNNING || phase == InferencePhase.FALLBACK) {
+        require(backend != InferenceBackend.NPU ||
+            phase == InferencePhase.READY || phase == InferencePhase.RUNNING || phase == InferencePhase.FALLBACK) {
             "NPU cannot be reported while no runtime is active."
+        }
+        require(
+            backend != InferenceBackend.NPU ||
+                backendEvidence == BackendEvidence.RUNTIME_REPORTED ||
+                backendEvidence == BackendEvidence.DEVICE_VERIFIED,
+        ) {
+            "NPU cannot be reported as active without runtime-reported or device-verified execution evidence."
         }
     }
 
@@ -63,7 +74,7 @@ data class InferenceRuntimeStatus(
     }
 }
 
-/** Preference order never implies availability; adapters must report their observed backend. */
+/** Preference order never implies availability; probes must identify their evidence level before claiming hardware execution. */
 object InferenceBackendSelection {
     fun select(preferredOrder: List<InferenceBackend>, probes: List<RuntimeProbe>): RuntimeProbe? {
         require(preferredOrder.isNotEmpty()) { "At least one backend preference is required." }

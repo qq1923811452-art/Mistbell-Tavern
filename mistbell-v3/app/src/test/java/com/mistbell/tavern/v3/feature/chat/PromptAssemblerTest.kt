@@ -25,16 +25,18 @@ class PromptAssemblerTest {
                 latestUserMessage = "Good morning",
             ),
         )
-
-        assertEquals(first.first(), second.first())
         assertEquals(PromptRole.SYSTEM, first.first().role)
+        assertTrue(first.first().content.startsWith("Follow the roleplay rules."))
+        assertEquals(1, first.count { it.role == PromptRole.SYSTEM })
+        assertEquals(1, second.count { it.role == PromptRole.SYSTEM })
     }
 
     @Test
-    fun stablePrefixComesBeforeMemoryWorldbookHistoryAndLatestUser() {
+    fun assemblesRoleCardThenWorldbookThenMemoryThenHistoryAndCurrentUser() {
         val messages = PromptAssembler.assemble(
             PromptAssemblyInput(
-                stableSystemPrefix = "Stable rules",
+                stableSystemPrefix = "Role rules",
+                stableCharacterDefinition = "Character: Mira",
                 activeMemoryFacts = listOf("Fact A"),
                 activatedWorldbookEntries = listOf("World B"),
                 conversationHistory = listOf(
@@ -44,11 +46,16 @@ class PromptAssemblerTest {
                 latestUserMessage = "Latest",
             ),
         )
-
-        assertTrue(messages[0].content.startsWith("Stable rules"))
-        assertTrue(messages[1].content.indexOf("Relevant memory facts") <
-            messages[1].content.indexOf("Activated worldbook entries"))
-        assertEquals(PromptRole.USER, messages[messages.lastIndex].role)
+        assertEquals(1, messages.count { it.role == PromptRole.SYSTEM })
+        val system = messages[0].content
+        assertTrue(system.indexOf("Character: Mira") < system.indexOf("Activated worldbook entries"))
+        assertTrue(system.indexOf("Activated worldbook entries") < system.indexOf("Relevant memory facts"))
+        assertTrue(system.indexOf("Relevant memory facts") > system.indexOf("Activated worldbook entries"))
+        assertEquals(PromptRole.USER, messages[1].role)
+        assertEquals("Earlier", messages[1].content)
+        assertEquals(PromptRole.ASSISTANT, messages[2].role)
+        assertEquals("Earlier reply", messages[2].content)
+        assertEquals(PromptRole.USER, messages.last().role)
         assertEquals("Latest", messages.last().content)
     }
 
@@ -62,8 +69,8 @@ class PromptAssemblerTest {
                 latestUserMessage = "Hi",
             ),
         )
-
         assertEquals(2, messages.size)
+        assertEquals(1, messages.count { it.role == PromptRole.SYSTEM })
     }
 
     @Test(expected = IllegalArgumentException::class)

@@ -1,0 +1,158 @@
+package com.mistbell.tavern.v3.feature.embedding
+
+import com.mistbell.tavern.v3.core.inference.BackendEvidence
+import com.mistbell.tavern.v3.core.inference.InferenceBackend
+import com.mistbell.tavern.v3.core.inference.InferencePhase
+import com.mistbell.tavern.v3.core.inference.InferenceRuntimeStatus
+import kotlinx.coroutines.runBlocking
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class EmbeddingGemma2RuntimeAdapterTest {
+    private val rawStatus = InferenceRuntimeStatus(
+        phase = InferencePhase.READY,
+        modelId = EmbeddingGemma2TextPolicy.MODEL_ID,
+        backend = InferenceBackend.CPU,
+        runtimeId = "fake-litert-engine",
+        backendEvidence = BackendEvidence.RUNTIME_REPORTED,
+    )
+
+    private fun engine(
+        inference: suspend (List<String>) -> EmbeddingBatch,
+    ) = object : EmbeddingGemma2InferenceEngine {
+        override val runtimeId = "fake-litert-engine"
+        override suspend fun infer(formattedInputs: List<String>) = inference(formattedInputs)
+    }
+
+    @Test
+    fun queryAndDocumentUseDifferentFormatsAndNormalizedOutput(): Unit = runBlocking {
+        val seen = mutableListOf<List<String>>()
+        val adapter = EmbeddingGemma2RuntimeAdapter(
+            engine = engine { inputs ->
+                seen += inputs
+                EmbeddingBatch(
+                    vectors = inputs.map { List(EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS) { 1f } },
+                    status = rawStatus,
+                )
+            },
+            outputDimensions = 128,
+        )
+
+        val queryResult = adapter.embedQueries(listOf("Who left the tavern?"))
+        val documentResult = adapter.embedDocuments(listOf("Mira left at midnight."), listOf("Night 1"))
+
+        assertEquals("task: search query | text: Who left the tavern?", seen[0][0])
+        assertEquals("task: search result | title: Night 1 | text: Mira left at midnight.", seen[1][0])
+        assertEquals(128, queryResult.vectors.single().size)
+        assertEquals(128, documentResult.vectors.single().size)
+        assertEquals(InferenceBackend.CPU, queryResult.status.backend)
+        assertEquals(adapter.runtimeId, queryResult.status.runtimeId)
+    }
+
+    @Test
+    fun rejectsHigherDimensionsBeforeRunningEmbeddingGemma2() {
+        var calls = 0
+        val error = assertThrows(IllegalArgumentException::class.java) {
+            EmbeddingGemma2RuntimeAdapter(
+                engine = engine {
+                    calls++
+                    error("The engine must not run for unsupported dimensions.")
+                },
+                outputDimensions = 1024,
+            )
+        }
+        assertTrue(error.message!!.contains("Choose 128, 256, 512, or 768."))
+        assertEquals(0, calls)
+    }
+
+    @Test
+    fun allowsValidVectorsWhenHardwareBackendIsUnknown(): Unit = runBlocking {
+        val adapter = EmbeddingGemma2RuntimeAdapter(
+            engine = engine {
+                EmbeddingBatch(
+                    vectors = listOf(List(EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS) { 1f }),
+                    status = rawStatus.copy(
+                        backend = InferenceBackend.UNKNOWN,
+                        backendEvidence = BackendEvidence.CONFIGURED_ONLY,
+                    ),
+                )
+            },
+        )
+
+        val result = adapter.embedQueries(listOf("query"))
+
+        assertEquals(1, result.vectors.size)
+        assertEquals(EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS, result.vectors.single().size)
+        assertEquals(InferenceBackend.UNKNOWN, result.status.backend)
+        assertEquals(BackendEvidence.CONFIGURED_ONLY, result.status.backendEvidence)
+    }
+
+    @Test
+    fun rejectsUnavailableBackendEvidenceAndWrongModel(): Unit = runBlocking {
+        val unavailableEvidence = EmbeddingGemma2RuntimeAdapter(
+            engine = engine {
+                EmbeddingBatch(
+                    vectors = listOf(List(EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS) { 1f }),
+                    status = rawStatus.copy(backendEvidence = BackendEvidence.NOT_AVAILABLE),
+                )
+            },
+        )
+        assertThrows(EmbeddingOutputException::class.java) {
+            runBlocking { unavailableEvidence.embedQueries(listOf("query")) }
+        }
+
+        val wrongModel = EmbeddingGemma2RuntimeAdapter(
+            engine = engine {
+                EmbeddingBatch(
+                    vectors = listOf(List(EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS) { 1f }),
+                    status = rawStatus.copy(modelId = "another-model"),
+                )
+            },
+        )
+        assertThrows(EmbeddingOutputException::class.java) {
+            runBlocking { wrongModel.embedDocuments(listOf("document")) }
+        }
+    }
+
+    @Test
+    fun rejectsOverlongFormattedInputBeforeCallingEngine(): Unit = runBlocking {
+        var calls = 0
+        val adapter = EmbeddingGemma2RuntimeAdapter(
+            engine = engine {
+                calls++
+                error("Engine must not run for an overlong input.")
+            },
+        )
+        val error = assertThrows(EmbeddingOutputException::class.java) {
+            runBlocking {
+                adapter.embedQueries(listOf("x".repeat(EmbeddingGemma2RuntimeAdapter.MAX_FORMATTED_INPUT_BYTES)))
+            }
+        }
+        assertTrue(error.message!!.contains("split the text"))
+        assertEquals(0, calls)
+    }
+    @Test
+    fun rejectsInvalidConfiguredBatchSizes() {
+        assertTrue(runCatching {
+            EmbeddingGemma2RuntimeAdapter(engine = engine { error("Must not infer") }, configuredBatchSize = 0)
+        }.isFailure)
+        assertTrue(runCatching {
+            EmbeddingGemma2RuntimeAdapter(
+                engine = engine { error("Must not infer") },
+                configuredBatchSize = EmbeddingGemma2RuntimeAdapter.MAX_CONFIGURED_BATCH_SIZE + 1,
+            )
+        }.isFailure)
+    }
+
+    @Test
+    fun rejectsTitleCountMismatch(): Unit = runBlocking {
+        val adapter = EmbeddingGemma2RuntimeAdapter(
+            engine = engine { error("Engine must not run when title count is invalid.") },
+        )
+        assertThrows(EmbeddingOutputException::class.java) {
+            runBlocking { adapter.embedDocuments(listOf("a", "b"), listOf("only one")) }
+        }
+    }
+}
