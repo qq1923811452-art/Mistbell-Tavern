@@ -203,7 +203,7 @@ class MainActivity : ComponentActivity() {
             contentResolver.query(
                 collection,
                 arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.RELATIVE_PATH),
-                "${MediaStore.MediaColumns.DISPLAY_NAME} = ?",
+                "${MediaStore.MediaColumns.DISPLAY_NAME} = ? AND ${MediaStore.MediaColumns.IS_PENDING} = 0",
                 arrayOf(displayName),
                 null,
             )?.use { cursor ->
