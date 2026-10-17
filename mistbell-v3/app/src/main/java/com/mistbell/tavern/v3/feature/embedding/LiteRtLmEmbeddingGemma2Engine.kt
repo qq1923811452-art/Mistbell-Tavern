@@ -119,7 +119,8 @@ class LiteRtLmEmbeddingGemma2Engine(
             }
 
             // Preflight skips are diagnostic context, not proof that runtime fallback occurred.
-            // Only actual backend initialization/inference failures may set runtimeFallbackApplied.\n            val failures = mutableListOf<String>()
+            // Only actual backend initialization/inference failures may set runtimeFallbackApplied.
+            val failures = mutableListOf<String>()
             lastError = null
             logInfo(
                 "embedding.initialize.started",
@@ -247,7 +248,14 @@ class LiteRtLmEmbeddingGemma2Engine(
                     fallbackReason = failures.takeIf { it.isNotEmpty() }?.joinToString("; ")
                         ?.take(InferenceRuntimeStatus.MAX_DETAIL_LENGTH)
                     lastError = null
-                    logInfo(\n                        "embedding.inference.succeeded",\n                        "outputCount=${responses.size}; dimensions=${responses.firstOrNull()?.embedding?.size ?: 0}; " +\n                            "elapsedMs=$elapsedMillis; backend=${backend.name}; runtimeFallbackApplied=${fallbackReason != null}; " +\n                            "inputCount=${formattedInputs.size}; inputBatchShape=${inputBatchShape}; " +\n                            "inputCharLengths=${inputCharLengths}; tokenLengths=unavailable; " +\n                            "backendEvidence=CONFIGURED_ONLY; hardwareExecutionVerified=false",\n                    )
+                    logInfo(
+                        "embedding.inference.succeeded",
+                        "outputCount=${responses.size}; dimensions=${responses.firstOrNull()?.embedding?.size ?: 0}; " +
+                            "elapsedMs=$elapsedMillis; backend=${backend.name}; runtimeFallbackApplied=${fallbackReason != null}; " +
+                            "inputCount=${formattedInputs.size}; inputBatchShape=${inputBatchShape}; " +
+                            "inputCharLengths=${inputCharLengths}; tokenLengths=unavailable; " +
+                            "backendEvidence=CONFIGURED_ONLY; hardwareExecutionVerified=false",
+                    )
                     return@withLock EmbeddingBatch(
                         vectors = responses.map { response -> response.embedding.toList() },
                         status = InferenceRuntimeStatus(
