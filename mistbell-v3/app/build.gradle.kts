@@ -3,6 +3,8 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+val enableQualcommNpuRuntime = providers.gradleProperty("enableQualcommNpuRuntime").orNull == "true"
+
 android {
     namespace = "com.mistbell.tavern.v3"
     compileSdk = 37
@@ -15,10 +17,12 @@ android {
         versionCode = 1
         versionName = "3.0.0-dev"
 
-        // Qualcomm HTP runtime payloads and LiteRT-LM native plugins are arm64-only.
-        // Keep minSdk=26 for CPU/GPU compatibility; the app gates NPU at API 31+.
-        ndk {
-            abiFilters += setOf("arm64-v8a")
+        // NPU device-test builds are arm64-only. Keep ordinary builds unrestricted so
+        // x86_64 emulator tests and CPU/GPU development remain available.
+        if (enableQualcommNpuRuntime) {
+            ndk {
+                abiFilters += setOf("arm64-v8a")
+            }
         }
     }
 
@@ -57,7 +61,7 @@ kotlin {
 // dispatch plugin. Normal CI/builds remain usable without a local SDK; when enabled, preBuild
 // runs the strict allowlist/checksum staging script before Android packages jniLibs.
 val packageQualcommNpuRuntime = tasks.register<Exec>("packageQualcommNpuRuntime") {
-    onlyIf { providers.gradleProperty("enableQualcommNpuRuntime").orNull == "true" }
+    onlyIf { enableQualcommNpuRuntime }
     workingDir(rootProject.projectDir.parentFile)
     commandLine("bash", ".github/scripts/package-litertlm-qualcomm-runtime.sh")
 }
