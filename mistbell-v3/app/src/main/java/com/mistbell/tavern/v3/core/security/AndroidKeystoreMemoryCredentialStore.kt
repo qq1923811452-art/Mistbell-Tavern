@@ -69,7 +69,9 @@ class AndroidKeystoreMemoryCredentialStore(context: Context) : MemoryCredentialR
     private fun decrypt(payload: ByteArray): ByteArray {
         require(payload.isNotEmpty()) { "Invalid credential payload." }
         val ivSize = payload[0].toInt() and 0xff
-        require(ivSize == GCM_IV_BYTES && payload.size > 1 + ivSize + GCM_TAG_BYTES) {
+        // A valid AES-GCM payload may contain only the IV and authentication tag
+        // when encrypting an empty plaintext, so the minimum length is inclusive.
+        require(ivSize == GCM_IV_BYTES && payload.size >= 1 + ivSize + GCM_TAG_BYTES) {
             "Invalid credential payload."
         }
         val iv = payload.copyOfRange(1, 1 + ivSize)
