@@ -114,14 +114,41 @@ class MainActivity : ComponentActivity() {
                 }
             }.orEmpty()
 
+        fun sha256(input: java.io.InputStream): String =
+            input.use { stream ->
+                val digest = java.security.MessageDigest.getInstance("SHA-256")
+                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                while (true) {
+                    val count = stream.read(buffer)
+                    if (count < 0) break
+                    digest.update(buffer, 0, count)
+                }
+                digest.digest().joinToString("") { "%02x".format(it) }
+            }
+
         fun publishFile(file: File) {
+            val existing = findExisting(file.name)
+            val sourceDigest = file.inputStream().buffered().use { sha256(it) }
+            val identicalExisting = existing.firstOrNull { uri ->
+                runCatching {
+                    resolver.openInputStream(uri)?.buffered()?.use { sha256(it) }
+                }.getOrNull() == sourceDigest
+            }
+            if (identicalExisting != null) {
+                // Importing a file already in Download/向量模型 must be a no-op, not
+                // another write/copy of the same bytes into the same public directory.
+                existing.filter { it != identicalExisting }.forEach { duplicateUri ->
+                    resolver.delete(duplicateUri, null, null)
+                }
+                return
+            }
+
             val values = ContentValues().apply {
                 put(MediaStore.MediaColumns.DISPLAY_NAME, file.name)
                 put(MediaStore.MediaColumns.MIME_TYPE, "application/octet-stream")
                 put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath)
                 put(MediaStore.MediaColumns.IS_PENDING, 1)
             }
-            val existing = findExisting(file.name)
             val reusedExisting = existing.isNotEmpty()
             val uri = if (reusedExisting) {
                 existing.first()
