@@ -62,6 +62,7 @@ class LiteRtLmEmbeddingGemma2Engine(
     private var selectedBackend = InferenceBackend.UNKNOWN
     private var fallbackReason: String? = null
     private var lastError: String? = null
+    private var hasSuccessfulInference = false
 
     override val runtimeId: String = RUNTIME_ID
 
@@ -109,6 +110,7 @@ class LiteRtLmEmbeddingGemma2Engine(
                     candidate.initialize()
                     engine = candidate
                     selectedBackend = backend
+                    hasSuccessfulInference = false
                     fallbackReason = failures.takeIf { it.isNotEmpty() }
                         ?.joinToString("; ")
                         ?.take(InferenceRuntimeStatus.MAX_DETAIL_LENGTH)
@@ -193,6 +195,7 @@ class LiteRtLmEmbeddingGemma2Engine(
                     val elapsedMillis = ((System.nanoTime() - startedAt) / 1_000_000L).coerceAtLeast(0L)
                     selectedBackend = backend
                     engine = active
+                    hasSuccessfulInference = true
                     fallbackReason = failures.takeIf { it.isNotEmpty() }?.joinToString("; ")
                         ?.take(InferenceRuntimeStatus.MAX_DETAIL_LENGTH)
                     lastError = null
@@ -247,7 +250,12 @@ class LiteRtLmEmbeddingGemma2Engine(
             )
         }
         InferenceRuntimeStatus(
-            phase = if (lastError != null) InferencePhase.FAILED else if (fallbackReason == null) InferencePhase.READY else InferencePhase.FALLBACK,
+            phase = when {
+                lastError != null -> InferencePhase.FAILED
+                !hasSuccessfulInference -> InferencePhase.INITIALIZED
+                fallbackReason == null -> InferencePhase.READY
+                else -> InferencePhase.FALLBACK
+            },
             modelId = EmbeddingGemma2TextPolicy.MODEL_ID,
             backend = selectedBackend,
             runtimeId = runtimeId,
@@ -264,6 +272,7 @@ class LiteRtLmEmbeddingGemma2Engine(
             engine = null
             selectedBackend = InferenceBackend.UNKNOWN
             fallbackReason = null
+            hasSuccessfulInference = false
             logInfo("embedding.engine.closed")
         }
     }
