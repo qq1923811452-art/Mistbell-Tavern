@@ -9,11 +9,13 @@ package com.mistbell.tavern.v3.feature.embedding
 object EmbeddingGemma2TextPolicy {
     const val MODEL_ID = "google/embeddinggemma-2"
     const val NATIVE_DIMENSIONS = 768
+
     /**
-     * UI tiers above 768 require a compatible native higher-dimensional model.
-     * EmbeddingGemma 2 itself remains limited to 768 native dimensions.
+     * Output tiers supported by this model's native 768-dimensional Matryoshka vector.
+     * Larger tiers must not be offered as selectable output sizes for this model: padding or
+     * inventing dimensions would not create a genuine higher-dimensional embedding.
      */
-    val supportedDimensions: Set<Int> = setOf(128, 256, 512, 768, 1024, 1536, 2048)
+    val supportedDimensions: Set<Int> = setOf(128, 256, 512, 768)
 
     fun formatSearchQuery(query: String): String {
         require(query.isNotBlank()) { "Search query must not be blank." }
@@ -23,7 +25,7 @@ object EmbeddingGemma2TextPolicy {
     fun formatDocument(text: String, title: String? = null): String {
         require(text.isNotBlank()) { "Document text must not be blank." }
         val safeTitle = title?.trim()?.takeIf(String::isNotEmpty) ?: "none"
-        require('\n' !in safeTitle && '\r' !in safeTitle) {
+        require('\\n' !in safeTitle && '\\r' !in safeTitle) {
             "Document title must be a single line."
         }
         return "task: search result | title: $safeTitle | text: ${text.trim()}"
@@ -34,9 +36,9 @@ object EmbeddingGemma2TextPolicy {
      * Truncation without normalization changes cosine-similarity ranking.
      */
     fun truncateAndNormalize(vector: List<Float>, dimensions: Int): List<Float> {
-        require(dimensions in supportedDimensions) { "Unsupported embedding output dimension." }
-        require(dimensions <= NATIVE_DIMENSIONS) {
-            "EmbeddingGemma 2 natively outputs $NATIVE_DIMENSIONS dimensions; $dimensions requires a compatible higher-dimensional model."
+        require(dimensions in supportedDimensions) {
+            "Unsupported embedding output dimension for EmbeddingGemma 2: $dimensions. " +
+                "Choose 128, 256, 512, or 768."
         }
         require(vector.size == NATIVE_DIMENSIONS) {
             "Expected a native $NATIVE_DIMENSIONS-dimensional EmbeddingGemma 2 vector."
