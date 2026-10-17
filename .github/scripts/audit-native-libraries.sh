@@ -17,15 +17,18 @@ done
 # A RUNPATH/RPATH is acceptable only when every colon-separated entry is
 # relocatable relative to the library via $ORIGIN (or a subdirectory of it).
 # Keep this check's self-tests independent of any actual APK libraries.
-if ! grep -Eq '\((RPATH|RUNPATH)\)' <<< ' 0x0000001d (RUNPATH) Library runpath: [$ORIGIN/lib]'; then
-  echo "RPATH/RUNPATH detector self-test failed." >&2
-  exit 1
-fi
-if grep -Eq '\((RPATH|RUNPATH)\)' <<< ' 0x0000001d (RUNPATH) Library runpath: [/tmp]' && [[ '$ORIGIN/lib' != '$ORIGIN' && '$ORIGIN/lib' != '$ORIGIN/'* ]]; then
+is_allowed_rpath_entry() {
+  [[ "$1" == '$ORIGIN' || "$1" == '$ORIGIN/'* ]]
+}
+if ! grep -Eq '\((RPATH|RUNPATH)\)' <<< ' 0x0000001d (RUNPATH) Library runpath: [$ORIGIN/lib]' ||
+   ! is_allowed_rpath_entry '$ORIGIN' ||
+   ! is_allowed_rpath_entry '$ORIGIN/lib' ||
+   is_allowed_rpath_entry '/tmp' ||
+   is_allowed_rpath_entry '$ORIGINsuffix'; then
   echo "RPATH/RUNPATH policy self-test failed." >&2
   exit 1
 fi
-echo "RPATH/RUNPATH detector self-test passed."
+echo "RPATH/RUNPATH policy self-test passed."
 
 # Public Android platform/NDK libraries that may legitimately be DT_NEEDED by
 # app-bundled arm64 libraries. Do not treat vendor/device libraries as public NDK
@@ -86,7 +89,7 @@ for lib in "${libraries[@]}"; do
       path_value="${BASH_REMATCH[1]}"
       IFS=: read -r -a path_entries <<< "$path_value"
       for path_entry in "${path_entries[@]}"; do
-        if [[ "$path_entry" != '$ORIGIN' && "$path_entry" != '$ORIGIN/'* ]]; then
+        if ! is_allowed_rpath_entry "$path_entry"; then
           rpath_violations+=("$lib: ${path_line#*] } (entry: $path_entry)")
         fi
       done
