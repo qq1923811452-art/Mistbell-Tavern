@@ -105,6 +105,8 @@ These must come from a mutually compatible, pinned LiteRT-LM/LiteRT/QAIRT combin
 ## Official references
 
 - LiteRT-LM Android setup and native-library directory guidance: https://developers.google.com/edge/litert-lm/android
-- LiteRT-LM NPU guide (QAIRT and dispatch build/payload): https://developers.google.com/edge/litert-lm/npu
+- LiteRT-LM Qualcomm NPU build guide (QAIRT SDK, dispatch target, runtime payload): https://developers.google.com/edge/litert/next/litert_lm_npu
+- LiteRT-LM Android setup (GPU plugin libraries and NPU nativeLibraryDir): https://developers.google.com/edge/litert-lm/android
 - LiteRT Qualcomm HTP instructions (host runtime, dispatch and V75 skeleton guidance): https://github.com/google-ai-edge/LiteRT/blob/main/litert/vendors/qualcomm/doc/HTP_INSTRUCTIONS.md
+- EmbeddingGemma 2 Qualcomm SM8650 model file and pinned SHA-256: https://huggingface.co/litert-community/embeddinggemma-2-740m-litert-lm/blob/main/embeddinggemma-2-740m_Qualcomm_SM8650.litertlm
 
