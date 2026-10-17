@@ -309,6 +309,90 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private data class PublicModelBackup(val displayName: String, val reused: Boolean)
+
+    private fun publicModelDirectoryLabel(): String =
+        "Download/向量模型/"
+
+    /** Saves a second, verified copy to public Downloads without overwriting existing files. */
+    private suspend fun backupModelToPublicDownloads(model: DownloadedEmbeddingModel): PublicModelBackup =
+        withContext(Dispatchers.IO) {
+            check(Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                "自动公共目录备份需要 Android 10 或更高版本；内部模型已安装，但备份未完成。"
+            }
+            val relativePath = Environment.DIRECTORY_DOWNLOADS + "/向量模型/"
+            val resolver = contentResolver
+            val baseName = model.file.name
+            var candidateIndex = 0
+            while (candidateIndex < 100) {
+                val candidateName = if (candidateIndex == 0) baseName else {
+                    val extension = baseName.substringAfterLast('.', "")
+                    val stem = baseName.substringBeforeLast('.', baseName)
+                    "$stem-backup-$candidateIndex.$extension"
+                }
+                val existing = resolver.query(
+                    MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                    arrayOf(MediaStore.Downloads._ID),
+                    "${MediaStore.Downloads.DISPLAY_NAME} = ? AND ${MediaStore.Downloads.RELATIVE_PATH} = ?",
+                    arrayOf(candidateName, relativePath),
+                    null,
+                )?.use { cursor ->
+                    if (cursor.moveToFirst()) Uri.withAppendedPath(
+                        MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                        cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Downloads._ID)).toString(),
+                    ) else null
+                }
+                if (existing != null) {
+                    val existingHash = resolver.openInputStream(existing)?.use { input ->
+                        val digest = MessageDigest.getInstance("SHA-256")
+                        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                        while (true) {
+                            val count = input.read(buffer)
+                            if (count < 0) break
+                            digest.update(buffer, 0, count)
+                        }
+                        digest.digest().joinToString("") { "%02x".format(it) }
+                    }
+                    if (existingHash.equals(model.sha256, ignoreCase = true)) {
+                        return@withContext PublicModelBackup(candidateName, reused = true)
+                    }
+                    candidateIndex++
+                    continue
+                }
+                val values = ContentValues().apply {
+                    put(MediaStore.Downloads.DISPLAY_NAME, candidateName)
+                    put(MediaStore.Downloads.MIME_TYPE, "application/octet-stream")
+                    put(MediaStore.Downloads.RELATIVE_PATH, relativePath)
+                    put(MediaStore.Downloads.IS_PENDING, 1)
+                }
+                val destination = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                    ?: throw IllegalStateException("无法在公共目录创建模型备份文件。")
+                try {
+                    resolver.openOutputStream(destination, "w")?.use { output ->
+                        FileInputStream(model.file).use { input -> input.copyTo(output) }
+                    } ?: throw IllegalStateException("无法写入公共目录模型备份。")
+                    val savedHash = resolver.openInputStream(destination)?.use { input ->
+                        val digest = MessageDigest.getInstance("SHA-256")
+                        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                        while (true) {
+                            val count = input.read(buffer)
+                            if (count < 0) break
+                            digest.update(buffer, 0, count)
+                        }
+                        digest.digest().joinToString("") { "%02x".format(it) }
+                    }
+                    check(savedHash.equals(model.sha256, ignoreCase = true)) { "公共目录备份写入后 SHA-256 校验失败。" }
+                    resolver.update(destination, ContentValues().apply {
+                        put(MediaStore.Downloads.IS_PENDING, 0)
+                    }, null, null)
+                    return@withContext PublicModelBackup(candidateName, reused = false)
+                } catch (error: Exception) {
+                    resolver.delete(destination, null, null)
+                    throw error
+                }
+            }
+            throw IllegalStateException("公共目录存在过多同名模型备份，未覆盖任何现有文件。")
+        }
     private fun downloadEmbeddingModel() {
         if (operationBusy) return
         operationBusy = true
