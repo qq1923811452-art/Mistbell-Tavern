@@ -120,12 +120,11 @@ jobs:
           bash .github/scripts/package-litertlm-qualcomm-runtime.sh
 
       - name: Build arm64 APK with Qualcomm runtime payload
-        working-directory: mistbell-v3
         shell: bash
         run: |
           set -euo pipefail
           chmod +x ./gradlew
-          ./gradlew :app:assembleDebug -PenableQualcommNpuRuntime=true --no-daemon --no-parallel
+          ./gradlew -p mistbell-v3 :app:assembleDebug -PenableQualcommNpuRuntime=true --no-daemon --no-parallel
 
       - name: Verify APK contains the staged runtime and record hashes
         shell: bash
@@ -136,18 +135,39 @@ jobs:
           mkdir -p build-artifacts
           cp "$apk" build-artifacts/
           unzip -Z1 "$apk" > build-artifacts/apk-entries.txt
-          for library in \
-            libLiteRtDispatch_Qualcomm.so \
-            libQnnSystem.so \
-            libQnnHtp.so \
-            libQnnHtpPrepare.so \
-            libQnnHtpV75Stub.so \
-            libQnnHtpV75Skel.so; do
-            grep -Fq "lib/arm64-v8a/$library" build-artifacts/apk-entries.txt || {
-              echo "APK is missing required runtime entry: $library" >&2
+          inventory="mistbell-v3/app/src/main/assets/native-runtime/qualcomm-sm8650-inventory.txt"
+          test -s "$inventory"
+          while IFS=          (cd build-artifacts && sha256sum *.apk | tee SHA256SUMS.txt)
+          {
+            echo "mistbell_source_sha=$(git rev-parse HEAD)"
+            echo "litert_lm_tag=v0.18.0"
+            echo "litert_lm_sha=$(git -C upstream/litert-lm rev-parse HEAD)"
+            echo "android_ndk=28.1.13356709"
+            echo "runtime_status=packaged_not_device_verified"
+            echo "npu_status=disabled_until_real_sm8650_inference"
+          } > build-artifacts/SOURCE.txt
+
+      - name: Upload SM8650 device-test APK and provenance
+        uses: actions/upload-artifact@v4
+        with:
+          name: mistbell-sm8650-htp-v75-device-test-${{ github.run_number }}
+          path: |
+            build-artifacts/*.apk
+            build-artifacts/SHA256SUMS.txt
+            build-artifacts/SOURCE.txt
+            build-artifacts/apk-entries.txt
+            mistbell-v3/app/src/main/assets/native-runtime/qualcomm-sm8650.properties
+            mistbell-v3/app/src/main/assets/native-runtime/qualcomm-sm8650.sha256
+            mistbell-v3/app/src/main/assets/native-runtime/qualcomm-sm8650-inventory.txt
+          if-no-files-found: error
+          retention-days: 7
+\t' read -r library _size; do
+            test -n "$library" || continue
+            grep -Fxq "lib/arm64-v8a/$library" build-artifacts/apk-entries.txt || {
+              echo "APK is missing required runtime entry from the staged inventory: $library" >&2
               exit 1
             }
-          done
+          done < "$inventory"
           (cd build-artifacts && sha256sum *.apk | tee SHA256SUMS.txt)
           {
             echo "mistbell_source_sha=$(git rev-parse HEAD)"
