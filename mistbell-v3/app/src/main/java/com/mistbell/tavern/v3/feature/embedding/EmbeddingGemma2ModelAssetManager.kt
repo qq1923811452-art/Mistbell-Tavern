@@ -193,14 +193,14 @@ class EmbeddingGemma2ModelAssetManager(
                 }
                 check(importedBytes > 0L) { "Selected model file is empty." }
                 val sha256 = digest.digest().toHex()
-                val isQualcommModel = sha256.equals(QUALCOMM_SM8650_MODEL_SHA256, ignoreCase = true)
-                require(isQualcommModel == preferQualcommSm8650Model) {
+                require(sha256.equals(selectedModelSha256, ignoreCase = true)) {
                     if (preferQualcommSm8650Model) {
-                        "The selected runtime profile requires the published Qualcomm SM8650 model bundle."
+                        "The imported file SHA-256 does not match the published Qualcomm SM8650 model for the selected profile."
                     } else {
-                        "The Qualcomm SM8650-specific model requires a verified NPU runtime profile; use the portable model for CPU/GPU testing."
+                        "The imported file SHA-256 does not match the published portable EmbeddingGemma model for the selected profile."
                     }
                 }
+                val isQualcommModel = sha256.equals(QUALCOMM_SM8650_MODEL_SHA256, ignoreCase = true)
                 FileOutputStream(temporaryDigestFile).use { output ->
                     output.write("$sha256  $selectedModelFileName\n".toByteArray(Charsets.UTF_8))
                     output.fd.sync()
