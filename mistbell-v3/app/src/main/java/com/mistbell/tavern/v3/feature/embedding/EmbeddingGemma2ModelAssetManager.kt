@@ -239,7 +239,7 @@ class EmbeddingGemma2ModelAssetManager(
 
     suspend fun verifyInstalled(): DownloadedEmbeddingModel? = withContext(Dispatchers.IO) {
         try {
-            if (!modelFile.isFile || !digestFile.isFile || modelFile.length() !in 1..MAX_MODEL_BYTES) return@withContext null
+            if (!modelFile.isFile || !digestFile.isFile || (modelFile.length() < 1L || modelFile.length() > MAX_MODEL_BYTES)) return@withContext null
             val expected = digestFile.readText(Charsets.UTF_8).trim().substringBefore(' ').trim()
             if (!expected.matches(Regex("[0-9a-fA-F]{64}"))) return@withContext null
             val digest = MessageDigest.getInstance("SHA-256")
