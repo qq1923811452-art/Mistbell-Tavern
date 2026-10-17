@@ -145,19 +145,17 @@ class MainActivity : ComponentActivity() {
                 return
             }
 
+            check(existing.isEmpty()) {
+                "A different file named ${file.name} already exists in $relativePath. To avoid overwriting user data, rename or remove that conflicting file and retry."
+            }
             val values = ContentValues().apply {
                 put(MediaStore.MediaColumns.DISPLAY_NAME, file.name)
                 put(MediaStore.MediaColumns.MIME_TYPE, "application/octet-stream")
                 put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath)
                 put(MediaStore.MediaColumns.IS_PENDING, 1)
             }
-            val reusedExisting = existing.isNotEmpty()
-            val uri = if (reusedExisting) {
-                existing.first()
-            } else {
-                resolver.insert(collection, values)
-                    ?: throw IllegalStateException("Android could not create the public model file.")
-            }
+            val uri = resolver.insert(collection, values)
+                ?: throw IllegalStateException("Android could not create the public model file.")
             try {
                 check(resolver.update(uri, values, null, null) == 1) {
                     "Android could not prepare the public model file."
@@ -178,14 +176,7 @@ class MainActivity : ComponentActivity() {
                 existing.filter { it != uri && digestOf(it) == sourceDigest }
                     .forEach { duplicateUri -> resolver.delete(duplicateUri, null, null) }
             } catch (error: Exception) {
-                if (!reusedExisting) {
-                    resolver.delete(uri, null, null)
-                } else {
-                    val notPending = ContentValues().apply {
-                        put(MediaStore.MediaColumns.IS_PENDING, 0)
-                    }
-                    resolver.update(uri, notPending, null, null)
-                }
+                resolver.delete(uri, null, null)
                 throw error
             }
         }
