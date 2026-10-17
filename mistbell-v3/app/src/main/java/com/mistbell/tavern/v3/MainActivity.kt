@@ -78,6 +78,7 @@ class MainActivity : ComponentActivity() {
     private val embeddingDimensionOptions = listOf(128, 256, 512, 768, 1024, 1536, 2048)
     private var selectedEmbeddingDimensions by mutableStateOf(768)
     private var qualcommModelSelected by mutableStateOf(false)
+    private var modelProfileGeneration = 0
 
     private fun publicModelDirectoryLabel(): String =
         "/storage/emulated/0/Download/向量模型/"
@@ -302,24 +303,34 @@ class MainActivity : ComponentActivity() {
         modelAssets = createModelAssetManager(qualcommModelSelected)
         diagnostics.info("app.started", "build=3.0.0-dev")
         lifecycleScope.launch {
-            var installed = withContext(Dispatchers.IO) { modelAssets.verifyInstalled() }
+            val profileAtStart = qualcommModelSelected
+            val assetsAtStart = modelAssets
+            val generationAtStart = modelProfileGeneration
+            var installed = withContext(Dispatchers.IO) { assetsAtStart.verifyInstalled() }
             if (installed == null) {
                 try {
-                    restorePublicModelIfPresent(qualcommModelSelected)
+                    restorePublicModelIfPresent(profileAtStart)
                 } catch (error: Exception) {
                     val detail = "${error::class.java.simpleName}: ${error.message ?: "public model restore failed"}"
                         .take(InferenceRuntimeStatus.MAX_DETAIL_LENGTH)
-                    diagnostics.error("embedding.model.restore.failed", detail)
-                    operationMessage = "公共模型恢复失败：$detail"
+                    diagnostics.error("embedding.model.restore.failed", "profile=${if (profileAtStart) "QUALCOMM_SM8650" else "PORTABLE"}; $detail")
+                    if (generationAtStart == modelProfileGeneration) {
+                        operationMessage = "公共模型恢复失败：$detail"
+                    }
                 }
-                installed = withContext(Dispatchers.IO) { modelAssets.verifyInstalled() }
+                installed = withContext(Dispatchers.IO) { assetsAtStart.verifyInstalled() }
             }
-            if (!operationBusy) operationMessage = if (installed == null) {
-                "所选模型尚未安装或校验失败。下载位置：${publicModelDirectoryLabel()}"
-            } else {
-                "本地模型已校验：${installed.sizeBytes} bytes；SHA-256 一致。公共目录：${publicModelDirectoryLabel()}"
+            if (generationAtStart == modelProfileGeneration && !operationBusy) {
+                operationMessage = if (installed == null) {
+                    "所选模型尚未安装或校验失败。下载位置：${publicModelDirectoryLabel()}"
+                } else {
+                    "本地模型已校验：${installed.sizeBytes} bytes；SHA-256 一致。公共目录：${publicModelDirectoryLabel()}"
+                }
             }
-            diagnostics.info("embedding.model.startup.check", "installed=${installed != null}")
+            diagnostics.info(
+                "embedding.model.startup.check",
+                "profile=${if (profileAtStart) "QUALCOMM_SM8650" else "PORTABLE"}; installed=${installed != null}; stale=${generationAtStart != modelProfileGeneration}",
+            )
         }
         val importModel = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
             if (uri == null) {
@@ -428,7 +439,10 @@ class MainActivity : ComponentActivity() {
         activeEmbeddingEngine?.close()
         activeEmbeddingEngine = null
         qualcommModelSelected = qualcomm
-        modelAssets = createModelAssetManager(qualcomm)
+        modelProfileGeneration += 1
+        val generationAtSelection = modelProfileGeneration
+        val assetsAtSelection = createModelAssetManager(qualcomm)
+        modelAssets = assetsAtSelection
         getSharedPreferences("mistbell-v3-settings", MODE_PRIVATE).edit()
             .putBoolean("embedding_qualcomm_sm8650_model", qualcomm)
             .apply()
@@ -447,14 +461,18 @@ class MainActivity : ComponentActivity() {
             } catch (error: Exception) {
                 val detail = "${error::class.java.simpleName}: ${error.message ?: "public model restore failed"}"
                     .take(InferenceRuntimeStatus.MAX_DETAIL_LENGTH)
-                diagnostics.error("embedding.model.restore.failed", detail)
-                operationMessage = "公共模型恢复失败：$detail"
+                diagnostics.error("embedding.model.restore.failed", "profile=${if (qualcomm) "QUALCOMM_SM8650" else "PORTABLE"}; $detail")
+                if (generationAtSelection == modelProfileGeneration) {
+                    operationMessage = "公共模型恢复失败：$detail"
+                }
             }
-            val installed = withContext(Dispatchers.IO) { modelAssets.verifyInstalled() }
-            if (installed != null) {
-                operationMessage = "所选模型已从公共目录恢复并校验：${publicModelDirectoryLabel()}"
-            } else if (!operationMessage.startsWith("公共模型恢复失败：")) {
-                operationMessage += " 尚未找到已安装的此版本，可点击下载。"
+            val installed = withContext(Dispatchers.IO) { assetsAtSelection.verifyInstalled() }
+            if (generationAtSelection == modelProfileGeneration) {
+                if (installed != null) {
+                    operationMessage = "所选模型已从公共目录恢复并校验：${publicModelDirectoryLabel()}"
+                } else if (!operationMessage.startsWith("公共模型恢复失败：")) {
+                    operationMessage += " 尚未找到已安装的此版本，可点击下载。"
+                }
             }
         }
     }
