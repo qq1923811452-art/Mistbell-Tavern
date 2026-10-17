@@ -39,9 +39,11 @@ This document deliberately distinguishes (1) libraries that belong in the APK, (
 These must come from a mutually compatible, pinned LiteRT-LM/LiteRT/QAIRT combination. The list is a checklist, not a claim that every file is always required by every build:
 
 - LiteRT-LM v0.18.0 Android runtime/JNI dependencies from the exact AAR.
-- `libLiteRtDispatch_Qualcomm.so`: Qualcomm dispatch plugin built from the LiteRT revision compatible with the LiteRT revision embedded in LiteRT-LM 0.18.0. Do not use a random newer/older release binary.
-- QAIRT Android host runtime: `libQnnSystem.so`, `libQnnHtp.so`, `libQnnHtpPrepare.so` where required by the model/runtime path.
-- SM8650 Hexagon V75 components from the same QAIRT release: `libQnnHtpV75Stub.so`, `libQnnHtpV75Skel.so`, and `libQnnHtpV75CalculatorStub.so` if required by that release/model. Confirm exact filenames in the selected SDK; do not rename a V73/V79 library to V75.
+- `libLiteRtDispatch_Qualcomm.so`: build from the LiteRT revision vendored/pinned by the selected LiteRT-LM source, using the official Bazel target `@litert//litert/vendors/qualcomm/dispatch:dispatch_api_so`. The official guide requires NDK r28b or newer for the Android build. Do not use a random prebuilt dispatch binary from another release.
+- The complete relevant Qualcomm dispatch/compiler shared-object outputs under `bazel-bin/external/litert/litert/vendors/qualcomm/*/*.so`, plus the complete `prebuilt/android_arm64/*.so` runtime set from the same LiteRT-LM checkout, as prescribed by the official LiteRT-LM NPU instructions. Inspect each candidate and include only files the selected target/model path needs; keep provenance for every file.
+- QAIRT Android host runtime from one pinned SDK release: `libQnnSystem.so`, `libQnnHtp.so`, `libQnnHtpPrepare.so` and all `libQnnHtp*Stub.so` files required by that SDK/model.
+- SM8650 Hexagon V75 DSP-side components from the same QAIRT release: matching `libQnnHtp*Skel.so` files from the SDK's `lib/hexagon-*/unsigned/` folder. Confirm that the selected files are V75/SM8650 compatible; do not rename a V73/V79 library to V75.
+- Other QAIRT support files such as `libQnnIr.so`, `libQnnSaver.so`, `libLiteRtCompilerPlugin_Qualcomm.so`, or `libQnnHtpNetRunExtensions.so` are conditional. The official NPU flow's full output inventory and the ELF `DT_NEEDED` graph determine whether they are needed; do not guess based on names alone.
 - Any additional dependencies revealed by the selected SDK's ELF `DT_NEEDED` graph (for example `libQnnIr.so`, `libQnnSaver.so`, `libQnnHtpNetRunExtensions.so`, or other QNN support libraries). These are conditional: only include if the chosen LiteRT-LM backend/model path requires them.
 - Any version-specific worker/helper required by the exact upstream implementation. Do not add a third-party `libLiteRtQnnWorker.so` or patched dispatch package unless the pinned upstream source/build proves it is required and its origin/license are documented.
 
@@ -55,6 +57,11 @@ These must come from a mutually compatible, pinned LiteRT-LM/LiteRT/QAIRT combin
 - Qualcomm firmware, DSP/HTP support, vendor driver and device-specific system integration already provided by the installed ROM.
 - The actual SM8650/V75 support must be verified on the user's Redmi K70 Pro. APK libraries cannot install or replace kernel drivers, DSP firmware, vendor partitions or missing system services.
 - Required runtime search paths/environment behavior must match LiteRT-LM's Android API. Use `context.applicationInfo.nativeLibraryDir` for bundled NPU libraries where the API requires it; test whether APK packaging mode exposes files to DSP loading as expected.
+
+### Official build recipe and model-support gate
+- Official LiteRT-LM NPU guide: https://developers.google.com/edge/litert/next/litert_lm_npu. Its Qualcomm flow downloads QAIRT, builds the Qualcomm dispatch target, then stages the QAIRT host libraries, HTP stub/skeleton files, the Qualcomm shared-object outputs and `prebuilt/android_arm64/*.so`.
+- The guide currently lists a Gemma 3 1B Qualcomm model for SM8650. It does **not** by itself prove that the selected EmbeddingGemma 2 model can execute on the NPU through the same path. Confirm the exact EmbeddingGemma 2 model card/runtime requirements and run that exact model on SM8650 before advertising NPU support.
+- QAIRT versions are released separately from LiteRT-LM. Use the version explicitly validated with the chosen LiteRT/LiteRT-LM source and model; a version number shown as an example in docs is not an automatic compatibility guarantee.
 
 ### Required compatibility evidence before packaging
 - Exact LiteRT-LM v0.18.0 source tag **and full tag commit SHA**.
