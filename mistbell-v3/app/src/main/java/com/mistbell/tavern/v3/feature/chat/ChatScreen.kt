@@ -11,6 +11,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import com.mistbell.tavern.v3.core.diagnostics.DiagnosticLogStore
 import com.mistbell.tavern.v3.core.security.AndroidKeystoreMemoryCredentialStore
 import com.mistbell.tavern.v3.core.memory.MemoryIndexRebuilder
@@ -124,6 +126,7 @@ fun ChatScreen(onBack: () -> Unit) {
     var draft by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var historyReady by remember { mutableStateOf(false) }
+    var historyLoadFailed by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("填写模型 ID 和 API 配置后即可测试聊天。") }
     var selectedEmbeddingDimensions by remember(context) {
         mutableStateOf(
@@ -139,6 +142,8 @@ fun ChatScreen(onBack: () -> Unit) {
     val historyStore = remember(context) { ChatHistoryStore(context.applicationContext) }
     val memoryCredentialStore = remember(context) { AndroidKeystoreMemoryCredentialStore(context.applicationContext) }
     val coroutineScope = rememberCoroutineScope()
+    val historySaveMutex = remember { Mutex() }
+    val historySaveRevision = remember { java.util.concurrent.atomic.AtomicLong(0L) }
     val diagnosticStore = remember(context) { DiagnosticLogStore(context.applicationContext.filesDir) }
     val memoryExtractionInFlight = remember { mutableSetOf<String>() }
     val activeMemoryEngines = remember {
@@ -160,23 +165,29 @@ fun ChatScreen(onBack: () -> Unit) {
     }
 
     fun persistHistory() {
+        val revision = historySaveRevision.incrementAndGet()
+        val snapshot = history.map { line ->
+            PersistedChatMessage(
+                id = line.id,
+                role = line.role,
+                content = line.content,
+                createdAtEpochMillis = line.createdAtEpochMillis,
+                deliveryState = line.deliveryState,
+            )
+        }
         coroutineScope.launch {
-            runCatching {
-                val snapshot = history.map { line ->
-                    PersistedChatMessage(
-                        id = line.id,
-                        role = line.role,
-                        content = line.content,
-                        createdAtEpochMillis = line.createdAtEpochMillis,
-                        deliveryState = line.deliveryState,
+            historySaveMutex.withLock {
+                // A later UI mutation supersedes an older queued snapshot. Serialize writes and
+                // never let a delayed save replace the latest conversation state.
+                if (revision != historySaveRevision.get()) return@withLock
+                runCatching {
+                    withContext(Dispatchers.IO) { historyStore.save(snapshot) }
+                }.onFailure { error ->
+                    diagnosticStore.warn(
+                        "chat.history.save_failed",
+                        "reason=${error::class.java.simpleName}",
                     )
                 }
-                withContext(Dispatchers.IO) { historyStore.save(snapshot) }
-            }.onFailure { error ->
-                diagnosticStore.warn(
-                    "chat.history.save_failed",
-                    "reason=${error::class.java.simpleName}",
-                )
             }
         }
     }
@@ -195,11 +206,7 @@ fun ChatScreen(onBack: () -> Unit) {
                     ChatLine(
                         id = message.id,
                         role = message.role,
-                        content = if (interruptedAssistant && message.content.isBlank()) {
-                            "上次回复未完成，未生成完整回答。"
-                        } else {
-                            message.content
-                        },
+                        content = message.content,
                         createdAtEpochMillis = message.createdAtEpochMillis,
                         deliveryState = if (interruptedAssistant) {
                             PersistedChatMessage.DeliveryState.FAILED
@@ -231,10 +238,12 @@ fun ChatScreen(onBack: () -> Unit) {
                 }
             }
             ChatHistoryLoadResult.Corrupt -> {
+                historyLoadFailed = true
                 diagnosticStore.warn("chat.history.load_failed", "reason=corrupt_or_unsupported_format")
                 status = "聊天记录文件损坏或版本不兼容；为避免覆盖原文件，未自动清空记录。"
             }
             ChatHistoryLoadResult.Unavailable -> {
+                historyLoadFailed = true
                 diagnosticStore.warn("chat.history.load_failed", "reason=temporarily_unavailable")
                 status = "聊天记录暂时无法读取；原文件未修改，请稍后重试。"
             }
@@ -559,6 +568,9 @@ fun ChatScreen(onBack: () -> Unit) {
                                         busy && line.role == "assistant" -> "正在生成……"
                                         line.deliveryState == PersistedChatMessage.DeliveryState.PENDING ->
                                             "上次回复未完成，可重新发送。"
+                                        line.deliveryState == PersistedChatMessage.DeliveryState.FAILED &&
+                                            line.role == "assistant" ->
+                                            "上次回复未完成，未生成完整回答。"
                                         else -> ""
                                     }
                                 },
@@ -572,7 +584,7 @@ fun ChatScreen(onBack: () -> Unit) {
                 onValueChange = { draft = it },
                 label = { Text("输入消息") },
                 modifier = Modifier.fillMaxWidth(),
-                enabled = !busy,
+                enabled = !busy && !historyLoadFailed,
                 minLines = 2,
                 maxLines = 4,
             )
@@ -937,20 +949,35 @@ fun ChatScreen(onBack: () -> Unit) {
                             }
                         }
                     },
-                    enabled = !busy && historyReady,
-                ) { Text(if (!historyReady) "恢复记录中…" else if (busy) "生成中…" else "发送消息") }
+                    enabled = !busy && historyReady && !historyLoadFailed,
+                ) {
+                    Text(
+                        when {
+                            !historyReady -> "恢复记录中…"
+                            historyLoadFailed -> "记录异常，请先新建会话"
+                            busy -> "生成中…"
+                            else -> "发送消息"
+                        },
+                    )
+                }
                 Button(
                     onClick = {
+                        val replacingUnreadableHistory = historyLoadFailed
                         history.clear()
+                        historyLoadFailed = false
                         context.getSharedPreferences("mistbell-v3-settings", Context.MODE_PRIVATE).edit()
                             .remove("memory_extraction_last_success_turn_id")
                             .putString("memory_extraction_conversation_id", UUID.randomUUID().toString())
                             .apply()
                         persistHistory()
-                        status = "会话已清空；长期事实记忆保留，新的对话将单独记录来源。"
+                        status = if (replacingUnreadableHistory) {
+                            "已放弃无法读取的旧聊天记录并新建会话；长期事实记忆保留。"
+                        } else {
+                            "会话已清空；长期事实记忆保留，新的对话将单独记录来源。"
+                        }
                     },
-                    enabled = !busy && historyReady && history.isNotEmpty(),
-                ) { Text("清空会话") }
+                    enabled = !busy && historyReady && (history.isNotEmpty() || historyLoadFailed),
+                ) { Text(if (historyLoadFailed) "放弃旧记录并新建会话" else "清空会话") }
                 Button(
                     onClick = {
                         exportLogLauncher.launch("mistbell-diagnostics.txt")
