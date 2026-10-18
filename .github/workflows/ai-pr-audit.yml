@@ -339,7 +339,7 @@ jobs:
                   method="POST",
               )
               try:
-                  # Model B is supplemental; keep each relay attempt below its job budget.
+                  # Model A is the only active auditor; each attempt has a bounded network timeout.
                   request_timeout = 120 if model_slot == "B" else 300
                   with urllib.request.urlopen(request, timeout=request_timeout) as response:
                       response_body = response.read().decode("utf-8", errors="replace")
