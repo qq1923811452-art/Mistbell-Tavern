@@ -36,5 +36,10 @@ jobs:
         run: |
           set -euo pipefail
           [[ -n "$DEFAULT_BRANCH" ]] || { echo "::error::Could not determine the repository default branch"; exit 1; }
+          # This matrix intentionally covers historical PRs; skip numbers that no longer resolve.
+          if ! gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" >/dev/null 2>&1; then
+            echo "::notice::Skipping PR #$PR_NUMBER because GitHub could not resolve its pull-request metadata."
+            exit 0
+          fi
           gh workflow run ai-pr-audit.yml --repo "$GITHUB_REPOSITORY" --ref "$DEFAULT_BRANCH" -f "pr_number=$PR_NUMBER"
           echo "Queued AI audit for PR #$PR_NUMBER"
