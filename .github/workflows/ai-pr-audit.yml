@@ -603,7 +603,10 @@ jobs:
                       # the model quote did not match the submitted diff; never log full output.
                       # Preserve line boundaries in the bounded preview; collapsing whitespace can
                       # hide whether the model joined non-contiguous source lines.
-                      evidence_preview = repr(str(evidence or "").strip()[:180])
+                      evidence_preview = [
+                          line[:120]
+                          for line in str(evidence or "").strip().splitlines()[:6]
+                      ]
                       rejection_diagnostics.append({
                           "reason": reason,
                           "file": str(finding.get("file") or "")[:160],
