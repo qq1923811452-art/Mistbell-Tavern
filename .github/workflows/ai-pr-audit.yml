@@ -388,7 +388,7 @@ jobs:
                           exc.close()
                       retry_after = exc.headers.get("Retry-After", "").strip()
                       try:
-                          wait_seconds = min(60, max(0, int(retry_after))) if retry_after else (5 if attempt == 0 else 15)
+                          wait_seconds = min(15, max(0, int(retry_after))) if retry_after else (5 if attempt == 0 else 15)
                       except ValueError:
                           wait_seconds = 5 if attempt == 0 else 15
                       print(f"AI relay returned retryable HTTP {exc.code}; response closed; retry {attempt + 1}/2 after {wait_seconds}s.")
