@@ -84,6 +84,8 @@ internal object NpuEvidenceStore {
             .put("schemaVersion", 1)
             .put("createdAtEpochMillis", System.currentTimeMillis())
             .put("status", status)
+            .put("evidenceLevel", if (status == "verified") "runtime_loaded" else "unverified")
+            .put("hardwareExecutionVerified", false)
             .put("modelSha256", modelHash)
             .put("expectedModelSha256", EXPECTED_MODEL_SHA256)
             .put("apkSha256", apkAfter)
@@ -139,6 +141,8 @@ internal object NpuEvidenceStore {
                 val mappings = json.optJSONObject("mappedLibraries") ?: return@runCatching false
                 val cases = json.optJSONArray("cases") ?: return@runCatching false
                 json.optString("status") == "verified" &&
+                    json.optString("evidenceLevel") == "runtime_loaded" &&
+                    !json.optBoolean("hardwareExecutionVerified", true) &&
                     json.optString("apkSha256") == currentApkHash &&
                     json.optString("apkSha256Rechecked") == currentApkHash &&
                     json.optString("modelSha256") == currentModelHash &&

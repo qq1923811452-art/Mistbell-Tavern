@@ -833,10 +833,11 @@ private fun InferenceStatusCard(status: InferenceRuntimeStatus) {
             Spacer(Modifier.height(6.dp))
             Text("$phaseLabel · 配置后端：$backendLabel", style = MaterialTheme.typography.bodyMedium)
             val details = listOfNotNull(
-                "已验证 NPU".takeIf { status.backend == InferenceBackend.NPU && status.backendEvidence == BackendEvidence.DEVICE_VERIFIED },
+                "NPU 运行时已验证（7/7、运行时加载与推理成功；未独立证明 DSP 执行）"
+                    .takeIf { status.backend == InferenceBackend.NPU && status.backendEvidence == BackendEvidence.RUNTIME_REPORTED },
                 status.modelId?.let { "模型：$it" },
                 status.acceleratorName?.let { "配置后端：$it" },
-                status.backendEvidence.takeIf { it != BackendEvidence.NOT_AVAILABLE }?.let { "硬件证据：${when (it) { BackendEvidence.NOT_AVAILABLE -> "无"; BackendEvidence.CONFIGURED_ONLY -> "仅配置成功，未独立确认实际硬件调用"; BackendEvidence.RUNTIME_REPORTED -> "运行时报告"; BackendEvidence.DEVICE_VERIFIED -> "设备实测确认" }}" },
+                status.backendEvidence.takeIf { it != BackendEvidence.NOT_AVAILABLE }?.let { "硬件证据：${when (it) { BackendEvidence.NOT_AVAILABLE -> "无"; BackendEvidence.CONFIGURED_ONLY -> "仅配置成功，未独立确认实际硬件调用"; BackendEvidence.RUNTIME_REPORTED -> "NPU 运行时已验证（7/7、运行时加载与推理成功；未独立证明 DSP 执行）"; BackendEvidence.DEVICE_VERIFIED -> "设备实测确认（需独立硬件执行证据）" }}" },
                 status.lastExecutionMillis?.let { "最近耗时：$it ms" },
                 status.fallbackReason?.let { "回退原因：$it" },
                 status.lastError?.let { "错误：$it" },

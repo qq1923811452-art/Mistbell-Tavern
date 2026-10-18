@@ -269,7 +269,7 @@ class LiteRtLmEmbeddingGemma2Engine(
                             "elapsedMs=$elapsedMillis; backend=${backend.name}; runtimeFallbackApplied=${fallbackReason != null}; " +
                             "inputCount=${formattedInputs.size}; inputBatchShape=${inputBatchShape}; " +
                             "inputCharLengths=${inputCharLengths}; tokenLengths=unavailable; " +
-                            "backendEvidence=CONFIGURED_ONLY; hardwareExecutionVerified=false",
+                            "backendEvidence=${evidenceFor(backend)}; hardwareExecutionVerified=false",
                     )
                     return@withLock EmbeddingBatch(
                         vectors = responses.map { response -> response.embedding.toList() },
@@ -280,7 +280,7 @@ class LiteRtLmEmbeddingGemma2Engine(
                             // executed this operation. Do not label NPU as an active backend without evidence.
                             backend = if (selectedBackend == InferenceBackend.NPU && !npuEvidenceVerified) InferenceBackend.UNKNOWN else selectedBackend,
                             runtimeId = runtimeId,
-                            backendEvidence = if (selectedBackend == InferenceBackend.NPU && npuEvidenceVerified) BackendEvidence.DEVICE_VERIFIED else BackendEvidence.CONFIGURED_ONLY,
+                            backendEvidence = evidenceFor(selectedBackend),
                             acceleratorName = selectedBackend.name,
                             fallbackReason = fallbackReason,
                             lastExecutionMillis = elapsedMillis,
@@ -450,6 +450,13 @@ class LiteRtLmEmbeddingGemma2Engine(
             lastError = lastError,
         )
     }
+
+    private fun evidenceFor(backend: InferenceBackend): BackendEvidence =
+        if (backend == InferenceBackend.NPU && npuEvidenceVerified) {
+            BackendEvidence.RUNTIME_REPORTED
+        } else {
+            BackendEvidence.CONFIGURED_ONLY
+        }
 
     override fun close() {
         lock.withLock {
