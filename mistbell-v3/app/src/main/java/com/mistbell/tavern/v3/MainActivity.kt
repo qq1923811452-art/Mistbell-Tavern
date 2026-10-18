@@ -483,14 +483,16 @@ class MainActivity : ComponentActivity() {
                 for (backend in listOf(InferenceBackend.GPU, InferenceBackend.CPU)) {
                     var benchmark: LiteRtLmEmbeddingGemma2Engine? = null
                     try {
-                        benchmark = LiteRtLmEmbeddingGemma2Engine(
-                            context = applicationContext,
-                            modelFile = asset.file,
-                            preferredBackends = listOf(backend),
-                            npuModelCompatible = true,
-                            diagnostics = diagnostics,
-                            allowDiagnosticAlternateBackendProbe = true,
-                        )
+                        benchmark = withContext(Dispatchers.IO) {
+                            LiteRtLmEmbeddingGemma2Engine(
+                                context = applicationContext,
+                                modelFile = asset.file,
+                                preferredBackends = listOf(backend),
+                                npuModelCompatible = true,
+                                diagnostics = diagnostics,
+                                allowDiagnosticAlternateBackendProbe = true,
+                            )
+                        }
                         val outcomes = benchmark.runBackendInputLengthBenchmark(backend)
                         val successes = outcomes.count { "; result=success;" in it }
                         summaries += "${backend.name}: $successes/${outcomes.size} cases"
@@ -541,13 +543,15 @@ class MainActivity : ComponentActivity() {
                     ?: throw IllegalStateException("模型不存在或 SHA-256 校验失败；请重新下载模型。")
                 verifiedAsset = asset
                 closeActiveEmbeddingEngine()
-                val initializedRuntime = LiteRtLmEmbeddingGemma2Engine(
-                    context = applicationContext,
-                    modelFile = asset.file,
-                    npuModelCompatible = asset.isQualcommSm8650Optimized,
-                    allowDiagnosticNpuProbe = allowDiagnosticNpuProbe && asset.isQualcommSm8650Optimized,
-                    diagnostics = diagnostics,
-                )
+                val initializedRuntime = withContext(Dispatchers.IO) {
+                    LiteRtLmEmbeddingGemma2Engine(
+                        context = applicationContext,
+                        modelFile = asset.file,
+                        npuModelCompatible = asset.isQualcommSm8650Optimized,
+                        allowDiagnosticNpuProbe = allowDiagnosticNpuProbe && asset.isQualcommSm8650Optimized,
+                        diagnostics = diagnostics,
+                    )
+                }
                 runtime = initializedRuntime
                 activeEmbeddingEngine = initializedRuntime
                 inferenceStatus = InferenceRuntimeStatus(
