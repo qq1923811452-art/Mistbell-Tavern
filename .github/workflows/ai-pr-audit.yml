@@ -600,6 +600,7 @@ jobs:
                                   return "matched"
                   return "snippet_not_found"
               verified_findings = []
+              unverified_findings = []
               rejected_evidence_count = 0
               contradictory_findings_dropped = 0
               rejection_reasons = {}
@@ -641,6 +642,18 @@ jobs:
                           "file": str(finding.get("file") or "")[:160],
                           "evidence_preview": evidence_preview,
                       })
+                      # An evidence mismatch does not prove the suggestion is false.
+                      # Preserve a bounded, explicitly unverified copy for human review.
+                      unverified_findings.append({
+                          "severity": str(finding.get("severity") or "medium")[:40],
+                          "file": str(finding.get("file") or "")[:200],
+                          "line": finding.get("line"),
+                          "issue": str(finding.get("issue") or "")[:1200],
+                          "evidence": str(evidence or "")[:1200],
+                          "recommendation": str(finding.get("recommendation") or "")[:1200],
+                          "confidence": str(finding.get("confidence") or "unspecified")[:80],
+                          "verification_reason": reason,
+                      })
                       continue
                   # Enforce an explicit consistency guard when the model itself says the
                   # candidate is not a defect or should be withdrawn.
@@ -666,7 +679,8 @@ jobs:
               print("Unverified findings dropped:", rejected_evidence_count)
               print("Self-contradictory findings dropped:", contradictory_findings_dropped)
               report["findings"] = verified_findings[:20]
-              report["findings_truncated"] = raw_findings_count > 20 or len(verified_findings) > 20
+              report["unverified_findings"] = unverified_findings[:10]
+              report["findings_truncated"] = raw_findings_count > 20 or len(verified_findings) > 20 or len(unverified_findings) > 10
               report["unverified_findings_dropped"] = rejected_evidence_count
               report["self_contradictory_findings_dropped"] = contradictory_findings_dropped
               dropped_count = rejected_evidence_count + contradictory_findings_dropped
@@ -738,7 +752,38 @@ jobs:
                   "",
                   f"⚠️ 已过滤 {report['self_contradictory_findings_dropped']} 条结论明确自我撤回或承认无可证明缺陷的 finding。",
               ])
-          if not findings:
+          unverified_findings = report.get("unverified_findings", [])
+          if unverified_findings:
+              lines.extend([
+                  "",
+                  "### Unverified AI suggestions — manual review required",
+                  "以下建议的证据未能与送审 diff 精确匹配，因此不作为已验证缺陷；但不会再被静默丢弃。请逐条对照源码判断。",
+              ])
+              for index, finding in enumerate(unverified_findings, 1):
+                  severity = str(finding.get("severity", "medium")).lower()
+                  if severity not in allowed_severities:
+                      severity = "medium"
+                  file_name = safe_markdown(finding.get("file") or "File not identified", 200)
+                  line_number = finding.get("line")
+                  if not isinstance(line_number, int) or isinstance(line_number, bool) or line_number < 1:
+                      line_number = None
+                  location = f"{file_name}:{line_number}" if line_number is not None else file_name
+                  issue = safe_markdown(finding.get("issue") or "No issue details supplied.")
+                  evidence = safe_markdown(finding.get("evidence") or "No evidence supplied.", 800)
+                  recommendation = safe_markdown(finding.get("recommendation") or "Manual review required.")
+                  confidence = safe_markdown(finding.get("confidence") or "unspecified", 80)
+                  reason = safe_markdown(finding.get("verification_reason") or "unknown", 80)
+                  lines.extend([
+                      "",
+                      f"#### U{index}. [{severity.upper()}] - {location} - UNVERIFIED",
+                      issue,
+                      "",
+                      f"**Evidence (not matched):** {evidence}",
+                      f"**Recommendation:** {recommendation}",
+                      f"**Confidence (model-reported):** {confidence}",
+                      f"**Reason not accepted as verified:** {reason}",
+                  ])
+          if not findings and not unverified_findings:
               lines.append("No actionable findings were returned. This is not proof that the change is defect-free.")
           if report.get("findings_truncated"):
               lines.append("Only the first 20 findings are shown; manual review is required.")
