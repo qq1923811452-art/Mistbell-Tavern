@@ -101,6 +101,25 @@ object VectorSnapshotCodec {
     private const val FORMAT_VERSION = 2
     private const val CHECKSUM_BYTES = 32
     private const val MAX_MAPPED_UTF_BYTES = 65_535
+    private const val RECORD_OVERHEAD_BYTES = 112L
+
+    /**
+     * Enforces the snapshot's byte budget before allocating per-record objects or vector views.
+     * Version 1 stores float32 values; version 2 stores one-byte quantized values.
+     */
+    internal fun validatePayloadBudget(
+        payloadLength: Long,
+        count: Int,
+        dimensions: Int,
+        formatVersion: Int,
+    ) {
+        require(payloadLength >= 0L) { "Snapshot payload length is invalid." }
+        val bytesPerValue = if (formatVersion == LEGACY_FORMAT_VERSION) Float.SIZE_BYTES else 1
+        val maxValues = (payloadLength - count.toLong() * RECORD_OVERHEAD_BYTES) / bytesPerValue
+        require(count.toLong() * dimensions.toLong() <= maxValues) {
+            "Snapshot payload is too small for $count records of $dimensions values."
+        }
+    }
 
     fun encode(snapshot: VectorSnapshot): ByteArray {
         val payloadBuffer = java.io.ByteArrayOutputStream()
@@ -186,13 +205,12 @@ object VectorSnapshotCodec {
         require(dimensions in 1..MAX_DIMENSIONS) { "Vector dimension is invalid." }
         val count = input.int
         require(count in 0..MAX_RECORDS) { "Vector record count is invalid." }
-        val bytesPerValue = if (formatVersion == LEGACY_FORMAT_VERSION) Float.SIZE_BYTES else 1
-        val minimumRecordOverhead = if (formatVersion == LEGACY_FORMAT_VERSION) 77L else 81L
-        val minimumPayloadBytes = count.toLong() *
-            (minimumRecordOverhead + dimensions.toLong() * bytesPerValue)
-        require(minimumPayloadBytes <= payloadEnd.toLong() - input.position()) {
-            "Snapshot payload is too small for $count records of $dimensions values."
-        }
+        validatePayloadBudget(
+            payloadLength = payloadLength.toLong(),
+            count = count,
+            dimensions = dimensions,
+            formatVersion = formatVersion,
+        )
 
         val records = ArrayList<StoredVector>(count)
         repeat(count) {
@@ -267,13 +285,12 @@ object VectorSnapshotCodec {
         require(dimensions in 1..MAX_DIMENSIONS) { "Vector dimension is invalid." }
         val count = input.readInt()
         require(count in 0..MAX_RECORDS) { "Vector record count is invalid." }
-        val bytesPerValue = if (formatVersion == LEGACY_FORMAT_VERSION) Float.SIZE_BYTES else 1
-        val minimumRecordOverhead = if (formatVersion == LEGACY_FORMAT_VERSION) 77L else 81L
-        val minimumPayloadBytes = count.toLong() *
-            (minimumRecordOverhead + dimensions.toLong() * bytesPerValue)
-        require(minimumPayloadBytes <= input.available().toLong()) {
-            "Snapshot payload is too small for $count records of $dimensions values."
-        }
+        validatePayloadBudget(
+            payloadLength = payloadLength.toLong(),
+            count = count,
+            dimensions = dimensions,
+            formatVersion = formatVersion,
+        )
 
         val records = ArrayList<StoredVector>(count)
         repeat(count) {
