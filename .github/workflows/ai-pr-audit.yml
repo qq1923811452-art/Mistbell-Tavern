@@ -188,6 +188,8 @@ jobs:
           while pending_chunks:
               diff_chunk, split_depth = pending_chunks.pop(0)
               chunk_index = completed_chunks + 1
+              answer = None
+              finish_reason = None
               prompt = f"""审查下面 GitHub Pull Request diff 的第 {chunk_index} 部分（自适应分块审计）。目标是发现真实、可复现且值得修复的问题，而不是挑风格。
           审查类别：正确性/回归、API 协议与资源生命周期、安全与敏感信息、并发/取消、缓存一致性、性能、数据库迁移兼容性、测试遗漏。
           输出必须是一个 JSON 对象，不要 Markdown 围栏或额外文字，结构为：
