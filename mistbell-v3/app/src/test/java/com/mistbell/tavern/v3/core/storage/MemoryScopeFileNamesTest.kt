@@ -17,6 +17,7 @@ class MemoryScopeFileNamesTest {
         assertTrue('/' !in first && '\\' !in first)
         assertTrue(first.endsWith(".bin"))
     }
+
     @Test
     fun roleAndConversationBothPartitionMemoryScope() {
         val roleAConversation1 = MemoryScopeId.forRoleAndConversation("role-A", "conversation-1")
@@ -29,5 +30,11 @@ class MemoryScopeFileNamesTest {
         assertNotEquals(roleAConversation1, roleAConversation2)
     }
 
+    @Test
+    fun delimiterCharactersCannotAliasDifferentRoleConversationPairs() {
+        val first = MemoryScopeId.forRoleAndConversation("role|part", "conversation")
+        val second = MemoryScopeId.forRoleAndConversation("role", "part|conversation")
 
+        assertNotEquals(first, second)
+    }
 }
