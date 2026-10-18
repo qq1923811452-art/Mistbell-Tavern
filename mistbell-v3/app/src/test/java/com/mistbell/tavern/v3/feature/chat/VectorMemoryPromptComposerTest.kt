@@ -60,6 +60,17 @@ class VectorMemoryPromptComposerTest {
     }
 
     @Test
+    fun emptySystemMessageDoesNotCreateLeadingPromptSeparators() {
+        val messages = listOf(PromptMessage(PromptRole.SYSTEM, ""), PromptMessage(PromptRole.USER, "Hi"))
+        val result = VectorMemoryPromptComposer.compose(
+            messages,
+            VectorMemoryContextResult.Ready(listOf(RetrievedMemory("m1", "A stable fact.", 0.8))),
+        )
+        assertTrue(result.first().content.startsWith(VectorMemoryPromptComposer.MEMORY_SECTION_HEADER))
+        assertTrue(!result.first().content.startsWith("\\n\\n"))
+    }
+
+    @Test
     fun skipsBlankOrInvalidScoreMemoryEntries() {
         val result = VectorMemoryPromptComposer.compose(
             history,

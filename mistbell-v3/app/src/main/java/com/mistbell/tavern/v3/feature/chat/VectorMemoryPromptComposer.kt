@@ -30,7 +30,9 @@ object VectorMemoryPromptComposer {
         }
         return messages.toMutableList().also { result ->
             val system = result[systemIndex]
-            result[systemIndex] = system.copy(content = system.content.trimEnd() + "\n\n" + section)
+            val existingContent = system.content.trimEnd()
+            val combinedContent = if (existingContent.isBlank()) section else "$existingContent\n\n$section"
+            result[systemIndex] = system.copy(content = combinedContent)
         }
     }
 

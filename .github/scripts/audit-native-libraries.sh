@@ -41,6 +41,19 @@ if ! grep -Eq '\((RPATH|RUNPATH)\)' <<< ' 0x0000001d (RUNPATH) Library runpath: 
 fi
 echo "RPATH/RUNPATH policy self-test passed."
 
+parse_needed_line() {
+  local line="$1"
+  [[ "$line" =~ \(NEEDED\)[[:space:]]+Shared\ library:\ \[([^]]+)\][[:space:]]*$ ]] || return 1
+  printf '%s' "${BASH_REMATCH[1]}"
+}
+
+if [[ "$(parse_needed_line ' 0x00000001 (NEEDED) Shared library: [libc.so]')" != "libc.so" ]] ||
+   parse_needed_line ' 0x00000001 (NEEDED) Shared library: [libc.so] trailing' >/dev/null; then
+  echo "DT_NEEDED parser self-test failed." >&2
+  exit 1
+fi
+echo "DT_NEEDED parser self-test passed."
+
 # Public Android platform/NDK libraries that may legitimately be DT_NEEDED by
 # app-bundled arm64 libraries. Do not treat vendor/device libraries as public NDK
 # APIs merely because some phones expose them.
@@ -125,8 +138,14 @@ report="${TMPDIR:-/tmp}/native-needed-$$.txt"
 for lib in "${libraries[@]}"; do
   name="$(basename "$lib")"
   dynamic="${dynamic_info[$name]}"
-  while IFS= read -r needed; do
-    [[ -n "$needed" ]] || continue
+  needed_lines="$(grep -E '\(NEEDED\)' <<< "$dynamic" || true)"
+  while IFS= read -r needed_line; do
+    [[ -n "$needed_line" ]] || continue
+    if ! needed="$(parse_needed_line "$needed_line")"; then
+      echo "Unable to parse DT_NEEDED dependency line: $name -> $needed_line" >&2
+      missing=1
+      continue
+    fi
     printf '%s -> %s\n' "$name" "$needed" >> "$report"
     if [[ -n "${packaged[$needed]+x}" || -n "${android_system[$needed]+x}" ]]; then
       continue
@@ -137,7 +156,7 @@ for lib in "${libraries[@]}"; do
     fi
     echo "Unresolved/unknown DT_NEEDED dependency: $name -> $needed"
     missing=1
-  done < <(sed -n 's/.*Shared library: \[\(.*\)\].*/\1/p' <<< "$dynamic")
+  done <<< "$needed_lines"
 done
 
 echo "ELF architecture and dependency report:"
