@@ -358,7 +358,10 @@ fun ChatScreen(onBack: () -> Unit) {
             ) pairs += user to assistant
             index += 1
         }
-        val lastSuccessfulTurnId = preferences.getString("memory_extraction_last_success_turn_id", null)
+        val lastSuccessfulTurnId = preferences.getString(
+            "memory_extraction_last_success_turn_id_$memoryScopeId",
+            null,
+        )
         val previousIndex = pairs.indexOfLast { it.first.id == lastSuccessfulTurnId }
         val pending = if (previousIndex >= 0) pairs.drop(previousIndex + 1) else pairs
         if (pending.size < 3) return
@@ -1028,8 +1031,10 @@ fun ChatScreen(onBack: () -> Unit) {
                         val replacingUnreadableHistory = historyLoadFailed
                         history.clear()
                         historyLoadFailed = false
+                        val previousMemoryScopeId = memoryScopeId
                         memoryConversationId = UUID.randomUUID().toString()
                         context.getSharedPreferences("mistbell-v3-settings", Context.MODE_PRIVATE).edit()
+                            .remove("memory_extraction_last_success_turn_id_$previousMemoryScopeId")
                             .remove("memory_extraction_last_success_turn_id")
                             .putString("memory_extraction_conversation_id", memoryConversationId)
                             .apply()

@@ -121,17 +121,19 @@ class MemoryExtractionQueueWorker(
                             when (result) {
                                 MemoryExtractionQueueRunner.Result.Idle -> completion.complete(false)
                                 is MemoryExtractionQueueRunner.Result.Finished -> {
-                                    val turnId = if (result.state == MemoryExtractionJob.State.COMPLETED) {
-                                        repository.list().firstOrNull { it.id == result.jobId }?.turnIds?.lastOrNull()
+                                    val completedJob = if (result.state == MemoryExtractionJob.State.COMPLETED) {
+                                        repository.list().firstOrNull { it.id == result.jobId }
                                     } else {
                                         null
                                     }
-                                    if (result.state == MemoryExtractionJob.State.COMPLETED && turnId != null) {
+                                    val turnId = completedJob?.turnIds?.lastOrNull()
+                                    val scopeId = completedJob?.conversationId
+                                    if (turnId != null && !scopeId.isNullOrBlank()) {
                                         applicationContext.getSharedPreferences(
                                             "mistbell-v3-settings",
                                             Context.MODE_PRIVATE,
                                         ).edit().putString(
-                                            "memory_extraction_last_success_turn_id",
+                                            "memory_extraction_last_success_turn_id_$scopeId",
                                             turnId,
                                         ).apply()
                                     }
