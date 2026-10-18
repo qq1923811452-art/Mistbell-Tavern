@@ -48,7 +48,7 @@ jobs:
           )
           Path("/tmp/skip-notice.md").write_text(body + "\n", encoding="utf-8")
           PY
-          COMMENT_ID="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" | jq -s -r --arg marker "<!-- ai-pr-audit-skip -->" '[.[][]? | select(.user.login == "github-actions[bot]" and (.body | contains($marker))) | .id] | last // empty')"
+          COMMENT_ID="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" | jq -s -r --arg marker "<!-- ai-pr-audit-skip -->" '[flatten(1)[]? | select(.user.login == "github-actions[bot]" and (.body | contains($marker))) | .id] | last // empty')"
           if [[ -n "$COMMENT_ID" ]]; then
             python3 - <<'PY'
           import json
