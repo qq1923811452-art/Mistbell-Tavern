@@ -940,7 +940,13 @@ fun ChatScreen(onBack: () -> Unit) {
                                     )
                                     status = "本地记忆检索已接入；后端=${backendStatus.backend}，证据=${backendStatus.backendEvidence}。配置状态不等于芯片级 NPU 实测。" +
                                         if (indexMaintenanceMessage.isBlank()) "" else " $indexMaintenanceMessage"
-                                    MemoryAwareChatRequest(client, memoryContext).stream(messages, observer)
+                                    MemoryAwareChatRequest(client, memoryContext).stream(
+                                        messages,
+                                        observer,
+                                        ChatGenerationOptions(
+                                            maxTokens = maxTokensText.toIntOrNull()?.takeIf { it in 1..200_000 } ?: 4096,
+                                        ),
+                                    )
                                     }
                             } catch (cancelled: CancellationException) {
                                 closeTrackedMemoryEngine(memoryEngine)
