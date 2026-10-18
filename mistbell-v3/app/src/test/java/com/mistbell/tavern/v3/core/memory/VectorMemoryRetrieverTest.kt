@@ -69,7 +69,7 @@ class VectorMemoryRetrieverTest {
     }
 
     @Test
-    fun skipsOverBudgetMemoryAndContinuesToShorterRelevantMemory() {
+    fun stopsAtFirstOverBudgetMemoryToPreserveSimilarityOrder() {
         val longText = MemoryTextRecord("long", "highly relevant")
         val shortText = MemoryTextRecord("short", "ok")
         val rankedSnapshot = VectorSnapshot(
@@ -88,7 +88,7 @@ class VectorMemoryRetrieverTest {
             maxCharacters = 5,
         )
 
-        assertEquals(listOf(shortText.id), result.map(RetrievedMemory::id))
+        assertTrue(result.isEmpty())
     }
 
     @Test
