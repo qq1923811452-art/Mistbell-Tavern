@@ -101,7 +101,7 @@ object VectorSnapshotCodec {
     private const val FORMAT_VERSION = 2
     private const val CHECKSUM_BYTES = 32
     private const val MAX_MAPPED_UTF_BYTES = 65_535
-    private const val RECORD_OVERHEAD_BYTES = 112L
+    private const val RECORD_OVERHEAD_BYTES = 77L
 
     /**
      * Enforces the snapshot's byte budget before allocating per-record objects or vector views.
@@ -115,7 +115,8 @@ object VectorSnapshotCodec {
     ) {
         require(payloadLength >= 0L) { "Snapshot payload length is invalid." }
         val bytesPerValue = if (formatVersion == LEGACY_FORMAT_VERSION) Float.SIZE_BYTES else 1
-        val maxValues = (payloadLength - count.toLong() * RECORD_OVERHEAD_BYTES) / bytesPerValue
+        val recordOverheadBytes = RECORD_OVERHEAD_BYTES + (if (formatVersion == FORMAT_VERSION) Float.SIZE_BYTES else 0)
+        val maxValues = (payloadLength - count.toLong() * recordOverheadBytes) / bytesPerValue
         require(count.toLong() * dimensions.toLong() <= maxValues) {
             "Snapshot payload is too small for $count records of $dimensions values."
         }
