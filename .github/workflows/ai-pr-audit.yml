@@ -794,6 +794,13 @@ jobs:
             echo "::warning::PR head or base changed while the audit was running; refusing to post a stale report."
             exit 0
           fi
+          # Cross-check the live PR head ref too; pull-request metadata can briefly lag
+          # behind the actual head ref, so metadata equality alone is not sufficient.
+          CURRENT_HEAD_REF="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/pull/${PR_NUMBER}/head" --jq '.object.sha')"
+          if [[ "$CURRENT_HEAD_REF" != "$EXPECTED_HEAD_SHA" ]]; then
+            echo "::warning::Live PR head ref changed or disagrees with metadata; refusing to post a stale report."
+            exit 0
+          fi
           COMMENT_MARKER="<!-- ai-pr-audit-report-${MODEL_SLOT}-pass-${AUDIT_PASS} -->"
           COMMENT_ID="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" | jq -s -r --arg marker "$COMMENT_MARKER" '[flatten(1)[]? | select(.user.login == "github-actions[bot]" and (.body | contains($marker))) | .id] | last // empty')"
           if [[ -n "$COMMENT_ID" && "$COMMENT_ID" =~ ^[0-9]+$ ]]; then
