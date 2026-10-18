@@ -22,7 +22,7 @@ jobs:
   audit:
     name: DeepSeek diff audit
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 5
     # Fork PRs do not receive repository secrets. Do not run a secret-dependent
     # external-model request for them; maintainers can audit after reviewing the source.
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
@@ -160,7 +160,7 @@ jobs:
           truncated = False
           truncation_note = ""
 
-          def split_diff(text, max_chars=40000):
+          def split_diff(text, max_chars=20000):
               chunks = []
               current = []
               current_size = 0
@@ -189,9 +189,9 @@ jobs:
           # A PR-sized diff must never leave this job hanging for tens of minutes.
           # Stop when the time/call budget is exhausted and publish a partial report
           # instead of being killed by the job timeout with no comment at all.
-          audit_budget_seconds = int(os.environ.get("AI_AUDIT_BUDGET_SECONDS", "900"))
+          audit_budget_seconds = int(os.environ.get("AI_AUDIT_BUDGET_SECONDS", "210"))
           audit_deadline = time.monotonic() + audit_budget_seconds
-          max_model_calls = int(os.environ.get("AI_AUDIT_MAX_CALLS", "40"))
+          max_model_calls = int(os.environ.get("AI_AUDIT_MAX_CALLS", "20"))
           model_calls = 0
           unaudited_chunks = 0
 
@@ -262,7 +262,7 @@ jobs:
                   method="POST",
               )
               try:
-                  with urllib.request.urlopen(request, timeout=300) as response:
+                  with urllib.request.urlopen(request, timeout=30) as response:
                       response_body = response.read().decode("utf-8", errors="replace")
               except urllib.error.HTTPError as exc:
                   # Do not print untrusted relay error bodies; they may contain sensitive details.
