@@ -115,6 +115,7 @@ class EmbeddingGemma2ModelAssetManager(
                 output.write("$sha256  $selectedModelFileName\n".toByteArray(Charsets.UTF_8))
                 output.fd.sync()
             }
+            invalidateHashStamp()
             Files.move(
                 temporaryFile.toPath(),
                 modelFile.toPath(),
@@ -212,6 +213,7 @@ class EmbeddingGemma2ModelAssetManager(
                     output.write("$sha256  $selectedModelFileName\n".toByteArray(Charsets.UTF_8))
                     output.fd.sync()
                 }
+                invalidateHashStamp()
                 Files.move(
                     temporaryFile.toPath(),
                     modelFile.toPath(),
@@ -264,6 +266,11 @@ class EmbeddingGemma2ModelAssetManager(
         } catch (_: Exception) {
             null
         }
+    }
+
+    private fun invalidateHashStamp() {
+        val stamp = File(modelDirectory, "$selectedModelFileName.hashstamp")
+        if (stamp.exists()) check(stamp.delete()) { "The previous model hash stamp could not be invalidated." }
     }
 
     /** Persist verified model digests across restarts; cache misses always perform full SHA-256. */
