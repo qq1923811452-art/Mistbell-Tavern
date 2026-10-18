@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.security.MessageDigest
 
 class MemoryExtractionJobCodecTest {
     private fun job(
@@ -29,6 +30,19 @@ class MemoryExtractionJobCodecTest {
 
         assertEquals(jobs.sortedBy { it.id }, MemoryExtractionJobCodec.decode(encoded))
         assertEquals(encoded.toList(), MemoryExtractionJobCodec.encode(jobs.reversed()).toList())
+    }
+
+    @Test
+    fun decodesExplicitNullCredentialHandleAsNull() {
+        val encoded = MemoryExtractionJobCodec.encode(listOf(job()))
+        val payload = encoded.copyOfRange(0, encoded.size - 32)
+            .toString(Charsets.UTF_8)
+            .replace("\\"credential_handle\\":\\"memory-key-handle\\"",
+                "\\"credential_handle\\":null")
+            .toByteArray(Charsets.UTF_8)
+        val withValidChecksum = payload + MessageDigest.getInstance("SHA-256").digest(payload)
+
+        assertEquals(null, MemoryExtractionJobCodec.decode(withValidChecksum).single().credentialHandle)
     }
 
     @Test
