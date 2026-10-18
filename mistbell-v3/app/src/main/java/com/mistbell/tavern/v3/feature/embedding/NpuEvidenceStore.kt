@@ -33,13 +33,21 @@ internal object NpuEvidenceStore {
         val apkSha256MatchesCurrent: Boolean,
     )
 
-    fun write(context: Context, modelFile: File, outcomes: List<String>): WriteResult {
+    fun write(
+        context: Context,
+        modelFile: File,
+        outcomes: List<String>,
+        mappedLibrariesObserved: Map<String, Boolean> = captureMappedLibraries(),
+    ): WriteResult {
         val apk = File(context.applicationInfo.sourceDir)
         val apkBefore = apk.sha256OrEmpty()
         val modelHash = modelFile.sha256OrEmpty()
         val mapsText = runCatching { File("/proc/self/maps").readText() }.getOrDefault("")
+        // Use mappings sampled while a successful NPU engine was still alive. Sampling only
+        // after the seven fresh engines have closed can lose transient QNN mappings and
+        // incorrectly downgrade a successful matrix.
         val mappings = JSONObject().apply {
-            requiredMappings.forEach { name -> put(name, mapsText.lineSequence().any { it.contains(name) }) }
+            requiredMappings.forEach { name -> put(name, mappedLibrariesObserved[name] == true) }
         }
         val libraryHashes = collectLibraryHashes(context, mapsText)
         val cases = JSONArray().apply {
@@ -107,6 +115,11 @@ internal object NpuEvidenceStore {
         }.getOrDefault("packaged_not_device_verified")
         NpuEvidenceRetention.prune(directory)
         return WriteResult(file, finalStatus, successes, apkStillMatches)
+    }
+
+    fun captureMappedLibraries(): Map<String, Boolean> {
+        val mapsText = runCatching { File("/proc/self/maps").readText() }.getOrDefault("")
+        return requiredMappings.associateWith { name -> mapsText.lineSequence().any { it.contains(name) } }
     }
 
     fun hasValidEvidence(context: Context, modelFile: File): Boolean = runCatching {

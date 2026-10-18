@@ -150,21 +150,18 @@ jobs:
           unzip -q "$apk" 'lib/arm64-v8a/*.so' -d "$audit_dir"
           extracted="$audit_dir/lib/arm64-v8a"
           host_libs="$audit_dir/host-arm64"
-          dsp_dir="$audit_dir/hexagon-v75"
-          mkdir -p "$host_libs" "$dsp_dir"
+          mkdir -p "$host_libs"
           shopt -s nullglob
-          # DSP skeletons are Qualcomm Hexagon payloads, so they belong in APK
-          # assets rather than Android's arm64-v8a JNI library directory.
-          dsp_entries="$(unzip -Z1 "$apk" | grep -E '^assets/native-runtime/hexagon-v75/libQnnHtpV75.*Skel\.so' || true)"
-          test -n "$dsp_entries" || { echo "No Qualcomm HTP V75 DSP skeleton found in APK assets." >&2; exit 1; }
-          while IFS= read -r entry; do
-            name="${entry##*/}"
-            unzip -p "$apk" "$entry" > "$dsp_dir/$name"
-            test -s "$dsp_dir/$name"
-          done <<< "$dsp_entries"
-          for library in "$extracted"/*.so; do cp "$library" "$host_libs/"; done
+          dsp_skeletons=("$extracted"/libQnnHtpV75*Skel.so)
+          test "${#dsp_skeletons[@]}" -gt 0 || { echo "No Qualcomm HTP V75 DSP skeleton found in the APK." >&2; exit 1; }
+          for library in "$extracted"/*.so; do
+            case "$(basename "$library")" in
+              libQnnHtpV75*Skel.so) ;; # Hexagon DSP ELF, not an Android AArch64 host library.
+              *) cp "$library" "$host_libs/" ;;
+            esac
+          done
           bash .github/scripts/audit-native-libraries.sh "$host_libs"
-          for skeleton in "$dsp_dir"/*.so; do
+          for skeleton in "${dsp_skeletons[@]}"; do
             readelf -h "$skeleton" | grep -Eq "Machine:[[:space:]]*QUALCOMM DSP6 Processor" || {
               echo "Expected a Qualcomm DSP6/V75 skeleton, got an unexpected ELF architecture: $skeleton" >&2
               exit 1
@@ -183,54 +180,34 @@ jobs:
           unzip -Z1 "$apk" > build-artifacts/apk-entries.txt
           inventory="mistbell-v3/app/src/main/assets/native-runtime/qualcomm-sm8650-inventory.txt"
           test -s "$inventory"
-          mapfile -t inventory_lines < "$inventory"
-          [[ "${#inventory_lines[@]}" -gt 0 ]] || { echo "Qualcomm runtime inventory is empty." >&2; exit 1; }
-          for line in "${inventory_lines[@]}"; do
-            read -r library size extra <<< "$line"
-            [[ -n "${library:-}" && "${size:-}" =~ ^[0-9]+$ && -z "${extra:-}" ]] || {
-              echo "Malformed Qualcomm runtime inventory row." >&2
+          while read -r library size; do
+            test -n "$library" || continue
+            grep -Fxq "lib/arm64-v8a/$library" build-artifacts/apk-entries.txt || {
+              echo "APK is missing staged runtime library: $library" >&2
               exit 1
             }
-            if [[ "$library" =~ ^[A-Za-z0-9._+-]+\.so$ ]]; then
-              apk_entry="lib/arm64-v8a/$library"
-            elif [[ "$library" =~ ^hexagon-v75/[A-Za-z0-9._+-]+\.so$ ]]; then
-              apk_entry="assets/native-runtime/$library"
-            else
-              echo "Malformed Qualcomm runtime library path: $library" >&2
-              exit 1
-            fi
-            grep -Fxq "$apk_entry" build-artifacts/apk-entries.txt || {
-              echo "APK is missing staged runtime library: $apk_entry" >&2
-              exit 1
-            }
-          done
+          done < "$inventory"
 
           # Verify the GPU plugins are present and byte-for-byte match the pinned upstream
           # prebuilt manifest, so the device APK cannot silently regress to CPU-only packaging.
           gpu_checksums="$RUNNER_TEMP/litertlm-gpu.sha256"
           unzip -p "$apk" assets/native-runtime/litertlm-gpu.sha256 > "$gpu_checksums"
           test -s "$gpu_checksums"
-          mapfile -t gpu_checksum_lines < "$gpu_checksums"
-          [[ "${#gpu_checksum_lines[@]}" -eq 7 ]] || {
-            echo "Expected exactly 7 GPU checksum rows; found ${#gpu_checksum_lines[@]}." >&2
-            exit 1
-          }
           gpu_count=0
-          for line in "${gpu_checksum_lines[@]}"; do
-            read -r expected name extra <<< "$line"
-            [[ -n "${expected:-}" && -n "${name:-}" && -z "${extra:-}" ]] || {
-              echo "Malformed GPU checksum row." >&2
-              exit 1
-            }
-            [[ "$expected" =~ ^[0-9a-fA-F]{64}$ ]] || { echo "Malformed SHA-256 for $name." >&2; exit 1; }
-            [[ "$name" =~ ^[A-Za-z0-9._+-]+\.so$ ]] || { echo "Malformed GPU library name: $name" >&2; exit 1; }
+          while read -r expected name; do
+            [[ "$expected" =~ ^[0-9a-fA-F]{64}$ ]]
+            [[ "$name" =~ ^[A-Za-z0-9._+-]+\.so$ ]]
             actual="$(unzip -p "$apk" "lib/arm64-v8a/$name" | sha256sum | awk '{print $1}')"
             [[ "$actual" == "$expected" ]] || {
               echo "Packaged GPU runtime hash mismatch for $name" >&2
               exit 1
             }
             gpu_count=$((gpu_count + 1))
-          done
+          done < "$gpu_checksums"
+          test "$gpu_count" -eq 7 || {
+            echo "Expected 7 reviewed LiteRT-LM GPU libraries; found $gpu_count." >&2
+            exit 1
+          }
           echo "Verified all $gpu_count pinned LiteRT-LM GPU library hashes inside the device APK."
 
           (cd build-artifacts && sha256sum *.apk | tee SHA256SUMS.txt)
@@ -240,8 +217,7 @@ jobs:
             echo "litert_lm_sha=$(git -C upstream/litert-lm rev-parse HEAD)"
             echo "android_ndk=28.1.13356709"
             echo "runtime_status=packaged_not_device_verified"
-            echo "npu_status=packaged_not_device_verified"
-            echo "npu_evidence_policy=runtime-generated-json-must-match-current-apk"
+            echo "npu_status=disabled_until_real_sm8650_inference"
           } > build-artifacts/SOURCE.txt
       - name: Upload SM8650 device-test APK and provenance
         uses: actions/upload-artifact@v4

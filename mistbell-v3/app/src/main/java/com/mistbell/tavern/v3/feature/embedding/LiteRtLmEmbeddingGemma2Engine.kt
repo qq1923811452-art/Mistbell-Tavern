@@ -326,6 +326,7 @@ class LiteRtLmEmbeddingGemma2Engine(
         }
         val lengths = listOf(1, 32, 74, 128, 256, 512, 1024)
         val outcomes = mutableListOf<String>()
+        val mappedLibrariesObserved = NpuEvidenceStore.captureMappedLibraries().mapValues { false }.toMutableMap()
         logWarn(
             "embedding.npu.input_length_matrix.started",
             "caseLengths=${lengths.joinToString(",")}; modelProfile=QUALCOMM_SM8650; padding=not_applied; evidenceStatus=pending",
@@ -337,6 +338,10 @@ class LiteRtLmEmbeddingGemma2Engine(
             try {
                 initialize()
                 val result = infer(listOf(input))
+                // Capture runtime mappings before close() tears down this fresh engine.
+                NpuEvidenceStore.captureMappedLibraries().forEach { (name, mapped) ->
+                    if (mapped) mappedLibrariesObserved[name] = true
+                }
                 val dimensions = result.vectors.firstOrNull()?.size ?: 0
                 val outcome = "chars=$length; result=success; dimensions=$dimensions; elapsedMs=${result.status.lastExecutionMillis ?: -1}"
                 outcomes += outcome
@@ -358,7 +363,7 @@ class LiteRtLmEmbeddingGemma2Engine(
         }
         // Evidence creation hashes the APK and model bundle; never perform it on the UI thread.
         val evidence = withContext(Dispatchers.IO) {
-            NpuEvidenceStore.write(appContext, modelFile, outcomes)
+            NpuEvidenceStore.write(appContext, modelFile, outcomes, mappedLibrariesObserved)
         }
         lastNpuEvidenceResult = evidence
         logWarn(
