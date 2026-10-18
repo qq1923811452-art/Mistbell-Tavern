@@ -26,9 +26,9 @@ jobs:
   audit:
     name: Model ${{ matrix.model_slot }} · pass ${{ matrix.audit_pass }}
     runs-on: ubuntu-latest
-    # Model B is disabled by request. Run exactly one Model A audit pass.
-    timeout-minutes: ${{ matrix.model_slot == 'B' && 8 || 20 }}
-    continue-on-error: ${{ matrix.model_slot == 'B' }}
+    # Only Model A is enabled; keep the job timeout explicit and deterministic.
+    timeout-minutes: 20
+    continue-on-error: false
     strategy:
       fail-fast: false
       # Limit concurrent calls to the shared relay to reduce 429/rate-limit failures.
