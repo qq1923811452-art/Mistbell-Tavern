@@ -179,10 +179,23 @@ class EmbeddingGemma2RuntimeAdapterTest {
                 )
             },
         )
-        val first = adapter.embedQueries(listOf("same cache input"))
-        val second = adapter.embedQueries(listOf("same cache input"))
+        val events = mutableListOf<String>()
+        val loggedAdapter = EmbeddingGemma2RuntimeAdapter(
+            engine = engine { inputs ->
+                calls++
+                EmbeddingBatch(
+                    vectors = inputs.map { List(EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS) { 0.5f } },
+                    status = rawStatus,
+                )
+            },
+            onDiagnostic = { event, _ -> events += event },
+        )
+        val first = loggedAdapter.embedQueries(listOf("same cache input"))
+        val second = loggedAdapter.embedQueries(listOf("same cache input"))
         assertEquals(1, calls)
         assertEquals(first.vectors, second.vectors)
+        assertTrue("embedding.cache.miss" in events)
+        assertTrue("embedding.cache.hit" in events)
     }
 
     @Test

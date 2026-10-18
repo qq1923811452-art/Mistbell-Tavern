@@ -75,10 +75,13 @@ class VectorSnapshotCodecTest {
         val original = VectorSnapshot("model-int8", 128, records)
         val restored = VectorSnapshotCodec.decode(VectorSnapshotCodec.encode(original))
         val query = List(128) { dimension -> if (dimension == 0) 1f else 0f }
-        fun topFive(vectors: List<StoredVector>) = vectors.sortedByDescending { record ->
-            record.values.zip(query).sumOf { (a, b) -> a.toDouble() * b.toDouble() }
-        }.take(5).map { it.id }.toSet()
-        assertTrue(topFive(original.records).intersect(topFive(restored.records)).size >= 4)
+        fun topFive(snapshot: VectorSnapshot) = VectorSimilaritySearch.search(
+            snapshot = snapshot,
+            query = query,
+            limit = 5,
+            minimumScore = -1.0,
+        ).map { it.id }.toSet()
+        assertTrue(topFive(original).intersect(topFive(restored)).size >= 4)
     }
 
     @Test
