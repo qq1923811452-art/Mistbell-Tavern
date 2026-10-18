@@ -33,7 +33,9 @@ if ! grep -Eq '\((RPATH|RUNPATH)\)' <<< ' 0x0000001d (RUNPATH) Library runpath: 
    is_allowed_rpath_entry '$ORIGINsuffix' ||
    is_allowed_rpath_entry '$ORIGIN/../vendor' ||
    is_allowed_rpath_entry '$ORIGIN/lib/../../tmp' ||
-   is_allowed_rpath_entry '$ORIGIN/./lib'; then
+   is_allowed_rpath_entry '$ORIGIN/./lib' ||
+   is_allowed_rpath_entry '$ORIGIN/lib/..' ||
+   is_allowed_rpath_entry '$ORIGIN/lib/.'; then
   echo "RPATH/RUNPATH policy self-test failed." >&2
   exit 1
 fi

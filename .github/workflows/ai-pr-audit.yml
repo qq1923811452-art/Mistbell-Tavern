@@ -512,6 +512,8 @@ jobs:
           if len(report_text) > 50000:
               report_text = report_text[:49500] + "\n\n_Report truncated to stay within safe comment size; manual review required._\n"
           Path("/tmp/ai-pr-audit-report.md").write_text(report_text, encoding="utf-8")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write("audit_incomplete=" + ("true" if report.get("audit_incomplete") else "false") + "\\n")
           print("AI audit response validated; report generated.")
           print("Verified findings:", len(findings))
           print("Unverified findings dropped:", rejected_evidence_count)
@@ -539,3 +541,10 @@ jobs:
           else
             gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file /tmp/ai-pr-audit-report.md
           fi
+
+      - name: Fail if audit coverage is incomplete
+        if: steps.audit.outputs.audit_incomplete == 'true'
+        shell: bash
+        run: |
+          echo "::error::AI audit did not cover every diff chunk. Review the posted partial report and rerun the audit before proceeding."
+          exit 1
