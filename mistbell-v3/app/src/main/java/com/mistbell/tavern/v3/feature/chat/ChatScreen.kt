@@ -765,7 +765,7 @@ fun ChatScreen(onBack: () -> Unit) {
                                     } else {
                                         "当前 EmbeddingGemma 2 原生最高支持 768 维；所选 ${configuredDimensions} 维暂不可用于本地记忆，继续普通聊天。"
                                     }
-                                    client.stream(messages, observer)
+                                    client.stream(messages, observer, ChatGenerationOptions(maxTokens = maxTokensText.toIntOrNull()?.takeIf { it in 1..200_000 } ?: 4096))
                                 } else {
                                     val engine = LiteRtLmEmbeddingGemma2Engine(
                                         context = context.applicationContext,
@@ -935,7 +935,7 @@ fun ChatScreen(onBack: () -> Unit) {
                                 memoryEngine = null
                                 status = "本地记忆不可用，已尝试回退普通聊天：${error.message?.take(120) ?: error::class.java.simpleName}"
                                 try {
-                                    client.stream(messages, observer)
+                                    client.stream(messages, observer, ChatGenerationOptions(maxTokens = maxTokensText.toIntOrNull()?.takeIf { it in 1..200_000 } ?: 4096))
                                 } catch (chatCancelled: CancellationException) {
                                     throw chatCancelled
                                 } catch (chatError: Exception) {

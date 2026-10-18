@@ -19,6 +19,7 @@ class MemoryAwareChatRequest(
     suspend fun stream(
         messages: List<PromptMessage>,
         observer: ChatStreamObserver,
+        options: ChatGenerationOptions = ChatGenerationOptions(),
     ): Call {
         val latestUserMessage = messages.lastOrNull { it.role == PromptRole.USER }?.content
         val memoryResult = if (latestUserMessage.isNullOrBlank()) {
@@ -36,6 +37,6 @@ class MemoryAwareChatRequest(
             }
         }
         val requestMessages = VectorMemoryPromptComposer.compose(messages, memoryResult)
-        return chatClient.stream(requestMessages, observer)
+        return chatClient.stream(requestMessages, observer, options)
     }
 }
