@@ -151,6 +151,7 @@ object VectorSnapshotCodec {
      */
     fun decodeMapped(source: ByteBuffer): VectorSnapshot {
         val mapped = source.asReadOnlyBuffer().order(ByteOrder.BIG_ENDIAN)
+        require(mapped.remaining() <= MAX_SNAPSHOT_BYTES) { "Vector snapshot exceeds the size limit." }
         val envelope = mapped.duplicate().order(ByteOrder.BIG_ENDIAN)
         require(envelope.remaining() >= 4 + 8 + CHECKSUM_BYTES) { "Vector snapshot is truncated." }
         val payloadLength = envelope.int
