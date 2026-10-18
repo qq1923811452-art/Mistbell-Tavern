@@ -100,7 +100,7 @@ class MemoryIndexRebuilder(
                     id = record.id,
                     sourceTextSha256 = record.sourceTextSha256,
                     createdAtEpochMillis = timestamp,
-                    values = vector.toList(),
+                    values = vector.toFloatArray().asList(),
                 )
             }
         } catch (cancelled: CancellationException) {

@@ -257,11 +257,11 @@ object VectorSnapshotCodec {
             val sourceHash = input.readUTF()
             val createdAt = input.readLong()
             val values = if (formatVersion == LEGACY_FORMAT_VERSION) {
-                List(dimensions) { input.readFloat() }
+                FloatArray(dimensions) { input.readFloat() }.asList()
             } else {
                 val scale = input.readFloat()
                 require(scale.isFinite() && scale > 0f) { "Vector quantization scale is invalid." }
-                List(dimensions) { input.readByte().toFloat() * scale }
+                FloatArray(dimensions) { input.readByte().toFloat() * scale }.asList()
             }
             require(values.size == dimensions) { "Decoded vector dimension does not match the snapshot." }
             records += StoredVector(

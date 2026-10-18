@@ -25,6 +25,7 @@ class VectorSnapshotCodecTest {
         assertEquals(snapshot.modelId, decoded.modelId)
         assertEquals(snapshot.dimensions, decoded.dimensions)
         assertEquals(snapshot.records.map { it.id }, decoded.records.map { it.id })
+        assertTrue(decoded.records.single().values !is java.util.ArrayList<*>)
         snapshot.records.single().values.zip(decoded.records.single().values).forEach { (expected, actual) ->
             org.junit.Assert.assertTrue(kotlin.math.abs(expected - actual) <= 0.01f)
         }

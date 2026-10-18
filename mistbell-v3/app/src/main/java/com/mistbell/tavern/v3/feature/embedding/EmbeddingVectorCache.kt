@@ -18,7 +18,7 @@ object EmbeddingVectorCache {
     }
 
     @Synchronized
-    fun get(key: String): Entry? = entries[key]?.let { it.copy(vector = it.vector.toList()) }
+    fun get(key: String): Entry? = entries[key]?.let { it.copy(vector = it.vector.toFloatArray().asList()) }
 
     @Synchronized
     fun remove(key: String) { entries.remove(key) }
@@ -27,7 +27,7 @@ object EmbeddingVectorCache {
     fun put(key: String, vector: List<Float>, status: InferenceRuntimeStatus, policyVersion: Int = EmbeddingGemma2TextPolicy.POLICY_VERSION) {
         require(vector.isNotEmpty() && vector.all(Float::isFinite))
         require(policyVersion > 0)
-        entries[key] = Entry(vector.toList(), status, policyVersion)
+        entries[key] = Entry(vector.toFloatArray().asList(), status, policyVersion)
     }
 
     @Synchronized fun clear() = entries.clear()

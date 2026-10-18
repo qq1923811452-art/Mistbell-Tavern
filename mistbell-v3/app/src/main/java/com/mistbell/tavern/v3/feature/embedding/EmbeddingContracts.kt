@@ -88,7 +88,7 @@ object EmbeddingOutputValidator {
         return ValidatedEmbeddingBatch(
             modelId = runtime.model.modelId,
             dimensions = runtime.model.dimensions,
-            vectors = output.vectors.map { it.toList() },
+            vectors = output.vectors.map { it.toFloatArray().asList() },
             status = output.status,
         )
     }

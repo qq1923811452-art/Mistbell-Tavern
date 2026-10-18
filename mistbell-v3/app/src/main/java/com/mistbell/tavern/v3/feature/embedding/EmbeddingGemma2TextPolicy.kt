@@ -56,12 +56,16 @@ object EmbeddingGemma2TextPolicy {
             "Expected a native $NATIVE_DIMENSIONS-dimensional EmbeddingGemma 2 vector."
         }
         require(vector.all(Float::isFinite)) { "Embedding vector contains non-finite values." }
-        val truncated = vector.take(dimensions)
-        val normSquared = truncated.sumOf { it.toDouble() * it.toDouble() }
+        var normSquared = 0.0
+        for (index in 0 until dimensions) {
+            val value = vector[index].toDouble()
+            normSquared += value * value
+        }
         require(normSquared.isFinite() && normSquared > 0.0) {
             "Truncated embedding vector must have a finite non-zero norm."
         }
         val norm = kotlin.math.sqrt(normSquared)
-        return truncated.map { (it / norm).toFloat() }
+        // Keep primitive FloatArray backing while preserving the existing List<Float> API.
+        return FloatArray(dimensions) { index -> (vector[index] / norm).toFloat() }.asList()
     }
 }
