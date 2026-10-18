@@ -67,7 +67,7 @@ class VectorMemoryPromptComposerTest {
             VectorMemoryContextResult.Ready(listOf(RetrievedMemory("m1", "A stable fact.", 0.8))),
         )
         assertTrue(result.first().content.startsWith(VectorMemoryPromptComposer.MEMORY_SECTION_HEADER))
-        assertTrue(!result.first().content.startsWith("\\n\\n"))
+        assertTrue(!result.first().content.startsWith("\n\n"))
     }
 
     @Test
