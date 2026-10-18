@@ -347,7 +347,10 @@ class LiteRtLmEmbeddingGemma2Engine(
         } finally {
             DiagnosticLogStore.endNpuMatrix()
         }
-        val evidence = NpuEvidenceStore.write(appContext, modelFile, outcomes)
+        // Evidence creation hashes the APK and model bundle; never perform it on the UI thread.
+        val evidence = withContext(Dispatchers.IO) {
+            NpuEvidenceStore.write(appContext, modelFile, outcomes)
+        }
         lastNpuEvidenceResult = evidence
         logWarn(
             "embedding.npu.input_length_matrix.completed",
