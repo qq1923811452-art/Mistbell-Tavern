@@ -546,9 +546,12 @@ jobs:
                       "这不代表代码没有问题，必须人工复核本次变更。"
                   )
               elif rejected_evidence_count:
+                  # The model summary may describe rejected candidates as if they were verified.
+                  # Once any finding is rejected, avoid carrying unsupported claims into the report.
                   report["summary"] = (
-                      str(report.get("summary", "")).strip()
-                      + f"（另有 {rejected_evidence_count} 条候选问题因证据无法匹配而被丢弃。）"
+                      f"仅保留 {len(verified_findings)} 条通过源码证据匹配的候选问题；"
+                      f"另有 {rejected_evidence_count} 条因证据无法匹配而被丢弃。"
+                      "已保留的问题仍需人工核实其因果关系与可复现性。"
                   )
           except Exception as exc:
               # Keep diagnostics actionable without logging the model's raw response.
