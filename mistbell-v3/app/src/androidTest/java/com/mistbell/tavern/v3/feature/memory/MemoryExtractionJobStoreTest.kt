@@ -35,9 +35,15 @@ class MemoryExtractionJobStoreTest {
             MemoryExtractionJobStore(context, fileName).save(listOf(job()))
             File(context.filesDir, fileName).writeBytes("not-a-valid-queue".toByteArray())
 
-            val loaded = MemoryExtractionJobStore(context, fileName).load()
+            val store = MemoryExtractionJobStore(context, fileName)
+            val loaded = store.load()
 
             assertTrue(loaded is MemoryExtractionJobLoadResult.Corrupt)
+            assertTrue(!File(context.filesDir, fileName).exists())
+            assertTrue(
+                context.filesDir.listFiles()?.any { it.name.startsWith("$fileName.corrupt-") } == true,
+            )
+            assertTrue(store.load() is MemoryExtractionJobLoadResult.Missing)
         } finally {
             removeTestFiles(fileName)
         }
@@ -49,6 +55,7 @@ class MemoryExtractionJobStoreTest {
         File(context.filesDir, fileName).delete()
         File(context.filesDir, "$fileName.bak").delete()
         File(context.filesDir, "$fileName.new").delete()
+        context.filesDir.listFiles()?.filter { it.name.startsWith("$fileName.corrupt-") }?.forEach(File::delete)
     }
 
     private fun job() = MemoryExtractionJob(
