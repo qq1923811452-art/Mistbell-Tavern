@@ -271,9 +271,9 @@ class EmbeddingGemma2ModelAssetManager(
         val stampFile = File(modelDirectory, "$selectedModelFileName.hashstamp")
         val canonicalPath = modelFile.canonicalPath
         val stampVersion = "1"
-        val metadata = "$stampVersion\\n$canonicalPath\\n${modelFile.length()}\\n${modelFile.lastModified()}\\n$expectedDigest"
+        val metadata = "$stampVersion\n$canonicalPath\n${modelFile.length()}\n${modelFile.lastModified()}\n$expectedDigest"
         if (stampFile.isFile) {
-            val lines = runCatching { stampFile.readText(Charsets.UTF_8).split('\\n') }.getOrDefault(emptyList())
+            val lines = runCatching { stampFile.readText(Charsets.UTF_8).split('\n') }.getOrDefault(emptyList())
             if (lines.size == 5 && lines[0] == stampVersion && lines[1] == canonicalPath &&
                 lines[2] == modelFile.length().toString() && lines[3] == modelFile.lastModified().toString() &&
                 lines[4].equals(expectedDigest, ignoreCase = true)
