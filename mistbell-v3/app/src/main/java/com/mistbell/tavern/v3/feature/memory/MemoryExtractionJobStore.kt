@@ -47,6 +47,7 @@ class MemoryExtractionJobStore private constructor(targetFile: File, @Suppress("
         val backup = File(base.path + ".bak")
         if (!base.exists() && !backup.exists()) return MemoryExtractionJobLoadResult.Missing
         if (maxOf(base.length(), backup.length()) > MemoryExtractionJobCodec.MAX_BYTES) {
+            quarantineCorruptFiles(base)
             return MemoryExtractionJobLoadResult.Corrupt("Memory extraction queue exceeds the size limit.")
         }
         return try {
@@ -54,9 +55,25 @@ class MemoryExtractionJobStore private constructor(targetFile: File, @Suppress("
                 file.openRead().use { MemoryExtractionJobCodec.decode(it.readBytes()) },
             )
         } catch (_: IOException) {
+            quarantineCorruptFiles(base)
             MemoryExtractionJobLoadResult.Corrupt("Memory extraction queue could not be read.")
         } catch (_: Exception) {
+            quarantineCorruptFiles(base)
             MemoryExtractionJobLoadResult.Corrupt("Memory extraction queue failed integrity or validation checks.")
+        }
+    }
+
+    /**
+     * Preserve corrupt bytes for diagnostics, but move them out of AtomicFile's active paths so
+     * the next worker retry can start a fresh queue instead of retrying the same corrupt file forever.
+     */
+    private fun quarantineCorruptFiles(base: File) {
+        val timestamp = System.currentTimeMillis().coerceAtLeast(0L)
+        listOf(base, File(base.path + ".bak"), File(base.path + ".new")).forEachIndexed { index, candidate ->
+            if (candidate.exists()) {
+                val quarantined = File(candidate.parentFile, "${candidate.name}.corrupt-$timestamp-$index")
+                candidate.renameTo(quarantined)
+            }
         }
     }
 
