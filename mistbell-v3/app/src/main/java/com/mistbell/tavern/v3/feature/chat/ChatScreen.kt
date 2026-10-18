@@ -866,16 +866,58 @@ fun ChatScreen(onBack: () -> Unit) {
                                             memoryScopeId,
                                         ),
                                     )
+                                    val scopedTemporalFactStore = AtomicTemporalFactStore(
+                                        context.applicationContext,
+                                        com.mistbell.tavern.v3.core.storage.MemoryScopeFileNames.forScope(
+                                            AtomicTemporalFactStore.DEFAULT_FILE_NAME,
+                                            memoryScopeId,
+                                        ),
+                                    )
+                                    // Migrate only legacy facts whose recorded conversation ID matches
+                                    // this active session. Never import the old global vector snapshot,
+                                    // because it may contain mixed sessions/roles.
+                                    withContext(Dispatchers.IO) {
+                                        if (scopedTemporalFactStore.load() ==
+                                            com.mistbell.tavern.v3.core.storage.TemporalFactLoadResult.Missing
+                                        ) {
+                                            when (val legacyFacts = AtomicTemporalFactStore(context.applicationContext).load()) {
+                                                is com.mistbell.tavern.v3.core.storage.TemporalFactLoadResult.Loaded -> {
+                                                    val matchingFacts = legacyFacts.facts.filter {
+                                                        it.conversationId == memoryConversationId
+                                                    }
+                                                    if (matchingFacts.isNotEmpty()) {
+                                                        scopedTemporalFactStore.save(matchingFacts)
+                                                        if (memoryTextStore.load() == MemoryTextLoadResult.Missing) {
+                                                            val currentTexts = matchingFacts
+                                                                .filter { it.isCurrent }
+                                                                .map { fact ->
+                                                                    com.mistbell.tavern.v3.core.memory.MemoryTextRecord(
+                                                                        id = TemporalFactExtractionPipeline.FACT_TEXT_ID_PREFIX + fact.id,
+                                                                        text = "${fact.subject} ${fact.predicate}: ${fact.value}",
+                                                                    )
+                                                                }
+                                                            if (currentTexts.isNotEmpty()) memoryTextStore.save(currentTexts)
+                                                        }
+                                                        diagnosticStore.info(
+                                                            "memory.scope.legacy_migration_succeeded",
+                                                            "facts=${matchingFacts.size}; currentFacts=${matchingFacts.count { it.isCurrent }}; scope=${memoryScopeId.take(8)}",
+                                                        )
+                                                    }
+                                                }
+                                                is com.mistbell.tavern.v3.core.storage.TemporalFactLoadResult.Corrupt -> {
+                                                    diagnosticStore.warn(
+                                                        "memory.scope.legacy_migration_skipped",
+                                                        "reason=legacy_fact_store_corrupt",
+                                                    )
+                                                }
+                                                com.mistbell.tavern.v3.core.storage.TemporalFactLoadResult.Missing -> Unit
+                                            }
+                                        }
+                                    }
                                     var indexMaintenanceMessage = ""
                                     when (val syncResult = withContext(Dispatchers.IO) {
                                         TemporalFactTextSynchronizer(
-                                            factStore = AtomicTemporalFactStore(
-                                                context.applicationContext,
-                                                com.mistbell.tavern.v3.core.storage.MemoryScopeFileNames.forScope(
-                                                    AtomicTemporalFactStore.DEFAULT_FILE_NAME,
-                                                    memoryScopeId,
-                                                ),
-                                            ),
+                                            factStore = scopedTemporalFactStore,
                                             memoryTextStore = memoryTextStore,
                                         ).synchronize()
                                     }) {
