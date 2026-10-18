@@ -41,7 +41,7 @@ android {
     // under nativeLibraryDir for runtime loaders that require extracted .so files.
     packaging {
         jniLibs {
-            useLegacyPackaging = true
+            useLegacyPackaging = enableQualcommNpuRuntime
         }
     }
 
