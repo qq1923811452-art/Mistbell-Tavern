@@ -22,6 +22,7 @@ import com.mistbell.tavern.v3.core.memory.VectorMemoryContextService
 import com.mistbell.tavern.v3.core.storage.AtomicMemoryTextStore
 import com.mistbell.tavern.v3.core.storage.AtomicTemporalFactStore
 import com.mistbell.tavern.v3.core.storage.MemoryTextLoadResult
+import com.mistbell.tavern.v3.core.storage.MemoryScopeId
 import com.mistbell.tavern.v3.core.storage.AtomicVectorSnapshotStore
 import com.mistbell.tavern.v3.core.storage.PersistedVectorSnapshotProvider
 import com.mistbell.tavern.v3.core.storage.VectorSnapshotLoadResult
@@ -140,7 +141,7 @@ fun ChatScreen(onBack: () -> Unit) {
         ?.takeIf(String::isNotBlank)
         ?: "default-character"
     val memoryScopeId = remember(activeMemoryRoleId, memoryConversationId) {
-        com.mistbell.tavern.v3.core.storage.MemoryScopeId.forRoleAndConversation(activeMemoryRoleId, memoryConversationId)
+        MemoryScopeId.forRoleAndConversation(activeMemoryRoleId, memoryConversationId)
     }
     var memoryIndexRebuildInFlight by remember { mutableStateOf(false) }
     var memoryStatusNotice by remember { mutableStateOf("") }
