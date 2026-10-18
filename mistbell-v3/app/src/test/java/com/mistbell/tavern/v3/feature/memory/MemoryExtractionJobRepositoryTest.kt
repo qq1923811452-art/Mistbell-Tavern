@@ -82,6 +82,26 @@ class MemoryExtractionJobRepositoryTest {
         assertEquals("earlier", repository.claimDue(2_000L)?.id)
     }
 
+    @Test fun olderRetryBlocksNewerJobEvenWhenIdsSortInReverseChronologicalOrder() {
+        val repository = MemoryExtractionJobRepository(CodecBackedJobStore())
+        val older = job("z-older", createdAt = 100L).copy(
+            attemptCount = 1,
+            state = MemoryExtractionJob.State.RETRY_WAIT,
+            nextAttemptAtEpochMillis = 2_000L,
+        )
+        val newer = job("a-newer", createdAt = 200L)
+
+        assertTrue(repository.enqueue(older))
+        assertTrue(repository.enqueue(newer))
+
+        assertEquals(null, repository.claimDue(1_000L))
+        assertEquals(
+            MemoryExtractionJob.State.PENDING,
+            repository.list().first { it.id == "a-newer" }.state,
+        )
+        assertEquals("z-older", repository.claimDue(2_000L)?.id)
+    }
+
     @Test fun exhaustedDueJobDoesNotBlockAnotherDueJob() {
         val repository = repository()
         val exhausted = job(
@@ -106,6 +126,18 @@ class MemoryExtractionJobRepositoryTest {
 
     private fun repository(): MemoryExtractionJobRepository =
         MemoryExtractionJobRepository(InMemoryJobStore())
+
+    private class CodecBackedJobStore : MemoryExtractionJobPersistence {
+        private var encoded: ByteArray? = null
+
+        override fun save(jobs: List<MemoryExtractionJob>) {
+            encoded = MemoryExtractionJobCodec.encode(jobs)
+        }
+
+        override fun load(): MemoryExtractionJobLoadResult = encoded?.let {
+            MemoryExtractionJobLoadResult.Loaded(MemoryExtractionJobCodec.decode(it))
+        } ?: MemoryExtractionJobLoadResult.Missing
+    }
 
     private class InMemoryJobStore : MemoryExtractionJobPersistence {
         private var savedJobs: List<MemoryExtractionJob>? = null
