@@ -138,7 +138,6 @@ class MainActivity : ComponentActivity() {
             } else if (operationBusy) {
                 Toast.makeText(this, "当前操作尚未完成", Toast.LENGTH_LONG).show()
             } else {
-                EmbeddingEngineProcessHolder.close(CloseReason.MODEL_CHANGED)
                 operationBusy = true
                 operationMessage = "正在导入本地 .litertlm 模型……"
                 lifecycleScope.launch {
@@ -162,6 +161,7 @@ class MainActivity : ComponentActivity() {
                         val imported = modelAssets.importModel(sourceName, input) { bytes, _ ->
                             runOnUiThread { operationMessage = "模型导入中：${bytes / (1024 * 1024)} MiB" }
                         }
+                        EmbeddingEngineProcessHolder.close(CloseReason.MODEL_CHANGED)
                         val settings = getSharedPreferences("mistbell-v3-settings", MODE_PRIVATE)
                         val profileKey = if (qualcommModelSelected) "embedding_public_model_name_qualcomm" else "embedding_public_model_name_portable"
                         val localPathKey = if (qualcommModelSelected) "embedding_local_model_path_qualcomm" else "embedding_local_model_path_portable"

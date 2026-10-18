@@ -713,8 +713,6 @@ fun ChatScreen(onBack: () -> Unit) {
                             }
 
                             override fun onFailure(failure: ChatStreamFailure) {
-                                closeTrackedMemoryEngine(memoryEngine)
-                                memoryEngine = null
                                 mainHandler.post {
                                     busy = false
                                     status = failure.safeMessage
@@ -925,16 +923,12 @@ fun ChatScreen(onBack: () -> Unit) {
                                     )
                                     }
                             } catch (cancelled: CancellationException) {
-                                closeTrackedMemoryEngine(memoryEngine)
-                                memoryEngine = null
                                 throw cancelled
                             } catch (error: Exception) {
                                 diagnosticStore.warn(
                                     "chat.embedding.fallback",
                                     "reason=${error::class.java.simpleName}",
                                 )
-                                closeTrackedMemoryEngine(memoryEngine)
-                                memoryEngine = null
                                 status = "本地记忆不可用，已尝试回退普通聊天：${error.message?.take(120) ?: error::class.java.simpleName}"
                                 try {
                                     client.stream(messages, observer, ChatGenerationOptions(maxTokens = maxTokensText.toIntOrNull()?.takeIf { it in 1..200_000 } ?: 4096))
