@@ -502,11 +502,14 @@ jobs:
                   evidence_lines = evidence.strip().splitlines()
                   if not 1 <= len(evidence_lines) <= 6:
                       return False
-                  # Some models include the leading +/- diff marker when quoting a line.
-                  # Try both raw source text and marker-stripped text; both must match contiguously.
+                  # Models sometimes mix diff-prefixed and plain source lines in one excerpt.
+                  # Try the raw excerpt and a per-line marker-stripped variant; every candidate
+                  # must still match contiguous lines from this exact file's submitted diff.
                   candidates = [evidence_lines]
-                  if all(line[:1] in ("+", "-", " ") for line in evidence_lines):
-                      candidates.append([line[1:] for line in evidence_lines])
+                  candidates.append([
+                      line[1:] if line[:1] in ("+", "-", " ") else line
+                      for line in evidence_lines
+                  ])
                   def normalize_snippet(lines):
                       trimmed = [line.rstrip() for line in lines]
                       nonempty_indents = [
