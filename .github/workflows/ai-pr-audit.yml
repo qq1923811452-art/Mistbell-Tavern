@@ -375,7 +375,7 @@ jobs:
               )
               try:
                   # Model A is the only active auditor; each attempt has a bounded network timeout.
-                  request_timeout = 120 if model_slot == "B" else 300
+                  request_timeout = 25
                   with urllib.request.urlopen(request, timeout=request_timeout) as response:
                       response_body = response.read().decode("utf-8", errors="replace")
               except urllib.error.HTTPError as exc:
