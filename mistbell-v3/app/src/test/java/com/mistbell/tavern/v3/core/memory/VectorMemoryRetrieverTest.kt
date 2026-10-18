@@ -331,4 +331,46 @@ class VectorMemoryRetrieverTest {
             )
         }.isFailure)
     }
+    /**
+     * Small deterministic golden set: each query has one expected memory and orthogonal
+     * distractors. This protects threshold/RRF behavior from silent relevance regressions.
+     */
+    @Test
+    fun goldenSetKeepsExpectedMemoryAtTopForEnglishAndChineseQueries() {
+        val goldenMemories = listOf(
+            MemoryTextRecord("concise", "The user prefers concise answers."),
+            MemoryTextRecord("qualcomm", "Qualcomm HTP runtime failure diagnostics."),
+            MemoryTextRecord("beijing", "用户今天去了北京并计划旅行。"),
+        )
+        val goldenSnapshot = VectorSnapshot(
+            modelId = "golden-test-model",
+            dimensions = 3,
+            records = listOf(
+                StoredVector("concise-vector", goldenMemories[0].sourceTextSha256, 1L, listOf(1f, 0f, 0f)),
+                StoredVector("qualcomm-vector", goldenMemories[1].sourceTextSha256, 2L, listOf(0f, 1f, 0f)),
+                StoredVector("beijing-vector", goldenMemories[2].sourceTextSha256, 3L, listOf(0f, 0f, 1f)),
+            ),
+        )
+        data class GoldenCase(val query: String, val vector: List<Float>, val expectedId: String)
+        val cases = listOf(
+            GoldenCase("concise answers", listOf(1f, 0f, 0f), "concise"),
+            GoldenCase("Qualcomm HTP runtime diagnostics", listOf(0f, 1f, 0f), "qualcomm"),
+            GoldenCase("北京旅行", listOf(0f, 0f, 1f), "beijing"),
+        )
+
+        cases.forEach { golden ->
+            val results = VectorMemoryRetriever.retrieve(
+                snapshot = goldenSnapshot,
+                queryVector = golden.vector,
+                texts = goldenMemories,
+                queryText = golden.query,
+                limit = 3,
+                minimumScore = 0.35,
+            )
+            assertTrue("Golden query should return at least one result: ${golden.query}", results.isNotEmpty())
+            assertEquals("Unexpected top memory for query: ${golden.query}", golden.expectedId, results.first().id)
+            assertTrue("Top result should meet the configured threshold", results.first().similarity >= 0.35)
+        }
+    }
+
 }
