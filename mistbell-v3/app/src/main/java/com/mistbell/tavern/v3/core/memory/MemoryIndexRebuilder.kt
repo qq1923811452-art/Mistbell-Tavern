@@ -44,21 +44,29 @@ class MemoryIndexRebuilder(
         val dimensions = runtime.dimensions
         if (modelId.isBlank() ||
             dimensions !in 1..VectorSnapshotCodec.MAX_DIMENSIONS ||
-            records.size > MemoryTextCodec.MAX_RECORDS ||
-            records.map(MemoryTextRecord::id).distinct().size != records.size
+            records.size > MemoryTextCodec.MAX_RECORDS
         ) {
             return MemoryIndexRebuildResult.Failed(
                 MemoryIndexRebuildResult.Stage.INVALID_INPUT,
                 "Model metadata or source record set is invalid.",
             )
         }
-        if (records.sumOf { it.text.toByteArray(Charsets.UTF_8).size.toLong() } >
-            MemoryTextCodec.MAX_STORE_BYTES
-        ) {
-            return MemoryIndexRebuildResult.Failed(
-                MemoryIndexRebuildResult.Stage.INVALID_INPUT,
-                "Source text exceeds the persistence size limit.",
-            )
+        val seenIds = HashSet<String>(records.size)
+        var sourceTextBytes = 0L
+        for (record in records) {
+            if (!seenIds.add(record.id)) {
+                return MemoryIndexRebuildResult.Failed(
+                    MemoryIndexRebuildResult.Stage.INVALID_INPUT,
+                    "Model metadata or source record set is invalid.",
+                )
+            }
+            sourceTextBytes += record.text.toByteArray(Charsets.UTF_8).size.toLong()
+            if (sourceTextBytes > MemoryTextCodec.MAX_STORE_BYTES) {
+                return MemoryIndexRebuildResult.Failed(
+                    MemoryIndexRebuildResult.Stage.INVALID_INPUT,
+                    "Source text exceeds the persistence size limit.",
+                )
+            }
         }
         if (records.size.toLong() * dimensions > VectorSnapshotCodec.MAX_VECTOR_VALUES) {
             return MemoryIndexRebuildResult.Failed(
