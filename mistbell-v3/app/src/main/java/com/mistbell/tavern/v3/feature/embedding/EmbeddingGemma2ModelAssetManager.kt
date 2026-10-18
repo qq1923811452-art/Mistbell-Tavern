@@ -249,16 +249,7 @@ class EmbeddingGemma2ModelAssetManager(
             if (!modelFile.isFile || !digestFile.isFile || (modelFile.length() < 1L || modelFile.length() > MAX_MODEL_BYTES)) return@withContext null
             val expected = digestFile.readText(Charsets.UTF_8).trim().substringBefore(' ').trim()
             if (!expected.matches(Regex("[0-9a-fA-F]{64}"))) return@withContext null
-            val digest = MessageDigest.getInstance("SHA-256")
-            modelFile.inputStream().buffered().use { input ->
-                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-                while (true) {
-                    val count = input.read(buffer)
-                    if (count < 0) break
-                    digest.update(buffer, 0, count)
-                }
-            }
-            val actual = digest.digest().toHex()
+            val actual = sha256CachedForInstalledModel(expected)
             if (!actual.equals(expected, ignoreCase = true)) return@withContext null
             val isQualcommModel = actual.equals(QUALCOMM_SM8650_MODEL_SHA256, ignoreCase = true)
             if (isQualcommModel != preferQualcommSm8650Model) return@withContext null
@@ -275,6 +266,37 @@ class EmbeddingGemma2ModelAssetManager(
         }
     }
 
+    /** Persist verified model digests across restarts; cache misses always perform full SHA-256. */
+    private fun sha256CachedForInstalledModel(expectedDigest: String): String {
+        val stampFile = File(modelDirectory, "$selectedModelFileName.hashstamp")
+        val canonicalPath = modelFile.canonicalPath
+        val stampVersion = "1"
+        val metadata = "$stampVersion\\n$canonicalPath\\n${modelFile.length()}\\n${modelFile.lastModified()}\\n$expectedDigest"
+        if (stampFile.isFile) {
+            val lines = runCatching { stampFile.readText(Charsets.UTF_8).split('\\n') }.getOrDefault(emptyList())
+            if (lines.size == 5 && lines[0] == stampVersion && lines[1] == canonicalPath &&
+                lines[2] == modelFile.length().toString() && lines[3] == modelFile.lastModified().toString() &&
+                lines[4].equals(expectedDigest, ignoreCase = true)
+            ) return lines[4].lowercase()
+        }
+        val digest = MessageDigest.getInstance("SHA-256")
+        modelFile.inputStream().buffered().use { input ->
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                digest.update(buffer, 0, count)
+            }
+        }
+        val actual = digest.digest().toHex()
+        if (actual.equals(expectedDigest, ignoreCase = true)) runCatching {
+            val temporary = File(modelDirectory, "$selectedModelFileName.hashstamp.tmp")
+            temporary.writeText(metadata.replace(expectedDigest, actual), Charsets.UTF_8)
+            if (stampFile.exists()) stampFile.delete()
+            check(temporary.renameTo(stampFile))
+        }
+        return actual
+    }
     private fun openSecureConnection(): HttpURLConnection {
         var currentUrl = URL(selectedModelUrl)
         for (redirectCount in 0..MAX_REDIRECTS) {
