@@ -8,6 +8,7 @@ package com.mistbell.tavern.v3.feature.embedding
  */
 object EmbeddingGemma2TextPolicy {
     const val MODEL_ID = "google/embeddinggemma-2"
+    const val POLICY_VERSION = 1
     const val NATIVE_DIMENSIONS = 768
     const val MAX_EMBED_CHARS = 2_000
 

@@ -54,6 +54,7 @@ import com.mistbell.tavern.v3.feature.embedding.DownloadedEmbeddingModel
 import com.mistbell.tavern.v3.feature.embedding.EmbeddingGemma2RuntimeAdapter
 import com.mistbell.tavern.v3.feature.embedding.LiteRtLmEmbeddingGemma2Engine
 import com.mistbell.tavern.v3.feature.embedding.EmbeddingEngineProcessHolder
+import com.mistbell.tavern.v3.feature.embedding.EmbeddingEngineProcessHolder.CloseReason
 import com.mistbell.tavern.v3.core.diagnostics.DiagnosticLogStore
 import com.mistbell.tavern.v3.core.inference.InferenceBackend
 import com.mistbell.tavern.v3.core.inference.InferencePhase
@@ -137,6 +138,7 @@ class MainActivity : ComponentActivity() {
             } else if (operationBusy) {
                 Toast.makeText(this, "当前操作尚未完成", Toast.LENGTH_LONG).show()
             } else {
+                EmbeddingEngineProcessHolder.close(CloseReason.MODEL_CHANGED)
                 operationBusy = true
                 operationMessage = "正在导入本地 .litertlm 模型……"
                 lifecycleScope.launch {
@@ -271,7 +273,7 @@ class MainActivity : ComponentActivity() {
 
     private fun selectModelProfile(qualcomm: Boolean) {
         if (operationBusy || qualcommModelSelected == qualcomm) return
-        EmbeddingEngineProcessHolder.close()
+        EmbeddingEngineProcessHolder.close(CloseReason.MODEL_CHANGED)
         qualcommModelSelected = qualcomm
         modelProfileGeneration += 1
         val generationAtSelection = modelProfileGeneration
@@ -526,6 +528,20 @@ class MainActivity : ComponentActivity() {
             diagnostics.warn("embedding.selftest.unsupported_dimension_for_model", "model=EmbeddingGemma2; nativeDimensions=768; selectedDimensions=$selectedEmbeddingDimensions")
             return
         }
+        val selfTestText = "Mistbell Tavern local embedding diagnostic test"
+        if (!allowDiagnosticNpuProbe) {
+            val cached = EmbeddingGemma2RuntimeAdapter.cachedQuery(
+                query = selfTestText,
+                outputDimensions = selectedEmbeddingDimensions,
+                onDiagnostic = { event, detail -> diagnostics.info(event, detail) },
+            )
+            if (cached != null) {
+                inferenceStatus = cached.status
+                operationMessage = "本地向量自测缓存命中：${cached.vectors.single().size} 维；跳过引擎初始化与推理。"
+                diagnostics.info("embedding.selftest.succeeded", "cacheHit=true; dimensions=${cached.vectors.single().size}; configuredBackend=${cached.status.backend}; evidence=${cached.status.backendEvidence}; elapsedMs=0")
+                return
+            }
+        }
         operationBusy = true
         operationMessage = "正在准备本地 EmbeddingGemma 2 推理……"
         lifecycleScope.launch {
@@ -581,9 +597,7 @@ class MainActivity : ComponentActivity() {
                         initializedRuntime,
                         outputDimensions = selectedEmbeddingDimensions,
                         onDiagnostic = { event, detail -> diagnostics.info(event, detail) },
-                    ).embedQueries(
-                        listOf("Mistbell Tavern local embedding diagnostic test"),
-                    )
+                    ).embedQueries(listOf(selfTestText))
                     inferenceStatus = result.status
                     operationMessage =
                         "真实本地推理成功：${result.vectors.single().size} 维向量；配置后端 ${result.status.backend}。硬件实际调用仍需结合设备日志确认。"

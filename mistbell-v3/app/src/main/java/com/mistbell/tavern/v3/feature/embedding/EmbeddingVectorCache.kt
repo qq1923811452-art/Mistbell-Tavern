@@ -8,7 +8,7 @@ import java.util.LinkedHashMap
 /** Process-wide 512-entry LRU. Entries are written only after successful inference validation. */
 object EmbeddingVectorCache {
     const val CAPACITY = 512
-    data class Entry(val vector: List<Float>, val status: InferenceRuntimeStatus)
+    data class Entry(val vector: List<Float>, val status: InferenceRuntimeStatus, val policyVersion: Int)
 
     @Volatile private var logger: (String, String) -> Unit = { _, _ -> }
 
@@ -23,9 +23,10 @@ object EmbeddingVectorCache {
     fun remove(key: String) { entries.remove(key) }
 
     @Synchronized
-    fun put(key: String, vector: List<Float>, status: InferenceRuntimeStatus) {
+    fun put(key: String, vector: List<Float>, status: InferenceRuntimeStatus, policyVersion: Int = EmbeddingGemma2TextPolicy.POLICY_VERSION) {
         require(vector.isNotEmpty() && vector.all(Float::isFinite))
-        entries[key] = Entry(vector.toList(), status)
+        require(policyVersion > 0)
+        entries[key] = Entry(vector.toList(), status, policyVersion)
     }
 
     @Synchronized fun clear() = entries.clear()
@@ -35,11 +36,11 @@ object EmbeddingVectorCache {
     fun log(event: String, detail: String) = logger(event, detail)
 
     /** Hash task-formatted text so query/document prefixes cannot collide. */
-    fun key(text: String, modelId: String, dimensions: Int): String {
-        require(modelId.isNotBlank() && dimensions > 0)
+    fun key(text: String, modelId: String, dimensions: Int, policyVersion: Int = EmbeddingGemma2TextPolicy.POLICY_VERSION): String {
+        require(modelId.isNotBlank() && dimensions > 0 && policyVersion > 0)
         val digest = MessageDigest.getInstance("SHA-256")
             .digest(text.toByteArray(StandardCharsets.UTF_8))
             .joinToString("") { "%02x".format(it.toInt() and 0xff) }
-        return "$digest|$modelId|$dimensions"
+        return "$digest|$modelId|$dimensions|$policyVersion"
     }
 }

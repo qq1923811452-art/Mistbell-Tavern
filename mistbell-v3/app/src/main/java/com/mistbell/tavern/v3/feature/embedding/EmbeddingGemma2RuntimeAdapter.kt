@@ -27,6 +27,31 @@ class EmbeddingGemma2RuntimeAdapter(
         const val MAX_CONFIGURED_BATCH_SIZE = 256
         const val MAX_FORMATTED_INPUT_BYTES = 4096
         const val BATCH_SIZE = 8
+
+        /** Returns a cached query result without acquiring or initializing a native engine. */
+        fun cachedQuery(
+            query: String,
+            outputDimensions: Int = EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS,
+            onDiagnostic: (String, String) -> Unit = { event, detail -> EmbeddingVectorCache.log(event, detail) },
+        ): EmbeddingBatch? {
+            if (query.isBlank() || outputDimensions !in EmbeddingGemma2TextPolicy.supportedDimensions) return null
+            val formatted = EmbeddingGemma2TextPolicy.formatSearchQuery(EmbeddingGemma2TextPolicy.truncateInput(query))
+            val key = EmbeddingVectorCache.key(formatted, EmbeddingGemma2TextPolicy.MODEL_ID, outputDimensions, EmbeddingGemma2TextPolicy.POLICY_VERSION)
+            val cached = EmbeddingVectorCache.get(key) ?: return null
+            val usable = cached.vector.size == outputDimensions &&
+                cached.status.modelId == EmbeddingGemma2TextPolicy.MODEL_ID &&
+                cached.policyVersion == EmbeddingGemma2TextPolicy.POLICY_VERSION &&
+                !cached.status.runtimeId.isNullOrBlank() &&
+                cached.status.backendEvidence != BackendEvidence.NOT_AVAILABLE &&
+                (cached.status.phase == InferencePhase.READY || cached.status.phase == InferencePhase.RUNNING ||
+                    cached.status.phase == InferencePhase.FALLBACK)
+            if (!usable) {
+                EmbeddingVectorCache.remove(key)
+                return null
+            }
+            onDiagnostic("embedding.cache.hit", "modelId=${EmbeddingGemma2TextPolicy.MODEL_ID}; dimensions=$outputDimensions; engineInitializationSkipped=true")
+            return EmbeddingBatch(listOf(cached.vector), cached.status.copy(lastExecutionMillis = null))
+        }
     }
 
     init {
@@ -99,12 +124,13 @@ class EmbeddingGemma2RuntimeAdapter(
         val pendingByKey = linkedMapOf<String, MutableList<Int>>()
         val cachedStatuses = mutableListOf<com.mistbell.tavern.v3.core.inference.InferenceRuntimeStatus>()
         formattedInputs.forEachIndexed { index, formatted ->
-            val key = EmbeddingVectorCache.key(formatted, model.modelId, model.dimensions)
+            val key = EmbeddingVectorCache.key(formatted, model.modelId, model.dimensions, EmbeddingGemma2TextPolicy.POLICY_VERSION)
             val cached = EmbeddingVectorCache.get(key)
             val usableCached = cached?.takeIf {
                 it.vector.size == model.dimensions &&
                     it.status.modelId == model.modelId &&
-                    it.status.runtimeId == engine.runtimeId &&
+                    it.policyVersion == EmbeddingGemma2TextPolicy.POLICY_VERSION &&
+                    !it.status.runtimeId.isNullOrBlank() &&
                     it.status.backendEvidence != BackendEvidence.NOT_AVAILABLE &&
                     (it.status.phase == InferencePhase.READY ||
                         it.status.phase == InferencePhase.RUNNING ||
@@ -130,7 +156,7 @@ class EmbeddingGemma2RuntimeAdapter(
             }
             batch.forEachIndexed { resultIndex, (key, indexes) ->
                 val vector = normalized[resultIndex]
-                EmbeddingVectorCache.put(key, vector, raw.status)
+                EmbeddingVectorCache.put(key, vector, raw.status, EmbeddingGemma2TextPolicy.POLICY_VERSION)
                 indexes.forEach { originalIndex -> output[originalIndex] = vector }
             }
             lastStatus = raw.status

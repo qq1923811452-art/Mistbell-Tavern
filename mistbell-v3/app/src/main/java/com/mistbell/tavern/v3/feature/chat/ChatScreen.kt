@@ -28,8 +28,8 @@ import com.mistbell.tavern.v3.core.storage.VectorSnapshotLoadResult
 import com.mistbell.tavern.v3.feature.embedding.EmbeddingGemma2MemoryRuntime
 import com.mistbell.tavern.v3.feature.embedding.EmbeddingGemma2ModelAssetManager
 import com.mistbell.tavern.v3.feature.embedding.EmbeddingGemma2RuntimeAdapter
+import com.mistbell.tavern.v3.feature.embedding.EmbeddingEngineProcessHolder
 import com.mistbell.tavern.v3.feature.embedding.EmbeddingGemma2TextPolicy
-import com.mistbell.tavern.v3.feature.embedding.LiteRtLmEmbeddingGemma2Engine
 import java.io.File
 import java.util.UUID
 import androidx.compose.foundation.layout.Arrangement
@@ -54,7 +54,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -150,23 +149,6 @@ fun ChatScreen(onBack: () -> Unit) {
     val historySaveRevision = remember { java.util.concurrent.atomic.AtomicLong(0L) }
     val diagnosticStore = remember(context) { DiagnosticLogStore(context.applicationContext.filesDir) }
     val memoryExtractionInFlight = remember { mutableSetOf<String>() }
-    val activeMemoryEngines = remember {
-        java.util.Collections.synchronizedSet(mutableSetOf<LiteRtLmEmbeddingGemma2Engine>())
-    }
-    DisposableEffect(activeMemoryEngines) {
-        onDispose {
-            val engines = synchronized(activeMemoryEngines) {
-                activeMemoryEngines.toList().also { activeMemoryEngines.clear() }
-            }
-            engines.forEach { engine -> runCatching { engine.close() } }
-        }
-    }
-
-    fun closeTrackedMemoryEngine(engine: LiteRtLmEmbeddingGemma2Engine?) {
-        if (engine == null) return
-        val shouldClose = synchronized(activeMemoryEngines) { activeMemoryEngines.remove(engine) }
-        if (shouldClose) runCatching { engine.close() }
-    }
 
     fun persistHistory() {
         val revision = historySaveRevision.incrementAndGet()
@@ -695,7 +677,6 @@ fun ChatScreen(onBack: () -> Unit) {
                             }
                             add(PromptMessage(PromptRole.USER, userText))
                         }
-                        var memoryEngine: LiteRtLmEmbeddingGemma2Engine? = null
                         val observer = object : ChatStreamObserver {
                             override fun onDelta(text: String) {
                                 mainHandler.post {
@@ -717,8 +698,6 @@ fun ChatScreen(onBack: () -> Unit) {
                             }
 
                             override fun onComplete() {
-                                closeTrackedMemoryEngine(memoryEngine)
-                                memoryEngine = null
                                 mainHandler.post {
                                     busy = false
                                     status = "回复完成。"
@@ -787,16 +766,13 @@ fun ChatScreen(onBack: () -> Unit) {
                                     }
                                     client.stream(messages, observer, ChatGenerationOptions(maxTokens = maxTokensText.toIntOrNull()?.takeIf { it in 1..200_000 } ?: 4096))
                                 } else {
-                                    val engine = LiteRtLmEmbeddingGemma2Engine(
+                                    // The process holder owns native engine lifetime across UI/background transitions.
+                                    val engine = EmbeddingEngineProcessHolder.acquire(
                                         context = context.applicationContext,
                                         modelFile = installedModel.file,
                                         npuModelCompatible = installedModel.isQualcommSm8650Optimized,
                                         diagnostics = diagnosticStore,
                                     )
-                                    memoryEngine = engine
-                                    activeMemoryEngines.add(engine)
-                                    // Native model loading can block; never initialize the runtime on Compose's main thread.
-                                    withContext(Dispatchers.IO) { engine.initialize() }
                                     val backendStatus = withContext(Dispatchers.IO) { engine.currentStatus() }
                                     diagnosticStore.info(
                                         "chat.embedding.backend_initialized",

@@ -190,7 +190,7 @@ class EmbeddingGemma2RuntimeAdapterTest {
     }
 
     @Test
-    fun cacheEntryFromDifferentRuntimeIsNotReused(): Unit = runBlocking {
+    fun cacheEntryFromDifferentRuntimeIsReusedWithoutRequiringSameEngineInstance(): Unit = runBlocking {
         EmbeddingVectorCache.clear()
         var firstCalls = 0
         var secondCalls = 0
@@ -217,8 +217,27 @@ class EmbeddingGemma2RuntimeAdapterTest {
         val secondAdapter = EmbeddingGemma2RuntimeAdapter(engine = secondEngine)
         val result = secondAdapter.embedQueries(listOf("runtime-sensitive cache input"))
         assertEquals(1, firstCalls)
-        assertEquals(1, secondCalls)
-        assertEquals("another-runtime", result.status.runtimeId)
+        assertEquals(0, secondCalls)
+        assertEquals("fake-litert-engine", result.status.runtimeId)
+    }
+
+    @Test
+    fun cachedQueryReturnsWithoutConstructingOrInitializingAnEngine(): Unit = runBlocking {
+        EmbeddingVectorCache.clear()
+        var calls = 0
+        val adapter = EmbeddingGemma2RuntimeAdapter(
+            engine = engine { inputs ->
+                calls++
+                EmbeddingBatch(inputs.map { List(EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS) { 0.75f } }, rawStatus)
+            },
+        )
+        val query = "cache survives engine close"
+        val first = adapter.embedQueries(listOf(query))
+        val cached = EmbeddingGemma2RuntimeAdapter.cachedQuery(query)
+        assertEquals(1, calls)
+        assertTrue(cached != null)
+        assertEquals(first.vectors, cached!!.vectors)
+        assertEquals(null, cached.status.lastExecutionMillis)
     }
 
     @Test
@@ -249,8 +268,10 @@ class EmbeddingGemma2RuntimeAdapterTest {
         val a = EmbeddingVectorCache.key("same", "model-a", 768)
         val b = EmbeddingVectorCache.key("same", "model-b", 768)
         val c = EmbeddingVectorCache.key("same", "model-a", 256)
+        val d = EmbeddingVectorCache.key("same", "model-a", 768, policyVersion = EmbeddingGemma2TextPolicy.POLICY_VERSION + 1)
         assertTrue(a != b)
         assertTrue(a != c)
+        assertTrue(a != d)
     }
 
     @Test

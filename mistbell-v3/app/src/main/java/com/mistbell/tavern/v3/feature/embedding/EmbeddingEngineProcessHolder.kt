@@ -19,9 +19,12 @@ object EmbeddingEngineProcessHolder : ComponentCallbacks2 {
     )
     private data class Entry(val key: EngineKey, val engine: LiteRtLmEmbeddingGemma2Engine)
 
+    enum class CloseReason { MODEL_CHANGED, MEMORY_PRESSURE, EXPLICIT }
+
     private val mutex = Mutex()
     private val stateLock = Any()
     @Volatile private var current: Entry? = null
+    private var lastRequestedKey: EngineKey? = null
     @Volatile private var registeredContext: Context? = null
     private var memoryGeneration = 0L
 
@@ -37,10 +40,13 @@ object EmbeddingEngineProcessHolder : ComponentCallbacks2 {
         val key = EngineKey(modelFile.canonicalPath, modelFile.length(), modelFile.lastModified(), npuModelCompatible)
         mutex.lock()
         try {
-            synchronized(stateLock) {
+            val modelChanged = synchronized(stateLock) {
                 current?.takeIf { it.key == key }?.let { return it.engine }
+                val changed = lastRequestedKey != null && lastRequestedKey != key
+                lastRequestedKey = key
+                changed
             }
-            closeCurrent()
+            closeCurrent(clearCache = modelChanged)
             val generationAtStart = synchronized(stateLock) { memoryGeneration }
             val engine = withContext(Dispatchers.IO) {
                 LiteRtLmEmbeddingGemma2Engine(
@@ -73,15 +79,18 @@ object EmbeddingEngineProcessHolder : ComponentCallbacks2 {
         }
     }
 
-    fun close() {
-        synchronized(stateLock) { memoryGeneration++ }
-        closeCurrent()
+    fun close(reason: CloseReason = CloseReason.EXPLICIT) {
+        synchronized(stateLock) {
+            memoryGeneration++
+            if (reason == CloseReason.MODEL_CHANGED) lastRequestedKey = null
+        }
+        closeCurrent(clearCache = reason == CloseReason.MODEL_CHANGED)
     }
 
-    private fun closeCurrent() {
+    private fun closeCurrent(clearCache: Boolean = false) {
         val old = synchronized(stateLock) { current.also { current = null } }
         old?.let { runCatching { it.engine.close() } }
-        EmbeddingVectorCache.clear()
+        if (clearCache) EmbeddingVectorCache.clear()
     }
 
     private fun registerCallbacks(context: Context) {
@@ -94,8 +103,9 @@ object EmbeddingEngineProcessHolder : ComponentCallbacks2 {
     }
 
     override fun onTrimMemory(level: Int) {
-        if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) close()
+        // RUNNING_LOW and UI_HIDDEN can occur during ordinary background transitions.
+        if (level == ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL) close(CloseReason.MEMORY_PRESSURE)
     }
-    override fun onLowMemory() = close()
+    override fun onLowMemory() = close(CloseReason.MEMORY_PRESSURE)
     override fun onConfigurationChanged(newConfig: Configuration) = Unit
 }
