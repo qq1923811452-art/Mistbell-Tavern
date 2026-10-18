@@ -882,9 +882,9 @@ fun ChatScreen(onBack: () -> Unit) {
                                         ) {
                                             when (val legacyFacts = AtomicTemporalFactStore(context.applicationContext).load()) {
                                                 is com.mistbell.tavern.v3.core.storage.TemporalFactLoadResult.Loaded -> {
-                                                    val matchingFacts = legacyFacts.facts.filter {
-                                                        it.conversationId == memoryConversationId
-                                                    }
+                                                    val matchingFacts = legacyFacts.facts
+                                                        .filter { it.conversationId == memoryConversationId }
+                                                        .map { it.copy(conversationId = memoryScopeId) }
                                                     if (matchingFacts.isNotEmpty()) {
                                                         scopedTemporalFactStore.save(matchingFacts)
                                                         if (memoryTextStore.load() == MemoryTextLoadResult.Missing) {
