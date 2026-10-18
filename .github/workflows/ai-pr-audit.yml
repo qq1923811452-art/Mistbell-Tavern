@@ -3,6 +3,9 @@ name: AI Pull Request Audit
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
+  # Allow safe self-validation of the workflow changes on this PR branch.
+  push:
+    branches: [codex/1-ai-audit-3.0]
   workflow_dispatch:
     inputs:
       pr_number:
@@ -32,8 +35,29 @@ jobs:
         audit_pass: [1, 2]
     # Fork PRs do not receive repository secrets. Do not run a secret-dependent
     # external-model request for them; maintainers can audit after reviewing the source.
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) || (github.event_name == 'push' && github.ref == 'refs/heads/codex/1-ai-audit-3.0')
     steps:
+      - name: Resolve target PR number
+        id: resolve_pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          DIRECT_PR_NUMBER: ${{ steps.resolve_pr.outputs.pr_number }}
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "$DIRECT_PR_NUMBER" ]]; then
+            [[ "$DIRECT_PR_NUMBER" =~ ^[1-9][0-9]*$ ]] || { echo "::error::PR number must be a positive integer"; exit 1; }
+            echo "pr_number=$DIRECT_PR_NUMBER" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          [[ "$EVENT_NAME" == "push" && "$REF_NAME" == "codex/1-ai-audit-3.0" ]] || { echo "::error::Cannot infer target PR for this event"; exit 1; }
+          PR_NUMBER="$(gh pr list --repo "$REPOSITORY" --state open --head "$REF_NAME" --json number --jq '.[0].number // empty')"
+          [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]] || { echo "::error::No open PR found for audit workflow branch"; exit 1; }
+          echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+
       - name: Validate model-specific credentials
         env:
           MODEL_SLOT: ${{ matrix.model_slot }}
@@ -72,7 +96,7 @@ jobs:
           ODYS_API_BASE_URL_A: ${{ secrets.ODYS_API_BASE_URL }}
           ODYS_API_BASE_URL_B: ${{ secrets.ODYS_API_BASE_URL_B }}
           REPOSITORY: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
+          PR_NUMBER: ${{ steps.resolve_pr.outputs.pr_number }}
         shell: bash
         run: |
           set -euo pipefail
@@ -589,7 +613,7 @@ jobs:
       - name: Comment audit report on pull request
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
+          PR_NUMBER: ${{ steps.resolve_pr.outputs.pr_number }}
           MODEL_SLOT: ${{ matrix.model_slot }}
           AUDIT_PASS: ${{ matrix.audit_pass }}
           EXPECTED_HEAD_SHA: ${{ steps.audit.outputs.pr_head_sha }}
