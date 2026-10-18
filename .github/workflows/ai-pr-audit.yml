@@ -271,7 +271,38 @@ jobs:
           diff = redact_sensitive_text(diff)
           # Send the complete redacted diff to the model; do not silently cap audit coverage.
           truncated = False
-          diff_for_model = diff
+          # This workflow self-audits only its own changes. Limit the model input to the
+          # target file's unified-diff section so unrelated files cannot dominate the review
+          # or produce findings that the evidence validator must reject.
+          target_audit_path = ".github/workflows/ai-pr-audit.yml"
+          diff_sections = []
+          current_section = []
+          for diff_line in diff.splitlines(keepends=True):
+              if diff_line.startswith("diff --git "):
+                  if current_section:
+                      diff_sections.append("".join(current_section))
+                  current_section = [diff_line]
+              elif current_section:
+                  current_section.append(diff_line)
+          if current_section:
+              diff_sections.append("".join(current_section))
+          target_sections = []
+          for section in diff_sections:
+              header = section.splitlines()[0] if section.splitlines() else ""
+              try:
+                  header_parts = shlex.split(header)
+              except ValueError:
+                  header_parts = []
+              if len(header_parts) >= 4 and (
+                  header_parts[2] == "a/" + target_audit_path
+                  or header_parts[3] == "b/" + target_audit_path
+              ):
+                  target_sections.append(section)
+          if not target_sections:
+              raise SystemExit(
+                  f"Target audit file {target_audit_path} is absent from the PR diff; refusing an unrelated audit."
+              )
+          diff_for_model = "".join(target_sections)
           truncation_note = ""
 
           if audit_pass == "1":
