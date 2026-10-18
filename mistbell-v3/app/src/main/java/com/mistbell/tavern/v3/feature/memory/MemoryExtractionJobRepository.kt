@@ -42,14 +42,18 @@ class MemoryExtractionJobRepository(private val store: MemoryExtractionJobPersis
             val job = eligible[i]
             val due = (job.state == MemoryExtractionJob.State.PENDING ||
                 job.state == MemoryExtractionJob.State.RETRY_WAIT) && job.nextAttemptAtEpochMillis <= now
-            // Preserve order within a conversation: a later batch must not advance the success
-            // cursor while an earlier batch is waiting for retry.
-            due && eligible.take(i).none { earlier ->
-                earlier.conversationId == job.conversationId &&
+            // Persistence sorts jobs by ID, not insertion time. Compare all outstanding jobs
+            // by their chronological key so a later batch cannot overtake an earlier retry.
+            val hasEarlierOutstandingJob = eligible.any { earlier ->
+                earlier.id != job.id &&
+                    earlier.conversationId == job.conversationId &&
+                    (earlier.createdAtEpochMillis < job.createdAtEpochMillis ||
+                        (earlier.createdAtEpochMillis == job.createdAtEpochMillis && earlier.id < job.id)) &&
                     (earlier.state == MemoryExtractionJob.State.PENDING ||
                         earlier.state == MemoryExtractionJob.State.RUNNING ||
                         earlier.state == MemoryExtractionJob.State.RETRY_WAIT)
             }
+            due && !hasEarlierOutstandingJob
         }.minByOrNull { eligible[it].createdAtEpochMillis } ?: return null
         val job = eligible[index]
         val claimed = job.copy(state = MemoryExtractionJob.State.RUNNING, attemptCount = job.attemptCount + 1)
