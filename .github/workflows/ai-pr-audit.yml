@@ -713,6 +713,7 @@ jobs:
               f"## AI Pull Request Audit — Model {model_slot}, pass {audit_pass}/1",
               "",
               f"- **PR base ref SHA:** `{base_sha}`",
+              "- **Base SHA note:** This is the base SHA in the pinned PR metadata snapshot; it may differ from the current base branch tip.",
               f"- **Audited head SHA:** `{head_sha}`",
               f"- **Model configured (request):** `{safe_markdown(model, 100)}`",
               f"- **Model returned by relay:** `{safe_markdown(returned_model, 100)}`",
