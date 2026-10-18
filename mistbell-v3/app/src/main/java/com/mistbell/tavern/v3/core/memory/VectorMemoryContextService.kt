@@ -132,6 +132,7 @@ class VectorMemoryContextService(
                 limit = resultLimit,
                 minimumScore = minimumScore,
                 maxCharacters = maxCharacters,
+                queryText = query,
             )
         } catch (_: IllegalArgumentException) {
             return VectorMemoryContextResult.Unavailable(

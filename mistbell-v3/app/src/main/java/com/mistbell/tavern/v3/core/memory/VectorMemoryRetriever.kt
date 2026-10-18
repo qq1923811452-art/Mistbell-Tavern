@@ -39,7 +39,10 @@ object VectorMemoryRetriever {
         limit: Int = VectorSimilaritySearch.DEFAULT_RESULT_LIMIT,
         minimumScore: Double = VectorSimilaritySearch.DEFAULT_MINIMUM_SCORE,
         maxCharacters: Int = DEFAULT_MAX_CHARACTERS,
+        queryText: String? = null,
+        rrfConstant: Int = DEFAULT_RRF_CONSTANT,
     ): List<RetrievedMemory> {
+        require(rrfConstant in 1..MAX_RRF_CONSTANT) { "RRF constant must be between 1 and $MAX_RRF_CONSTANT." }
         require(maxCharacters in 1..MAX_CHARACTERS) {
             "Memory character budget must be between 1 and $MAX_CHARACTERS."
         }
@@ -50,19 +53,76 @@ object VectorMemoryRetriever {
         val textByHash = texts
             .groupBy(MemoryTextRecord::sourceTextSha256)
             .mapValues { (_, records) -> records.sortedBy(MemoryTextRecord::id).first() }
-        val seenHashes = mutableSetOf<String>()
+        data class RankedCandidate(
+            val source: MemoryTextRecord,
+            val similarity: Double,
+            var rrfScore: Double = 0.0,
+        )
+
+        val candidatesByHash = linkedMapOf<String, RankedCandidate>()
+        val vectorHits = VectorSimilaritySearch.search(
+            snapshot = snapshot,
+            query = queryVector,
+            limit = VectorSimilaritySearch.MAX_RESULT_LIMIT,
+            minimumScore = minimumScore,
+        )
+        var vectorRank = 0
+        val seenVectorHashes = mutableSetOf<String>()
+        for (hit in vectorHits) {
+            if (!seenVectorHashes.add(hit.sourceTextSha256)) continue
+            val source = textByHash[hit.sourceTextSha256] ?: continue
+            vectorRank++
+            val candidate = candidatesByHash.getOrPut(hit.sourceTextSha256) {
+                RankedCandidate(source, hit.score)
+            }
+            candidate.rrfScore += 1.0 / (rrfConstant + vectorRank)
+        }
+
+        val queryTerms = tokenize(queryText.orEmpty())
+        if (queryTerms.isNotEmpty()) {
+            val keywordRanked = texts.asSequence()
+                .map { record ->
+                    val terms = tokenize(record.text)
+                    val matchedTerms = queryTerms.count { it in terms }
+                    Triple(record, matchedTerms, terms.size)
+                }
+                .filter { it.second > 0 }
+                .sortedWith(
+                    compareByDescending<Triple<MemoryTextRecord, Int, Int>> { it.second }
+                        .thenBy { it.first.id },
+                )
+                .take(VectorSimilaritySearch.MAX_RESULT_LIMIT)
+                .toList()
+
+            val seenKeywordHashes = mutableSetOf<String>()
+            var keywordRank = 0
+            for ((source, _, _) in keywordRanked) {
+                val hash = source.sourceTextSha256
+                if (!seenKeywordHashes.add(hash)) continue
+                keywordRank++
+                val candidate = candidatesByHash.getOrPut(hash) {
+                    RankedCandidate(source, similarity = 0.0)
+                }
+                candidate.rrfScore += 1.0 / (rrfConstant + keywordRank)
+            }
+        }
+
         var usedCharacters = 0
         val result = mutableListOf<RetrievedMemory>()
-
-        for (hit in VectorSimilaritySearch.search(snapshot, queryVector, limit, minimumScore)) {
-            if (!seenHashes.add(hit.sourceTextSha256)) continue
-            val source = textByHash[hit.sourceTextSha256] ?: continue
-            val normalizedText = source.text.trim()
+        for (candidate in candidatesByHash.values.sortedWith(
+            compareByDescending<RankedCandidate> { it.rrfScore }.thenBy { it.source.id },
+        )) {
+            if (result.size >= limit) break
+            val normalizedText = candidate.source.text.trim()
             if (normalizedText.isEmpty()) continue
             val remaining = maxCharacters - usedCharacters
             if (remaining <= 0) break
             if (normalizedText.length > remaining) continue
-            result += RetrievedMemory(id = source.id, text = normalizedText, similarity = hit.score)
+            result += RetrievedMemory(
+                id = candidate.source.id,
+                text = normalizedText,
+                similarity = candidate.similarity,
+            )
             usedCharacters += normalizedText.length
         }
         return result
@@ -70,6 +130,15 @@ object VectorMemoryRetriever {
 
     const val DEFAULT_MAX_CHARACTERS = 6_000
     const val MAX_CHARACTERS = 100_000
+    const val DEFAULT_RRF_CONSTANT = 60
+    const val MAX_RRF_CONSTANT = 1_000
+
+    private fun tokenize(text: String): Set<String> =
+        Regex("[\\p{L}\\p{N}]+")
+            .findAll(text.lowercase(java.util.Locale.ROOT))
+            .map { it.value }
+            .filter { it.length >= 2 }
+            .toSet()
 }
 
 private fun sha256Text(text: String): String =
