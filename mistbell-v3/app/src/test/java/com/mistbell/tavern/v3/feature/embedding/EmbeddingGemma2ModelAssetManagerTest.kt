@@ -144,6 +144,29 @@ class EmbeddingGemma2ModelAssetManagerTest {
         }
     }
 
+    @Test
+    fun persistsVerifiedModelHashStampAndReusesItOnSubsequentChecks(): Unit = runBlocking {
+        val directory = kotlin.io.path.createTempDirectory(prefix = "embedding-model-hash-cache-test").toFile()
+        try {
+            writeModelAndDigest(directory, "valid-model-bundle".toByteArray())
+            val manager = EmbeddingGemma2ModelAssetManager(directory)
+            val first = manager.verifyInstalled()
+            val stamp = File(directory, "${EmbeddingGemma2ModelAssetManager.MODEL_FILE_NAME}.hashstamp")
+
+            assertNotNull(first)
+            assertTrue("Successful verification should persist a hash stamp", stamp.isFile)
+            val savedStamp = stamp.readText()
+            val second = manager.verifyInstalled()
+
+            assertNotNull(second)
+            assertEquals(first!!.sha256, second!!.sha256)
+            assertEquals("Unchanged model metadata should retain the cached stamp", savedStamp, stamp.readText())
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+
     private fun writeModelAndDigest(directory: File, bytes: ByteArray): File {
         val model = File(directory, EmbeddingGemma2ModelAssetManager.MODEL_FILE_NAME)
         model.writeBytes(bytes)
