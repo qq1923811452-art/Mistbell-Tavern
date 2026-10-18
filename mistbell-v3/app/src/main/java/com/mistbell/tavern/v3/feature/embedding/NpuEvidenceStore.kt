@@ -130,8 +130,8 @@ internal object NpuEvidenceStore {
             candidate.name.startsWith("npu-evidence-") && candidate.name.endsWith(".json")
         }.orEmpty().sortedByDescending(File::lastModified)
         if (evidenceFiles.isEmpty()) return@runCatching false
-        val currentApkHash = File(context.applicationInfo.sourceDir).sha256Cached()
-        val currentModelHash = modelFile.sha256Cached()
+        val currentApkHash = File(context.applicationInfo.sourceDir).sha256Cached(context)
+        val currentModelHash = modelFile.sha256Cached(context)
         evidenceFiles.any { file ->
             runCatching {
                 val sidecar = File(file.parentFile, file.name + ".sha256")
@@ -218,15 +218,35 @@ internal object NpuEvidenceStore {
 
     private fun File.sha256OrEmpty(): String = runCatching { sha256() }.getOrDefault("")
 
-    private fun File.sha256Cached(): String = synchronized(fileHashCache) {
-        val key = FileHashCacheKey(absoluteFile.path, length(), lastModified())
+    private fun File.sha256Cached(context: Context): String = synchronized(fileHashCache) {
+        val key = FileHashCacheKey(canonicalPath, length(), lastModified())
         fileHashCache[key]?.let { return@synchronized it }
         fileHashCache.keys.filter { it.path == key.path }.forEach(fileHashCache::remove)
+
+        val prefs = context.getSharedPreferences("mistbell-npu-file-hash-cache", Context.MODE_PRIVATE)
+        val appVersion = runCatching {
+            val info = context.packageManager.getPackageInfo(context.packageName, 0)
+            if (android.os.Build.VERSION.SDK_INT >= 28) info.longVersionCode.toString() else info.versionCode.toString()
+        }.getOrDefault("unknown")
+        val cacheKey = MessageDigest.getInstance("SHA-256").digest(canonicalPath.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+        val stamp = listOf("1", appVersion, canonicalPath, length().toString(), lastModified().toString())
+            .joinToString("|")
+        val saved = prefs.getString(cacheKey, null)?.split("|")
+        if (saved != null && saved.size == 6 &&
+            saved.take(5).joinToString("|") == stamp
+        ) {
+            val cachedDigest = saved[5]
+            if (cachedDigest.matches(Regex("[0-9a-f]{64}"))) {
+                fileHashCache[key] = cachedDigest
+                return@synchronized cachedDigest
+            }
+        }
+
         val digest = sha256()
         fileHashCache[key] = digest
-        while (fileHashCache.size > 8) {
-            fileHashCache.remove(fileHashCache.keys.first())
-        }
+        prefs.edit().putString(cacheKey, "$stamp|$digest").apply()
+        while (fileHashCache.size > 8) fileHashCache.remove(fileHashCache.keys.first())
         digest
     }
 
