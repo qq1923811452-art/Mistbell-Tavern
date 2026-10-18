@@ -491,7 +491,9 @@ jobs:
                   if raw_line.startswith(("index ", "@@")):
                       continue
                   if current_file is not None and raw_line[:1] in ("+", "-", " "):
-                      diff_lines_by_file[current_file].append(raw_line[1:])
+                      # Preserve the diff marker so evidence must overlap an actual changed line,
+                      # not merely quote unchanged context that happens to be in the diff.
+                      diff_lines_by_file[current_file].append((raw_line[0], raw_line[1:]))
               def evidence_match_reason(file_name, evidence):
                   if not isinstance(file_name, str) or not file_name.strip():
                       return "missing_file"
@@ -500,9 +502,10 @@ jobs:
                   normalized_path = file_name.strip().strip("`")
                   if normalized_path.startswith(("./", "a/", "b/")):
                       normalized_path = normalized_path[2:] if normalized_path.startswith("./") else normalized_path[2:]
-                  file_lines = diff_lines_by_file.get(normalized_path, [])
-                  if not file_lines:
+                  diff_records = diff_lines_by_file.get(normalized_path, [])
+                  if not diff_records:
                       return "file_not_in_diff"
+                  file_lines = [source_line for _marker, source_line in diff_records]
                   evidence_lines = evidence.strip().splitlines()
                   if not 1 <= len(evidence_lines) <= 6:
                       return "invalid_line_count"
@@ -528,8 +531,11 @@ jobs:
                       width = len(candidate)
                       normalized_candidate = normalize_snippet(candidate)
                       for index in range(len(file_lines) - width + 1):
-                          if normalize_snippet(file_lines[index:index + width]) == normalized_candidate:
-                              return "matched"
+                          window = file_lines[index:index + width]
+                          if normalize_snippet(window) == normalized_candidate:
+                              # Reject excerpts made entirely of unchanged context lines.
+                              if any(marker in ("+", "-") for marker, _source_line in diff_records[index:index + width]):
+                                  return "matched"
                   return "snippet_not_found"
               verified_findings = []
               rejected_evidence_count = 0
