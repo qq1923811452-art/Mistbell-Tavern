@@ -513,7 +513,7 @@ jobs:
               report_text = report_text[:49500] + "\n\n_Report truncated to stay within safe comment size; manual review required._\n"
           Path("/tmp/ai-pr-audit-report.md").write_text(report_text, encoding="utf-8")
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
-              output.write("audit_incomplete=" + ("true" if report.get("audit_incomplete") else "false") + "\\n")
+              output.write("audit_incomplete=" + ("true" if report.get("audit_incomplete") else "false") + "\n")
           print("AI audit response validated; report generated.")
           print("Verified findings:", len(findings))
           print("Unverified findings dropped:", rejected_evidence_count)
