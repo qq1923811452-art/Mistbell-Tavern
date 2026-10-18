@@ -43,10 +43,10 @@ jobs:
           fi
           HEAD_SHA="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '.head.sha')"
           BASE_SHA="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '.base.sha')"
-          # Avoid re-spending relay quota when a Model A report already cover this exact head/base snapshot.
-          REPORT_BODIES="$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" | jq -s -r --arg head "$HEAD_SHA" --arg base "$BASE_SHA" '[(flatten(1)[]? | select(.user.login == "github-actions[bot]" and (.body | contains("Audited head SHA: `" + $head + "`")) and (.body | contains("PR base ref SHA: `" + $base + "`"))) | .body] | join("\n")')"
-          if [[ "$REPORT_BODIES" == *"ai-pr-audit-report-A-pass-1"* ]]; then
-            echo "::notice::Skipping PR #$PR_NUMBER; Model A report already covers head $HEAD_SHA and base $BASE_SHA."
+          # Skip only when one comment contains the exact report marker and both current SHAs.
+          REPORT_EXISTS="$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" | jq -s -r --arg head "$HEAD_SHA" --arg base "$BASE_SHA" 'any(flatten(1)[]?; .user.login == "github-actions[bot]" and (.body | contains("<!-- ai-pr-audit-report-A-pass-1 -->") and contains("Audited head SHA: `" + $head + "`") and contains("PR base ref SHA: `" + $base + "`")))' )"
+          if [[ "$REPORT_EXISTS" == "true" ]]; then
+            echo "::notice::Skipping PR #$PR_NUMBER; a single Model A report comment matches head $HEAD_SHA and base $BASE_SHA."
             exit 0
           fi
           gh workflow run ai-pr-audit.yml --repo "$GITHUB_REPOSITORY" --ref "$DEFAULT_BRANCH" -f "pr_number=$PR_NUMBER"
