@@ -12,7 +12,9 @@ data class PromptMessage(
     val content: String,
 ) {
     init {
-        require(content.isNotBlank()) { "Prompt message content must not be blank." }
+        require(role == PromptRole.SYSTEM || content.isNotBlank()) {
+            "User and assistant prompt message content must not be blank."
+        }
     }
 }
 
