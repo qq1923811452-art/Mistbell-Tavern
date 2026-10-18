@@ -127,7 +127,7 @@ fun ChatScreen(onBack: () -> Unit) {
     var historyReady by remember { mutableStateOf(false) }
     var historyLoadFailed by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("填写模型 ID 和 API 配置后即可测试聊天。") }
-    var memoryScopeId by remember(settings) {
+    var memoryConversationId by remember(settings) {
         mutableStateOf(
             settings.getString("memory_extraction_conversation_id", null)
                 ?.takeIf(String::isNotBlank)
@@ -135,6 +135,12 @@ fun ChatScreen(onBack: () -> Unit) {
                     settings.edit().putString("memory_extraction_conversation_id", generated).apply()
                 },
         )
+    }
+    val activeMemoryRoleId = settings.getString("active_character_id", null)
+        ?.takeIf(String::isNotBlank)
+        ?: "default-character"
+    val memoryScopeId = remember(activeMemoryRoleId, memoryConversationId) {
+        UUID.nameUUIDFromBytes("$activeMemoryRoleId|$memoryConversationId".toByteArray(Charsets.UTF_8)).toString()
     }
     var memoryIndexRebuildInFlight by remember { mutableStateOf(false) }
     var memoryStatusNotice by remember { mutableStateOf("") }
@@ -357,9 +363,7 @@ fun ChatScreen(onBack: () -> Unit) {
         val pending = if (previousIndex >= 0) pairs.drop(previousIndex + 1) else pairs
         if (pending.size < 3) return
 
-        val conversationId = memoryScopeId.also {
-            preferences.edit().putString("memory_extraction_conversation_id", it).apply()
-        }
+        val conversationId = memoryScopeId
         val jobs = pending.chunked(MemoryExtractionInput.MAX_TURNS)
             .filter { it.size >= 3 }
             .mapIndexed { batchIndex, batch ->
@@ -1024,10 +1028,10 @@ fun ChatScreen(onBack: () -> Unit) {
                         val replacingUnreadableHistory = historyLoadFailed
                         history.clear()
                         historyLoadFailed = false
-                        memoryScopeId = UUID.randomUUID().toString()
+                        memoryConversationId = UUID.randomUUID().toString()
                         context.getSharedPreferences("mistbell-v3-settings", Context.MODE_PRIVATE).edit()
                             .remove("memory_extraction_last_success_turn_id")
-                            .putString("memory_extraction_conversation_id", memoryScopeId)
+                            .putString("memory_extraction_conversation_id", memoryConversationId)
                             .apply()
                         persistHistory()
                         status = if (replacingUnreadableHistory) {
