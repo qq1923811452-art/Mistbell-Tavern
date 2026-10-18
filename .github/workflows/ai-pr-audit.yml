@@ -398,7 +398,12 @@ jobs:
               elif normalized_path.startswith(("a/", "b/")):
                   normalized_path = normalized_path[2:]
               file_lines = diff_lines_by_file.get(normalized_path, [])
-              evidence_lines = evidence.strip().splitlines()
+              normalized_evidence = evidence.strip()
+              if normalized_evidence.startswith("```") and normalized_evidence.endswith("```"):
+                  normalized_evidence = "\n".join(normalized_evidence.splitlines()[1:-1]).strip()
+              elif normalized_evidence.startswith("`") and normalized_evidence.endswith("`"):
+                  normalized_evidence = normalized_evidence[1:-1].strip()
+              evidence_lines = normalized_evidence.splitlines()
               if not 1 <= len(evidence_lines) <= 3:
                   return False
               candidates = [evidence_lines]
