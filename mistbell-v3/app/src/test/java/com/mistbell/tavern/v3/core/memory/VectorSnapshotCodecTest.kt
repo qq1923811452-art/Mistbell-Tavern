@@ -24,8 +24,22 @@ class VectorSnapshotCodecTest {
     }
 
     @Test
-    fun recordLimitMatchesMemoryTextStoreLimit() {
-        assertEquals(MemoryTextCodec.MAX_RECORDS, VectorSnapshotCodec.MAX_RECORDS)
+    fun snapshotCodecPreservesLegacyRecordLimitForCompatibility() {
+        assertEquals(100_000, VectorSnapshotCodec.MAX_RECORDS)
+        assertEquals(50_000, MemoryTextCodec.MAX_RECORDS)
+    }
+
+    @Test
+    fun decodesSnapshotAboveCurrentTextStoreRecordLimit() {
+        val records = (0..MemoryTextCodec.MAX_RECORDS).map { index ->
+            StoredVector("vector-$index", HASH, index.toLong(), listOf(0.5f))
+        }
+        val snapshot = VectorSnapshot(modelId = "model-a", dimensions = 1, records = records)
+
+        val decoded = VectorSnapshotCodec.decode(VectorSnapshotCodec.encode(snapshot))
+
+        assertEquals(50_001, decoded.records.size)
+        assertEquals("vector-50000", decoded.records.last().id)
     }
 
     @Test
