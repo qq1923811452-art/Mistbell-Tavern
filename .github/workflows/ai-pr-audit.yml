@@ -659,14 +659,7 @@ jobs:
           COMMENT_MARKER="<!-- ai-pr-audit-report-${MODEL_SLOT}-pass-${AUDIT_PASS} -->"
           COMMENT_ID="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" | jq -s -r --arg marker "$COMMENT_MARKER" '[flatten(1)[]? | select(.user.login == "github-actions[bot]" and (.body | contains($marker))) | .id] | last // empty')"
           if [[ -n "$COMMENT_ID" && "$COMMENT_ID" =~ ^[0-9]+$ ]]; then
-            python3 - <<'PY'
-            import json
-            from pathlib import Path
-            Path("/tmp/ai-pr-audit-comment.json").write_text(
-                json.dumps({"body": Path("/tmp/ai-pr-audit-report.md").read_text(encoding="utf-8")}),
-                encoding="utf-8",
-            )
-            PY
+            python3 -c 'import json; from pathlib import Path; Path("/tmp/ai-pr-audit-comment.json").write_text(json.dumps({"body": Path("/tmp/ai-pr-audit-report.md").read_text(encoding="utf-8")}), encoding="utf-8")'
             gh api --method PATCH "repos/${GITHUB_REPOSITORY}/issues/comments/${COMMENT_ID}" --input /tmp/ai-pr-audit-comment.json
           else
             gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file /tmp/ai-pr-audit-report.md
