@@ -343,18 +343,22 @@ fun ChatScreen(onBack: () -> Unit) {
         coroutineScope.launch {
             val queuedCount = runCatching {
                 withContext(Dispatchers.IO) {
-                    // Commit source history first. A worker must never observe a queue job whose
-                    // source turn IDs refer to a newer, not-yet-persisted chat snapshot.
-                    historyStore.save(historySnapshot)
-                    val repository = MemoryExtractionJobRepository(
-                        MemoryExtractionJobStore(context.applicationContext),
-                    )
-                    var added = 0
-                    jobs.forEach { job ->
-                        val existing = repository.list().firstOrNull { it.id == job.id }
-                        if (existing == null && repository.enqueue(job)) added += 1
+                    // Share the same mutex as persistHistory(): AtomicFile is atomic per write,
+                    // but independent writers can still replace one another's snapshots.
+                    // Hold the lock through enqueue so the source snapshot is committed before
+                    // a worker can observe jobs that reference its turn IDs.
+                    historySaveMutex.withLock {
+                        historyStore.save(historySnapshot)
+                        val repository = MemoryExtractionJobRepository(
+                            MemoryExtractionJobStore(context.applicationContext),
+                        )
+                        var added = 0
+                        jobs.forEach { job ->
+                            val existing = repository.list().firstOrNull { it.id == job.id }
+                            if (existing == null && repository.enqueue(job)) added += 1
+                        }
+                        added
                     }
-                    added
                 }
             }.getOrElse { error ->
                 diagnosticStore.warn(
