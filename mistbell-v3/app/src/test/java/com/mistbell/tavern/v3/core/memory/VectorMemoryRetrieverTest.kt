@@ -63,9 +63,11 @@ class VectorMemoryRetrieverTest {
             maxCharacters = 40,
         )
 
-        assertEquals(1, result.size)
-        assertEquals(firstText.text.length, result.sumOf { it.text.length })
-        assertEquals(firstText.id, result.single().id)
+        assertEquals(2, result.size)
+        assertEquals(40, result.sumOf { it.text.length })
+        assertEquals(firstText.id, result[0].id)
+        assertEquals(secondText.id, result[1].id)
+        assertEquals(40 - firstText.text.length, result[1].text.length)
     }
 
     @Test
