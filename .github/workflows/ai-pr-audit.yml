@@ -601,7 +601,9 @@ jobs:
                       rejection_reasons[reason] = rejection_reasons.get(reason, 0) + 1
                       # Log only a short, already-redacted evidence preview to diagnose why
                       # the model quote did not match the submitted diff; never log full output.
-                      evidence_preview = re.sub(r"\s+", " ", str(evidence or "")).strip()[:120]
+                      # Preserve line boundaries in the bounded preview; collapsing whitespace can
+                      # hide whether the model joined non-contiguous source lines.
+                      evidence_preview = repr(str(evidence or "").strip()[:180])
                       rejection_diagnostics.append({
                           "reason": reason,
                           "file": str(finding.get("file") or "")[:160],
@@ -684,7 +686,7 @@ jobs:
               f"- **Model returned by relay:** `{safe_markdown(returned_model, 100)}`",
 
               "- **Model identity note:** relay response metadata is self-reported and is not independent proof of the upstream backend.",
-              f"- **Diff size:** {len(diff)} characters" + (" (truncated before analysis; manual review required)" if truncated else ""),
+              f"- **Audited target-file diff size:** {len(diff_for_model)} characters (full PR diff: {len(diff)} characters)" + (" (truncated before analysis; manual review required)" if truncated else ""),
               "- **Important:** AI findings are untrusted advisory text. Verify them against source and CI.",
               "",
               "### Summary",
