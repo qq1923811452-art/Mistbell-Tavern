@@ -653,6 +653,11 @@ jobs:
                   "",
                   f"⚠️ 已丢弃 {report['unverified_findings_dropped']} 条证据无法与送审 diff 逐字匹配的 finding。",
               ])
+          if report.get("self_contradictory_findings_dropped"):
+              lines.extend([
+                  "",
+                  f"⚠️ 已过滤 {report['self_contradictory_findings_dropped']} 条结论明确自我撤回或承认无可证明缺陷的 finding。",
+              ])
           if not findings:
               lines.append("No actionable findings were returned. This is not proof that the change is defect-free.")
           if report.get("findings_truncated"):
