@@ -268,7 +268,28 @@ jobs:
               if cleaned.startswith("\`\`\`"):
                   cleaned = re.sub(r"^\`\`\`(?:json)?\s*", "", cleaned)
                   cleaned = re.sub(r"\s*\`\`\`$", "", cleaned)
-              chunk_report = json.loads(cleaned)
+              try:
+                  chunk_report = json.loads(cleaned)
+              except json.JSONDecodeError:
+                  # Some compatible relays wrap an otherwise valid JSON object in brief prose.
+                  # Recover only a complete object with the required top-level schema; evidence
+                  # matching against the submitted diff still runs before any finding is published.
+                  chunk_report = None
+                  decoder = json.JSONDecoder()
+                  for match in re.finditer(r"\\{", cleaned):
+                      try:
+                          candidate, _ = decoder.raw_decode(cleaned[match.start():])
+                      except json.JSONDecodeError:
+                          continue
+                      if (
+                          isinstance(candidate, dict)
+                          and isinstance(candidate.get("summary"), str)
+                          and isinstance(candidate.get("findings"), list)
+                      ):
+                          chunk_report = candidate
+                          break
+                  if chunk_report is None:
+                      raise ValueError("relay response did not contain a recoverable audit JSON object")
               if not isinstance(chunk_report, dict) or not isinstance(chunk_report.get("summary"), str):
                   raise ValueError("chunk response has invalid summary")
               if not isinstance(chunk_report.get("findings"), list):
