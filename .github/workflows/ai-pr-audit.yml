@@ -22,7 +22,7 @@ jobs:
   audit:
     name: DeepSeek diff audit
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 25
     # Fork PRs do not receive repository secrets. Do not run a secret-dependent
     # external-model request for them; maintainers can audit after reviewing the source.
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
@@ -51,6 +51,7 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           import html
+          import time
           import json
           import os
           import re
@@ -159,7 +160,7 @@ jobs:
           truncated = False
           truncation_note = ""
 
-          def split_diff(text, max_chars=6000):
+          def split_diff(text, max_chars=40000):
               chunks = []
               current = []
               current_size = 0
@@ -185,7 +186,24 @@ jobs:
           pending_chunks = [(chunk, 0) for chunk in diff_chunks]
           completed_chunks = 0
 
+          # A PR-sized diff must never leave this job hanging for tens of minutes.
+          # Stop when the time/call budget is exhausted and publish a partial report
+          # instead of being killed by the job timeout with no comment at all.
+          audit_budget_seconds = int(os.environ.get("AI_AUDIT_BUDGET_SECONDS", "900"))
+          audit_deadline = time.monotonic() + audit_budget_seconds
+          max_model_calls = int(os.environ.get("AI_AUDIT_MAX_CALLS", "40"))
+          model_calls = 0
+          unaudited_chunks = 0
+
           while pending_chunks:
+              if time.monotonic() >= audit_deadline or model_calls >= max_model_calls:
+                  unaudited_chunks = len(pending_chunks)
+                  print(
+                      f"AI audit budget exhausted after {completed_chunks} segment(s); "
+                      f"{unaudited_chunks} segment(s) were not audited."
+                  )
+                  break
+              model_calls += 1
               diff_chunk, split_depth = pending_chunks.pop(0)
               chunk_index = completed_chunks + 1
               answer = None
@@ -305,9 +323,16 @@ jobs:
                           continue
                   raise SystemExit(1)
 
+          coverage_note = (
+              f"仅完成 {completed_chunks}/{completed_chunks + unaudited_chunks} 个 diff 分块的审查"
+              f"（预算耗尽，结果不完整，未覆盖部分需人工复核）。 "
+              if unaudited_chunks
+              else f"已完成全部 {len(diff_chunks)} 个 diff 分块的审查。 "
+          )
           report = {
-              "summary": f"已完成全部 {len(diff_chunks)} 个 diff 分块的审查。 " + "；".join(s for s in chunk_summaries if s)[:1600],
+              "summary": coverage_note + "；".join(s for s in chunk_summaries if s)[:1600],
               "findings": combined_findings,
+              "audit_incomplete": unaudited_chunks > 0,
           }
           answer = json.dumps(report, ensure_ascii=False)
           finish_reason = "stop"
@@ -434,6 +459,8 @@ jobs:
               "",
               "### Findings",
           ]
+          if report.get("audit_incomplete"):
+              lines.extend(["", "⚠️ 审计预算耗尽：部分 diff 分块未被审查，本次结果不完整。"])
           findings = report["findings"]
           if report.get("unverified_findings_dropped"):
               lines.extend([
