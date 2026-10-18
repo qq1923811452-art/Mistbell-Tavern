@@ -319,7 +319,7 @@ jobs:
           payload = {
               "model": model,
               "messages": [
-                  {"role": "system", "content": "You are a conservative senior software auditor. Return exactly one JSON object with only these top-level fields: summary (string), findings (array), and unverified_findings_dropped (integer). Each finding must contain severity, file, line, title, description, evidence, recommendation, and confidence. Do not include Markdown fences or any text outside the JSON object.\n" + pass_instructions},
+                  {"role": "system", "content": "You are a conservative senior software auditor. Return exactly one JSON object with top-level fields summary (string) and findings (array). Each finding must use exactly the fields file, line, severity, issue, evidence, recommendation, and confidence as described in the user instructions. Do not invent fields or omit issue/evidence. Before claiming an API endpoint or workflow step is broken, inspect the complete request headers and relevant control flow in the diff. Distinguish confirmed defects from intentional temporary validation scaffolding, and do not claim tests were run. Do not include Markdown fences or any text outside the JSON object.\n" + pass_instructions},
                   {"role": "user", "content": prompt},
               ],
               "max_tokens": 8192,
