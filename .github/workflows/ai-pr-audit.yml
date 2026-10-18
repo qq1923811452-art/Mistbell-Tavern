@@ -3,9 +3,6 @@ name: AI Pull Request Audit
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
-  # Temporary self-validation trigger while this workflow is being developed in the PR branch.
-  push:
-    branches: [codex/1-ai-audit-3.0]
   workflow_dispatch:
     inputs:
       pr_number:
@@ -37,7 +34,7 @@ jobs:
         audit_pass: [1]
     # Fork PRs do not receive repository secrets. Do not run a secret-dependent
     # external-model request for them; maintainers can audit after reviewing the source.
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) || (github.event_name == 'push' && github.ref == 'refs/heads/codex/1-ai-audit-3.0')
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
     steps:
       - name: Resolve target PR number
         id: resolve_pr
@@ -45,8 +42,6 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPOSITORY: ${{ github.repository }}
           DIRECT_PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number || '' }}
-          EVENT_NAME: ${{ github.event_name }}
-          REF_NAME: ${{ github.ref_name }}
         shell: bash
         run: |
           set -euo pipefail
@@ -55,16 +50,6 @@ jobs:
             echo "pr_number=$DIRECT_PR_NUMBER" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          [[ "$EVENT_NAME" == "push" && "$REF_NAME" == "codex/1-ai-audit-3.0" ]] || { echo "::error::Cannot infer target PR for this event"; exit 1; }
-          PR_NUMBERS="$(gh pr list --repo "$REPOSITORY" --state open --head "$REF_NAME" --json number --jq '.[].number')"
-          PR_COUNT="$(printf '%s\n' "$PR_NUMBERS" | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ')"
-          [[ "$PR_COUNT" == "1" ]] || {
-            echo "::error::Expected exactly one open PR for the self-audit branch, found $PR_COUNT. Use workflow_dispatch with an explicit PR number if the branch is reused."
-            exit 1
-          }
-          PR_NUMBER="$(printf '%s\n' "$PR_NUMBERS" | sed -n '1p')"
-          [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]] || { echo "::error::Resolved PR number is invalid"; exit 1; }
-          echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
 
       - name: Validate model-specific credentials
         env:
