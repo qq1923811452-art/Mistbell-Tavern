@@ -22,7 +22,7 @@ jobs:
   audit:
     name: DeepSeek diff audit
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     # Fork PRs do not receive repository secrets. Do not run a secret-dependent
     # external-model request for them; maintainers can audit after reviewing the source.
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
@@ -159,7 +159,7 @@ jobs:
           truncated = False
           truncation_note = ""
 
-          def split_diff(text, max_chars=12000):
+          def split_diff(text, max_chars=6000):
               chunks = []
               current = []
               current_size = 0
@@ -221,7 +221,7 @@ jobs:
                       {"role": "user", "content": prompt},
                   ],
                   "temperature": 0.1,
-                  "max_tokens": 3072,
+                  "max_tokens": 4096,
                   "response_format": {"type": "json_object"},
                   "stream": False,
               }
