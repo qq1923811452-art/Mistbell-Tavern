@@ -44,7 +44,7 @@ jobs:
           HEAD_SHA="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '.head.sha')"
           BASE_SHA="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '.base.sha')"
           # Avoid re-spending relay quota when both Model A reports already cover this exact head/base snapshot.
-          REPORT_BODIES="$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" | jq -s -r --arg head "$HEAD_SHA" --arg base "$BASE_SHA" '[(add | flatten)[]? | select(.user.login == "github-actions[bot]" and (.body | contains("Audited head SHA: `" + $head + "`")) and (.body | contains("PR base ref SHA: `" + $base + "`"))] | map(.body) | join("\n")')"
+          REPORT_BODIES="$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" | jq -s -r --arg head "$HEAD_SHA" --arg base "$BASE_SHA" '[(.[][]? | select(.user.login == "github-actions[bot]" and (.body | contains("Audited head SHA: `" + $head + "`")) and (.body | contains("PR base ref SHA: `" + $base + "`"))) | .body] | join("\n")')"
           if [[ "$REPORT_BODIES" == *"ai-pr-audit-report-A-pass-1"* && "$REPORT_BODIES" == *"ai-pr-audit-report-A-pass-2"* ]]; then
             echo "::notice::Skipping PR #$PR_NUMBER; both Model A reports already cover head $HEAD_SHA and base $BASE_SHA."
             exit 0
