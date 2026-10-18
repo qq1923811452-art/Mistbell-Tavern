@@ -22,6 +22,9 @@ readonly qairt_hexagon_dir="$qairt_root/lib/hexagon-v75/unsigned"
 readonly dispatch_so="$LITERT_QUALCOMM_DISPATCH_SO"
 readonly destination="mistbell-v3/app/src/main/jniLibs/arm64-v8a"
 readonly asset_dir="mistbell-v3/app/src/main/assets/native-runtime"
+# Hexagon V75 DSP skeletons are not AArch64 Android ELF libraries. Keep them
+# as assets for runtime extraction instead of placing them in jniLibs/arm64-v8a.
+readonly dsp_asset_dir="$asset_dir/hexagon-v75"
 readonly temp_root="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
 
 test -d "$qairt_host_dir" || { echo "QAIRT Android host library directory not found: $qairt_host_dir" >&2; exit 1; }
@@ -49,7 +52,7 @@ for path in "${dsp_paths[@]}"; do dsp_libraries+=("$(basename "$path")"); done
 test "${#stub_libraries[@]}" -gt 0 || { echo "No V75 HTP stub libraries found in $qairt_host_dir" >&2; exit 1; }
 test "${#dsp_libraries[@]}" -gt 0 || { echo "No V75 HTP DSP skeletons found in $qairt_hexagon_dir" >&2; exit 1; }
 
-mkdir -p "$destination" "$asset_dir"
+mkdir -p "$destination" "$asset_dir" "$dsp_asset_dir"
 
 for name in "${host_libraries[@]}"; do
   source="$qairt_host_dir/$name"
@@ -86,10 +89,10 @@ for name in "${host_libraries[@]}" "${stub_libraries[@]}"; do
 done
 for name in "${dsp_libraries[@]}"; do
   source="$qairt_hexagon_dir/$name"
-  target="$destination/$name"
+  target="$dsp_asset_dir/$name"
   if [[ -e "$target" ]]; then
     cmp -s "$source" "$target" || {
-      echo "Refusing to overwrite a different native library: $target" >&2
+      echo "Refusing to overwrite a different DSP skeleton asset: $target" >&2
       exit 1
     }
   else
@@ -126,10 +129,15 @@ inventory_tmp="$metadata_tmp/qualcomm-sm8650-inventory.txt"
 
 : > "$checksum_tmp"
 : > "$inventory_tmp"
-for name in "${host_libraries[@]}" "${stub_libraries[@]}" "${dsp_libraries[@]}" libLiteRtDispatch_Qualcomm.so; do
+for name in "${host_libraries[@]}" "${stub_libraries[@]}" libLiteRtDispatch_Qualcomm.so; do
   library="$destination/$name"
   sha256sum "$library" >> "$checksum_tmp"
   printf '%s\t%s\n' "$name" "$(stat -c '%s' "$library")" >> "$inventory_tmp"
+done
+for name in "${dsp_libraries[@]}"; do
+  library="$dsp_asset_dir/$name"
+  sha256sum "$library" >> "$checksum_tmp"
+  printf '%s\t%s\n' "hexagon-v75/$name" "$(stat -c '%s' "$library")" >> "$inventory_tmp"
 done
 
 for name in qualcomm-sm8650.properties qualcomm-sm8650.sha256 qualcomm-sm8650-inventory.txt; do

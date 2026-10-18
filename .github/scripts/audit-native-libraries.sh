@@ -18,13 +18,22 @@ done
 # relocatable relative to the library via $ORIGIN (or a subdirectory of it).
 # Keep this check's self-tests independent of any actual APK libraries.
 is_allowed_rpath_entry() {
-  [[ "$1" == '$ORIGIN' || "$1" == '$ORIGIN/'* ]]
+  local entry="$1"
+  [[ "$entry" == '$ORIGIN' ]] && return 0
+  [[ "$entry" == '$ORIGIN/'* ]] || return 1
+  # Reject traversal and ambiguous path components even when prefixed by $ORIGIN.
+  local relative="${entry#'$ORIGIN/'}"
+  [[ -n "$relative" && "$relative" != *"//"* ]] || return 1
+  [[ "/$relative/" != *"/../"* && "/$relative/" != *"/./"* ]]
 }
 if ! grep -Eq '\((RPATH|RUNPATH)\)' <<< ' 0x0000001d (RUNPATH) Library runpath: [$ORIGIN/lib]' ||
    ! is_allowed_rpath_entry '$ORIGIN' ||
    ! is_allowed_rpath_entry '$ORIGIN/lib' ||
    is_allowed_rpath_entry '/tmp' ||
-   is_allowed_rpath_entry '$ORIGINsuffix'; then
+   is_allowed_rpath_entry '$ORIGINsuffix' ||
+   is_allowed_rpath_entry '$ORIGIN/../vendor' ||
+   is_allowed_rpath_entry '$ORIGIN/lib/../../tmp' ||
+   is_allowed_rpath_entry '$ORIGIN/./lib'; then
   echo "RPATH/RUNPATH policy self-test failed." >&2
   exit 1
 fi

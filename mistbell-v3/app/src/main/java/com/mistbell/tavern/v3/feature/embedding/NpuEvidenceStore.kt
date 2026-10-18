@@ -172,7 +172,9 @@ internal object NpuEvidenceStore {
     private fun apkEntrySha256(apk: File, name: String): String? = runCatching {
         if (!apk.isFile) return@runCatching null
         ZipFile(apk).use { zip ->
-            val entry = zip.getEntry("lib/arm64-v8a/$name") ?: return@use null
+            val entry = zip.getEntry("lib/arm64-v8a/$name")
+                ?: zip.getEntry("assets/native-runtime/hexagon-v75/$name")
+                ?: return@use null
             val digest = MessageDigest.getInstance("SHA-256")
             zip.getInputStream(entry).use { input ->
                 val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
