@@ -274,7 +274,7 @@ class LiteRtLmEmbeddingGemma2Engine(
                             "backendEvidence=${evidenceFor(backend)}; hardwareExecutionVerified=false",
                     )
                     return@withLock EmbeddingBatch(
-                        vectors = responses.map { response -> response.embedding.toFloatArray().asList() },
+                        vectors = responses.map { response -> response.embedding.asList() },
                         status = InferenceRuntimeStatus(
                             phase = if (fallbackReason == null) InferencePhase.READY else InferencePhase.FALLBACK,
                             modelId = EmbeddingGemma2TextPolicy.MODEL_ID,
