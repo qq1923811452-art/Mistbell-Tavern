@@ -276,7 +276,7 @@ jobs:
                   # matching against the submitted diff still runs before any finding is published.
                   chunk_report = None
                   decoder = json.JSONDecoder()
-                  for match in re.finditer(r"\\{", cleaned):
+                  for match in re.finditer(r"\{", cleaned):
                       try:
                           candidate, _ = decoder.raw_decode(cleaned[match.start():])
                       except json.JSONDecodeError:
