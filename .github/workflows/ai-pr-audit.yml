@@ -656,7 +656,7 @@ jobs:
             exit 0
           fi
           COMMENT_MARKER="<!-- ai-pr-audit-report-${MODEL_SLOT}-pass-${AUDIT_PASS} -->"
-          COMMENT_ID="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" --jq ".[] | select(.user.login == \"github-actions[bot]\" and (.body | contains(\"${COMMENT_MARKER}\"))) | .id" | tail -n 1)"
+          COMMENT_ID="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" | jq -s -r --arg marker "$COMMENT_MARKER" '[.[][]? | select(.user.login == "github-actions[bot]" and (.body | contains($marker))) | .id] | last // empty')"
           if [[ -n "$COMMENT_ID" ]]; then
             python3 - <<'PY'
           import json
