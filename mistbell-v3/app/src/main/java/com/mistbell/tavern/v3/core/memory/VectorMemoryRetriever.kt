@@ -2,6 +2,7 @@ package com.mistbell.tavern.v3.core.memory
 
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
+import java.util.Locale
 
 /** Text stored separately from the vector snapshot; the content hash binds text to its vector. */
 data class MemoryTextRecord(
@@ -17,19 +18,26 @@ data class MemoryTextRecord(
         get() = sha256Text(text)
 }
 
-/** A memory passage selected for prompt injection, ordered by descending semantic relevance. */
+enum class MemoryRetrievalSource {
+    VECTOR,
+    KEYWORD,
+    HYBRID,
+}
+
+/** A memory passage selected for prompt injection, ordered by descending fused relevance. */
 data class RetrievedMemory(
     val id: String,
     val text: String,
     val similarity: Double,
+    val source: MemoryRetrievalSource = MemoryRetrievalSource.VECTOR,
 )
 
 /**
  * Joins vector search hits to their source text using SHA-256, never by vector ID alone.
  * This prevents stale vectors from injecting text that has changed since embedding.
  *
- * The character budget is a deterministic safety bound, not a tokenizer-based token budget.
- * Callers may apply a model-specific token budget after retrieval.
+ * Vector and keyword rankings are fused with reciprocal rank fusion (RRF). The character
+ * budget is a deterministic safety bound, not a tokenizer-based token budget.
  */
 object VectorMemoryRetriever {
     fun retrieve(
@@ -46,6 +54,7 @@ object VectorMemoryRetriever {
         require(maxCharacters in 1..MAX_CHARACTERS) {
             "Memory character budget must be between 1 and $MAX_CHARACTERS."
         }
+        require(limit >= 1) { "Result limit must be at least 1." }
         require(texts.map(MemoryTextRecord::id).distinct().size == texts.size) {
             "Memory text IDs must be unique."
         }
@@ -57,6 +66,8 @@ object VectorMemoryRetriever {
             val source: MemoryTextRecord,
             val similarity: Double,
             var rrfScore: Double = 0.0,
+            var hasVectorMatch: Boolean = false,
+            var hasKeywordMatch: Boolean = false,
         )
 
         val candidatesByHash = linkedMapOf<String, RankedCandidate>()
@@ -75,20 +86,22 @@ object VectorMemoryRetriever {
             val candidate = candidatesByHash.getOrPut(hit.sourceTextSha256) {
                 RankedCandidate(source, hit.score)
             }
+            candidate.hasVectorMatch = true
             candidate.rrfScore += 1.0 / (rrfConstant + vectorRank)
         }
 
-        val queryTerms = tokenize(queryText.orEmpty())
+        val queryTerms = tokenizeQuery(queryText.orEmpty())
         if (queryTerms.isNotEmpty()) {
             val keywordRanked = texts.asSequence()
                 .map { record ->
-                    val terms = tokenize(record.text)
-                    val matchedTerms = queryTerms.count { it in terms }
-                    Triple(record, matchedTerms, terms.size)
+                    val matchedTerms = queryTerms.count { term ->
+                        record.text.contains(term, ignoreCase = true)
+                    }
+                    record to matchedTerms
                 }
                 .filter { it.second > 0 }
                 .sortedWith(
-                    compareByDescending<Triple<MemoryTextRecord, Int, Int>> { it.second }
+                    compareByDescending<Pair<MemoryTextRecord, Int>> { it.second }
                         .thenBy { it.first.id },
                 )
                 .take(VectorSimilaritySearch.MAX_RESULT_LIMIT)
@@ -96,13 +109,15 @@ object VectorMemoryRetriever {
 
             val seenKeywordHashes = mutableSetOf<String>()
             var keywordRank = 0
-            for ((source, _, _) in keywordRanked) {
-                val hash = source.sourceTextSha256
+            for ((record, _) in keywordRanked) {
+                val hash = record.sourceTextSha256
                 if (!seenKeywordHashes.add(hash)) continue
+                val source = textByHash[hash] ?: continue
                 keywordRank++
                 val candidate = candidatesByHash.getOrPut(hash) {
                     RankedCandidate(source, similarity = 0.0)
                 }
+                candidate.hasKeywordMatch = true
                 candidate.rrfScore += 1.0 / (rrfConstant + keywordRank)
             }
         }
@@ -117,13 +132,31 @@ object VectorMemoryRetriever {
             if (normalizedText.isEmpty()) continue
             val remaining = maxCharacters - usedCharacters
             if (remaining <= 0) break
-            if (normalizedText.length > remaining) continue
+            val end = minOf(normalizedText.length, remaining).let { proposedEnd ->
+                // Do not split a UTF-16 surrogate pair when truncating to the remaining budget.
+                if (proposedEnd < normalizedText.length &&
+                    proposedEnd > 0 &&
+                    Character.isHighSurrogate(normalizedText[proposedEnd - 1])
+                ) {
+                    proposedEnd - 1
+                } else {
+                    proposedEnd
+                }
+            }
+            if (end <= 0) continue
+            val selectedText = normalizedText.substring(0, end)
+            val source = when {
+                candidate.hasVectorMatch && candidate.hasKeywordMatch -> MemoryRetrievalSource.HYBRID
+                candidate.hasKeywordMatch -> MemoryRetrievalSource.KEYWORD
+                else -> MemoryRetrievalSource.VECTOR
+            }
             result += RetrievedMemory(
                 id = candidate.source.id,
-                text = normalizedText,
+                text = selectedText,
                 similarity = candidate.similarity,
+                source = source,
             )
-            usedCharacters += normalizedText.length
+            usedCharacters += selectedText.length
         }
         return result
     }
@@ -133,12 +166,53 @@ object VectorMemoryRetriever {
     const val DEFAULT_RRF_CONSTANT = 60
     const val MAX_RRF_CONSTANT = 1_000
 
-    private fun tokenize(text: String): Set<String> =
-        Regex("[\\p{L}\\p{N}]+")
-            .findAll(text.lowercase(java.util.Locale.ROOT))
-            .map { it.value }
-            .filter { it.length >= 2 }
-            .toSet()
+    /**
+     * Keeps English/numeric words, and uses CJK bigrams so unspaced Chinese sentences can
+     * match shorter query concepts. A one-character CJK query remains searchable.
+     */
+    private fun tokenizeQuery(text: String): Set<String> {
+        val tokens = linkedSetOf<String>()
+        val chunks = Regex("[\\p{L}\\p{N}]+").findAll(text.lowercase(Locale.ROOT))
+        for (chunk in chunks) {
+            val segment = chunk.value
+            var hanRun = StringBuilder()
+            var otherRun = StringBuilder()
+
+            fun flushHan() {
+                if (hanRun.isEmpty()) return
+                val value = hanRun.toString()
+                if (value.length == 1) {
+                    tokens += value
+                } else {
+                    tokens += value.windowed(2, 1)
+                }
+                hanRun = StringBuilder()
+            }
+
+            fun flushOther() {
+                if (otherRun.length >= 2) tokens += otherRun.toString()
+                otherRun = StringBuilder()
+            }
+
+            for (character in segment) {
+                if (isHan(character)) {
+                    flushOther()
+                    hanRun.append(character)
+                } else {
+                    flushHan()
+                    otherRun.append(character)
+                }
+            }
+            flushHan()
+            flushOther()
+        }
+        return tokens
+    }
+
+    private fun isHan(character: Char): Boolean =
+        character in '\u3400'..'\u4DBF' ||
+            character in '\u4E00'..'\u9FFF' ||
+            character in '\uF900'..'\uFAFF'
 }
 
 private fun sha256Text(text: String): String =

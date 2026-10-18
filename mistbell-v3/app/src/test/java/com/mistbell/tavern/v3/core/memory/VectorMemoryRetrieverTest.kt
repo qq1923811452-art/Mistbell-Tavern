@@ -69,28 +69,105 @@ class VectorMemoryRetrieverTest {
     }
 
     @Test
-    fun skipsOverBudgetMemoryAndContinuesToShorterRelevantMemory() {
-        val longText = MemoryTextRecord("long", "highly relevant")
-        val shortText = MemoryTextRecord("short", "ok")
+    fun truncatesOverBudgetMemoryInsteadOfDroppingTheFirstCandidate() {
+        val longText = MemoryTextRecord("long", "这是一条很长的中文记忆")
         val rankedSnapshot = VectorSnapshot(
             modelId = "embedding-test",
             dimensions = 2,
             records = listOf(
                 StoredVector("long-vector", longText.sourceTextSha256, 1L, listOf(1f, 0f)),
-                StoredVector("short-vector", shortText.sourceTextSha256, 2L, listOf(0.8f, 0.2f)),
             ),
         )
 
         val result = VectorMemoryRetriever.retrieve(
             snapshot = rankedSnapshot,
             queryVector = listOf(1f, 0f),
-            texts = listOf(longText, shortText),
+            texts = listOf(longText),
             maxCharacters = 5,
         )
 
-        assertEquals(listOf(shortText.id), result.map(RetrievedMemory::id))
+        assertEquals(1, result.size)
+        assertEquals("这是一条很", result.single().text)
+        assertEquals(5, result.single().text.length)
     }
 
+    @Test
+    fun chineseKeywordMatchesInsideAnUnspacedSentence() {
+        val chinese = MemoryTextRecord("beijing", "我今天去了北京，之后还去了上海。")
+        val semantic = MemoryTextRecord("semantic", "这是一条关于旅行的普通记忆。")
+        val rankedSnapshot = VectorSnapshot(
+            modelId = "embedding-test",
+            dimensions = 2,
+            records = listOf(
+                StoredVector("semantic", semantic.sourceTextSha256, 1L, listOf(1f, 0f)),
+                StoredVector("beijing", chinese.sourceTextSha256, 2L, listOf(0f, 1f)),
+            ),
+        )
+
+        val result = VectorMemoryRetriever.retrieve(
+            snapshot = rankedSnapshot,
+            queryVector = listOf(1f, 0f),
+            texts = listOf(semantic, chinese),
+            queryText = "北京",
+            limit = 2,
+            minimumScore = -1.0,
+        )
+
+        assertEquals("beijing", result.first().id)
+        assertEquals(MemoryRetrievalSource.HYBRID, result.first().source)
+    }
+
+    @Test
+    fun chineseSingleCharacterQueryIsNotDiscarded() {
+        val sword = MemoryTextRecord("sword", "剑落在雨中")
+        val unrelated = MemoryTextRecord("unrelated", "今天的天气很好")
+        val rankedSnapshot = VectorSnapshot(
+            modelId = "embedding-test",
+            dimensions = 2,
+            records = listOf(
+                StoredVector("unrelated", unrelated.sourceTextSha256, 1L, listOf(1f, 0f)),
+                StoredVector("sword", sword.sourceTextSha256, 2L, listOf(0f, 1f)),
+            ),
+        )
+
+        val result = VectorMemoryRetriever.retrieve(
+            snapshot = rankedSnapshot,
+            queryVector = listOf(1f, 0f),
+            texts = listOf(unrelated, sword),
+            queryText = "剑",
+            limit = 2,
+            minimumScore = -1.0,
+        )
+
+        assertEquals("sword", result.first().id)
+        assertEquals(MemoryRetrievalSource.HYBRID, result.first().source)
+    }
+
+    @Test
+    fun mixedEnglishChineseAndLongChineseQueryMatchByKeywords() {
+        val exact = MemoryTextRecord("exact", "Gemma 向量检索会在长中文句子中找到北京记忆")
+        val semantic = MemoryTextRecord("semantic", "另一条关于硬件加速器的普通记忆")
+        val rankedSnapshot = VectorSnapshot(
+            modelId = "embedding-test",
+            dimensions = 2,
+            records = listOf(
+                StoredVector("semantic", semantic.sourceTextSha256, 1L, listOf(1f, 0f)),
+                StoredVector("exact", exact.sourceTextSha256, 2L, listOf(0f, 1f)),
+            ),
+        )
+
+        val result = VectorMemoryRetriever.retrieve(
+            snapshot = rankedSnapshot,
+            queryVector = listOf(1f, 0f),
+            texts = listOf(semantic, exact),
+            queryText = "Gemma 向量检索的长句北京",
+            limit = 2,
+            minimumScore = -1.0,
+        )
+
+        assertEquals("exact", result.first().id)
+        assertEquals(MemoryRetrievalSource.HYBRID, result.first().source)
+    }
 
     @Test
     fun fusesVectorAndKeywordRanksUsingReciprocalRankFusion() {
@@ -120,6 +197,7 @@ class VectorMemoryRetrieverTest {
         assertTrue(result.any { it.id == keywordStrong.id })
         assertTrue(result.any { it.id == vectorStrong.id })
         assertTrue(result.any { it.id == mixed.id })
+        assertEquals(MemoryRetrievalSource.HYBRID, result.first { it.id == mixed.id }.source)
     }
 
     @Test
@@ -145,7 +223,9 @@ class VectorMemoryRetrieverTest {
         )
 
         assertEquals("exact", result.first().id)
+        assertEquals(MemoryRetrievalSource.HYBRID, result.first().source)
     }
+
     @Test
     fun rejectsDuplicateTextIdsAndInvalidBudgets() {
         assertTrue(runCatching {
