@@ -128,6 +128,10 @@ fun ChatScreen(onBack: () -> Unit) {
     var historyReady by remember { mutableStateOf(false) }
     var historyLoadFailed by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("填写模型 ID 和 API 配置后即可测试聊天。") }
+    var maxTokensText by remember(settings) {
+        mutableStateOf(settings.getInt("chat_max_tokens", 4096).coerceIn(1, 200_000).toString())
+    }
+    var usageSummary by remember { mutableStateOf("Token 用量：本轮尚无服务端 usage 数据") }
     var selectedEmbeddingDimensions by remember(context) {
         mutableStateOf(
             context.getSharedPreferences("mistbell-v3-settings", Context.MODE_PRIVATE)
@@ -398,6 +402,19 @@ fun ChatScreen(onBack: () -> Unit) {
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Text("聊天 API 配置", style = MaterialTheme.typography.titleMedium)
+                    OutlinedTextField(
+                        value = maxTokensText,
+                        onValueChange = { value ->
+                            maxTokensText = value.filter(Char::isDigit).take(6)
+                            maxTokensText.toIntOrNull()?.takeIf { it in 1..200_000 }?.let { limit ->
+                                settings.edit().putInt("chat_max_tokens", limit).apply()
+                            }
+                        },
+                        label = { Text("最大生成 Token（max_tokens，1–200000）") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                    )
+                    Text(usageSummary, style = MaterialTheme.typography.bodySmall)
                     OutlinedTextField(
                         value = baseUrl,
                         onValueChange = {
@@ -690,6 +707,9 @@ fun ChatScreen(onBack: () -> Unit) {
                             }
 
                             override fun onUsage(usage: ChatTokenUsage) {
+                                mainHandler.post {
+                                    usageSummary = "Token 用量：输入 ${usage.promptTokens} · 输出 ${usage.completionTokens} · 合计 ${usage.totalTokens} · 缓存输入 ${usage.cachedPromptTokens?.toString() ?: "未知"}"
+                                }
                                 diagnosticStore.info(
                                     "chat.usage",
                                     "promptTokens=${usage.promptTokens}; completionTokens=${usage.completionTokens}; totalTokens=${usage.totalTokens}; cachedPromptTokens=${usage.cachedPromptTokens ?: "unknown"}",
