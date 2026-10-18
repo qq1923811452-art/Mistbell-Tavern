@@ -562,7 +562,7 @@ class MainActivity : ComponentActivity() {
                 )
                 if (allowDiagnosticNpuProbe) {
                     operationMessage = "正在运行 Qualcomm NPU 输入长度对照矩阵（7 次独立初始化/推理）……"
-                    val outcomes = initializedRuntime.runNpuInputLengthProbe()
+                    val outcomes = withContext(Dispatchers.IO) { initializedRuntime.runNpuInputLengthProbe() }
                     val successes = outcomes.count { "; result=success;" in it }
                     inferenceStatus = initializedRuntime.currentStatus()
                     val evidence = initializedRuntime.lastNpuEvidenceResult
