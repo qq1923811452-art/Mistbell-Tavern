@@ -180,8 +180,15 @@ jobs:
           finish_reason = None
           answer = None
 
-          for chunk_index, diff_chunk in enumerate(diff_chunks, start=1):
-              prompt = f"""审查下面 GitHub Pull Request diff 的第 {chunk_index}/{len(diff_chunks)} 部分。目标是发现真实、可复现且值得修复的问题，而不是挑风格。
+          # Keep every diff segment covered. If the relay truncates or returns empty content,
+          # split that segment and audit both halves; never silently skip a failed segment.
+          pending_chunks = [(chunk, 0) for chunk in diff_chunks]
+          completed_chunks = 0
+
+          while pending_chunks:
+              diff_chunk, split_depth = pending_chunks.pop(0)
+              chunk_index = completed_chunks + 1
+              prompt = f"""审查下面 GitHub Pull Request diff 的第 {chunk_index} 部分（自适应分块审计）。目标是发现真实、可复现且值得修复的问题，而不是挑风格。
           审查类别：正确性/回归、API 协议与资源生命周期、安全与敏感信息、并发/取消、缓存一致性、性能、数据库迁移兼容性、测试遗漏。
           输出必须是一个 JSON 对象，不要 Markdown 围栏或额外文字，结构为：
           {{
@@ -270,15 +277,30 @@ jobs:
                       raise ValueError("model output was truncated")
                   chunk_summaries.append(chunk_report["summary"].strip())
                   combined_findings.extend(chunk_report["findings"][:2])
-                  print(f"AI audit chunk {chunk_index}/{len(diff_chunks)} completed; findings={len(chunk_report['findings'])}")
+                  completed_chunks += 1
+                  print(f"AI audit segment {completed_chunks} completed; pending={len(pending_chunks)}; findings={len(chunk_report['findings'])}")
               except Exception as exc:
                   answer_length = len(answer) if isinstance(answer, str) else 0
                   print(
-                      f"Could not validate AI response for chunk {chunk_index}/{len(diff_chunks)}:",
+                      f"Could not validate AI response for segment {chunk_index}:",
                       type(exc).__name__,
                       "finish_reason=", finish_reason,
                       "content_length=", answer_length,
                   )
+                  can_split = (
+                      split_depth < 5
+                      and len(diff_chunk) > 800
+                      and (finish_reason == "length" or answer_length == 0)
+                  )
+                  if can_split:
+                      parts = split_diff(diff_chunk, max_chars=max(500, len(diff_chunk) // 2))
+                      if len(parts) < 2:
+                          midpoint = len(diff_chunk) // 2
+                          parts = [diff_chunk[:midpoint], diff_chunk[midpoint:]]
+                      if all(parts):
+                          print(f"Adapting failed segment into {len(parts)} smaller segments (depth {split_depth + 1}).")
+                          pending_chunks = [(part, split_depth + 1) for part in parts] + pending_chunks
+                          continue
                   raise SystemExit(1)
 
           report = {
