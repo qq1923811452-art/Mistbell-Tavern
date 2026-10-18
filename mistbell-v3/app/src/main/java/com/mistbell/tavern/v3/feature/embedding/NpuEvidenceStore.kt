@@ -118,21 +118,23 @@ internal object NpuEvidenceStore {
         val currentApkHash = File(context.applicationInfo.sourceDir).sha256Cached()
         val currentModelHash = modelFile.sha256Cached()
         evidenceFiles.any { file ->
-            val sidecar = File(file.parentFile, file.name + ".sha256")
-            val expectedFileHash = sidecar.readText(Charsets.UTF_8).trim().substringBefore(' ')
-            if (expectedFileHash != file.sha256()) return@any false
-            val json = JSONObject(file.readText(Charsets.UTF_8))
-            val mappings = json.optJSONObject("mappedLibraries") ?: return@any false
-            val cases = json.optJSONArray("cases") ?: return@any false
-            json.optString("status") == "verified" &&
-                json.optString("apkSha256") == currentApkHash &&
-                json.optString("apkSha256Rechecked") == currentApkHash &&
-                json.optString("modelSha256") == currentModelHash &&
-                currentModelHash == EXPECTED_MODEL_SHA256 &&
-                json.optInt("sdkInt", -1) == Build.VERSION.SDK_INT &&
-                json.optString("buildFingerprint") == Build.FINGERPRINT &&
-                json.optString("litertLmVersion") == "0.18.0" &&
-                NpuEvidenceStatusPolicy.shouldVerify(true, true, cases, mappings, requiredMappings)
+            runCatching {
+                val sidecar = File(file.parentFile, file.name + ".sha256")
+                val expectedFileHash = sidecar.readText(Charsets.UTF_8).trim().substringBefore(' ')
+                if (expectedFileHash != file.sha256()) return@runCatching false
+                val json = JSONObject(file.readText(Charsets.UTF_8))
+                val mappings = json.optJSONObject("mappedLibraries") ?: return@runCatching false
+                val cases = json.optJSONArray("cases") ?: return@runCatching false
+                json.optString("status") == "verified" &&
+                    json.optString("apkSha256") == currentApkHash &&
+                    json.optString("apkSha256Rechecked") == currentApkHash &&
+                    json.optString("modelSha256") == currentModelHash &&
+                    currentModelHash == EXPECTED_MODEL_SHA256 &&
+                    json.optInt("sdkInt", -1) == Build.VERSION.SDK_INT &&
+                    json.optString("buildFingerprint") == Build.FINGERPRINT &&
+                    json.optString("litertLmVersion") == "0.18.0" &&
+                    NpuEvidenceStatusPolicy.shouldVerify(true, true, cases, mappings, requiredMappings)
+            }.getOrDefault(false)
         }
     }.getOrDefault(false)
 
