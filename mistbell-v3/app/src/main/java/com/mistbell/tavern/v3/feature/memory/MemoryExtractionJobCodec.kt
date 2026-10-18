@@ -61,15 +61,18 @@ object MemoryExtractionJobCodec {
                 conversationId = item.getString("conversation"),
                 turnIds = (0 until turns.length()).map(turns::getString),
                 providerProfileId = item.getString("provider"),
-                credentialHandle = item.optString("credential_handle").takeIf(String::isNotBlank),
+                credentialHandle = item.optionalNonBlankString("credential_handle"),
                 createdAtEpochMillis = item.getLong("created"),
                 attemptCount = item.getInt("attempts"),
                 nextAttemptAtEpochMillis = item.getLong("next_attempt"),
                 state = MemoryExtractionJob.State.valueOf(item.getString("state")),
-                lastSafeError = item.optString("error").takeIf(String::isNotBlank),
+                lastSafeError = item.optionalNonBlankString("error"),
             )
         }
         require(jobs.map { it.id }.distinct().size == jobs.size)
         return jobs
     }
 }
+
+private fun JSONObject.optionalNonBlankString(name: String): String? =
+    if (!has(name) || isNull(name)) null else optString(name).takeIf(String::isNotBlank)
