@@ -72,11 +72,14 @@ object VectorSnapshotCodec {
             out.writeInt(snapshot.dimensions)
             out.writeInt(snapshot.records.size)
             snapshot.records.forEach { record ->
+                require(record.values.size == snapshot.dimensions) {
+                    "Every persisted vector must match the snapshot dimension."
+                }
                 out.writeUTF(record.id)
                 out.writeUTF(record.sourceTextSha256)
                 out.writeLong(record.createdAtEpochMillis)
                 val maxAbs = record.values.maxOf { kotlin.math.abs(it) }
-                val scale = if (maxAbs == 0f) 1f / 127f else maxAbs / 127f
+                val scale = if (maxAbs == 0f) 1f else maxAbs / 127f
                 out.writeFloat(scale)
                 record.values.forEach { value ->
                     out.writeByte(kotlin.math.round(value / scale).toInt().coerceIn(-127, 127))
@@ -142,6 +145,7 @@ object VectorSnapshotCodec {
                 require(scale.isFinite() && scale > 0f) { "Vector quantization scale is invalid." }
                 List(dimensions) { input.readByte().toFloat() * scale }
             }
+            require(values.size == dimensions) { "Decoded vector dimension does not match the snapshot." }
             records += StoredVector(
                 id = id,
                 sourceTextSha256 = sourceHash,

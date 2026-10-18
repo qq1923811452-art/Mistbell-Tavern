@@ -20,6 +20,9 @@ object EmbeddingVectorCache {
     fun get(key: String): Entry? = entries[key]?.let { it.copy(vector = it.vector.toList()) }
 
     @Synchronized
+    fun remove(key: String) { entries.remove(key) }
+
+    @Synchronized
     fun put(key: String, vector: List<Float>, status: InferenceRuntimeStatus) {
         require(vector.isNotEmpty() && vector.all(Float::isFinite))
         entries[key] = Entry(vector.toList(), status)

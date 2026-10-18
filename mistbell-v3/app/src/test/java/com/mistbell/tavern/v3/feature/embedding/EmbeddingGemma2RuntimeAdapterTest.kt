@@ -190,6 +190,38 @@ class EmbeddingGemma2RuntimeAdapterTest {
     }
 
     @Test
+    fun cacheEntryFromDifferentRuntimeIsNotReused(): Unit = runBlocking {
+        EmbeddingVectorCache.clear()
+        var firstCalls = 0
+        var secondCalls = 0
+        val firstAdapter = EmbeddingGemma2RuntimeAdapter(
+            engine = engine { inputs ->
+                firstCalls++
+                EmbeddingBatch(
+                    vectors = inputs.map { List(EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS) { 0.5f } },
+                    status = rawStatus,
+                )
+            },
+        )
+        firstAdapter.embedQueries(listOf("runtime-sensitive cache input"))
+        val secondEngine = object : EmbeddingGemma2InferenceEngine {
+            override val runtimeId = "another-runtime"
+            override suspend fun infer(formattedInputs: List<String>): EmbeddingBatch {
+                secondCalls++
+                return EmbeddingBatch(
+                    vectors = formattedInputs.map { List(EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS) { 0.25f } },
+                    status = rawStatus.copy(runtimeId = runtimeId),
+                )
+            }
+        }
+        val secondAdapter = EmbeddingGemma2RuntimeAdapter(engine = secondEngine)
+        val result = secondAdapter.embedQueries(listOf("runtime-sensitive cache input"))
+        assertEquals(1, firstCalls)
+        assertEquals(1, secondCalls)
+        assertEquals("another-runtime", result.status.runtimeId)
+    }
+
+    @Test
     fun truncatesLongInputAndLogsOriginalAndTruncatedLengths(): Unit = runBlocking {
         EmbeddingVectorCache.clear()
         val events = mutableListOf<Pair<String, String>>()

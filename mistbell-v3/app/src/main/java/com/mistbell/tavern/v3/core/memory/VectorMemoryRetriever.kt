@@ -94,9 +94,7 @@ object VectorMemoryRetriever {
         if (queryTerms.isNotEmpty()) {
             val keywordRanked = texts.asSequence()
                 .map { record ->
-                    val matchedTerms = queryTerms.count { term ->
-                        record.text.contains(term, ignoreCase = true)
-                    }
+                    val matchedTerms = countMatchedQueryTerms(record.text, queryTerms)
                     record to matchedTerms
                 }
                 .filter { it.second > 0 }
@@ -165,6 +163,8 @@ object VectorMemoryRetriever {
     const val MAX_CHARACTERS = 100_000
     const val DEFAULT_RRF_CONSTANT = 60
     const val MAX_RRF_CONSTANT = 1_000
+    const val MAX_KEYWORD_QUERY_TERMS = 64
+    const val MAX_KEYWORD_SCAN_CHARACTERS = 20_000
 
     /**
      * Keeps English/numeric words, and uses CJK bigrams so unspaced Chinese sentences can
@@ -206,7 +206,37 @@ object VectorMemoryRetriever {
             flushHan()
             flushOther()
         }
-        return tokens
+        return tokens.take(MAX_KEYWORD_QUERY_TERMS).toSet()
+    }
+
+    /** Tokenize each bounded candidate once; only count terms actually present in the query. */
+    private fun countMatchedQueryTerms(text: String, queryTerms: Set<String>): Int {
+        if (queryTerms.isEmpty() || text.isEmpty()) return 0
+        val bounded = text.substring(0, minOf(text.length, MAX_KEYWORD_SCAN_CHARACTERS))
+            .lowercase(Locale.ROOT)
+        val matched = mutableSetOf<String>()
+        for (chunk in Regex("[\\p{L}\\p{N}]+").findAll(bounded)) {
+            val segment = chunk.value
+            var index = 0
+            while (index < segment.length) {
+                val character = segment[index]
+                if (isHan(character)) {
+                    val unigram = character.toString()
+                    if (unigram in queryTerms) matched += unigram
+                    if (index + 1 < segment.length && isHan(segment[index + 1])) {
+                        val bigram = segment.substring(index, index + 2)
+                        if (bigram in queryTerms) matched += bigram
+                    }
+                    index++
+                } else {
+                    val start = index
+                    while (index < segment.length && !isHan(segment[index])) index++
+                    val token = segment.substring(start, index)
+                    if (token.length >= 2 && token in queryTerms) matched += token
+                }
+            }
+        }
+        return matched.size
     }
 
     private fun isHan(character: Char): Boolean =

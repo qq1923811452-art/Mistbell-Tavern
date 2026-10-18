@@ -101,11 +101,21 @@ class EmbeddingGemma2RuntimeAdapter(
         formattedInputs.forEachIndexed { index, formatted ->
             val key = EmbeddingVectorCache.key(formatted, model.modelId, model.dimensions)
             val cached = EmbeddingVectorCache.get(key)
-            if (cached != null) {
+            val usableCached = cached?.takeIf {
+                it.vector.size == model.dimensions &&
+                    it.status.modelId == model.modelId &&
+                    it.status.runtimeId == engine.runtimeId &&
+                    it.status.backendEvidence != BackendEvidence.NOT_AVAILABLE &&
+                    (it.status.phase == InferencePhase.READY ||
+                        it.status.phase == InferencePhase.RUNNING ||
+                        it.status.phase == InferencePhase.FALLBACK)
+            }
+            if (usableCached != null) {
                 onDiagnostic("embedding.cache.hit", "modelId=${model.modelId}; dimensions=${model.dimensions}")
-                output[index] = cached.vector
-                cachedStatuses += cached.status
+                output[index] = usableCached.vector
+                cachedStatuses += usableCached.status
             } else {
+                if (cached != null) EmbeddingVectorCache.remove(key)
                 onDiagnostic("embedding.cache.miss", "modelId=${model.modelId}; dimensions=${model.dimensions}")
                 pendingByKey.getOrPut(key) { mutableListOf() }.add(index)
             }

@@ -114,6 +114,21 @@ class VectorSnapshotCodecTest {
     }
 
     @Test
+    fun zeroVectorPersistsAndRemainsNonMatchable() {
+        val zero = StoredVector("zero", HASH, 1L, List(3) { 0f })
+        val snapshot = VectorSnapshot("model-zero", 3, listOf(zero))
+        val decoded = VectorSnapshotCodec.decode(VectorSnapshotCodec.encode(snapshot))
+        assertEquals(listOf(0f, 0f, 0f), decoded.records.single().values)
+        assertTrue(
+            VectorSimilaritySearch.search(
+                snapshot = decoded,
+                query = listOf(1f, 0f, 0f),
+                minimumScore = -1.0,
+            ).isEmpty(),
+        )
+    }
+
+    @Test
     fun rejectsChecksumMismatch() {
         val encoded = VectorSnapshotCodec.encode(
             VectorSnapshot(
