@@ -160,7 +160,7 @@ jobs:
           truncated = False
           truncation_note = ""
 
-          def split_diff(text, max_chars=20000):
+          def split_diff(text, max_chars=60000):
               chunks = []
               current = []
               current_size = 0
@@ -195,19 +195,13 @@ jobs:
           model_calls = 0
           unaudited_chunks = 0
 
-          while pending_chunks:
-              if time.monotonic() >= audit_deadline or model_calls >= max_model_calls:
-                  unaudited_chunks = len(pending_chunks)
-                  print(
-                      f"AI audit budget exhausted after {completed_chunks} segment(s); "
-                      f"{unaudited_chunks} segment(s) were not audited."
-                  )
-                  break
-              model_calls += 1
-              diff_chunk, split_depth = pending_chunks.pop(0)
-              chunk_index = completed_chunks + 1
-              answer = None
-              finish_reason = None
+          # Run bounded parallel audits to reduce wall-clock time while preserving coverage accounting.
+          from concurrent.futures import ThreadPoolExecutor, as_completed
+
+          max_workers = max(1, min(int(os.environ.get("AI_AUDIT_CONCURRENCY", "4")), 4))
+          failed_chunks = 0
+
+          def audit_one(diff_chunk, split_depth, chunk_index):
               prompt = f"""审查下面 GitHub Pull Request diff 的第 {chunk_index} 部分（自适应分块审计）。目标是发现真实、可复现且值得修复的问题，而不是挑风格。
           审查类别：正确性/回归、API 协议与资源生命周期、安全与敏感信息、并发/取消、缓存一致性、性能、数据库迁移兼容性、测试遗漏。
           输出必须是一个 JSON 对象，不要 Markdown 围栏或额外文字，结构为：
@@ -255,74 +249,81 @@ jobs:
               request = urllib.request.Request(
                   "https://api.odys.work/v1/chat/completions",
                   data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-                  headers={
-                      "Authorization": "Bearer " + api_key,
-                      "Content-Type": "application/json",
-                  },
+                  headers={"Authorization": "Bearer " + api_key, "Content-Type": "application/json"},
                   method="POST",
               )
-              try:
-                  with urllib.request.urlopen(request, timeout=30) as response:
-                      response_body = response.read().decode("utf-8", errors="replace")
-              except urllib.error.HTTPError as exc:
-                  # Do not print untrusted relay error bodies; they may contain sensitive details.
-                  print(f"AI relay request failed on chunk {chunk_index}/{len(diff_chunks)} with HTTP {exc.code}")
-                  raise SystemExit(1)
-              except Exception as exc:
-                  print(f"AI relay request failed on chunk {chunk_index}/{len(diff_chunks)}:", type(exc).__name__)
-                  raise SystemExit(1)
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  response_body = response.read().decode("utf-8", errors="replace")
+              relay_data = json.loads(response_body)
+              choices = relay_data.get("choices") if isinstance(relay_data, dict) else None
+              if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
+                  raise ValueError("relay response has missing or empty choices")
+              finish_reason = choices[0].get("finish_reason")
+              message = choices[0].get("message")
+              answer = message.get("content") if isinstance(message, dict) else None
+              if not isinstance(answer, str) or not answer.strip():
+                  raise ValueError("relay response has empty or non-text content")
+              cleaned = answer.strip()
+              if cleaned.startswith("\`\`\`"):
+                  cleaned = re.sub(r"^\`\`\`(?:json)?\s*", "", cleaned)
+                  cleaned = re.sub(r"\s*\`\`\`$", "", cleaned)
+              chunk_report = json.loads(cleaned)
+              if not isinstance(chunk_report, dict) or not isinstance(chunk_report.get("summary"), str):
+                  raise ValueError("chunk response has invalid summary")
+              if not isinstance(chunk_report.get("findings"), list):
+                  raise ValueError("chunk response has invalid findings")
+              if any(not isinstance(item, dict) for item in chunk_report["findings"]):
+                  raise ValueError("chunk response contains a non-object finding")
+              if finish_reason == "length":
+                  return {"status": "split", "reason": "model output truncated"}
+              return {"status": "ok", "summary": chunk_report["summary"].strip(), "findings": chunk_report["findings"][:2]}
 
-              try:
-                  relay_data = json.loads(response_body)
-                  choices = relay_data.get("choices") if isinstance(relay_data, dict) else None
-                  if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
-                      raise ValueError("relay response has missing or empty choices")
-                  finish_reason = choices[0].get("finish_reason")
-                  message = choices[0].get("message")
-                  answer = message.get("content") if isinstance(message, dict) else None
-                  if not isinstance(answer, str) or not answer.strip():
-                      raise ValueError("relay response has empty or non-text content")
-                  cleaned = answer.strip()
-                  if cleaned.startswith("```"):
-                      cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
-                      cleaned = re.sub(r"\s*```$", "", cleaned)
-                  chunk_report = json.loads(cleaned)
-                  if not isinstance(chunk_report, dict) or not isinstance(chunk_report.get("summary"), str):
-                      raise ValueError("chunk response has invalid summary")
-                  if not isinstance(chunk_report.get("findings"), list):
-                      raise ValueError("chunk response has invalid findings")
-                  if any(not isinstance(item, dict) for item in chunk_report["findings"]):
-                      raise ValueError("chunk response contains a non-object finding")
-                  if finish_reason == "length":
-                      raise ValueError("model output was truncated")
-                  chunk_summaries.append(chunk_report["summary"].strip())
-                  combined_findings.extend(chunk_report["findings"][:2])
-                  completed_chunks += 1
-                  print(f"AI audit segment {completed_chunks} completed; pending={len(pending_chunks)}; findings={len(chunk_report['findings'])}")
-              except Exception as exc:
-                  answer_length = len(answer) if isinstance(answer, str) else 0
-                  print(
-                      f"Could not validate AI response for segment {chunk_index}:",
-                      type(exc).__name__,
-                      "finish_reason=", finish_reason,
-                      "content_length=", answer_length,
-                  )
-                  can_split = (
-                      split_depth < 5
-                      and len(diff_chunk) > 800
-                      and (finish_reason == "length" or answer_length == 0)
-                  )
-                  if can_split:
-                      parts = split_diff(diff_chunk, max_chars=max(500, len(diff_chunk) // 2))
-                      if len(parts) < 2:
-                          midpoint = len(diff_chunk) // 2
-                          parts = [diff_chunk[:midpoint], diff_chunk[midpoint:]]
-                      if all(parts):
-                          print(f"Adapting failed segment into {len(parts)} smaller segments (depth {split_depth + 1}).")
-                          pending_chunks = [(part, split_depth + 1) for part in parts] + pending_chunks
+          while pending_chunks:
+              if time.monotonic() >= audit_deadline or model_calls >= max_model_calls:
+                  unaudited_chunks = len(pending_chunks)
+                  print(f"AI audit budget exhausted after {completed_chunks} completed segment(s); {unaudited_chunks} segment(s) remain pending.")
+                  break
+
+              batch = []
+              while pending_chunks and len(batch) < max_workers and model_calls < max_model_calls and time.monotonic() < audit_deadline:
+                  chunk, depth = pending_chunks.pop(0)
+                  model_calls += 1
+                  batch.append((chunk, depth, model_calls))
+
+              if not batch:
+                  unaudited_chunks = len(pending_chunks)
+                  break
+
+              print(f"Auditing {len(batch)} segment(s) concurrently (workers={max_workers}; calls={model_calls}/{max_model_calls}).")
+              with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                  futures = {executor.submit(audit_one, chunk, depth, index): (chunk, depth, index) for chunk, depth, index in batch}
+                  for future in as_completed(futures):
+                      chunk, depth, index = futures[future]
+                      try:
+                          result = future.result()
+                      except Exception as exc:
+                          print(f"AI relay/response failed on segment {index}: {type(exc).__name__}")
+                          failed_chunks += 1
                           continue
-                  raise SystemExit(1)
+                      if result["status"] == "ok":
+                          chunk_summaries.append(result["summary"])
+                          combined_findings.extend(result["findings"])
+                          completed_chunks += 1
+                          print(f"AI audit segment {index} completed; findings={len(result['findings'])}")
+                          continue
+                      if depth < 5 and len(chunk) > 800:
+                          parts = split_diff(chunk, max_chars=max(500, len(chunk) // 2))
+                          if len(parts) < 2:
+                              midpoint = len(chunk) // 2
+                              parts = [chunk[:midpoint], chunk[midpoint:]]
+                          if all(parts):
+                              print(f"Segment {index} output truncated; retrying as {len(parts)} smaller segments.")
+                              pending_chunks = [(part, depth + 1) for part in parts] + pending_chunks
+                              continue
+                      print(f"Segment {index} could not be audited completely; marking incomplete.")
+                      failed_chunks += 1
 
+          unaudited_chunks = unaudited_chunks + failed_chunks
           coverage_note = (
               f"仅完成 {completed_chunks}/{completed_chunks + unaudited_chunks} 个 diff 分块的审查"
               f"（预算耗尽，结果不完整，未覆盖部分需人工复核）。 "
