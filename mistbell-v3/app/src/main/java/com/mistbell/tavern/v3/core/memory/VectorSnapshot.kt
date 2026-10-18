@@ -64,6 +64,7 @@ object VectorSnapshotCodec {
     private const val LEGACY_FORMAT_VERSION = 1
     private const val FORMAT_VERSION = 2
     private const val CHECKSUM_BYTES = 32
+    private const val MAX_MAPPED_UTF_BYTES = 65_535
 
     fun encode(snapshot: VectorSnapshot): ByteArray {
         val payloadBuffer = java.io.ByteArrayOutputStream()
@@ -76,6 +77,9 @@ object VectorSnapshotCodec {
             snapshot.records.forEach { record ->
                 require(record.values.size == snapshot.dimensions) {
                     "Every persisted vector must match the snapshot dimension."
+                }
+                require(record.values.isNotEmpty() && record.values.all(Float::isFinite)) {
+                    "Persisted vectors must contain only finite values."
                 }
                 out.writeUTF(record.id)
                 out.writeUTF(record.sourceTextSha256)
@@ -181,6 +185,7 @@ object VectorSnapshotCodec {
     private fun readMappedUtf(input: ByteBuffer): String {
         require(input.remaining() >= 2) { "Vector snapshot string is truncated." }
         val length = input.short.toInt() and 0xffff
+        require(length in 1..MAX_MAPPED_UTF_BYTES) { "Vector snapshot string length is invalid." }
         require(input.remaining() >= length) { "Vector snapshot string is truncated." }
         val encoded = ByteArray(length + 2)
         encoded[0] = (length ushr 8).toByte()

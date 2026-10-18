@@ -31,20 +31,37 @@ class VectorSnapshotCodecTest {
     }
 
     @Test
-    fun mappedDecodeUsesLazyVectorViewsAndPreservesValues() {
+    fun mappedDecodeUsesLazyVectorViewsAndPreservesRecordOffsets() {
         val original = VectorSnapshot(
             modelId = "mapped-model",
             dimensions = 3,
-            records = listOf(StoredVector("mapped-vector", HASH, 17L, listOf(0.25f, -0.5f, 1.0f))),
+            records = listOf(
+                StoredVector("mapped-vector-a", HASH, 17L, listOf(0.25f, -0.5f, 1.0f)),
+                StoredVector("mapped-vector-b", HASH, 18L, listOf(-1.0f, 0.125f, 0.75f)),
+            ),
         )
         val encoded = VectorSnapshotCodec.encode(original)
         val decoded = VectorSnapshotCodec.decodeMapped(java.nio.ByteBuffer.wrap(encoded))
         assertEquals("mapped-model", decoded.modelId)
-        assertEquals(3, decoded.records.single().values.size)
-        assertTrue(decoded.records.single().values !is java.util.ArrayList<*>)
-        assertTrue(decoded.records.single().values.zip(listOf(0.25f, -0.5f, 1.0f)).all { (actual, expected) ->
-            kotlin.math.abs(actual - expected) <= 0.01f
-        })
+        assertEquals(2, decoded.records.size)
+        assertTrue(decoded.records.all { it.values !is java.util.ArrayList<*> })
+        original.records.zip(decoded.records).forEach { (expected, actual) ->
+            assertEquals(expected.id, actual.id)
+            assertTrue(actual.values.zip(expected.values).all { (value, expectedValue) ->
+                kotlin.math.abs(value - expectedValue) <= 0.01f
+            })
+        }
+    }
+
+    @Test
+    fun encoderRejectsValuesMutatedToNonFiniteAfterRecordConstruction() {
+        val mutableValues = mutableListOf(0.5f)
+        val record = StoredVector("mutable-vector", HASH, 1L, mutableValues)
+        mutableValues[0] = Float.NaN
+        val snapshot = VectorSnapshot("model-finite", 1, listOf(record))
+        assertThrows(IllegalArgumentException::class.java) {
+            VectorSnapshotCodec.encode(snapshot)
+        }
     }
 
     @Test
