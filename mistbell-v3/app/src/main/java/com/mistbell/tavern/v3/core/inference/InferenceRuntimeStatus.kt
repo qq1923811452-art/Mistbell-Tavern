@@ -32,6 +32,8 @@ data class InferenceRuntimeStatus(
     val fallbackReason: String? = null,
     val lastError: String? = null,
     val lastExecutionMillis: Long? = null,
+    /** True when this status describes a cached vector produced by an earlier inference. */
+    val isCachedResult: Boolean = false,
 ) {
     init {
         require(modelId == null || modelId.isNotBlank()) { "Model ID must not be blank." }

@@ -50,7 +50,7 @@ class EmbeddingGemma2RuntimeAdapter(
                 return null
             }
             onDiagnostic("embedding.cache.hit", "modelId=${EmbeddingGemma2TextPolicy.MODEL_ID}; dimensions=$outputDimensions; engineInitializationSkipped=true")
-            return EmbeddingBatch(listOf(cached.vector), cached.status.copy(lastExecutionMillis = null))
+            return EmbeddingBatch(listOf(cached.vector), cached.status.copy(lastExecutionMillis = null, isCachedResult = true))
         }
     }
 
@@ -139,7 +139,7 @@ class EmbeddingGemma2RuntimeAdapter(
             if (usableCached != null) {
                 onDiagnostic("embedding.cache.hit", "modelId=${model.modelId}; dimensions=${model.dimensions}")
                 output[index] = usableCached.vector
-                cachedStatuses += usableCached.status
+                cachedStatuses += usableCached.status.copy(isCachedResult = true)
             } else {
                 if (cached != null) EmbeddingVectorCache.remove(key)
                 onDiagnostic("embedding.cache.miss", "modelId=${model.modelId}; dimensions=${model.dimensions}")
@@ -162,7 +162,7 @@ class EmbeddingGemma2RuntimeAdapter(
             lastStatus = raw.status
         }
 
-        val status = lastStatus ?: cachedStatuses.firstOrNull()?.copy(lastExecutionMillis = null)
+        val status = lastStatus ?: cachedStatuses.firstOrNull()?.copy(lastExecutionMillis = null, isCachedResult = true)
             ?: throw EmbeddingOutputException("Embedding cache did not provide a usable result status.")
         return EmbeddingBatch(
             vectors = output.mapIndexed { index, vector ->

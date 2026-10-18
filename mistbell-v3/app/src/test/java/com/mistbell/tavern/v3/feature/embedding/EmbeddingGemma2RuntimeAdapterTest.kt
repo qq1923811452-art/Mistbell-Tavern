@@ -238,6 +238,7 @@ class EmbeddingGemma2RuntimeAdapterTest {
         assertTrue(cached != null)
         assertEquals(first.vectors, cached!!.vectors)
         assertEquals(null, cached.status.lastExecutionMillis)
+        assertTrue(cached.status.isCachedResult)
     }
 
     @Test
