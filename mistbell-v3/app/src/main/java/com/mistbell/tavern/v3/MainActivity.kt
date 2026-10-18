@@ -833,7 +833,7 @@ private fun InferenceStatusCard(status: InferenceRuntimeStatus) {
             Spacer(Modifier.height(6.dp))
             Text("$phaseLabel · 配置后端：$backendLabel", style = MaterialTheme.typography.bodyMedium)
             val details = listOfNotNull(
-                if (status.backend == InferenceBackend.NPU && status.backendEvidence == BackendEvidence.DEVICE_VERIFIED) "已验证 NPU",
+                "已验证 NPU".takeIf { status.backend == InferenceBackend.NPU && status.backendEvidence == BackendEvidence.DEVICE_VERIFIED },
                 status.modelId?.let { "模型：$it" },
                 status.acceleratorName?.let { "配置后端：$it" },
                 status.backendEvidence.takeIf { it != BackendEvidence.NOT_AVAILABLE }?.let { "硬件证据：${when (it) { BackendEvidence.NOT_AVAILABLE -> "无"; BackendEvidence.CONFIGURED_ONLY -> "仅配置成功，未独立确认实际硬件调用"; BackendEvidence.RUNTIME_REPORTED -> "运行时报告"; BackendEvidence.DEVICE_VERIFIED -> "设备实测确认" }}" },
