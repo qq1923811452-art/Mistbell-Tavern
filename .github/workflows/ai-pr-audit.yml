@@ -152,7 +152,7 @@ jobs:
               key_source = "ODYS_API_KEY (shared fallback)"
           if not model or not api_key:
               raise SystemExit(f"Model {model_slot} is missing its model ID or API key.")
-          print(f"Model slot {model_slot}; credential source: {key_source}; API base source: {base_source}.")
+          print(f"Model slot {model_slot}; credentials and API endpoint configuration validated.")
 
           try:
               pr_number_int = int(pr_number)
@@ -583,8 +583,7 @@ jobs:
               f"- **Audited head SHA:** `{head_sha}`",
               f"- **Model configured (request):** `{safe_markdown(model, 100)}`",
               f"- **Model returned by relay:** `{safe_markdown(returned_model, 100)}`",
-              f"- **Credential source:** `{safe_markdown(key_source, 100)}`",
-              f"- **API base source:** `{safe_markdown(base_source, 100)}`",
+
               "- **Model identity note:** relay response metadata is self-reported and is not independent proof of the upstream backend.",
               f"- **Diff size:** {len(diff)} characters" + (" (truncated before analysis; manual review required)" if truncated else ""),
               "- **Important:** AI findings are untrusted advisory text. Verify them against source and CI.",
