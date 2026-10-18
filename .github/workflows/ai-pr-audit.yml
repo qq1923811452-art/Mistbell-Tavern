@@ -26,7 +26,10 @@ jobs:
   audit:
     name: Model ${{ matrix.model_slot }} · pass ${{ matrix.audit_pass }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # Model B is supplemental: it must never make the required Model A audit fail
+    # or occupy a runner for the full Model A timeout when the relay hangs.
+    timeout-minutes: ${{ matrix.model_slot == 'B' && 5 || 20 }}
+    continue-on-error: ${{ matrix.model_slot == 'B' }}
     strategy:
       fail-fast: false
       # Limit concurrent calls to the shared relay to reduce 429/rate-limit failures.
