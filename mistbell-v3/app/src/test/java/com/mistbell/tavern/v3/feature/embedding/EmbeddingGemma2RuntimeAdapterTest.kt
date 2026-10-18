@@ -186,6 +186,29 @@ class EmbeddingGemma2RuntimeAdapterTest {
     }
 
     @Test
+    fun truncatesLongInputAndLogsOriginalAndTruncatedLengths(): Unit = runBlocking {
+        EmbeddingVectorCache.clear()
+        val events = mutableListOf<Pair<String, String>>()
+        var sentInput: String? = null
+        val adapter = EmbeddingGemma2RuntimeAdapter(
+            engine = engine { inputs ->
+                sentInput = inputs.single()
+                EmbeddingBatch(
+                    vectors = listOf(List(EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS) { 1f }),
+                    status = rawStatus,
+                )
+            },
+            onDiagnostic = { event, detail -> events += event to detail },
+        )
+
+        adapter.embedQueries(listOf("x".repeat(3_000)))
+
+        assertEquals(2_000, sentInput!!.substringAfter("| text: ").length)
+        assertTrue(events.any { it.first == "embedding.input.truncated" &&
+            it.second.contains("originalLength=3000") && it.second.contains("truncatedLength=2000") })
+    }
+
+    @Test
     fun cacheKeySeparatesModelAndDimensions() {
         val a = EmbeddingVectorCache.key("same", "model-a", 768)
         val b = EmbeddingVectorCache.key("same", "model-b", 768)
