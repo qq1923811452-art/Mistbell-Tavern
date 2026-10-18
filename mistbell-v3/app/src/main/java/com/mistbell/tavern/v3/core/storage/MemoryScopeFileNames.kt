@@ -24,6 +24,9 @@ object MemoryScopeId {
     fun forRoleAndConversation(roleId: String, conversationId: String): String {
         require(roleId.isNotBlank()) { "Character/role ID must not be blank." }
         require(conversationId.isNotBlank()) { "Conversation ID must not be blank." }
-        return UUID.nameUUIDFromBytes("$roleId|$conversationId".toByteArray(Charsets.UTF_8)).toString()
+        // Length-prefix both values so delimiter characters inside either ID cannot alias a
+        // different role/conversation pair and accidentally share private memory files.
+        val identity = "${roleId.length}:$roleId${conversationId.length}:$conversationId"
+        return UUID.nameUUIDFromBytes(identity.toByteArray(Charsets.UTF_8)).toString()
     }
 }
