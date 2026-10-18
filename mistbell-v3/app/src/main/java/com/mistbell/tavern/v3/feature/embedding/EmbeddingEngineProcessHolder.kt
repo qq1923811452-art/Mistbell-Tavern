@@ -32,6 +32,7 @@ object EmbeddingEngineProcessHolder : ComponentCallbacks2 {
         diagnostics: DiagnosticLogStore = DiagnosticLogStore(context.applicationContext.filesDir),
     ): LiteRtLmEmbeddingGemma2Engine {
         val appContext = context.applicationContext
+        EmbeddingVectorCache.setLogger { event, detail -> runCatching { diagnostics.info(event, detail) } }
         registerCallbacks(appContext)
         val key = EngineKey(modelFile.canonicalPath, modelFile.length(), modelFile.lastModified(), npuModelCompatible)
         mutex.lock()
@@ -80,6 +81,7 @@ object EmbeddingEngineProcessHolder : ComponentCallbacks2 {
     private fun closeCurrent() {
         val old = synchronized(stateLock) { current.also { current = null } }
         old?.let { runCatching { it.engine.close() } }
+        EmbeddingVectorCache.clear()
     }
 
     private fun registerCallbacks(context: Context) {

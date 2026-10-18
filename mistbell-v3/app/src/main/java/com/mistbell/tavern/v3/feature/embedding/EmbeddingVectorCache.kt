@@ -10,6 +10,8 @@ object EmbeddingVectorCache {
     const val CAPACITY = 512
     data class Entry(val vector: List<Float>, val status: InferenceRuntimeStatus)
 
+    @Volatile private var logger: (String, String) -> Unit = { _, _ -> }
+
     private val entries = object : LinkedHashMap<String, Entry>(CAPACITY, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Entry>?): Boolean = size > CAPACITY
     }
@@ -25,6 +27,9 @@ object EmbeddingVectorCache {
 
     @Synchronized fun clear() = entries.clear()
     @Synchronized fun size(): Int = entries.size
+
+    fun setLogger(value: (String, String) -> Unit) { logger = value }
+    fun log(event: String, detail: String) = logger(event, detail)
 
     /** Hash task-formatted text so query/document prefixes cannot collide. */
     fun key(text: String, modelId: String, dimensions: Int): String {

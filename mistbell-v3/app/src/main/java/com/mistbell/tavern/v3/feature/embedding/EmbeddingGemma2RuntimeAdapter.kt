@@ -21,11 +21,12 @@ class EmbeddingGemma2RuntimeAdapter(
     private val engine: EmbeddingGemma2InferenceEngine,
     private val outputDimensions: Int = EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS,
     configuredBatchSize: Int = 16,
-    private val onDiagnostic: (String, String) -> Unit = { _, _ -> },
+    private val onDiagnostic: (String, String) -> Unit = { event, detail -> EmbeddingVectorCache.log(event, detail) },
 ) : LocalEmbeddingRuntime {
     companion object {
         const val MAX_CONFIGURED_BATCH_SIZE = 256
         const val MAX_FORMATTED_INPUT_BYTES = 4096
+        const val BATCH_SIZE = 8
     }
 
     init {
@@ -150,10 +151,4 @@ class EmbeddingGemma2RuntimeAdapter(
         ) throw EmbeddingOutputException("Engine did not report an active inference phase.")
     }
 
-    companion object {
-        const val MAX_CONFIGURED_BATCH_SIZE = 256
-        const val MAX_FORMATTED_INPUT_BYTES = 4096
-        const val BATCH_SIZE = 8
-    }
-}
 }
