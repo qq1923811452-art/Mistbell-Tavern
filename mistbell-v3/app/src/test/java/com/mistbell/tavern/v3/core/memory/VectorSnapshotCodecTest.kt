@@ -113,6 +113,20 @@ class VectorSnapshotCodecTest {
     }
 
     @Test
+    fun byteBudgetAllowsInt8ButRejectsLegacyFloat32AtSameRecordCount() {
+        val count = 100_000
+        val dimensions = 768
+        val int8PayloadBytes = count.toLong() * (112L + dimensions.toLong())
+        assertTrue(int8PayloadBytes < VectorSnapshotCodec.MAX_SNAPSHOT_BYTES.toLong())
+        VectorSnapshotCodec.validatePayloadBudget(int8PayloadBytes, count, dimensions, 2)
+        assertThrows(IllegalArgumentException::class.java) {
+            VectorSnapshotCodec.validatePayloadBudget(
+                VectorSnapshotCodec.MAX_SNAPSHOT_BYTES.toLong(), count, dimensions, 1,
+            )
+        }
+    }
+
+    @Test
     fun rejectsHeaderWhoseDeclaredVectorsCannotFitWithinPayloadBytes() {
         val payloadBuffer = java.io.ByteArrayOutputStream()
         java.io.DataOutputStream(payloadBuffer).use { out ->
