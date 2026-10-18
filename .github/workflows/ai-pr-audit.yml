@@ -659,7 +659,7 @@ jobs:
           fi
           COMMENT_MARKER="<!-- ai-pr-audit-report-${MODEL_SLOT}-pass-${AUDIT_PASS} -->"
           COMMENT_ID="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" | jq -s -r --arg marker "$COMMENT_MARKER" '[flatten(1)[]? | select(.user.login == "github-actions[bot]" and (.body | contains($marker))) | .id] | last // empty')"
-          if [[ -n "$COMMENT_ID" ]]; then
+          if [[ -n "$COMMENT_ID" && "$COMMENT_ID" =~ ^[0-9]+$ ]]; then
             python3 - <<'PY'
           import json
           from pathlib import Path
