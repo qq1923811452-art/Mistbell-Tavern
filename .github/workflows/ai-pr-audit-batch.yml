@@ -37,8 +37,18 @@ jobs:
           set -euo pipefail
           [[ -n "$DEFAULT_BRANCH" ]] || { echo "::error::Could not determine the repository default branch"; exit 1; }
           # This matrix intentionally covers historical PRs; skip numbers that no longer resolve.
-          if ! gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" >/dev/null 2>&1; then
+          if ! SNAPSHOT="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '[.head.sha, .base.sha] | @tsv' 2>/dev/null)"; then
             echo "::notice::Skipping PR #$PR_NUMBER because GitHub could not resolve its pull-request metadata."
+            exit 0
+          fi
+          HEAD_SHA="${SNAPSHOT%%
+\t'*}"
+          BASE_SHA="${SNAPSHOT#*
+\t'}"
+          # Avoid re-spending relay quota when both Model A reports already cover this exact head/base snapshot.
+          REPORT_BODIES="$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" | jq -s -r --arg head "$HEAD_SHA" --arg base "$BASE_SHA" '[(add | flatten)[]? | select(.user.login == "github-actions[bot]" and (.body | contains("Audited head SHA: `" + $head + "`")) and (.body | contains("PR base ref SHA: `" + $base + "`"))] | map(.body) | join("\n")')"
+          if [[ "$REPORT_BODIES" == *"ai-pr-audit-report-A-pass-1"* && "$REPORT_BODIES" == *"ai-pr-audit-report-A-pass-2"* ]]; then
+            echo "::notice::Skipping PR #$PR_NUMBER; both Model A reports already cover head $HEAD_SHA and base $BASE_SHA."
             exit 0
           fi
           gh workflow run ai-pr-audit.yml --repo "$GITHUB_REPOSITORY" --ref "$DEFAULT_BRANCH" -f "pr_number=$PR_NUMBER"
