@@ -127,6 +127,17 @@ fun ChatScreen(onBack: () -> Unit) {
     var historyReady by remember { mutableStateOf(false) }
     var historyLoadFailed by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("填写模型 ID 和 API 配置后即可测试聊天。") }
+    var memoryScopeId by remember(settings) {
+        mutableStateOf(
+            settings.getString("memory_extraction_conversation_id", null)
+                ?.takeIf(String::isNotBlank)
+                ?: UUID.randomUUID().toString().also { generated ->
+                    settings.edit().putString("memory_extraction_conversation_id", generated).apply()
+                },
+        )
+    }
+    var memoryIndexRebuildInFlight by remember { mutableStateOf(false) }
+    var memoryStatusNotice by remember { mutableStateOf("") }
     var maxTokensText by remember(settings) {
         mutableStateOf(settings.getInt("chat_max_tokens", 4096).coerceIn(1, 200_000).toString())
     }
@@ -272,6 +283,55 @@ fun ChatScreen(onBack: () -> Unit) {
         }
     }
 
+    fun scheduleMemoryIndexRebuild(
+        records: List<com.mistbell.tavern.v3.core.memory.MemoryTextRecord>,
+        runtime: com.mistbell.tavern.v3.core.memory.PassageEmbeddingRuntime,
+        memoryTextStore: AtomicMemoryTextStore,
+        vectorSnapshotStore: AtomicVectorSnapshotStore,
+        reason: String,
+    ) {
+        if (records.isEmpty()) {
+            diagnosticStore.info("memory.index.rebuild_not_needed", "reason=empty_source; scope=${memoryScopeId.take(8)}")
+            return
+        }
+        if (memoryIndexRebuildInFlight) {
+            diagnosticStore.info("memory.index.rebuild_already_running", "scope=${memoryScopeId.take(8)}")
+            return
+        }
+        memoryIndexRebuildInFlight = true
+        val scopePrefix = memoryScopeId.take(8)
+        diagnosticStore.info(
+            "memory.index.rebuild_scheduled",
+            "reason=$reason; records=${records.size}; scope=$scopePrefix",
+        )
+        coroutineScope.launch(Dispatchers.IO) {
+            val result = MemoryIndexRebuilder(
+                runtime = runtime,
+                saveSourceTexts = memoryTextStore::save,
+                saveSnapshot = vectorSnapshotStore::save,
+            ).rebuild(records)
+            withContext(Dispatchers.Main) {
+                memoryIndexRebuildInFlight = false
+                when (result) {
+                    is MemoryIndexRebuildResult.Success -> {
+                        diagnosticStore.info(
+                            "memory.index.background_rebuild_succeeded",
+                            "records=${result.indexedRecords}; dimensions=${result.dimensions}; scope=$scopePrefix",
+                        )
+                        if (!busy) status = "后台记忆索引重建完成：${result.indexedRecords} 条。"
+                    }
+                    is MemoryIndexRebuildResult.Failed -> {
+                        diagnosticStore.warn(
+                            "memory.index.background_rebuild_failed",
+                            "stage=${result.stage}; reason=${result.reason}; scope=$scopePrefix",
+                        )
+                        if (!busy) status = "本地记忆索引重建失败（${result.stage}）；本轮不会注入记忆，聊天仍可继续。"
+                    }
+                }
+            }
+        }
+    }
+
     fun scheduleMemoryExtractionIfDue(providers: ProviderProfileSet) {
         val profile = providers.profileFor(ProviderKind.MEMORY_EXTRACTION) ?: return
         val preferences = context.getSharedPreferences("mistbell-v3-settings", Context.MODE_PRIVATE)
@@ -297,10 +357,9 @@ fun ChatScreen(onBack: () -> Unit) {
         val pending = if (previousIndex >= 0) pairs.drop(previousIndex + 1) else pairs
         if (pending.size < 3) return
 
-        val conversationId = preferences.getString("memory_extraction_conversation_id", null)
-            ?: UUID.randomUUID().toString().also {
-                preferences.edit().putString("memory_extraction_conversation_id", it).apply()
-            }
+        val conversationId = memoryScopeId.also {
+            preferences.edit().putString("memory_extraction_conversation_id", it).apply()
+        }
         val jobs = pending.chunked(MemoryExtractionInput.MAX_TURNS)
             .filter { it.size >= 3 }
             .mapIndexed { batchIndex, batch ->
@@ -662,6 +721,7 @@ fun ChatScreen(onBack: () -> Unit) {
                         persistHistory()
                         draft = ""
                         busy = true
+                        memoryStatusNotice = ""
                         status = "正在连接聊天 API……"
                         val messages = buildList {
                             add(PromptMessage(PromptRole.SYSTEM, "你是 Mistbell Tavern 的聊天助手。请直接、清晰地回答用户。"))
@@ -700,7 +760,11 @@ fun ChatScreen(onBack: () -> Unit) {
                             override fun onComplete() {
                                 mainHandler.post {
                                     busy = false
-                                    status = "回复完成。"
+                                    status = if (memoryStatusNotice.isBlank()) {
+                                        "回复完成。"
+                                    } else {
+                                        "回复完成。$memoryStatusNotice"
+                                    }
                                     val last = history.lastOrNull()
                                     if (last?.role == "assistant") {
                                         history[history.lastIndex] = last.copy(
@@ -781,12 +845,30 @@ fun ChatScreen(onBack: () -> Unit) {
                                         outputDimensions = configuredDimensions,
                                     )
                                     val memoryRuntime = EmbeddingGemma2MemoryRuntime(adapter)
-                                    val memoryTextStore = AtomicMemoryTextStore(context)
-                                    val vectorSnapshotStore = AtomicVectorSnapshotStore(context)
+                                    val memoryTextStore = AtomicMemoryTextStore(
+                                        context,
+                                        com.mistbell.tavern.v3.core.storage.MemoryScopeFileNames.forScope(
+                                            AtomicMemoryTextStore.DEFAULT_FILE_NAME,
+                                            memoryScopeId,
+                                        ),
+                                    )
+                                    val vectorSnapshotStore = AtomicVectorSnapshotStore(
+                                        context,
+                                        com.mistbell.tavern.v3.core.storage.MemoryScopeFileNames.forScope(
+                                            AtomicVectorSnapshotStore.DEFAULT_FILE_NAME,
+                                            memoryScopeId,
+                                        ),
+                                    )
                                     var indexMaintenanceMessage = ""
                                     when (val syncResult = withContext(Dispatchers.IO) {
                                         TemporalFactTextSynchronizer(
-                                            factStore = AtomicTemporalFactStore(context.applicationContext),
+                                            factStore = AtomicTemporalFactStore(
+                                                context.applicationContext,
+                                                com.mistbell.tavern.v3.core.storage.MemoryScopeFileNames.forScope(
+                                                    AtomicTemporalFactStore.DEFAULT_FILE_NAME,
+                                                    memoryScopeId,
+                                                ),
+                                            ),
                                             memoryTextStore = memoryTextStore,
                                         ).synchronize()
                                     }) {
@@ -826,30 +908,14 @@ fun ChatScreen(onBack: () -> Unit) {
                                                     val currentHashes = sourceTexts.records.map { it.sourceTextSha256 }.sorted()
                                                     val indexedHashes = existingSnapshot.snapshot.records.map { it.sourceTextSha256 }.sorted()
                                                     if (currentHashes != indexedHashes) {
-                                                        status = "检测到记忆事实已更新，正在刷新本地向量索引……"
-                                                        val rebuildResult = withContext(Dispatchers.IO) {
-                                                            MemoryIndexRebuilder(
-                                                                runtime = memoryRuntime,
-                                                                saveSourceTexts = memoryTextStore::save,
-                                                                saveSnapshot = vectorSnapshotStore::save,
-                                                            ).rebuild(sourceTexts.records)
-                                                        }
-                                                        when (rebuildResult) {
-                                                            is MemoryIndexRebuildResult.Success -> {
-                                                                diagnosticStore.info(
-                                                                    "memory.index.refresh_succeeded",
-                                                                    "records=${rebuildResult.indexedRecords}; dimensions=${rebuildResult.dimensions}",
-                                                                )
-                                                                indexMaintenanceMessage = "索引已刷新：${rebuildResult.indexedRecords} 条，${rebuildResult.dimensions} 维。"
-                                                            }
-                                                            is MemoryIndexRebuildResult.Failed -> {
-                                                                diagnosticStore.warn(
-                                                                    "memory.index.refresh_failed",
-                                                                    "stage=${rebuildResult.stage}; reason=${rebuildResult.reason}",
-                                                                )
-                                                                indexMaintenanceMessage = "索引刷新失败（${rebuildResult.stage}）；保留可用数据并允许下次重试。"
-                                                            }
-                                                        }
+                                                        scheduleMemoryIndexRebuild(
+                                                            sourceTexts.records,
+                                                            memoryRuntime,
+                                                            memoryTextStore,
+                                                            vectorSnapshotStore,
+                                                            reason = "source_text_changed",
+                                                        )
+                                                        indexMaintenanceMessage = "索引在后台刷新；本轮不会等待重建，变更记忆可能要到后续轮次生效。"
                                                     }
                                                 }
                                             }
@@ -874,30 +940,14 @@ fun ChatScreen(onBack: () -> Unit) {
                                                 }
                                                 is MemoryTextLoadResult.Loaded -> {
                                                     if (sourceTexts.records.isNotEmpty()) {
-                                                        status = "检测到向量索引缺失或维度变化，正在重建本地记忆索引……"
-                                                        val rebuildResult = withContext(Dispatchers.IO) {
-                                                            MemoryIndexRebuilder(
-                                                                runtime = memoryRuntime,
-                                                                saveSourceTexts = memoryTextStore::save,
-                                                                saveSnapshot = vectorSnapshotStore::save,
-                                                            ).rebuild(sourceTexts.records)
-                                                        }
-                                                        when (rebuildResult) {
-                                                            is MemoryIndexRebuildResult.Success -> {
-                                                                diagnosticStore.info(
-                                                                    "memory.index.rebuild.succeeded",
-                                                                    "records=${rebuildResult.indexedRecords}; dimensions=${rebuildResult.dimensions}; model=${rebuildResult.modelId}",
-                                                                )
-                                                                indexMaintenanceMessage = "索引已重建：${rebuildResult.indexedRecords} 条，${rebuildResult.dimensions} 维。"
-                                                            }
-                                                            is MemoryIndexRebuildResult.Failed -> {
-                                                                diagnosticStore.warn(
-                                                                    "memory.index.rebuild.failed",
-                                                                    "stage=${rebuildResult.stage}; reason=${rebuildResult.reason}",
-                                                                )
-                                                                indexMaintenanceMessage = "索引重建失败（${rebuildResult.stage}）；不会伪报重建成功。"
-                                                            }
-                                                        }
+                                                        scheduleMemoryIndexRebuild(
+                                                            sourceTexts.records,
+                                                            memoryRuntime,
+                                                            memoryTextStore,
+                                                            vectorSnapshotStore,
+                                                            reason = "snapshot_missing_or_incompatible",
+                                                        )
+                                                        indexMaintenanceMessage = "索引将在后台重建；本轮不会等待重建，记忆注入可能为空。"
                                                     }
                                                 }
                                             }
@@ -914,7 +964,16 @@ fun ChatScreen(onBack: () -> Unit) {
                                     )
                                     status = "本地记忆检索已接入；后端=${backendStatus.backend}，证据=${backendStatus.backendEvidence}。配置状态不等于芯片级 NPU 实测。" +
                                         if (indexMaintenanceMessage.isBlank()) "" else " $indexMaintenanceMessage"
-                                    MemoryAwareChatRequest(client, memoryContext).stream(
+                                    MemoryAwareChatRequest(
+                                        chatClient = client,
+                                        memoryContext = memoryContext,
+                                        onMemoryStatus = { notice ->
+                                            mainHandler.post {
+                                                memoryStatusNotice = notice
+                                                status = notice
+                                            }
+                                        },
+                                    ).stream(
                                         messages,
                                         observer,
                                         ChatGenerationOptions(
@@ -965,9 +1024,10 @@ fun ChatScreen(onBack: () -> Unit) {
                         val replacingUnreadableHistory = historyLoadFailed
                         history.clear()
                         historyLoadFailed = false
+                        memoryScopeId = UUID.randomUUID().toString()
                         context.getSharedPreferences("mistbell-v3-settings", Context.MODE_PRIVATE).edit()
                             .remove("memory_extraction_last_success_turn_id")
-                            .putString("memory_extraction_conversation_id", UUID.randomUUID().toString())
+                            .putString("memory_extraction_conversation_id", memoryScopeId)
                             .apply()
                         persistHistory()
                         status = if (replacingUnreadableHistory) {

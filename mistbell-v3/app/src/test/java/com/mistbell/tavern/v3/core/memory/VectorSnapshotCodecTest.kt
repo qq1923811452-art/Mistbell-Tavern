@@ -94,8 +94,8 @@ class VectorSnapshotCodecTest {
     }
 
     @Test
-    fun snapshotCodecPreservesLegacyRecordLimitForCompatibility() {
-        assertEquals(100_000, VectorSnapshotCodec.MAX_RECORDS)
+    fun snapshotCodecUsesOneMillionRecordSanityCapAndTextStoreHasItsOwnLimit() {
+        assertEquals(1_000_000, VectorSnapshotCodec.MAX_RECORDS)
         assertEquals(50_000, MemoryTextCodec.MAX_RECORDS)
     }
 
@@ -110,6 +110,30 @@ class VectorSnapshotCodecTest {
 
         assertEquals(50_001, decoded.records.size)
         assertEquals("vector-50000", decoded.records.last().id)
+    }
+
+    @Test
+    fun rejectsHeaderWhoseDeclaredVectorsCannotFitWithinPayloadBytes() {
+        val payloadBuffer = java.io.ByteArrayOutputStream()
+        java.io.DataOutputStream(payloadBuffer).use { out ->
+            out.writeInt(0x4D425633)
+            out.writeInt(2)
+            out.writeUTF("model-budget")
+            out.writeInt(768)
+            out.writeInt(100_000)
+        }
+        val payload = payloadBuffer.toByteArray()
+        val checksum = java.security.MessageDigest.getInstance("SHA-256").digest(payload)
+        val envelope = java.io.ByteArrayOutputStream()
+        java.io.DataOutputStream(envelope).use { out ->
+            out.writeInt(payload.size)
+            out.write(payload)
+            out.write(checksum)
+        }
+        val failure = assertThrows(IllegalArgumentException::class.java) {
+            VectorSnapshotCodec.decode(envelope.toByteArray())
+        }
+        assertTrue(failure.message.orEmpty().contains("payload is too small"))
     }
 
     @Test

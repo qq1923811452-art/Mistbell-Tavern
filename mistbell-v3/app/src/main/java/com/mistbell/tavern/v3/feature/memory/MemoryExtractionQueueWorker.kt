@@ -12,6 +12,7 @@ import com.mistbell.tavern.v3.core.model.ProviderProfileSet
 import com.mistbell.tavern.v3.core.security.AndroidKeystoreMemoryCredentialStore
 import com.mistbell.tavern.v3.core.storage.AtomicMemoryTextStore
 import com.mistbell.tavern.v3.core.storage.AtomicTemporalFactStore
+import com.mistbell.tavern.v3.core.storage.MemoryScopeFileNames
 import com.mistbell.tavern.v3.feature.chat.ChatHistoryLoadResult
 import com.mistbell.tavern.v3.feature.chat.ChatHistoryStore
 import com.mistbell.tavern.v3.feature.chat.MemoryExtractionBatchInputFactory
@@ -72,7 +73,7 @@ class MemoryExtractionQueueWorker(
                             )
                             Triple(input, profile, handle)
                         },
-                        execute = { _, prepared, complete ->
+                        execute = { job, prepared, complete ->
                             val (input, profile, handle) = prepared
                             val providers = ProviderProfileSet(
                                 profiles = listOf(profile),
@@ -83,8 +84,20 @@ class MemoryExtractionQueueWorker(
                                     providers = providers,
                                     credentials = MemoryCredentialResolver(credentialStore::resolve),
                                 ),
-                                factStore = AtomicTemporalFactStore(applicationContext),
-                                memoryTextStore = AtomicMemoryTextStore(applicationContext),
+                                factStore = AtomicTemporalFactStore(
+                                    applicationContext,
+                                    MemoryScopeFileNames.forScope(
+                                        AtomicTemporalFactStore.DEFAULT_FILE_NAME,
+                                        job.conversationId,
+                                    ),
+                                ),
+                                memoryTextStore = AtomicMemoryTextStore(
+                                    applicationContext,
+                                    MemoryScopeFileNames.forScope(
+                                        AtomicMemoryTextStore.DEFAULT_FILE_NAME,
+                                        job.conversationId,
+                                    ),
+                                ),
                             )
                             pipeline.extractAndPersist(input) { outcome ->
                                 when (outcome) {

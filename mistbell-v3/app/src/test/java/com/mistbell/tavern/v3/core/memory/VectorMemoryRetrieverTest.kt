@@ -242,6 +242,78 @@ class VectorMemoryRetrieverTest {
     }
 
     @Test
+    fun goldenSetKeepsRelevantMemoriesInTopOneAcrossSemanticAndKeywordQueries() {
+        data class Case(
+            val query: String,
+            val queryVector: List<Float>,
+            val relevant: MemoryTextRecord,
+            val distractor: MemoryTextRecord,
+            val relevantVector: List<Float>,
+            val distractorVector: List<Float>,
+        )
+        val cases = listOf(
+            Case(
+                query = "北京旅行",
+                queryVector = listOf(1f, 0f),
+                relevant = MemoryTextRecord("golden-beijing", "去年去北京旅行，参观了故宫。"),
+                distractor = MemoryTextRecord("golden-weather", "今天的天气很好，适合散步。"),
+                relevantVector = listOf(0.8f, 0.6f),
+                distractorVector = listOf(1f, 0f),
+            ),
+            Case(
+                query = "Qualcomm HTP",
+                queryVector = listOf(0f, 1f),
+                relevant = MemoryTextRecord("golden-htp", "Qualcomm HTP V75 inference diagnostics"),
+                distractor = MemoryTextRecord("golden-gpu", "GPU rendering performance and frame rate"),
+                relevantVector = listOf(0.6f, 0.8f),
+                distractorVector = listOf(0f, 1f),
+            ),
+            Case(
+                query = "concise answers",
+                queryVector = listOf(1f, 0f),
+                relevant = MemoryTextRecord("golden-style", "User prefers concise answers."),
+                distractor = MemoryTextRecord("golden-essay", "Long detailed essay writing style."),
+                relevantVector = listOf(0.7f, 0.7f),
+                distractorVector = listOf(1f, 0f),
+            ),
+        )
+        val topOneHits = cases.count { case ->
+            val snapshot = VectorSnapshot(
+                modelId = "golden-test",
+                dimensions = 2,
+                records = listOf(
+                    StoredVector("v-${case.relevant.id}", case.relevant.sourceTextSha256, 1L, case.relevantVector),
+                    StoredVector("v-${case.distractor.id}", case.distractor.sourceTextSha256, 2L, case.distractorVector),
+                ),
+            )
+            VectorMemoryRetriever.retrieve(
+                snapshot = snapshot,
+                queryVector = case.queryVector,
+                texts = listOf(case.distractor, case.relevant),
+                queryText = case.query,
+                limit = 2,
+            ).firstOrNull()?.id == case.relevant.id
+        }
+        assertEquals(3, topOneHits)
+    }
+
+    @Test
+    fun defaultCosineThresholdRejectsWeakSemanticCandidates() {
+        val weak = MemoryTextRecord("weak", "Unrelated memory")
+        val strong = MemoryTextRecord("strong", "Relevant memory")
+        val ranked = VectorSnapshot(
+            modelId = "embedding-test",
+            dimensions = 2,
+            records = listOf(
+                StoredVector("weak-vector", weak.sourceTextSha256, 1L, listOf(0.2f, 0.98f)),
+                StoredVector("strong-vector", strong.sourceTextSha256, 2L, listOf(1f, 0f)),
+            ),
+        )
+        val hits = VectorSimilaritySearch.search(ranked, listOf(1f, 0f))
+        assertEquals(listOf("strong-vector"), hits.map(VectorSearchHit::id))
+    }
+
+    @Test
     fun rejectsDuplicateTextIdsAndInvalidBudgets() {
         assertTrue(runCatching {
             VectorMemoryRetriever.retrieve(
