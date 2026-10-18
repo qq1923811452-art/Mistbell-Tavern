@@ -1031,9 +1031,9 @@ fun ChatScreen(onBack: () -> Unit) {
                             .apply()
                         persistHistory()
                         status = if (replacingUnreadableHistory) {
-                            "已放弃无法读取的旧聊天记录并新建会话；长期事实记忆保留。"
+                            "已放弃无法读取的旧聊天记录并新建会话；新会话使用独立记忆索引，旧会话记忆文件保留但不会自动注入。"
                         } else {
-                            "会话已清空；长期事实记忆保留，新的对话将单独记录来源。"
+                            "会话已清空并切换到独立记忆范围；旧会话记忆文件仍保留，但不会注入新会话。"
                         }
                     },
                     enabled = !busy && historyReady && (history.isNotEmpty() || historyLoadFailed),
