@@ -11,6 +11,12 @@ import java.util.zip.ZipFile
 
 /** Device-generated evidence. The packaged runtime manifest is never edited by this class. */
 internal object NpuEvidenceStore {
+    private data class FileHashCacheKey(val path: String, val size: Long, val lastModified: Long)
+
+    // Validation is performed on Dispatchers.IO. Reuse hashes while file metadata is unchanged,
+    // so repeated engine creation does not reread a half-gigabyte model and the APK.
+    private val fileHashCache = linkedMapOf<FileHashCacheKey, String>()
+
     private const val EXPECTED_MODEL_SHA256 =
         "3b8a18c6d043b8132c4eda45611296e1ae455ada82cda8b591ec0ca141e041c5"
     private val requiredMappings = listOf("libQnnHtp.so", "libQnnHtpV75Stub.so", "libcdsprpc.so")
@@ -99,6 +105,7 @@ internal object NpuEvidenceStore {
         val finalStatus = runCatching {
             JSONObject(file.readText(Charsets.UTF_8)).optString("status", "packaged_not_device_verified")
         }.getOrDefault("packaged_not_device_verified")
+        NpuEvidenceRetention.prune(directory)
         return WriteResult(file, finalStatus, successes, apkStillMatches)
     }
 
@@ -108,8 +115,8 @@ internal object NpuEvidenceStore {
             candidate.name.startsWith("npu-evidence-") && candidate.name.endsWith(".json")
         }.orEmpty().sortedByDescending(File::lastModified)
         if (evidenceFiles.isEmpty()) return@runCatching false
-        val currentApkHash = File(context.applicationInfo.sourceDir).sha256()
-        val currentModelHash = modelFile.sha256()
+        val currentApkHash = File(context.applicationInfo.sourceDir).sha256Cached()
+        val currentModelHash = modelFile.sha256Cached()
         evidenceFiles.any { file ->
             val sidecar = File(file.parentFile, file.name + ".sha256")
             val expectedFileHash = sidecar.readText(Charsets.UTF_8).trim().substringBefore(' ')
@@ -189,6 +196,19 @@ internal object NpuEvidenceStore {
     }.getOrDefault("unknown")
 
     private fun File.sha256OrEmpty(): String = runCatching { sha256() }.getOrDefault("")
+
+    private fun File.sha256Cached(): String = synchronized(fileHashCache) {
+        val key = FileHashCacheKey(absoluteFile.path, length(), lastModified())
+        fileHashCache[key]?.let { return@synchronized it }
+        fileHashCache.keys.filter { it.path == key.path }.forEach(fileHashCache::remove)
+        val digest = sha256()
+        fileHashCache[key] = digest
+        while (fileHashCache.size > 8) {
+            fileHashCache.remove(fileHashCache.keys.first())
+        }
+        digest
+    }
+
     private fun File.sha256(): String {
         val digest = MessageDigest.getInstance("SHA-256")
         FileInputStream(this).use { input ->
@@ -202,6 +222,29 @@ internal object NpuEvidenceStore {
         return digest.digest().toHex()
     }
     private fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it) }
+}
+
+internal object NpuEvidenceRetention {
+    const val DEFAULT_KEEP_COUNT = 5
+
+    fun prune(directory: File, keepCount: Int = DEFAULT_KEEP_COUNT) {
+        require(keepCount >= 1) { "At least one NPU evidence file must be retained." }
+        val evidenceFiles = directory.listFiles { candidate ->
+            candidate.isFile && candidate.name.startsWith("npu-evidence-") &&
+                candidate.name.endsWith(".json")
+        }.orEmpty()
+        val retained = evidenceFiles
+            .sortedWith(compareByDescending<File> { it.lastModified() }.thenByDescending { it.name })
+            .take(keepCount)
+            .toSet()
+        evidenceFiles.filterNot(retained::contains).forEach { file ->
+            runCatching { File(file.parentFile, file.name + ".sha256").delete() }
+            runCatching { file.delete() }
+        }
+        directory.listFiles { candidate ->
+            candidate.isFile && candidate.name.startsWith("npu-evidence-") && candidate.name.endsWith(".tmp")
+        }.orEmpty().forEach { file -> runCatching { file.delete() } }
+    }
 }
 
 internal object NpuEvidenceStatusPolicy {
