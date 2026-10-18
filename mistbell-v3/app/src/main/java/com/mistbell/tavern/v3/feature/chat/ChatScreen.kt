@@ -140,7 +140,7 @@ fun ChatScreen(onBack: () -> Unit) {
         ?.takeIf(String::isNotBlank)
         ?: "default-character"
     val memoryScopeId = remember(activeMemoryRoleId, memoryConversationId) {
-        UUID.nameUUIDFromBytes("$activeMemoryRoleId|$memoryConversationId".toByteArray(Charsets.UTF_8)).toString()
+        com.mistbell.tavern.v3.core.storage.MemoryScopeId.forRoleAndConversation(activeMemoryRoleId, memoryConversationId)
     }
     var memoryIndexRebuildInFlight by remember { mutableStateOf(false) }
     var memoryStatusNotice by remember { mutableStateOf("") }
