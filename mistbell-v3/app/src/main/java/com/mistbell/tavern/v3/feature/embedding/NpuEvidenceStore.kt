@@ -40,8 +40,8 @@ internal object NpuEvidenceStore {
         mappedLibrariesObserved: Map<String, Boolean> = captureMappedLibraries(),
     ): WriteResult {
         val apk = File(context.applicationInfo.sourceDir)
-        val apkBefore = apk.sha256OrEmpty()
-        val modelHash = modelFile.sha256OrEmpty()
+        val apkBefore = apk.sha256Cached(context)
+        val modelHash = modelFile.sha256Cached(context)
         val mapsText = runCatching { File("/proc/self/maps").readText() }.getOrDefault("")
         // Use mappings sampled while a successful NPU engine was still alive. Sampling only
         // after the seven fresh engines have closed can lose transient QNN mappings and
@@ -63,7 +63,7 @@ internal object NpuEvidenceStore {
                 )
             }
         }
-        val apkAfter = apk.sha256OrEmpty()
+        val apkAfter = apk.sha256Cached(context)
         val apkMatches = apkBefore.isNotBlank() && apkBefore == apkAfter
         val successes = (0 until cases.length()).count { cases.optJSONObject(it)?.optString("result") == "success" }
         val status = if (
@@ -102,7 +102,7 @@ internal object NpuEvidenceStore {
             .put("cases", cases)
         writeAtomicEvidence(file, checksum, json)
 
-        val currentApkHash = apk.sha256OrEmpty()
+        val currentApkHash = apk.sha256Cached(context)
         val apkStillMatches = apkAfter.isNotBlank() && apkAfter == currentApkHash
         val evidenceHashMatches = runCatching {
             checksum.readText(Charsets.UTF_8).trim().substringBefore(' ') == file.sha256()
