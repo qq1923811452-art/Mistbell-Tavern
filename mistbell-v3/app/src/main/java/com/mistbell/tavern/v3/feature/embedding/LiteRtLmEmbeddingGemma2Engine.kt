@@ -46,42 +46,11 @@ class LiteRtLmEmbeddingGemma2Engine(
     private val appContext = context.applicationContext
     private val cacheDirectory = File(appContext.cacheDir, "litertlm-embeddinggemma2")
     private val lock = ReentrantLock()
-    private val npuEvidenceVerified = appContext.hasVerifiedNpuRuntimeManifest()
+    private var npuEvidenceVerified = false
     internal var lastNpuEvidenceResult: NpuEvidenceStore.WriteResult? = null
-    private val backendAvailability = LiteRtBackendAvailability.detect(
-        nativeLibraryDir = File(appContext.applicationInfo.nativeLibraryDir),
-        isArm64 = Build.SUPPORTED_ABIS.any { it == "arm64-v8a" },
-        npuModelCompatible = npuModelCompatible,
-        npuRuntimeValidated = npuEvidenceVerified,
-        allowDiagnosticNpuProbe = allowDiagnosticNpuProbe,
-        apkFiles = buildList {
-            add(File(appContext.applicationInfo.sourceDir))
-            appContext.applicationInfo.splitSourceDirs.orEmpty().forEach { add(File(it)) }
-        },
-        androidApiLevel = Build.VERSION.SDK_INT,
-    )
-
-    // The Qualcomm SM8650 bundle is an NPU-targeted model. Never try to run it through
-    // GPU/CPU just because the NPU runtime is missing: that can fail deep inside tensor
-    // allocation and misleadingly looks like a generic memory problem. Portable bundles
-    // retain the normal NPU -> GPU -> CPU fallback order.
-    private val backendOrder = preferredBackends
-        .filter { it != InferenceBackend.UNKNOWN && backendAvailability.isAvailable(it) }
-        .filter { !npuModelCompatible || it == InferenceBackend.NPU || allowDiagnosticAlternateBackendProbe }
-        .distinct()
-
-    private val skippedBackendReasons = buildList {
-        if (InferenceBackend.NPU in preferredBackends && !backendAvailability.isAvailable(InferenceBackend.NPU)) {
-            add("NPU skipped: " + backendAvailability.npuReason)
-        }
-        if (npuModelCompatible && !allowDiagnosticAlternateBackendProbe) {
-            add("Qualcomm SM8650 model is NPU-only in production; GPU/CPU fallback is disabled.")
-        } else if (npuModelCompatible && allowDiagnosticAlternateBackendProbe) {
-            add("Diagnostic-only alternate backend experiment enabled; this does not enable production fallback.")
-        } else if (InferenceBackend.GPU in preferredBackends && !backendAvailability.isAvailable(InferenceBackend.GPU)) {
-            add("GPU skipped: " + backendAvailability.gpuReason)
-        }
-    }
+    private var backendAvailability = detectBackendAvailability(npuEvidenceVerified)
+    private var backendOrder = selectBackendOrder(backendAvailability)
+    private var skippedBackendReasons = buildSkippedBackendReasons(backendAvailability)
     private var engine: EmbeddingEngine? = null
     private var selectedBackend = InferenceBackend.UNKNOWN
     private var fallbackReason: String? = null
@@ -91,25 +60,65 @@ class LiteRtLmEmbeddingGemma2Engine(
     override val runtimeId: String = RUNTIME_ID
 
     init {
-        require(backendOrder.isNotEmpty()) {
-            if (npuModelCompatible) {
-                "The Qualcomm SM8650 model requires a verified NPU runtime. Install a compatible runtime or select the portable EmbeddingGemma model for CPU/GPU testing."
-            } else {
-                "No requested embedding backend is available. Check the packaged GPU runtime; CPU fallback is available only for the portable model."
-            }
-        }
-        skippedBackendReasons.forEach { logWarn("embedding.backend.skipped.preflight", it) }
-        if (allowDiagnosticNpuProbe && npuModelCompatible) {
-            logWarn("embedding.npu.diagnostic_probe.enabled", "manifestVerified=${appContext.hasVerifiedNpuRuntimeManifest()}; productionBackendVerification=unchanged")
-        }
         require(modelFile.extension.equals("litertlm", ignoreCase = true)) {
             "EmbeddingGemma 2 model must be a .litertlm bundle."
+        }
+    }
+
+    private fun detectBackendAvailability(npuRuntimeValidated: Boolean): LiteRtBackendAvailability =
+        LiteRtBackendAvailability.detect(
+            nativeLibraryDir = File(appContext.applicationInfo.nativeLibraryDir),
+            isArm64 = Build.SUPPORTED_ABIS.any { it == "arm64-v8a" },
+            npuModelCompatible = npuModelCompatible,
+            npuRuntimeValidated = npuRuntimeValidated,
+            apkFiles = buildList {
+                add(File(appContext.applicationInfo.sourceDir))
+                appContext.applicationInfo.splitSourceDirs.orEmpty().forEach { add(File(it)) }
+            },
+            androidApiLevel = Build.VERSION.SDK_INT,
+            allowDiagnosticNpuProbe = allowDiagnosticNpuProbe,
+        )
+
+    private fun selectBackendOrder(availability: LiteRtBackendAvailability): List<InferenceBackend> =
+        preferredBackends
+            .filter { it != InferenceBackend.UNKNOWN && availability.isAvailable(it) }
+            .filter { !npuModelCompatible || it == InferenceBackend.NPU || allowDiagnosticAlternateBackendProbe }
+            .distinct()
+
+    private fun buildSkippedBackendReasons(availability: LiteRtBackendAvailability): List<String> = buildList {
+        if (InferenceBackend.NPU in preferredBackends && !availability.isAvailable(InferenceBackend.NPU)) {
+            add("NPU skipped: " + availability.npuReason)
+        }
+        if (npuModelCompatible && !allowDiagnosticAlternateBackendProbe) {
+            add("Qualcomm SM8650 model is NPU-only in production; GPU/CPU fallback is disabled.")
+        } else if (npuModelCompatible && allowDiagnosticAlternateBackendProbe) {
+            add("Diagnostic-only alternate backend experiment enabled; this does not enable production fallback.")
+        } else if (InferenceBackend.GPU in preferredBackends && !availability.isAvailable(InferenceBackend.GPU)) {
+            add("GPU skipped: " + availability.gpuReason)
         }
     }
 
     suspend fun initialize() = withContext(Dispatchers.IO) {
         lock.withLock {
             check(engine == null) { "EmbeddingGemma 2 engine is already initialized." }
+            // Evidence validation hashes the installed APK and potentially a large model bundle.
+            // Keep it on Dispatchers.IO and defer it until initialization, never construction.
+            val evidenceVerified = npuModelCompatible && appContext.hasVerifiedNpuRuntimeManifest()
+            npuEvidenceVerified = evidenceVerified
+            backendAvailability = detectBackendAvailability(evidenceVerified)
+            backendOrder = selectBackendOrder(backendAvailability)
+            skippedBackendReasons = buildSkippedBackendReasons(backendAvailability)
+            require(backendOrder.isNotEmpty()) {
+                if (npuModelCompatible) {
+                    "The Qualcomm SM8650 model requires a verified NPU runtime. Install a compatible runtime or select the portable EmbeddingGemma model for CPU/GPU testing."
+                } else {
+                    "No requested embedding backend is available. Check the packaged GPU runtime; CPU fallback is available only for the portable model."
+                }
+            }
+            skippedBackendReasons.forEach { logWarn("embedding.backend.skipped.preflight", it) }
+            if (allowDiagnosticNpuProbe && npuModelCompatible) {
+                logWarn("embedding.npu.diagnostic_probe.enabled", "manifestVerified=$npuEvidenceVerified; productionBackendVerification=unchanged")
+            }
             try {
                 check(modelFile.isFile && modelFile.canRead()) {
                     "EmbeddingGemma 2 model bundle is missing or unreadable."
