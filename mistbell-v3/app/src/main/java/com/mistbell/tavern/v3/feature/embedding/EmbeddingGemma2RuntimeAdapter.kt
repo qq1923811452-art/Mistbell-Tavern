@@ -10,6 +10,8 @@ import com.mistbell.tavern.v3.core.inference.InferencePhase
  */
 interface EmbeddingGemma2InferenceEngine {
     val runtimeId: String
+    /** Stable model-profile identity; native adapters should include the installed model file identity. */
+    val cacheProfileId: String get() = EmbeddingGemma2TextPolicy.MODEL_ID
     suspend fun infer(formattedInputs: List<String>): EmbeddingBatch
 }
 
@@ -32,11 +34,12 @@ class EmbeddingGemma2RuntimeAdapter(
         fun cachedQuery(
             query: String,
             outputDimensions: Int = EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS,
+            modelProfileId: String = EmbeddingGemma2TextPolicy.MODEL_ID,
             onDiagnostic: (String, String) -> Unit = { event, detail -> EmbeddingVectorCache.log(event, detail) },
         ): EmbeddingBatch? {
             if (query.isBlank() || outputDimensions !in EmbeddingGemma2TextPolicy.supportedDimensions) return null
             val formatted = EmbeddingGemma2TextPolicy.formatSearchQuery(EmbeddingGemma2TextPolicy.truncateInput(query))
-            val key = EmbeddingVectorCache.key(formatted, EmbeddingGemma2TextPolicy.MODEL_ID, outputDimensions, EmbeddingGemma2TextPolicy.POLICY_VERSION)
+            val key = EmbeddingVectorCache.key(formatted, EmbeddingGemma2TextPolicy.MODEL_ID, outputDimensions, EmbeddingGemma2TextPolicy.POLICY_VERSION, modelProfileId)
             val cached = EmbeddingVectorCache.get(key) ?: return null
             val usable = cached.vector.size == outputDimensions &&
                 cached.status.modelId == EmbeddingGemma2TextPolicy.MODEL_ID &&
@@ -124,7 +127,7 @@ class EmbeddingGemma2RuntimeAdapter(
         val pendingByKey = linkedMapOf<String, MutableList<Int>>()
         val cachedStatuses = mutableListOf<com.mistbell.tavern.v3.core.inference.InferenceRuntimeStatus>()
         formattedInputs.forEachIndexed { index, formatted ->
-            val key = EmbeddingVectorCache.key(formatted, model.modelId, model.dimensions, EmbeddingGemma2TextPolicy.POLICY_VERSION)
+            val key = EmbeddingVectorCache.key(formatted, model.modelId, model.dimensions, EmbeddingGemma2TextPolicy.POLICY_VERSION, engine.cacheProfileId)
             val cached = EmbeddingVectorCache.get(key)
             val usableCached = cached?.takeIf {
                 it.vector.size == model.dimensions &&

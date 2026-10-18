@@ -233,7 +233,7 @@ class EmbeddingGemma2RuntimeAdapterTest {
         )
         val query = "cache survives engine close"
         val first = adapter.embedQueries(listOf(query))
-        val cached = EmbeddingGemma2RuntimeAdapter.cachedQuery(query)
+        val cached = EmbeddingGemma2RuntimeAdapter.cachedQuery(query, modelProfileId = EmbeddingGemma2TextPolicy.MODEL_ID)
         assertEquals(1, calls)
         assertTrue(cached != null)
         assertEquals(first.vectors, cached!!.vectors)
@@ -270,9 +270,11 @@ class EmbeddingGemma2RuntimeAdapterTest {
         val b = EmbeddingVectorCache.key("same", "model-b", 768)
         val c = EmbeddingVectorCache.key("same", "model-a", 256)
         val d = EmbeddingVectorCache.key("same", "model-a", 768, policyVersion = EmbeddingGemma2TextPolicy.POLICY_VERSION + 1)
+        val e = EmbeddingVectorCache.key("same", "model-a", 768, modelProfileId = "other-profile")
         assertTrue(a != b)
         assertTrue(a != c)
         assertTrue(a != d)
+        assertTrue(a != e)
     }
 
     @Test

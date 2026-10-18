@@ -55,6 +55,7 @@ import com.mistbell.tavern.v3.feature.embedding.EmbeddingGemma2RuntimeAdapter
 import com.mistbell.tavern.v3.feature.embedding.LiteRtLmEmbeddingGemma2Engine
 import com.mistbell.tavern.v3.feature.embedding.EmbeddingEngineProcessHolder
 import com.mistbell.tavern.v3.feature.embedding.EmbeddingEngineProcessHolder.CloseReason
+import com.mistbell.tavern.v3.feature.embedding.EmbeddingVectorCache
 import com.mistbell.tavern.v3.core.diagnostics.DiagnosticLogStore
 import com.mistbell.tavern.v3.core.inference.InferenceBackend
 import com.mistbell.tavern.v3.core.inference.InferencePhase
@@ -420,6 +421,7 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 }
+                EmbeddingEngineProcessHolder.close(CloseReason.MODEL_CHANGED)
                 getSharedPreferences("mistbell-v3-settings", MODE_PRIVATE).edit()
                     .remove(if (qualcommModelSelected) "embedding_local_model_path_qualcomm" else "embedding_local_model_path_portable")
                     .remove(if (qualcommModelSelected) "embedding_public_model_name_qualcomm" else "embedding_public_model_name_portable")
@@ -529,19 +531,6 @@ class MainActivity : ComponentActivity() {
             return
         }
         val selfTestText = "Mistbell Tavern local embedding diagnostic test"
-        if (!allowDiagnosticNpuProbe) {
-            val cached = EmbeddingGemma2RuntimeAdapter.cachedQuery(
-                query = selfTestText,
-                outputDimensions = selectedEmbeddingDimensions,
-                onDiagnostic = { event, detail -> diagnostics.info(event, detail) },
-            )
-            if (cached != null) {
-                inferenceStatus = cached.status
-                operationMessage = "本地向量自测缓存命中：${cached.vectors.single().size} 维；跳过引擎初始化与推理。"
-                diagnostics.info("embedding.selftest.succeeded", "cacheHit=true; dimensions=${cached.vectors.single().size}; configuredBackend=${cached.status.backend}; evidence=${cached.status.backendEvidence}; elapsedMs=0")
-                return
-            }
-        }
         operationBusy = true
         operationMessage = "正在准备本地 EmbeddingGemma 2 推理……"
         lifecycleScope.launch {
@@ -551,6 +540,21 @@ class MainActivity : ComponentActivity() {
                 val asset = withContext(Dispatchers.IO) { modelAssets.verifyInstalled() }
                     ?: throw IllegalStateException("模型不存在或 SHA-256 校验失败；请重新下载模型。")
                 verifiedAsset = asset
+                if (!allowDiagnosticNpuProbe) {
+                    val profileId = EmbeddingVectorCache.modelProfileId(asset.file, asset.isQualcommSm8650Optimized)
+                    val cached = EmbeddingGemma2RuntimeAdapter.cachedQuery(
+                        query = selfTestText,
+                        outputDimensions = selectedEmbeddingDimensions,
+                        modelProfileId = profileId,
+                        onDiagnostic = { event, detail -> diagnostics.info(event, detail) },
+                    )
+                    if (cached != null) {
+                        inferenceStatus = cached.status
+                        operationMessage = "本地向量自测缓存命中：${cached.vectors.single().size} 维；已校验模型文件身份，跳过引擎初始化与推理。"
+                        diagnostics.info("embedding.selftest.succeeded", "cacheHit=true; modelProfileMatched=true; dimensions=${cached.vectors.single().size}; backendEvidence=${cached.status.backendEvidence}; elapsedMs=0")
+                        return@launch
+                    }
+                }
                 val initializedRuntime = if (allowDiagnosticNpuProbe) {
                     withContext(Dispatchers.IO) {
                         LiteRtLmEmbeddingGemma2Engine(

@@ -58,6 +58,8 @@ class LiteRtLmEmbeddingGemma2Engine(
     private var hasSuccessfulInference = false
 
     override val runtimeId: String = RUNTIME_ID
+    override val cacheProfileId: String
+        get() = EmbeddingVectorCache.modelProfileId(modelFile, npuModelCompatible)
 
     init {
         require(modelFile.extension.equals("litertlm", ignoreCase = true)) {
