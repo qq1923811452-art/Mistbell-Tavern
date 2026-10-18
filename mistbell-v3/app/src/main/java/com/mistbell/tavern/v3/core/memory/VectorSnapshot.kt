@@ -54,7 +54,7 @@ data class VectorSnapshot(
  */
 object VectorSnapshotCodec {
     const val MAX_DIMENSIONS = 4096
-    const val MAX_RECORDS = 50_000
+    const val MAX_RECORDS = 100_000
     const val MAX_VECTOR_VALUES = 8_000_000
     const val MAX_SNAPSHOT_BYTES = 128 * 1024 * 1024
 
