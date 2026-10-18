@@ -40,6 +40,8 @@ data class RetrievedMemory(
  * budget is a deterministic safety bound, not a tokenizer-based token budget.
  */
 object VectorMemoryRetriever {
+    private val WORD_REGEX = Regex("[\\p{L}\\p{N}]+")
+
     fun retrieve(
         snapshot: VectorSnapshot,
         queryVector: List<Float>,
@@ -172,7 +174,7 @@ object VectorMemoryRetriever {
      */
     private fun tokenizeQuery(text: String): Set<String> {
         val tokens = linkedSetOf<String>()
-        val chunks = Regex("[\\p{L}\\p{N}]+").findAll(text.lowercase(Locale.ROOT))
+        val chunks = WORD_REGEX.findAll(text.lowercase(Locale.ROOT))
         for (chunk in chunks) {
             val segment = chunk.value
             var hanRun = StringBuilder()
@@ -215,7 +217,7 @@ object VectorMemoryRetriever {
         val bounded = text.substring(0, minOf(text.length, MAX_KEYWORD_SCAN_CHARACTERS))
             .lowercase(Locale.ROOT)
         val matched = mutableSetOf<String>()
-        for (chunk in Regex("[\\p{L}\\p{N}]+").findAll(bounded)) {
+        for (chunk in WORD_REGEX.findAll(bounded)) {
             val segment = chunk.value
             var index = 0
             while (index < segment.length) {
