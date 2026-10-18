@@ -4,6 +4,25 @@ import java.security.MessageDigest
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
+private class MappedVectorValues(
+    private val buffer: ByteBuffer,
+    private val start: Int,
+    override val size: Int,
+    private val legacyFloat32: Boolean,
+    private val scale: Float,
+) : AbstractList<Float>() {
+    override fun get(index: Int): Float {
+        if (index !in 0 until size) throw IndexOutOfBoundsException(index)
+        val value = if (legacyFloat32) {
+            buffer.getFloat(start + index * Float.SIZE_BYTES)
+        } else {
+            buffer.get(start + index).toFloat() * scale
+        }
+        require(value.isFinite()) { "Mapped vector contains a non-finite value." }
+        return value
+    }
+}
+
 data class StoredVector(
     val id: String,
     val sourceTextSha256: String,
@@ -17,7 +36,9 @@ data class StoredVector(
         }
         require(createdAtEpochMillis >= 0) { "Vector timestamp must not be negative." }
         require(values.isNotEmpty()) { "Vector must not be empty." }
-        require(values.all(Float::isFinite)) { "Vector values must be finite." }
+        if (values !is MappedVectorValues) {
+            require(values.all(Float::isFinite)) { "Vector values must be finite." }
+        }
     }
 
     companion object {
@@ -156,7 +177,9 @@ object VectorSnapshotCodec {
             val createdAt = input.long
             val scale = if (formatVersion == FORMAT_VERSION) {
                 input.float.also {
-                    require(it.isFinite() && it > 0f) { "Vector quantization scale is invalid." }
+                    require(it.isFinite() && it > 0f && it <= Float.MAX_VALUE / 127f) {
+                        "Vector quantization scale is invalid."
+                    }
                 }
             } else {
                 1f
@@ -165,17 +188,13 @@ object VectorSnapshotCodec {
             val vectorBytes = if (formatVersion == LEGACY_FORMAT_VERSION) dimensions * Float.SIZE_BYTES else dimensions
             require(input.remaining() >= vectorBytes) { "Vector data is truncated." }
             input.position(vectorStart + vectorBytes)
-            val values = object : AbstractList<Float>() {
-                override val size: Int = dimensions
-                override fun get(index: Int): Float {
-                    if (index !in 0 until dimensions) throw IndexOutOfBoundsException(index)
-                    return if (formatVersion == LEGACY_FORMAT_VERSION) {
-                        mapped.getFloat(vectorStart + index * Float.SIZE_BYTES)
-                    } else {
-                        mapped.get(vectorStart + index).toFloat() * scale
-                    }
-                }
-            }
+            val values = MappedVectorValues(
+                buffer = mapped,
+                start = vectorStart,
+                size = dimensions,
+                legacyFloat32 = formatVersion == LEGACY_FORMAT_VERSION,
+                scale = scale,
+            )
             records += StoredVector(id, sourceHash, createdAt, values)
         }
         require(input.position() == payloadEnd) { "Vector snapshot payload contains trailing data." }

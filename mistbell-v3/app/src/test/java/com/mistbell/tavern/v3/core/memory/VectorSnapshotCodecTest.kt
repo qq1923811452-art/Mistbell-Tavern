@@ -54,6 +54,34 @@ class VectorSnapshotCodecTest {
     }
 
     @Test
+    fun mappedLegacyVectorValidatesFloatValuesWhenAccessed() {
+        val payloadBuffer = java.io.ByteArrayOutputStream()
+        java.io.DataOutputStream(payloadBuffer).use { out ->
+            out.writeInt(0x4D425633)
+            out.writeInt(1)
+            out.writeUTF("model-legacy")
+            out.writeInt(1)
+            out.writeInt(1)
+            out.writeUTF("legacy-vector")
+            out.writeUTF(HASH)
+            out.writeLong(42L)
+            out.writeFloat(Float.NaN)
+        }
+        val payload = payloadBuffer.toByteArray()
+        val checksum = java.security.MessageDigest.getInstance("SHA-256").digest(payload)
+        val envelopeBuffer = java.io.ByteArrayOutputStream()
+        java.io.DataOutputStream(envelopeBuffer).use { out ->
+            out.writeInt(payload.size)
+            out.write(payload)
+            out.write(checksum)
+        }
+        val mapped = VectorSnapshotCodec.decodeMapped(java.nio.ByteBuffer.wrap(envelopeBuffer.toByteArray()))
+        assertThrows(IllegalArgumentException::class.java) {
+            mapped.records.single().values.single()
+        }
+    }
+
+    @Test
     fun encoderRejectsValuesMutatedToNonFiniteAfterRecordConstruction() {
         val mutableValues = mutableListOf(0.5f)
         val record = StoredVector("mutable-vector", HASH, 1L, mutableValues)
