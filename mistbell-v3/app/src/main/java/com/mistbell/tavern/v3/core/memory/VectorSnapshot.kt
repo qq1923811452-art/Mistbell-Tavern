@@ -106,7 +106,11 @@ object VectorSnapshotCodec {
                 out.writeUTF(record.sourceTextSha256)
                 out.writeLong(record.createdAtEpochMillis)
                 val maxAbs = record.values.maxOf { kotlin.math.abs(it) }
+                require(maxAbs.isFinite()) { "Vector magnitude must be finite." }
                 val scale = if (maxAbs == 0f) 1f else maxAbs / 127f
+                require(scale.isFinite() && scale > 0f && scale <= Float.MAX_VALUE / 127f) {
+                    "Vector quantization scale is invalid."
+                }
                 out.writeFloat(scale)
                 record.values.forEach { value ->
                     out.writeByte(kotlin.math.round(value / scale).toInt().coerceIn(-127, 127))
