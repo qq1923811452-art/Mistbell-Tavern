@@ -406,6 +406,20 @@ jobs:
                   raise ValueError("first choice has no message object")
               answer = message.get("content")
               if not isinstance(answer, str) or not answer.strip():
+                  # Log response shape only; never log prompts, diffs, credentials, or model text.
+                  finish_reason = choices[0].get("finish_reason")
+                  usage = relay_data.get("usage")
+                  completion_tokens = usage.get("completion_tokens") if isinstance(usage, dict) else None
+                  print(
+                      "AI relay response shape:",
+                      "message_keys=" + ",".join(sorted(str(key) for key in message.keys())),
+                      "content_type=" + type(answer).__name__,
+                      "content_length=" + str(len(answer) if isinstance(answer, str) else "n/a"),
+                      "finish_reason=" + str(finish_reason)[:80],
+                      "completion_tokens=" + str(completion_tokens),
+                      "tool_calls=" + str(len(message.get("tool_calls", [])) if isinstance(message.get("tool_calls"), list) else 0),
+                      "refusal_present=" + str(bool(message.get("refusal"))),
+                  )
                   raise ValueError("first choice has empty or non-text content")
               cleaned = answer.strip()
               if cleaned.startswith("```"):
