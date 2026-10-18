@@ -46,6 +46,9 @@ class EmbeddingGemma2ModelAssetManager(
     private val digestFile = File(modelDirectory, "$selectedModelFileName.sha256")
     private val downloadLock = ReentrantLock()
 
+    /** Fast identity check for cache lookup; does not hash or initialize the model. */
+    fun cacheProfileId(): String = EmbeddingVectorCache.modelProfileId(modelFile, preferQualcommSm8650Model)
+
     suspend fun download(
         onProgress: (downloadedBytes: Long, totalBytes: Long?) -> Unit = { _, _ -> },
     ): DownloadedEmbeddingModel = withContext(Dispatchers.IO) {

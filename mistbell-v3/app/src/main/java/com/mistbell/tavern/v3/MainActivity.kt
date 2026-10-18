@@ -531,6 +531,23 @@ class MainActivity : ComponentActivity() {
             return
         }
         val selfTestText = "Mistbell Tavern local embedding diagnostic test"
+        if (!allowDiagnosticNpuProbe) {
+            val profileId = modelAssets.cacheProfileId()
+            val cacheLookupStarted = System.nanoTime()
+            val cached = EmbeddingGemma2RuntimeAdapter.cachedQuery(
+                query = selfTestText,
+                outputDimensions = selectedEmbeddingDimensions,
+                modelProfileId = profileId,
+                onDiagnostic = { event, detail -> diagnostics.info(event, detail) },
+            )
+            val cacheLookupMillis = (System.nanoTime() - cacheLookupStarted) / 1_000_000L
+            if (cached != null) {
+                inferenceStatus = cached.status
+                operationMessage = "本地向量自测缓存命中：${cached.vectors.single().size} 维；跳过模型校验、引擎初始化与推理。"
+                diagnostics.info("embedding.selftest.succeeded", "cacheHit=true; modelProfileMatched=true; dimensions=${cached.vectors.single().size}; backendEvidence=${cached.status.backendEvidence}; cacheLookupMs=$cacheLookupMillis; engineInitializationSkipped=true")
+                return
+            }
+        }
         operationBusy = true
         operationMessage = "正在准备本地 EmbeddingGemma 2 推理……"
         lifecycleScope.launch {
@@ -540,21 +557,6 @@ class MainActivity : ComponentActivity() {
                 val asset = withContext(Dispatchers.IO) { modelAssets.verifyInstalled() }
                     ?: throw IllegalStateException("模型不存在或 SHA-256 校验失败；请重新下载模型。")
                 verifiedAsset = asset
-                if (!allowDiagnosticNpuProbe) {
-                    val profileId = EmbeddingVectorCache.modelProfileId(asset.file, asset.isQualcommSm8650Optimized)
-                    val cached = EmbeddingGemma2RuntimeAdapter.cachedQuery(
-                        query = selfTestText,
-                        outputDimensions = selectedEmbeddingDimensions,
-                        modelProfileId = profileId,
-                        onDiagnostic = { event, detail -> diagnostics.info(event, detail) },
-                    )
-                    if (cached != null) {
-                        inferenceStatus = cached.status
-                        operationMessage = "本地向量自测缓存命中：${cached.vectors.single().size} 维；已校验模型文件身份，跳过引擎初始化与推理。"
-                        diagnostics.info("embedding.selftest.succeeded", "cacheHit=true; modelProfileMatched=true; dimensions=${cached.vectors.single().size}; backendEvidence=${cached.status.backendEvidence}; elapsedMs=0")
-                        return@launch
-                    }
-                }
                 val initializedRuntime = if (allowDiagnosticNpuProbe) {
                     withContext(Dispatchers.IO) {
                         LiteRtLmEmbeddingGemma2Engine(
