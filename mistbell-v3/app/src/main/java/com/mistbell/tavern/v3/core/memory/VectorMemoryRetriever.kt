@@ -51,8 +51,12 @@ object VectorMemoryRetriever {
         maxCharacters: Int = DEFAULT_MAX_CHARACTERS,
         queryText: String? = null,
         rrfConstant: Int = DEFAULT_RRF_CONSTANT,
+        vectorWeight: Double = DEFAULT_VECTOR_WEIGHT,
+        keywordWeight: Double = DEFAULT_KEYWORD_WEIGHT,
     ): List<RetrievedMemory> {
         require(rrfConstant in 1..MAX_RRF_CONSTANT) { "RRF constant must be between 1 and $MAX_RRF_CONSTANT." }
+        require(vectorWeight.isFinite() && vectorWeight > 0.0) { "Vector RRF weight must be finite and positive." }
+        require(keywordWeight.isFinite() && keywordWeight > 0.0) { "Keyword RRF weight must be finite and positive." }
         require(maxCharacters in 1..MAX_CHARACTERS) {
             "Memory character budget must be between 1 and $MAX_CHARACTERS."
         }
@@ -89,7 +93,7 @@ object VectorMemoryRetriever {
                 RankedCandidate(source, hit.score)
             }
             candidate.hasVectorMatch = true
-            candidate.rrfScore += 1.0 / (rrfConstant + vectorRank)
+            candidate.rrfScore += vectorWeight / (rrfConstant + vectorRank)
         }
 
         val queryTerms = tokenizeQuery(queryText.orEmpty())
@@ -118,7 +122,7 @@ object VectorMemoryRetriever {
                     RankedCandidate(source, similarity = 0.0)
                 }
                 candidate.hasKeywordMatch = true
-                candidate.rrfScore += 1.0 / (rrfConstant + keywordRank)
+                candidate.rrfScore += keywordWeight / (rrfConstant + keywordRank)
             }
         }
 
@@ -165,6 +169,8 @@ object VectorMemoryRetriever {
     const val MAX_CHARACTERS = 100_000
     const val DEFAULT_RRF_CONSTANT = 60
     const val MAX_RRF_CONSTANT = 1_000
+    const val DEFAULT_VECTOR_WEIGHT = 1.0
+    const val DEFAULT_KEYWORD_WEIGHT = 1.0
     const val MAX_KEYWORD_QUERY_TERMS = 64
     const val MAX_KEYWORD_SCAN_CHARACTERS = 20_000
 

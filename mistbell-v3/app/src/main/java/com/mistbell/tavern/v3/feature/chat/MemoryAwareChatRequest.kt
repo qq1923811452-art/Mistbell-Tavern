@@ -15,6 +15,7 @@ import okhttp3.Call
 class MemoryAwareChatRequest(
     private val chatClient: OpenAiCompatibleChatClient,
     private val memoryContext: VectorMemoryContextService,
+    private val onMemoryStatus: (String) -> Unit = {},
 ) {
     suspend fun stream(
         messages: List<PromptMessage>,
@@ -36,6 +37,13 @@ class MemoryAwareChatRequest(
                 )
             }
         }
+        onMemoryStatus(
+            when (memoryResult) {
+                is VectorMemoryContextResult.Ready -> "本轮已注入 ${memoryResult.memories.size} 条本地记忆。"
+                VectorMemoryContextResult.NoRelevantMemories -> "本轮未检索到相关记忆；聊天继续，不注入无关内容。"
+                is VectorMemoryContextResult.Unavailable -> "本轮没有注入记忆（${memoryResult.reason}）；聊天继续，索引或本地模型恢复后可重试。"
+            },
+        )
         val requestMessages = VectorMemoryPromptComposer.compose(messages, memoryResult)
         return chatClient.stream(requestMessages, observer, options)
     }

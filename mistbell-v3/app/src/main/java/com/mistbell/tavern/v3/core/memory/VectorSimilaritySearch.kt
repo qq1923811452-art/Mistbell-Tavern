@@ -37,16 +37,30 @@ object VectorSimilaritySearch {
             "Minimum similarity must be finite and between -1 and 1."
         }
 
-        val queryNorm = norm(query)
+        val queryValues = query.toFloatArray()
+        val queryNorm = norm(queryValues)
         require(queryNorm > 0.0) { "Query vector must not be a zero vector." }
+        val candidateValues = FloatArray(snapshot.dimensions)
 
         return snapshot.records.asSequence()
             .mapNotNull { record ->
-                val recordNorm = norm(record.values)
-                // A zero vector has no meaningful direction and must not become a false match.
+                val recordValues = record.values
+                val recordNorm = if (recordValues is FloatVectorView) {
+                    recordValues.fillInto(candidateValues)
+                    norm(candidateValues)
+                } else {
+                    var squared = 0.0
+                    for (index in candidateValues.indices) {
+                        val value = recordValues[index]
+                        candidateValues[index] = value
+                        squared += value.toDouble() * value.toDouble()
+                    }
+                    kotlin.math.sqrt(squared)
+                }
                 if (recordNorm == 0.0) return@mapNotNull null
-                val dot = query.indices.sumOf { index ->
-                    query[index].toDouble() * record.values[index].toDouble()
+                var dot = 0.0
+                for (index in queryValues.indices) {
+                    dot += queryValues[index].toDouble() * candidateValues[index].toDouble()
                 }
                 val score = (dot / (queryNorm * recordNorm)).coerceIn(-1.0, 1.0)
                 if (score < minimumScore) return@mapNotNull null
@@ -62,12 +76,13 @@ object VectorSimilaritySearch {
             .toList()
     }
 
-    private fun norm(vector: List<Float>): Double {
-        val squared = vector.sumOf { value -> value.toDouble() * value.toDouble() }
+    private fun norm(vector: FloatArray): Double {
+        var squared = 0.0
+        for (value in vector) squared += value.toDouble() * value.toDouble()
         return sqrt(squared)
     }
 
     const val DEFAULT_RESULT_LIMIT = 5
     const val MAX_RESULT_LIMIT = 100
-    const val DEFAULT_MINIMUM_SCORE = 0.0
+    const val DEFAULT_MINIMUM_SCORE = 0.35
 }

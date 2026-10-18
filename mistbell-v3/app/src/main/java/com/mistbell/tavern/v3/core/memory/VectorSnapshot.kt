@@ -4,13 +4,17 @@ import java.security.MessageDigest
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
+internal interface FloatVectorView {
+    fun fillInto(destination: FloatArray, destinationOffset: Int = 0)
+}
+
 private class MappedVectorValues(
     private val buffer: ByteBuffer,
     private val start: Int,
     override val size: Int,
     private val legacyFloat32: Boolean,
     private val scale: Float,
-) : AbstractList<Float>() {
+) : AbstractList<Float>(), FloatVectorView {
     override fun get(index: Int): Float {
         if (index !in 0 until size) throw IndexOutOfBoundsException(index)
         val value = if (legacyFloat32) {
@@ -20,6 +24,21 @@ private class MappedVectorValues(
         }
         require(value.isFinite()) { "Mapped vector contains a non-finite value." }
         return value
+    }
+
+    override fun fillInto(destination: FloatArray, destinationOffset: Int) {
+        require(destinationOffset >= 0 && destinationOffset <= destination.size - size) {
+            "Destination array is too small for the mapped vector."
+        }
+        for (index in 0 until size) {
+            val value = if (legacyFloat32) {
+                buffer.getFloat(start + index * Float.SIZE_BYTES)
+            } else {
+                buffer.get(start + index).toFloat() * scale
+            }
+            require(value.isFinite()) { "Mapped vector contains a non-finite value." }
+            destination[destinationOffset + index] = value
+        }
     }
 }
 
@@ -65,9 +84,6 @@ data class VectorSnapshot(
         require(records.size <= VectorSnapshotCodec.MAX_RECORDS) {
             "Snapshot contains too many vector records."
         }
-        require(records.sumOf { it.values.size.toLong() } <= VectorSnapshotCodec.MAX_VECTOR_VALUES) {
-            "Snapshot contains too many vector values."
-        }
     }
 }
 
@@ -77,8 +93,7 @@ data class VectorSnapshot(
  */
 object VectorSnapshotCodec {
     const val MAX_DIMENSIONS = 4096
-    const val MAX_RECORDS = 100_000
-    const val MAX_VECTOR_VALUES = 8_000_000
+    const val MAX_RECORDS = 1_000_000
     const val MAX_SNAPSHOT_BYTES = 128 * 1024 * 1024
 
     private const val MAGIC = 0x4D425633 // MBV3
@@ -170,8 +185,12 @@ object VectorSnapshotCodec {
         require(dimensions in 1..MAX_DIMENSIONS) { "Vector dimension is invalid." }
         val count = input.int
         require(count in 0..MAX_RECORDS) { "Vector record count is invalid." }
-        require(count.toLong() * dimensions <= MAX_VECTOR_VALUES) {
-            "Vector snapshot contains too many values."
+        val bytesPerValue = if (formatVersion == LEGACY_FORMAT_VERSION) Float.SIZE_BYTES else 1
+        val minimumRecordOverhead = if (formatVersion == LEGACY_FORMAT_VERSION) 77L else 81L
+        val minimumPayloadBytes = count.toLong() *
+            (minimumRecordOverhead + dimensions.toLong() * bytesPerValue)
+        require(minimumPayloadBytes <= payloadEnd.toLong() - input.position()) {
+            "Snapshot payload is too small for $count records of $dimensions values."
         }
 
         val records = ArrayList<StoredVector>(count)
@@ -247,8 +266,12 @@ object VectorSnapshotCodec {
         require(dimensions in 1..MAX_DIMENSIONS) { "Vector dimension is invalid." }
         val count = input.readInt()
         require(count in 0..MAX_RECORDS) { "Vector record count is invalid." }
-        require(count.toLong() * dimensions <= MAX_VECTOR_VALUES) {
-            "Vector snapshot contains too many values."
+        val bytesPerValue = if (formatVersion == LEGACY_FORMAT_VERSION) Float.SIZE_BYTES else 1
+        val minimumRecordOverhead = if (formatVersion == LEGACY_FORMAT_VERSION) 77L else 81L
+        val minimumPayloadBytes = count.toLong() *
+            (minimumRecordOverhead + dimensions.toLong() * bytesPerValue)
+        require(minimumPayloadBytes <= input.available().toLong()) {
+            "Snapshot payload is too small for $count records of $dimensions values."
         }
 
         val records = ArrayList<StoredVector>(count)

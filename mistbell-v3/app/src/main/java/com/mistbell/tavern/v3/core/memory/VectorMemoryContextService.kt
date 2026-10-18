@@ -61,11 +61,15 @@ class VectorMemoryContextService(
     private val resultLimit: Int = VectorSimilaritySearch.DEFAULT_RESULT_LIMIT,
     private val minimumScore: Double = VectorSimilaritySearch.DEFAULT_MINIMUM_SCORE,
     private val maxCharacters: Int = VectorMemoryRetriever.DEFAULT_MAX_CHARACTERS,
+    private val vectorRrfWeight: Double = VectorMemoryRetriever.DEFAULT_VECTOR_WEIGHT,
+    private val keywordRrfWeight: Double = VectorMemoryRetriever.DEFAULT_KEYWORD_WEIGHT,
 ) {
     init {
         require(resultLimit in 1..VectorSimilaritySearch.MAX_RESULT_LIMIT)
         require(minimumScore.isFinite() && minimumScore in -1.0..1.0)
         require(maxCharacters in 1..VectorMemoryRetriever.MAX_CHARACTERS)
+        require(vectorRrfWeight.isFinite() && vectorRrfWeight > 0.0)
+        require(keywordRrfWeight.isFinite() && keywordRrfWeight > 0.0)
     }
 
     suspend fun retrieveForQuery(query: String): VectorMemoryContextResult {
@@ -133,6 +137,8 @@ class VectorMemoryContextService(
                 minimumScore = minimumScore,
                 maxCharacters = maxCharacters,
                 queryText = query,
+                vectorWeight = vectorRrfWeight,
+                keywordWeight = keywordRrfWeight,
             )
         } catch (_: IllegalArgumentException) {
             return VectorMemoryContextResult.Unavailable(

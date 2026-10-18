@@ -68,13 +68,6 @@ class MemoryIndexRebuilder(
                 )
             }
         }
-        if (records.size.toLong() * dimensions > VectorSnapshotCodec.MAX_VECTOR_VALUES) {
-            return MemoryIndexRebuildResult.Failed(
-                MemoryIndexRebuildResult.Stage.INVALID_INPUT,
-                "The rebuilt index would exceed the vector value limit.",
-            )
-        }
-
         val timestamp = try {
             clockMillis().also { require(it >= 0L) }
         } catch (_: Exception) {
