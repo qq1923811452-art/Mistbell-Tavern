@@ -28,7 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     # Model B is supplemental: it must never make the required Model A audit fail
     # or occupy a runner for the full Model A timeout when the relay hangs.
-    timeout-minutes: ${{ matrix.model_slot == 'B' && 5 || 20 }}
+    timeout-minutes: ${{ matrix.model_slot == 'B' && 8 || 20 }}
     continue-on-error: ${{ matrix.model_slot == 'B' }}
     strategy:
       fail-fast: false
@@ -344,7 +344,9 @@ jobs:
                   method="POST",
               )
               try:
-                  with urllib.request.urlopen(request, timeout=300) as response:
+                  # Model B is supplemental; keep each relay attempt below its job budget.
+                  request_timeout = 120 if model_slot == "B" else 300
+                  with urllib.request.urlopen(request, timeout=request_timeout) as response:
                       response_body = response.read().decode("utf-8", errors="replace")
               except urllib.error.HTTPError as exc:
                   if attempt < 2 and exc.code in {429, 500, 502, 503, 504}:
