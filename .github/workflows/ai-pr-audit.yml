@@ -541,32 +541,68 @@ jobs:
                   return "snippet_not_found"
               verified_findings = []
               rejected_evidence_count = 0
+              contradictory_findings_dropped = 0
               rejection_reasons = {}
+              contradiction_markers = (
+                  "未发现可证明的功能错误",
+                  "没有可证明的功能错误",
+                  "故不作为 finding 输出",
+                  "不应报告",
+                  "建议撤回",
+                  "明确撤回该条",
+                  "not a finding",
+                  "no demonstrable defect",
+                  "no proven defect",
+                  "should be withdrawn",
+                  "do not report this finding",
+              )
               for finding in findings:
                   evidence = finding.get("evidence")
                   # Evidence must match complete source lines in the exact diff sent to the model.
                   reason = evidence_match_reason(finding.get("file"), evidence)
-                  if reason == "matched":
-                      finding["_verified_evidence"] = evidence.strip()
-                      verified_findings.append(finding)
-                  else:
+                  if reason != "matched":
                       rejected_evidence_count += 1
                       rejection_reasons[reason] = rejection_reasons.get(reason, 0) + 1
+                      continue
+                  # Enforce an explicit consistency guard when the model itself says the
+                  # candidate is not a defect or should be withdrawn.
+                  issue_text = " ".join(
+                      str(finding.get(key) or "")
+                      for key in ("issue", "recommendation", "confidence")
+                  ).casefold()
+                  contradiction = next(
+                      (marker for marker in contradiction_markers if marker.casefold() in issue_text),
+                      None,
+                  )
+                  if contradiction:
+                      contradictory_findings_dropped += 1
+                      rejection_reasons["self_contradictory_finding"] = (
+                          rejection_reasons.get("self_contradictory_finding", 0) + 1
+                      )
+                      continue
+                  finding["_verified_evidence"] = evidence.strip()
+                  verified_findings.append(finding)
               print("Evidence rejection reasons:", json.dumps(rejection_reasons, sort_keys=True))
+              print("Verified findings:", len(verified_findings))
+              print("Unverified findings dropped:", rejected_evidence_count)
+              print("Self-contradictory findings dropped:", contradictory_findings_dropped)
               report["findings"] = verified_findings[:20]
               report["findings_truncated"] = raw_findings_count > 20 or len(verified_findings) > 20
               report["unverified_findings_dropped"] = rejected_evidence_count
-              if rejected_evidence_count and not verified_findings:
+              report["self_contradictory_findings_dropped"] = contradictory_findings_dropped
+              dropped_count = rejected_evidence_count + contradictory_findings_dropped
+              if dropped_count and not verified_findings:
                   report["summary"] = (
-                      "所有候选问题都因证据无法与本次送审 diff 匹配而被丢弃；"
+                      f"所有候选问题均被过滤：{rejected_evidence_count} 条证据无法匹配，"
+                      f"{contradictory_findings_dropped} 条结论自相矛盾。"
                       "这不代表代码没有问题，必须人工复核本次变更。"
                   )
-              elif rejected_evidence_count:
-                  # The model summary may describe rejected candidates as if they were verified.
-                  # Once any finding is rejected, avoid carrying unsupported claims into the report.
+              elif dropped_count:
+                  # Never carry unsupported or explicitly withdrawn claims into the summary.
                   report["summary"] = (
-                      f"仅保留 {len(verified_findings)} 条通过源码证据匹配的候选问题；"
-                      f"另有 {rejected_evidence_count} 条因证据无法匹配而被丢弃。"
+                      f"仅保留 {len(verified_findings)} 条通过证据与一致性校验的候选问题；"
+                      f"过滤 {rejected_evidence_count} 条证据不匹配、"
+                      f"{contradictory_findings_dropped} 条自相矛盾的候选问题。"
                       "已保留的问题仍需人工核实其因果关系与可复现性。"
                   )
           except Exception as exc:
