@@ -19,7 +19,8 @@ permissions:
 
 concurrency:
   group: ai-pr-audit-${{ github.event.pull_request.head.ref || (github.event_name == 'push' && github.ref_name) || inputs.pr_number || github.run_id }}
-  cancel-in-progress: true
+  # Do not cancel an audit that has already started; newer pushes may replace a pending run.
+  cancel-in-progress: false
 
 jobs:
   audit:
@@ -718,6 +719,19 @@ jobs:
                   text = text.replace(char, " ")
               return text[:limit]
 
+          raw_summary = str(report.get("summary") or "")
+          summary_mentions_findings = bool(re.search(
+              r"(发现.{0,12}(?:缺陷|问题|错误)|可复现缺陷|存在.{0,12}(?:缺陷|问题|错误)|"
+              r"found.{0,12}(?:defect|issue|bug)|reproducible (?:defect|issue|bug))",
+              raw_summary,
+              re.IGNORECASE,
+          ))
+          if summary_mentions_findings and not verified_findings and not unverified_findings:
+              report["summary"] = (
+                  raw_summary
+                  + " [AUDIT INCOMPLETE: the model summary claims possible defects, "
+                  "but it supplied no structured findings; manual review is required.]"
+              )
           summary = safe_markdown(report.get("summary"), 2000)
           truncation_prefix = "【输入被截断；审计不完整】"
           if truncated and not summary.startswith(truncation_prefix):
