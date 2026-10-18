@@ -50,6 +50,35 @@ class VectorSnapshotCodecTest {
     }
 
     @Test
+    fun decodesLegacyFloat32SnapshotAfterInt8FormatUpgrade() {
+        val payloadBuffer = java.io.ByteArrayOutputStream()
+        java.io.DataOutputStream(payloadBuffer).use { out ->
+            out.writeInt(0x4D425633)
+            out.writeInt(1)
+            out.writeUTF("model-legacy")
+            out.writeInt(2)
+            out.writeInt(1)
+            out.writeUTF("legacy-vector")
+            out.writeUTF(HASH)
+            out.writeLong(42L)
+            out.writeFloat(0.25f)
+            out.writeFloat(-0.5f)
+        }
+        val payload = payloadBuffer.toByteArray()
+        val checksum = java.security.MessageDigest.getInstance("SHA-256").digest(payload)
+        val envelopeBuffer = java.io.ByteArrayOutputStream()
+        java.io.DataOutputStream(envelopeBuffer).use { out ->
+            out.writeInt(payload.size)
+            out.write(payload)
+            out.write(checksum)
+        }
+
+        val decoded = VectorSnapshotCodec.decode(envelopeBuffer.toByteArray())
+        assertEquals("model-legacy", decoded.modelId)
+        assertEquals(listOf(0.25f, -0.5f), decoded.records.single().values)
+    }
+
+    @Test
     fun int8PersistenceReducesVectorPayloadByAtLeastSeventyPercent() {
         val records = (0 until 1_000).map { index ->
             StoredVector(

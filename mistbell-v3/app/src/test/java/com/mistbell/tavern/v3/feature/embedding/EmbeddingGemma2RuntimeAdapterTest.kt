@@ -117,17 +117,17 @@ class EmbeddingGemma2RuntimeAdapterTest {
     }
 
     @Test
-    fun rejectsOverlongFormattedInputBeforeCallingEngine(): Unit = runBlocking {
+    fun rejectsOversizedFormattedTitleBeforeCallingEngine(): Unit = runBlocking {
         var calls = 0
         val adapter = EmbeddingGemma2RuntimeAdapter(
             engine = engine {
                 calls++
-                error("Engine must not run for an overlong input.")
+                error("Engine must not run for an overlong formatted title.")
             },
         )
         val error = assertThrows(EmbeddingOutputException::class.java) {
             runBlocking {
-                adapter.embedQueries(listOf("x".repeat(EmbeddingGemma2RuntimeAdapter.MAX_FORMATTED_INPUT_BYTES)))
+                adapter.embedDocuments(listOf("short text"), listOf("x".repeat(EmbeddingGemma2RuntimeAdapter.MAX_FORMATTED_INPUT_BYTES)))
             }
         }
         assertTrue(error.message!!.contains("split the text"))
