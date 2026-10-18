@@ -33,16 +33,15 @@ class MemoryExtractionJobCodecTest {
     }
 
     @Test
-    fun decodesExplicitNullCredentialHandleAsNull() {
-        val encoded = MemoryExtractionJobCodec.encode(listOf(job()))
-        val payload = encoded.copyOfRange(0, encoded.size - 32)
-            .toString(Charsets.UTF_8)
-            .replace("\\"credential_handle\\":\\"memory-key-handle\\"",
-                "\\"credential_handle\\":null")
+    fun decodesExplicitNullOptionalFieldsAsNull() {
+        val payload = """{"version":1,"jobs":[{"id":"job-null","conversation":"conversation-1","turns":["turn-1"],"provider":"memory-provider","credential_handle":null,"created":1000,"attempts":0,"next_attempt":1000,"state":"PENDING","error":null}]}"""
             .toByteArray(Charsets.UTF_8)
-        val withValidChecksum = payload + MessageDigest.getInstance("SHA-256").digest(payload)
+        val encoded = payload + MessageDigest.getInstance("SHA-256").digest(payload)
 
-        assertEquals(null, MemoryExtractionJobCodec.decode(withValidChecksum).single().credentialHandle)
+        val decoded = MemoryExtractionJobCodec.decode(encoded).single()
+
+        assertEquals(null, decoded.credentialHandle)
+        assertEquals(null, decoded.lastSafeError)
     }
 
     @Test
