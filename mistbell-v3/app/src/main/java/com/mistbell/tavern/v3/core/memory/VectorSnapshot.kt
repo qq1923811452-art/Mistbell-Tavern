@@ -59,7 +59,8 @@ object VectorSnapshotCodec {
     const val MAX_SNAPSHOT_BYTES = 128 * 1024 * 1024
 
     private const val MAGIC = 0x4D425633 // MBV3
-    private const val FORMAT_VERSION = 1
+    private const val LEGACY_FORMAT_VERSION = 1
+    private const val FORMAT_VERSION = 2
     private const val CHECKSUM_BYTES = 32
 
     fun encode(snapshot: VectorSnapshot): ByteArray {
@@ -74,7 +75,12 @@ object VectorSnapshotCodec {
                 out.writeUTF(record.id)
                 out.writeUTF(record.sourceTextSha256)
                 out.writeLong(record.createdAtEpochMillis)
-                record.values.forEach(out::writeFloat)
+                val maxAbs = record.values.maxOf { kotlin.math.abs(it) }
+                val scale = if (maxAbs == 0f) 1f / 127f else maxAbs / 127f
+                out.writeFloat(scale)
+                record.values.forEach { value ->
+                    out.writeByte(kotlin.math.round(value / scale).toInt().coerceIn(-127, 127))
+                }
             }
         }
         val payload = payloadBuffer.toByteArray()
@@ -111,7 +117,10 @@ object VectorSnapshotCodec {
 
         val input = java.io.DataInputStream(payload.inputStream())
         require(input.readInt() == MAGIC) { "Vector snapshot magic does not match." }
-        require(input.readInt() == FORMAT_VERSION) { "Vector snapshot format version is unsupported." }
+        val formatVersion = input.readInt()
+        require(formatVersion == LEGACY_FORMAT_VERSION || formatVersion == FORMAT_VERSION) {
+            "Vector snapshot format version is unsupported."
+        }
         val modelId = input.readUTF()
         val dimensions = input.readInt()
         require(dimensions in 1..MAX_DIMENSIONS) { "Vector dimension is invalid." }
@@ -126,7 +135,13 @@ object VectorSnapshotCodec {
             val id = input.readUTF()
             val sourceHash = input.readUTF()
             val createdAt = input.readLong()
-            val values = List(dimensions) { input.readFloat() }
+            val values = if (formatVersion == LEGACY_FORMAT_VERSION) {
+                List(dimensions) { input.readFloat() }
+            } else {
+                val scale = input.readFloat()
+                require(scale.isFinite() && scale > 0f) { "Vector quantization scale is invalid." }
+                List(dimensions) { input.readByte().toFloat() * scale }
+            }
             records += StoredVector(
                 id = id,
                 sourceTextSha256 = sourceHash,

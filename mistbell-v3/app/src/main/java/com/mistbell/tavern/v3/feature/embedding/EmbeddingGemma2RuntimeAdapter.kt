@@ -21,6 +21,7 @@ class EmbeddingGemma2RuntimeAdapter(
     private val engine: EmbeddingGemma2InferenceEngine,
     private val outputDimensions: Int = EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS,
     configuredBatchSize: Int = 16,
+    private val onDiagnostic: (String, String) -> Unit = { _, _ -> },
 ) : LocalEmbeddingRuntime {
     companion object {
         const val MAX_CONFIGURED_BATCH_SIZE = 256
@@ -60,16 +61,31 @@ class EmbeddingGemma2RuntimeAdapter(
         }
     }
 
+    suspend fun embedBatch(texts: List<String>): List<FloatArray> {
+        if (texts.isEmpty()) return emptyList()
+        if (texts.any(String::isBlank)) throw EmbeddingOutputException("Input text must not be blank.")
+        val result = ArrayList<FloatArray>(texts.size)
+        for (chunk in texts.chunked(BATCH_SIZE)) {
+            result += embedDocuments(chunk).vectors.map { it.toFloatArray() }
+        }
+        return result
+    }
+
     private suspend fun inferAndValidate(
         texts: List<String>,
         formatter: (String, Int) -> String,
     ): EmbeddingBatch {
         if (texts.isEmpty()) throw EmbeddingOutputException("Input batch must not be empty.")
-        if (texts.size > model.maxBatchSize) {
-            throw EmbeddingOutputException("Input batch exceeds the configured limit.")
-        }
+        if (texts.size > model.maxBatchSize) throw EmbeddingOutputException("Input batch exceeds the configured limit.")
         if (texts.any(String::isBlank)) throw EmbeddingOutputException("Input text must not be blank.")
-        val formattedInputs = texts.mapIndexed { index, text -> formatter(text, index) }
+
+        val formattedInputs = texts.mapIndexed { index, original ->
+            val bounded = EmbeddingGemma2TextPolicy.truncateInput(original)
+            if (bounded.length < original.length) {
+                onDiagnostic("embedding.input.truncated", "originalLength=${original.length}; truncatedLength=${bounded.length}")
+            }
+            formatter(bounded, index)
+        }
         formattedInputs.forEachIndexed { index, formatted ->
             if (formatted.toByteArray(Charsets.UTF_8).size > MAX_FORMATTED_INPUT_BYTES) {
                 throw EmbeddingOutputException(
@@ -77,30 +93,67 @@ class EmbeddingGemma2RuntimeAdapter(
                 )
             }
         }
-        val raw = engine.infer(formattedInputs)
-        if (raw.vectors.size != texts.size ||
-            raw.vectors.any { it.size != EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS }
-        ) {
-            throw EmbeddingOutputException("Engine must return one native 768-dimensional vector per input.")
+
+        val output = arrayOfNulls<List<Float>>(texts.size)
+        val pendingByKey = linkedMapOf<String, MutableList<Int>>()
+        val cachedStatuses = mutableListOf<com.mistbell.tavern.v3.core.inference.InferenceRuntimeStatus>()
+        formattedInputs.forEachIndexed { index, formatted ->
+            val key = EmbeddingVectorCache.key(formatted, model.modelId, model.dimensions)
+            val cached = EmbeddingVectorCache.get(key)
+            if (cached != null) {
+                onDiagnostic("embedding.cache.hit", "modelId=${model.modelId}; dimensions=${model.dimensions}")
+                output[index] = cached.vector
+                cachedStatuses += cached.status
+            } else {
+                onDiagnostic("embedding.cache.miss", "modelId=${model.modelId}; dimensions=${model.dimensions}")
+                pendingByKey.getOrPut(key) { mutableListOf() }.add(index)
+            }
         }
+
+        var lastStatus: com.mistbell.tavern.v3.core.inference.InferenceRuntimeStatus? = null
+        for (batch in pendingByKey.entries.toList().chunked(BATCH_SIZE)) {
+            val raw = engine.infer(batch.map { (_, indexes) -> formattedInputs[indexes.first()] })
+            validateRawBatch(raw, batch.size)
+            val normalized = raw.vectors.map {
+                EmbeddingGemma2TextPolicy.truncateAndNormalize(it, outputDimensions)
+            }
+            batch.forEachIndexed { resultIndex, (key, indexes) ->
+                val vector = normalized[resultIndex]
+                EmbeddingVectorCache.put(key, vector, raw.status)
+                indexes.forEach { originalIndex -> output[originalIndex] = vector }
+            }
+            lastStatus = raw.status
+        }
+
+        val status = lastStatus ?: cachedStatuses.firstOrNull()?.copy(lastExecutionMillis = null)
+            ?: throw EmbeddingOutputException("Embedding cache did not provide a usable result status.")
+        return EmbeddingBatch(
+            vectors = output.mapIndexed { index, vector ->
+                vector ?: throw EmbeddingOutputException("Embedding result $index was not produced.")
+            },
+            status = status,
+        )
+    }
+
+    private fun validateRawBatch(raw: EmbeddingBatch, expectedCount: Int) {
+        if (raw.vectors.size != expectedCount ||
+            raw.vectors.any { it.size != EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS }
+        ) throw EmbeddingOutputException("Engine must return one native 768-dimensional vector per input.")
         if (raw.status.modelId != EmbeddingGemma2TextPolicy.MODEL_ID) {
             throw EmbeddingOutputException("Engine status does not identify EmbeddingGemma 2.")
         }
-        if (raw.status.runtimeId != engine.runtimeId ||
-            raw.status.runtimeId.isNullOrBlank() ||
+        if (raw.status.runtimeId != engine.runtimeId || raw.status.runtimeId.isNullOrBlank() ||
             raw.status.backendEvidence == BackendEvidence.NOT_AVAILABLE
-        ) {
-            throw EmbeddingOutputException("Engine did not report a runtime ID and backend evidence.")
-        }
-        if (raw.status.phase != InferencePhase.READY &&
-            raw.status.phase != InferencePhase.RUNNING &&
+        ) throw EmbeddingOutputException("Engine did not report a runtime ID and backend evidence.")
+        if (raw.status.phase != InferencePhase.READY && raw.status.phase != InferencePhase.RUNNING &&
             raw.status.phase != InferencePhase.FALLBACK
-        ) {
-            throw EmbeddingOutputException("Engine did not report an active inference phase.")
-        }
-        val vectors = raw.vectors.map {
-            EmbeddingGemma2TextPolicy.truncateAndNormalize(it, outputDimensions)
-        }
-        return EmbeddingBatch(vectors, raw.status)
+        ) throw EmbeddingOutputException("Engine did not report an active inference phase.")
     }
+
+    companion object {
+        const val MAX_CONFIGURED_BATCH_SIZE = 256
+        const val MAX_FORMATTED_INPUT_BYTES = 4096
+        const val BATCH_SIZE = 8
+    }
+}
 }

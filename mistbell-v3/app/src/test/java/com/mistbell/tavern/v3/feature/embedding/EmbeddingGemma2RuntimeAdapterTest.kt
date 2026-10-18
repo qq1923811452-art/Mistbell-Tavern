@@ -134,6 +134,67 @@ class EmbeddingGemma2RuntimeAdapterTest {
         assertEquals(0, calls)
     }
     @Test
+    fun batchEmbeds32TextsInFourEngineCallsAndPreservesOrder(): Unit = runBlocking {
+        EmbeddingVectorCache.clear()
+        var calls = 0
+        val adapter = EmbeddingGemma2RuntimeAdapter(
+            engine = engine { inputs ->
+                calls++
+                EmbeddingBatch(
+                    vectors = inputs.map { input ->
+                        val index = Regex("item-(\\d+)").find(input)!!.groupValues[1].toInt() + 1
+                        List(EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS) { dimension ->
+                            when (dimension) { 0 -> index.toFloat(); 1 -> 1f; else -> 0f }
+                        }
+                    },
+                    status = rawStatus,
+                )
+            },
+        )
+        val inputs = (0 until 32).map { "item-${it.toString().padStart(2, '0')}" }
+        val result = adapter.embedBatch(inputs)
+        assertEquals(32, result.size)
+        assertEquals(4, calls)
+        assertTrue(result.zipWithNext().all { (left, right) -> left[0] < right[0] })
+    }
+
+    @Test
+    fun emptyBatchDoesNotCallEngine(): Unit = runBlocking {
+        var calls = 0
+        val adapter = EmbeddingGemma2RuntimeAdapter(engine = engine { calls++; error("Must not infer.") })
+        assertTrue(adapter.embedBatch(emptyList()).isEmpty())
+        assertEquals(0, calls)
+    }
+
+    @Test
+    fun repeatedInputUsesCacheWithoutCallingEngineAgain(): Unit = runBlocking {
+        EmbeddingVectorCache.clear()
+        var calls = 0
+        val adapter = EmbeddingGemma2RuntimeAdapter(
+            engine = engine { inputs ->
+                calls++
+                EmbeddingBatch(
+                    vectors = inputs.map { List(EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS) { 0.5f } },
+                    status = rawStatus,
+                )
+            },
+        )
+        val first = adapter.embedQueries(listOf("same cache input"))
+        val second = adapter.embedQueries(listOf("same cache input"))
+        assertEquals(1, calls)
+        assertEquals(first.vectors, second.vectors)
+    }
+
+    @Test
+    fun cacheKeySeparatesModelAndDimensions() {
+        val a = EmbeddingVectorCache.key("same", "model-a", 768)
+        val b = EmbeddingVectorCache.key("same", "model-b", 768)
+        val c = EmbeddingVectorCache.key("same", "model-a", 256)
+        assertTrue(a != b)
+        assertTrue(a != c)
+    }
+
+    @Test
     fun rejectsInvalidConfiguredBatchSizes() {
         assertTrue(runCatching {
             EmbeddingGemma2RuntimeAdapter(engine = engine { error("Must not infer") }, configuredBatchSize = 0)

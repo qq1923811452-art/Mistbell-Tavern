@@ -9,6 +9,17 @@ package com.mistbell.tavern.v3.feature.embedding
 object EmbeddingGemma2TextPolicy {
     const val MODEL_ID = "google/embeddinggemma-2"
     const val NATIVE_DIMENSIONS = 768
+    const val MAX_EMBED_CHARS = 2_000
+
+    /** Truncate by UTF-16 code units without splitting a surrogate pair at the boundary. */
+    fun truncateInput(text: String): String {
+        if (text.length <= MAX_EMBED_CHARS) return text
+        var end = MAX_EMBED_CHARS
+        if (end > 0 && Character.isHighSurrogate(text[end - 1]) &&
+            end < text.length && Character.isLowSurrogate(text[end])
+        ) end--
+        return text.substring(0, end)
+    }
 
     /**
      * Output tiers supported by this model's native 768-dimensional Matryoshka vector.

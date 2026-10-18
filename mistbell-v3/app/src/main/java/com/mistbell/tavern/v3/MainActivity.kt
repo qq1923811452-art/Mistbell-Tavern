@@ -53,6 +53,7 @@ import com.mistbell.tavern.v3.feature.embedding.EmbeddingGemma2ModelAssetManager
 import com.mistbell.tavern.v3.feature.embedding.DownloadedEmbeddingModel
 import com.mistbell.tavern.v3.feature.embedding.EmbeddingGemma2RuntimeAdapter
 import com.mistbell.tavern.v3.feature.embedding.LiteRtLmEmbeddingGemma2Engine
+import com.mistbell.tavern.v3.feature.embedding.EmbeddingEngineProcessHolder
 import com.mistbell.tavern.v3.core.diagnostics.DiagnosticLogStore
 import com.mistbell.tavern.v3.core.inference.InferenceBackend
 import com.mistbell.tavern.v3.core.inference.InferencePhase
@@ -72,7 +73,6 @@ private val initialStages = listOf(
 class MainActivity : ComponentActivity() {
     private lateinit var diagnostics: DiagnosticLogStore
     private lateinit var modelAssets: EmbeddingGemma2ModelAssetManager
-    private var activeEmbeddingEngine: LiteRtLmEmbeddingGemma2Engine? = null
     private var inferenceStatus by mutableStateOf(InferenceRuntimeStatus.idle())
     private var operationMessage by mutableStateOf("正在检查本地模型……")
     private var operationBusy by mutableStateOf(false)
@@ -269,16 +269,9 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun closeActiveEmbeddingEngine() {
-        // Clear ownership before close so lifecycle transitions cannot close the same engine twice.
-        val engine = activeEmbeddingEngine
-        activeEmbeddingEngine = null
-        engine?.close()
-    }
-
     private fun selectModelProfile(qualcomm: Boolean) {
         if (operationBusy || qualcommModelSelected == qualcomm) return
-        closeActiveEmbeddingEngine()
+        EmbeddingEngineProcessHolder.close()
         qualcommModelSelected = qualcomm
         modelProfileGeneration += 1
         val generationAtSelection = modelProfileGeneration
@@ -542,18 +535,25 @@ class MainActivity : ComponentActivity() {
                 val asset = withContext(Dispatchers.IO) { modelAssets.verifyInstalled() }
                     ?: throw IllegalStateException("模型不存在或 SHA-256 校验失败；请重新下载模型。")
                 verifiedAsset = asset
-                closeActiveEmbeddingEngine()
-                val initializedRuntime = withContext(Dispatchers.IO) {
-                    LiteRtLmEmbeddingGemma2Engine(
+                val initializedRuntime = if (allowDiagnosticNpuProbe) {
+                    withContext(Dispatchers.IO) {
+                        LiteRtLmEmbeddingGemma2Engine(
+                            context = applicationContext,
+                            modelFile = asset.file,
+                            npuModelCompatible = asset.isQualcommSm8650Optimized,
+                            allowDiagnosticNpuProbe = true,
+                            diagnostics = diagnostics,
+                        )
+                    }
+                } else {
+                    EmbeddingEngineProcessHolder.acquire(
                         context = applicationContext,
                         modelFile = asset.file,
                         npuModelCompatible = asset.isQualcommSm8650Optimized,
-                        allowDiagnosticNpuProbe = allowDiagnosticNpuProbe && asset.isQualcommSm8650Optimized,
                         diagnostics = diagnostics,
                     )
                 }
                 runtime = initializedRuntime
-                activeEmbeddingEngine = initializedRuntime
                 inferenceStatus = InferenceRuntimeStatus(
                     phase = InferencePhase.LOADING_MODEL,
                     modelId = com.mistbell.tavern.v3.feature.embedding.EmbeddingGemma2TextPolicy.MODEL_ID,
@@ -574,13 +574,13 @@ class MainActivity : ComponentActivity() {
                         "cases=${outcomes.size}; successes=$successes; failures=${outcomes.size - successes}; status=$evidenceStatus; evidenceFile=$evidenceName; apkSha256MatchesCurrent=${evidence?.apkSha256MatchesCurrent}",
                     )
                 } else {
-                    initializedRuntime.initialize()
                     inferenceStatus = initializedRuntime.currentStatus()
                     operationMessage = "模型已初始化，正在执行真实文本向量测试……"
                     inferenceStatus = initializedRuntime.currentStatus().copy(phase = InferencePhase.RUNNING)
                     val result = EmbeddingGemma2RuntimeAdapter(
                         initializedRuntime,
                         outputDimensions = selectedEmbeddingDimensions,
+                        onDiagnostic = { event, detail -> diagnostics.info(event, detail) },
                     ).embedQueries(
                         listOf("Mistbell Tavern local embedding diagnostic test"),
                     )
@@ -626,13 +626,14 @@ class MainActivity : ComponentActivity() {
                     diagnostics.error("embedding.selftest.failed", detail)
                 }
             } finally {
+                if (allowDiagnosticNpuProbe) runCatching { runtime?.close() }
                 operationBusy = false
             }
         }
     }
 
     override fun onDestroy() {
-        closeActiveEmbeddingEngine()
+        // Process-scoped embedding engines intentionally survive Activity destruction.
         super.onDestroy()
     }
 }

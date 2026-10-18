@@ -27,6 +27,16 @@ class EmbeddingGemma2TextPolicyTest {
     }
 
     @Test
+    fun truncatesInputAtTwoThousandCharsWithoutSplittingSurrogatePairs() {
+        val longText = "a".repeat(EmbeddingGemma2TextPolicy.MAX_EMBED_CHARS) + "extra"
+        assertEquals(2_000, EmbeddingGemma2TextPolicy.truncateInput(longText).length)
+        val emojiAtBoundary = "a".repeat(1_999) + "😀" + "tail"
+        val truncated = EmbeddingGemma2TextPolicy.truncateInput(emojiAtBoundary)
+        assertEquals(1_999, truncated.length)
+        assertFalse(Character.isSurrogate(truncated.last()))
+    }
+
+    @Test
     fun supportedDimensionTiersNeverExceedNativeModelOutput() {
         assertEquals(setOf(128, 256, 512, 768), EmbeddingGemma2TextPolicy.supportedDimensions)
         assertTrue(EmbeddingGemma2TextPolicy.supportedDimensions.all {

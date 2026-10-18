@@ -20,7 +20,13 @@ class VectorSnapshotCodecTest {
             ),
         )
 
-        assertEquals(snapshot, VectorSnapshotCodec.decode(VectorSnapshotCodec.encode(snapshot)))
+        val decoded = VectorSnapshotCodec.decode(VectorSnapshotCodec.encode(snapshot))
+        assertEquals(snapshot.modelId, decoded.modelId)
+        assertEquals(snapshot.dimensions, decoded.dimensions)
+        assertEquals(snapshot.records.map { it.id }, decoded.records.map { it.id })
+        snapshot.records.single().values.zip(decoded.records.single().values).forEach { (expected, actual) ->
+            org.junit.Assert.assertTrue(kotlin.math.abs(expected - actual) <= 0.01f)
+        }
     }
 
     @Test
@@ -40,6 +46,38 @@ class VectorSnapshotCodecTest {
 
         assertEquals(50_001, decoded.records.size)
         assertEquals("vector-50000", decoded.records.last().id)
+    }
+
+    @Test
+    fun int8PersistenceReducesVectorPayloadByAtLeastSeventyPercent() {
+        val records = (0 until 1_000).map { index ->
+            StoredVector(
+                id = "vector-$index",
+                sourceTextSha256 = HASH,
+                createdAtEpochMillis = index.toLong(),
+                values = List(768) { dimension -> kotlin.math.sin(index * 0.13 + dimension * 0.017).toFloat() },
+            )
+        }
+        val encoded = VectorSnapshotCodec.encode(VectorSnapshot("model-int8", 768, records))
+        val floatPayloadBytes = records.size.toLong() * 768L * 4L
+        assertTrue(encoded.size.toLong() < floatPayloadBytes * 0.30)
+    }
+
+    @Test
+    fun int8RoundTripKeepsTopFiveNearestNeighbors() {
+        val records = (0 until 64).map { index ->
+            val values = List(128) { dimension ->
+                when (dimension) { 0 -> 1.0f - index * 0.02f; 1 -> 0.1f; else -> 0f }
+            }
+            StoredVector("vector-$index", HASH, index.toLong(), values)
+        }
+        val original = VectorSnapshot("model-int8", 128, records)
+        val restored = VectorSnapshotCodec.decode(VectorSnapshotCodec.encode(original))
+        val query = List(128) { dimension -> if (dimension == 0) 1f else 0f }
+        fun topFive(vectors: List<StoredVector>) = vectors.sortedByDescending { record ->
+            record.values.zip(query).sumOf { (a, b) -> a.toDouble() * b.toDouble() }
+        }.take(5).map { it.id }.toSet()
+        assertTrue(topFive(original.records).intersect(topFive(restored.records)).size >= 4)
     }
 
     @Test
