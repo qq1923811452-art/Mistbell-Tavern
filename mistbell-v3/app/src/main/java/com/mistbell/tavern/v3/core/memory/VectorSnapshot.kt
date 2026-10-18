@@ -1,6 +1,8 @@
 package com.mistbell.tavern.v3.core.memory
 
 import java.security.MessageDigest
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 
 data class StoredVector(
     val id: String,
@@ -97,6 +99,94 @@ object VectorSnapshotCodec {
         return result.toByteArray().also {
             require(it.size <= MAX_SNAPSHOT_BYTES) { "Vector snapshot exceeds the size limit." }
         }
+    }
+
+    /**
+     * Decodes from a read-only/memory-mapped buffer without copying vector payloads to heap arrays.
+     * Each vector is a lazy view over the mapped bytes, so the OS pages data in as retrieval reads it.
+     */
+    fun decodeMapped(source: ByteBuffer): VectorSnapshot {
+        val mapped = source.asReadOnlyBuffer().order(ByteOrder.BIG_ENDIAN)
+        val envelope = mapped.duplicate().order(ByteOrder.BIG_ENDIAN)
+        require(envelope.remaining() >= 4 + 8 + CHECKSUM_BYTES) { "Vector snapshot is truncated." }
+        val payloadLength = envelope.int
+        val payloadStart = envelope.position()
+        require(payloadLength >= 8 && payloadLength.toLong() == envelope.remaining().toLong() - CHECKSUM_BYTES) {
+            "Vector snapshot length is invalid."
+        }
+        val payloadEnd = payloadStart + payloadLength
+        val payloadView = mapped.duplicate()
+        payloadView.position(payloadStart)
+        payloadView.limit(payloadEnd)
+        val digest = MessageDigest.getInstance("SHA-256")
+        digest.update(payloadView.slice())
+        val actualChecksum = ByteArray(CHECKSUM_BYTES)
+        val checksumView = mapped.duplicate()
+        checksumView.position(payloadEnd)
+        checksumView.get(actualChecksum)
+        require(MessageDigest.isEqual(actualChecksum, digest.digest())) {
+            "Vector snapshot integrity check failed."
+        }
+
+        val input = mapped.duplicate().order(ByteOrder.BIG_ENDIAN)
+        input.position(payloadStart)
+        input.limit(payloadEnd)
+        require(input.int == MAGIC) { "Vector snapshot magic does not match." }
+        val formatVersion = input.int
+        require(formatVersion == LEGACY_FORMAT_VERSION || formatVersion == FORMAT_VERSION) {
+            "Vector snapshot format version is unsupported."
+        }
+        val modelId = readMappedUtf(input)
+        val dimensions = input.int
+        require(dimensions in 1..MAX_DIMENSIONS) { "Vector dimension is invalid." }
+        val count = input.int
+        require(count in 0..MAX_RECORDS) { "Vector record count is invalid." }
+        require(count.toLong() * dimensions <= MAX_VECTOR_VALUES) {
+            "Vector snapshot contains too many values."
+        }
+
+        val records = ArrayList<StoredVector>(count)
+        repeat(count) {
+            val id = readMappedUtf(input)
+            val sourceHash = readMappedUtf(input)
+            val createdAt = input.long
+            val scale = if (formatVersion == FORMAT_VERSION) {
+                input.float.also {
+                    require(it.isFinite() && it > 0f) { "Vector quantization scale is invalid." }
+                }
+            } else {
+                1f
+            }
+            val vectorStart = input.position()
+            val vectorBytes = if (formatVersion == LEGACY_FORMAT_VERSION) dimensions * Float.SIZE_BYTES else dimensions
+            require(input.remaining() >= vectorBytes) { "Vector data is truncated." }
+            input.position(vectorStart + vectorBytes)
+            val values = object : AbstractList<Float>() {
+                override val size: Int = dimensions
+                override fun get(index: Int): Float {
+                    if (index !in 0 until dimensions) throw IndexOutOfBoundsException(index)
+                    return if (formatVersion == LEGACY_FORMAT_VERSION) {
+                        mapped.getFloat(vectorStart + index * Float.SIZE_BYTES)
+                    } else {
+                        mapped.get(vectorStart + index).toFloat() * scale
+                    }
+                }
+            }
+            records += StoredVector(id, sourceHash, createdAt, values)
+        }
+        require(input.position() == payloadEnd) { "Vector snapshot payload contains trailing data." }
+        return VectorSnapshot(modelId, dimensions, records)
+    }
+
+    private fun readMappedUtf(input: ByteBuffer): String {
+        require(input.remaining() >= 2) { "Vector snapshot string is truncated." }
+        val length = input.short.toInt() and 0xffff
+        require(input.remaining() >= length) { "Vector snapshot string is truncated." }
+        val encoded = ByteArray(length + 2)
+        encoded[0] = (length ushr 8).toByte()
+        encoded[1] = length.toByte()
+        input.get(encoded, 2, length)
+        return java.io.DataInputStream(encoded.inputStream()).use { it.readUTF() }
     }
 
     fun decode(bytes: ByteArray): VectorSnapshot {

@@ -31,6 +31,23 @@ class VectorSnapshotCodecTest {
     }
 
     @Test
+    fun mappedDecodeUsesLazyVectorViewsAndPreservesValues() {
+        val original = VectorSnapshot(
+            modelId = "mapped-model",
+            dimensions = 3,
+            records = listOf(StoredVector("mapped-vector", HASH, 17L, listOf(0.25f, -0.5f, 1.0f))),
+        )
+        val encoded = VectorSnapshotCodec.encode(original)
+        val decoded = VectorSnapshotCodec.decodeMapped(java.nio.ByteBuffer.wrap(encoded))
+        assertEquals("mapped-model", decoded.modelId)
+        assertEquals(3, decoded.records.single().values.size)
+        assertTrue(decoded.records.single().values !is java.util.ArrayList<*>)
+        assertTrue(decoded.records.single().values.zip(listOf(0.25f, -0.5f, 1.0f)).all { (actual, expected) ->
+            kotlin.math.abs(actual - expected) <= 0.01f
+        })
+    }
+
+    @Test
     fun snapshotCodecPreservesLegacyRecordLimitForCompatibility() {
         assertEquals(100_000, VectorSnapshotCodec.MAX_RECORDS)
         assertEquals(50_000, MemoryTextCodec.MAX_RECORDS)

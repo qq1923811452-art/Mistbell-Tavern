@@ -6,6 +6,8 @@ import com.mistbell.tavern.v3.core.memory.VectorSnapshot
 import com.mistbell.tavern.v3.core.memory.VectorSnapshotCodec
 import java.io.File
 import java.io.IOException
+import java.nio.channels.FileChannel
+import java.nio.BufferUnderflowException
 
 fun interface VectorSnapshotLoader {
     fun load(expectedModelId: String, expectedDimensions: Int): VectorSnapshotLoadResult
@@ -71,10 +73,18 @@ class AtomicVectorSnapshotStore(
 
         val snapshot = try {
             atomicFile.openRead().use { input ->
-                VectorSnapshotCodec.decode(input.readBytes())
+                val channel = input.channel
+                val size = channel.size()
+                require(size in 1..VectorSnapshotCodec.MAX_SNAPSHOT_BYTES.toLong()) {
+                    "Vector snapshot size is invalid."
+                }
+                val mapped = channel.map(FileChannel.MapMode.READ_ONLY, 0L, size)
+                VectorSnapshotCodec.decodeMapped(mapped)
             }
         } catch (failure: IOException) {
             return VectorSnapshotLoadResult.Corrupt("Vector snapshot could not be read.")
+        } catch (failure: BufferUnderflowException) {
+            return VectorSnapshotLoadResult.Corrupt("Vector snapshot is truncated.")
         } catch (failure: IllegalArgumentException) {
             return VectorSnapshotLoadResult.Corrupt(
                 failure.message ?: "Vector snapshot failed validation.",
