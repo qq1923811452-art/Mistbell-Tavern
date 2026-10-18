@@ -164,22 +164,24 @@ fun ChatScreen(onBack: () -> Unit) {
         if (shouldClose) runCatching { engine.close() }
     }
 
+    fun snapshotHistory(): List<PersistedChatMessage> = history.map { line ->
+        PersistedChatMessage(
+            id = line.id,
+            role = line.role,
+            content = line.content,
+            createdAtEpochMillis = line.createdAtEpochMillis,
+            deliveryState = line.deliveryState,
+        )
+    }
+
     fun persistHistory() {
         val revision = historySaveRevision.incrementAndGet()
-        val snapshot = history.map { line ->
-            PersistedChatMessage(
-                id = line.id,
-                role = line.role,
-                content = line.content,
-                createdAtEpochMillis = line.createdAtEpochMillis,
-                deliveryState = line.deliveryState,
-            )
-        }
         coroutineScope.launch {
             historySaveMutex.withLock {
-                // A later UI mutation supersedes an older queued snapshot. Serialize writes and
-                // never let a delayed save replace the latest conversation state.
+                // Snapshot only after acquiring the shared lock so queued saves cannot write stale
+                // state over a newer history snapshot.
                 if (revision != historySaveRevision.get()) return@withLock
+                val snapshot = snapshotHistory()
                 runCatching {
                     withContext(Dispatchers.IO) { historyStore.save(snapshot) }
                 }.onFailure { error ->
@@ -331,21 +333,16 @@ fun ChatScreen(onBack: () -> Unit) {
                     createdAtEpochMillis = (System.currentTimeMillis().coerceAtLeast(0L) + batchIndex).coerceAtMost(Long.MAX_VALUE),
                 )
             }
-        val historySnapshot = history.map { line ->
-            PersistedChatMessage(
-                id = line.id,
-                role = line.role,
-                content = line.content,
-                createdAtEpochMillis = line.createdAtEpochMillis,
-                deliveryState = line.deliveryState,
-            )
-        }
         coroutineScope.launch {
             val queuedCount = runCatching {
+                // Share the exact same lock as ordinary history saves. The queue is written only
+                // after the latest source history snapshot has been committed.
+                historySaveMutex.withLock {
+                    historySaveRevision.incrementAndGet()
+                    val latestSnapshot = snapshotHistory()
+                    withContext(Dispatchers.IO) { historyStore.save(latestSnapshot) }
+                }
                 withContext(Dispatchers.IO) {
-                    // Commit source history first. A worker must never observe a queue job whose
-                    // source turn IDs refer to a newer, not-yet-persisted chat snapshot.
-                    historyStore.save(historySnapshot)
                     val repository = MemoryExtractionJobRepository(
                         MemoryExtractionJobStore(context.applicationContext),
                     )
