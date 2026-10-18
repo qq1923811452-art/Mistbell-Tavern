@@ -80,7 +80,7 @@ class VectorSnapshotCodecTest {
 
     @Test
     fun int8PersistenceReducesVectorPayloadByAtLeastSeventyPercent() {
-        val records = (0 until 1_000).map { index ->
+        val records = (0 until 10_000).map { index ->
             StoredVector(
                 id = "vector-$index",
                 sourceTextSha256 = HASH,
@@ -90,7 +90,7 @@ class VectorSnapshotCodecTest {
         }
         val encoded = VectorSnapshotCodec.encode(VectorSnapshot("model-int8", 768, records))
         val floatPayloadBytes = records.size.toLong() * 768L * 4L
-        assertTrue(encoded.size.toLong() < floatPayloadBytes * 0.30)
+        assertTrue("encoded=${encoded.size}; floatVectorBytes=$floatPayloadBytes", encoded.size.toLong() < floatPayloadBytes * 0.30)
     }
 
     @Test
