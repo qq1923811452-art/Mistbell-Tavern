@@ -160,7 +160,7 @@ jobs:
           truncated = False
           truncation_note = ""
 
-          def split_diff(text, max_chars=60000):
+          def split_diff(text, max_chars=100000):
               chunks = []
               current = []
               current_size = 0
@@ -189,17 +189,18 @@ jobs:
           # A PR-sized diff must never leave this job hanging for tens of minutes.
           # Stop when the time/call budget is exhausted and publish a partial report
           # instead of being killed by the job timeout with no comment at all.
-          audit_budget_seconds = int(os.environ.get("AI_AUDIT_BUDGET_SECONDS", "210"))
+          audit_budget_seconds = int(os.environ.get("AI_AUDIT_BUDGET_SECONDS", "220"))
           audit_deadline = time.monotonic() + audit_budget_seconds
-          max_model_calls = int(os.environ.get("AI_AUDIT_MAX_CALLS", "20"))
+          max_model_calls = int(os.environ.get("AI_AUDIT_MAX_CALLS", "12"))
           model_calls = 0
           unaudited_chunks = 0
 
           # Run bounded parallel audits to reduce wall-clock time while preserving coverage accounting.
           from concurrent.futures import ThreadPoolExecutor, as_completed
 
-          max_workers = max(1, min(int(os.environ.get("AI_AUDIT_CONCURRENCY", "4")), 4))
+          max_workers = max(1, min(int(os.environ.get("AI_AUDIT_CONCURRENCY", "3")), 4))
           failed_chunks = 0
+          retry_counts = {}
 
           def audit_one(diff_chunk, split_depth, chunk_index):
               prompt = f"""审查下面 GitHub Pull Request diff 的第 {chunk_index} 部分（自适应分块审计）。目标是发现真实、可复现且值得修复的问题，而不是挑风格。
@@ -252,7 +253,7 @@ jobs:
                   headers={"Authorization": "Bearer " + api_key, "Content-Type": "application/json"},
                   method="POST",
               )
-              with urllib.request.urlopen(request, timeout=30) as response:
+              with urllib.request.urlopen(request, timeout=45) as response:
                   response_body = response.read().decode("utf-8", errors="replace")
               relay_data = json.loads(response_body)
               choices = relay_data.get("choices") if isinstance(relay_data, dict) else None
@@ -303,7 +304,14 @@ jobs:
                           result = future.result()
                       except Exception as exc:
                           print(f"AI relay/response failed on segment {index}: {type(exc).__name__}")
-                          failed_chunks += 1
+                          retry_key = (len(chunk), chunk[:160])
+                          attempts = retry_counts.get(retry_key, 0)
+                          if attempts < 1 and time.monotonic() < audit_deadline and model_calls < max_model_calls:
+                              retry_counts[retry_key] = attempts + 1
+                              pending_chunks.insert(0, (chunk, depth))
+                              print(f"Queueing one retry for failed segment {index}.")
+                          else:
+                              failed_chunks += 1
                           continue
                       if result["status"] == "ok":
                           chunk_summaries.append(result["summary"])
