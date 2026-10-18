@@ -187,12 +187,26 @@ jobs:
           [[ "${#inventory_lines[@]}" -gt 0 ]] || { echo "Qualcomm runtime inventory is empty." >&2; exit 1; }
           for line in "${inventory_lines[@]}"; do
             read -r library size extra <<< "$line"
-            [[ -n "${library:-}" && "$library" =~ ^[A-Za-z0-9._+-]+\.so$ && "${size:-}" =~ ^[0-9]+$ && -z "${extra:-}" ]] || {
+            [[ -n "${library:-}" && "${size:-}" =~ ^[0-9]+$ && -z "${extra:-}" ]] || {
               echo "Malformed Qualcomm runtime inventory row." >&2
               exit 1
             }
-            grep -Fxq "lib/arm64-v8a/$library" build-artifacts/apk-entries.txt || {
-              echo "APK is missing staged runtime library: $library" >&2
+            if [[ "$library" =~ ^[A-Za-z0-9._+-]+\.so$ ]]; then
+              archive_path="lib/arm64-v8a/$library"
+            elif [[ "$library" =~ ^hexagon-v75/[A-Za-z0-9._+-]+\.so$ ]]; then
+              # Hexagon DSP skeletons are assets, not Android arm64 JNI libraries.
+              archive_path="assets/native-runtime/$library"
+            else
+              echo "Malformed Qualcomm runtime inventory path: $library" >&2
+              exit 1
+            fi
+            grep -Fxq "$archive_path" build-artifacts/apk-entries.txt || {
+              echo "APK is missing staged runtime payload: $archive_path" >&2
+              exit 1
+            }
+            actual_size="$(unzip -p "$apk" "$archive_path" | wc -c | tr -d '[:space:]')"
+            [[ "$actual_size" == "$size" ]] || {
+              echo "Packaged runtime size mismatch for $archive_path: expected $size, got $actual_size." >&2
               exit 1
             }
           done
