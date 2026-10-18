@@ -61,7 +61,7 @@ object MemoryExtractionJobCodec {
                 conversationId = item.getString("conversation"),
                 turnIds = (0 until turns.length()).map(turns::getString),
                 providerProfileId = item.getString("provider"),
-                credentialHandle = item.optString("credential_handle").takeIf(String::isNotBlank),
+                credentialHandle = if (item.isNull("credential_handle")) null else item.optString("credential_handle").takeIf(String::isNotBlank),
                 createdAtEpochMillis = item.getLong("created"),
                 attemptCount = item.getInt("attempts"),
                 nextAttemptAtEpochMillis = item.getLong("next_attempt"),
