@@ -492,18 +492,20 @@ jobs:
                       continue
                   if current_file is not None and raw_line[:1] in ("+", "-", " "):
                       diff_lines_by_file[current_file].append(raw_line[1:])
-              def evidence_matches(file_name, evidence):
+              def evidence_match_reason(file_name, evidence):
                   if not isinstance(file_name, str) or not file_name.strip():
-                      return False
+                      return "missing_file"
                   if not isinstance(evidence, str) or not evidence.strip():
-                      return False
+                      return "missing_evidence"
                   normalized_path = file_name.strip().strip("`")
                   if normalized_path.startswith(("./", "a/", "b/")):
                       normalized_path = normalized_path[2:] if normalized_path.startswith("./") else normalized_path[2:]
                   file_lines = diff_lines_by_file.get(normalized_path, [])
+                  if not file_lines:
+                      return "file_not_in_diff"
                   evidence_lines = evidence.strip().splitlines()
                   if not 1 <= len(evidence_lines) <= 6:
-                      return False
+                      return "invalid_line_count"
                   # Models sometimes mix diff-prefixed and plain source lines in one excerpt.
                   # Try the raw excerpt and a per-line marker-stripped variant; every candidate
                   # must still match contiguous lines from this exact file's submitted diff.
@@ -527,18 +529,22 @@ jobs:
                       normalized_candidate = normalize_snippet(candidate)
                       for index in range(len(file_lines) - width + 1):
                           if normalize_snippet(file_lines[index:index + width]) == normalized_candidate:
-                              return True
-                  return False
+                              return "matched"
+                  return "snippet_not_found"
               verified_findings = []
               rejected_evidence_count = 0
+              rejection_reasons = {}
               for finding in findings:
                   evidence = finding.get("evidence")
                   # Evidence must match complete source lines in the exact diff sent to the model.
-                  if evidence_matches(finding.get("file"), evidence):
+                  reason = evidence_match_reason(finding.get("file"), evidence)
+                  if reason == "matched":
                       finding["_verified_evidence"] = evidence.strip()
                       verified_findings.append(finding)
                   else:
                       rejected_evidence_count += 1
+                      rejection_reasons[reason] = rejection_reasons.get(reason, 0) + 1
+              print("Evidence rejection reasons:", json.dumps(rejection_reasons, sort_keys=True))
               report["findings"] = verified_findings[:20]
               report["findings_truncated"] = raw_findings_count > 20 or len(verified_findings) > 20
               report["unverified_findings_dropped"] = rejected_evidence_count
