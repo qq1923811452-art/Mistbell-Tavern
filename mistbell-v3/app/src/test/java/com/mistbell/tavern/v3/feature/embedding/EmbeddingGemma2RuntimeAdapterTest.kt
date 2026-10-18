@@ -170,15 +170,6 @@ class EmbeddingGemma2RuntimeAdapterTest {
     fun repeatedInputUsesCacheWithoutCallingEngineAgain(): Unit = runBlocking {
         EmbeddingVectorCache.clear()
         var calls = 0
-        val adapter = EmbeddingGemma2RuntimeAdapter(
-            engine = engine { inputs ->
-                calls++
-                EmbeddingBatch(
-                    vectors = inputs.map { List(EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS) { 0.5f } },
-                    status = rawStatus,
-                )
-            },
-        )
         val events = mutableListOf<String>()
         val loggedAdapter = EmbeddingGemma2RuntimeAdapter(
             engine = engine { inputs ->
