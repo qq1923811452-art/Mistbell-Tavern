@@ -645,13 +645,13 @@ jobs:
           COMMENT_ID="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" --jq ".[] | select(.user.login == \"github-actions[bot]\" and (.body | contains(\"${COMMENT_MARKER}\"))) | .id" | tail -n 1)"
           if [[ -n "$COMMENT_ID" ]]; then
             python3 - <<'PY'
-import json
-from pathlib import Path
-Path("/tmp/ai-pr-audit-comment.json").write_text(
-    json.dumps({"body": Path("/tmp/ai-pr-audit-report.md").read_text(encoding="utf-8")}),
-    encoding="utf-8",
-)
-PY
+          import json
+          from pathlib import Path
+          Path("/tmp/ai-pr-audit-comment.json").write_text(
+              json.dumps({"body": Path("/tmp/ai-pr-audit-report.md").read_text(encoding="utf-8")}),
+              encoding="utf-8",
+          )
+          PY
             gh api --method PATCH "repos/${GITHUB_REPOSITORY}/issues/comments/${COMMENT_ID}" --input /tmp/ai-pr-audit-comment.json
           else
             gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file /tmp/ai-pr-audit-report.md
