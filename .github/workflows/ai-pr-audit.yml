@@ -124,17 +124,23 @@ jobs:
           model = os.environ.get(f"ODYS_MODEL_{model_slot}", "").strip()
           key_source = f"ODYS_API_KEY_{model_slot}"
           api_key = os.environ.get(key_source, "").strip()
-          if model_slot == "B" and not api_key:
-              api_key = os.environ.get("ODYS_API_KEY_A", "").strip()
-              key_source = "ODYS_API_KEY (shared fallback)"
           base_source = f"ODYS_API_BASE_URL_{model_slot}"
-          api_base_url = os.environ.get(base_source, "").strip()
+          configured_base_url = os.environ.get(base_source, "").strip()
+          api_base_url = configured_base_url
           if not api_base_url:
               api_base_url = os.environ.get("ODYS_API_BASE_URL_A", "").strip()
               base_source = "ODYS_API_BASE_URL (shared fallback)" if api_base_url else "default relay URL"
           if not api_base_url:
               api_base_url = "https://api.odys.work/v1"
           api_base_url = api_base_url.rstrip("/")
+          if model_slot == "B" and not api_key:
+              # Never send Model A's key to a different provider endpoint.
+              base_a = os.environ.get("ODYS_API_BASE_URL_A", "").strip() or "https://api.odys.work/v1"
+              base_a = base_a.rstrip("/")
+              if configured_base_url and configured_base_url.rstrip("/") != base_a:
+                  raise SystemExit("Model B has a distinct API base URL but no ODYS_API_KEY_B; refusing to send Model A's key to another endpoint.")
+              api_key = os.environ.get("ODYS_API_KEY_A", "").strip()
+              key_source = "ODYS_API_KEY (shared fallback)"
           if not model or not api_key:
               raise SystemExit(f"Model {model_slot} is missing its model ID or API key.")
           print(f"Model slot {model_slot}; credential source: {key_source}; API base source: {base_source}.")
