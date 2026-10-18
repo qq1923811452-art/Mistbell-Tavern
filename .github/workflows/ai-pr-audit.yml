@@ -26,8 +26,7 @@ jobs:
   audit:
     name: Model ${{ matrix.model_slot }} · pass ${{ matrix.audit_pass }}
     runs-on: ubuntu-latest
-    # Model B is supplemental: it must never make the required Model A audit fail
-    # or occupy a runner for the full Model A timeout when the relay hangs.
+    # Model B is temporarily disabled by request. Model A's two independent passes are required.
     timeout-minutes: ${{ matrix.model_slot == 'B' && 8 || 20 }}
     continue-on-error: ${{ matrix.model_slot == 'B' }}
     strategy:
@@ -35,7 +34,7 @@ jobs:
       # Limit concurrent calls to the shared relay to reduce 429/rate-limit failures.
       max-parallel: 2
       matrix:
-        model_slot: [A, B]
+        model_slot: [A]
         audit_pass: [1, 2]
     # Fork PRs do not receive repository secrets. Do not run a secret-dependent
     # external-model request for them; maintainers can audit after reviewing the source.
@@ -85,7 +84,7 @@ jobs:
             exit 1
           fi
           [[ "$AUDIT_PASS" == "1" || "$AUDIT_PASS" == "2" ]] || { echo "::error::Unsupported audit pass: $AUDIT_PASS"; exit 1; }
-          echo "Validated model slot $MODEL_SLOT, audit pass $AUDIT_PASS. Both models and both passes are required independently."
+          echo "Validated model slot $MODEL_SLOT, audit pass $AUDIT_PASS. Model A pass 1 and pass 2 are required."
 
       - name: Fetch diff and run structured audit
         id: audit
