@@ -578,6 +578,7 @@ jobs:
               rejected_evidence_count = 0
               contradictory_findings_dropped = 0
               rejection_reasons = {}
+              rejection_diagnostics = []
               contradiction_markers = (
                   "未发现可证明的功能错误",
                   "没有可证明的功能错误",
@@ -598,6 +599,14 @@ jobs:
                   if reason != "matched":
                       rejected_evidence_count += 1
                       rejection_reasons[reason] = rejection_reasons.get(reason, 0) + 1
+                      # Log only a short, already-redacted evidence preview to diagnose why
+                      # the model quote did not match the submitted diff; never log full output.
+                      evidence_preview = re.sub(r"\s+", " ", str(evidence or "")).strip()[:120]
+                      rejection_diagnostics.append({
+                          "reason": reason,
+                          "file": str(finding.get("file") or "")[:160],
+                          "evidence_preview": evidence_preview,
+                      })
                       continue
                   # Enforce an explicit consistency guard when the model itself says the
                   # candidate is not a defect or should be withdrawn.
@@ -618,6 +627,7 @@ jobs:
                   finding["_verified_evidence"] = evidence.strip()
                   verified_findings.append(finding)
               print("Evidence rejection reasons:", json.dumps(rejection_reasons, sort_keys=True))
+              print("Rejected evidence diagnostics:", json.dumps(rejection_diagnostics, ensure_ascii=False, sort_keys=True))
               print("Verified findings:", len(verified_findings))
               print("Unverified findings dropped:", rejected_evidence_count)
               print("Self-contradictory findings dropped:", contradictory_findings_dropped)
