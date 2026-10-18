@@ -35,7 +35,7 @@ jobs:
       max-parallel: 2
       matrix:
         model_slot: [A]
-        audit_pass: [1, 2]
+        audit_pass: [1]
     # Fork PRs do not receive repository secrets. Do not run a secret-dependent
     # external-model request for them; maintainers can audit after reviewing the source.
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) || (github.event_name == 'push' && github.ref == 'refs/heads/codex/1-ai-audit-3.0')
@@ -89,7 +89,7 @@ jobs:
             echo "::error::Unknown model slot: $MODEL_SLOT"
             exit 1
           fi
-          [[ "$AUDIT_PASS" == "1" || "$AUDIT_PASS" == "2" ]] || { echo "::error::Unsupported audit pass: $AUDIT_PASS"; exit 1; }
+          [[ "$AUDIT_PASS" == "1" ]] || { echo "::error::Only one Model A audit pass is supported"; exit 1; }
           echo "Validated model slot $MODEL_SLOT, audit pass $AUDIT_PASS. Model A pass 1 and pass 2 are required."
 
       - name: Fetch diff and run structured audit
