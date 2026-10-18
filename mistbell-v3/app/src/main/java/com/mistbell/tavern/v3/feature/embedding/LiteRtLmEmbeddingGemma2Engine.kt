@@ -31,7 +31,7 @@ import kotlinx.coroutines.withContext
 class LiteRtLmEmbeddingGemma2Engine(
     context: Context,
     private val modelFile: File,
-    preferredBackends: List<InferenceBackend> = listOf(
+    private val preferredBackends: List<InferenceBackend> = listOf(
         InferenceBackend.NPU,
         InferenceBackend.GPU,
         InferenceBackend.CPU,
