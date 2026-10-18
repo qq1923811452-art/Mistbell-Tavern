@@ -90,7 +90,7 @@ jobs:
             exit 1
           fi
           [[ "$AUDIT_PASS" == "1" ]] || { echo "::error::Only one Model A audit pass is supported"; exit 1; }
-          echo "Validated model slot $MODEL_SLOT, audit pass $AUDIT_PASS. Model A pass 1 and pass 2 are required."
+          echo "Validated model slot $MODEL_SLOT, audit pass $AUDIT_PASS. Only one Model A audit pass is configured."
 
       - name: Fetch diff and run structured audit
         id: audit
@@ -129,7 +129,7 @@ jobs:
           if model_slot not in {"A", "B"}:
               raise SystemExit("MODEL_SLOT must be A or B.")
           if audit_pass not in {"1", "2"}:
-              raise SystemExit("AUDIT_PASS must be 1 or 2.")
+              raise SystemExit("AUDIT_PASS must be 1.")
           model = os.environ.get(f"ODYS_MODEL_{model_slot}", "").strip()
           key_source = f"ODYS_API_KEY_{model_slot}"
           api_key = os.environ.get(key_source, "").strip()
@@ -279,9 +279,9 @@ jobs:
           truncation_note = ""
 
           if audit_pass == "1":
-              pass_instructions = "第一轮审查：全面检查正确性、回归、安全、API 协议、资源生命周期、并发/取消、缓存、性能、数据库迁移和测试覆盖。优先给出可复现问题。"
+              pass_instructions = "单轮审查：全面检查正确性、回归、安全、API 协议、资源生命周期、并发/取消、缓存、性能、数据库迁移和测试覆盖。优先给出可复现问题，并在一次完整审查中同时覆盖常规路径与边界条件。"
           else:
-              pass_instructions = "第二轮独立复审：重新从头阅读完整 diff，重点寻找第一轮容易漏掉的边界条件、异常路径、并发竞态、数据丢失/迁移风险、权限与密钥泄露、测试缺口。不要为了与第一轮不同而编造问题；只报告证据充分的问题。此轮不读取第一轮报告，因此必须独立判断。"
+              pass_instructions = "单轮审查仅执行一次，不进行第二轮复审。"
 
           prompt = f"""审查下面的 GitHub Pull Request diff。目标是发现真实、可复现且值得修复的问题，而不是挑风格。
           审查类别：正确性/回归、API 协议与资源生命周期、安全与敏感信息、并发/取消、缓存一致性、性能、数据库迁移兼容性、测试遗漏。
@@ -577,7 +577,7 @@ jobs:
               summary = truncation_prefix + " " + summary
           lines = [
               f"<!-- ai-pr-audit-report-{model_slot}-pass-{audit_pass} -->",
-              f"## AI Pull Request Audit — Model {model_slot}, pass {audit_pass}/2",
+              f"## AI Pull Request Audit — Model {model_slot}, pass {audit_pass}/1",
               "",
               f"- **PR base ref SHA:** `{base_sha}`",
               f"- **Audited head SHA:** `{head_sha}`",
