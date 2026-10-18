@@ -253,8 +253,13 @@ jobs:
                   headers={"Authorization": "Bearer " + api_key, "Content-Type": "application/json"},
                   method="POST",
               )
-              with urllib.request.urlopen(request, timeout=45) as response:
-                  response_body = response.read().decode("utf-8", errors="replace")
+              try:
+                  with urllib.request.urlopen(request, timeout=45) as response:
+                      response_body = response.read().decode("utf-8", errors="replace")
+              except urllib.error.HTTPError as exc:
+                  # Report status only; never print request headers, credentials, or prompt content.
+                  print(f"AI relay returned HTTP {exc.code} ({exc.reason})")
+                  raise
               relay_data = json.loads(response_body)
               choices = relay_data.get("choices") if isinstance(relay_data, dict) else None
               if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
