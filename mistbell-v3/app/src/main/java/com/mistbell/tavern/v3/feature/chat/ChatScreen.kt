@@ -187,6 +187,7 @@ fun ChatScreen(onBack: () -> Unit) {
     var localWorldbookEntries by remember(context) {
         mutableStateOf<List<com.mistbell.tavern.v3.feature.worldbook.WorldBookEntry>>(emptyList())
     }
+    var worldbooksReady by remember { mutableStateOf(false) }
     val worldbookStateKey = "worldbook_activation_state_${activeMemoryRoleId}_${memoryConversationId}_${activeWorldbookId.ifBlank { "none" }}"
     val worldbookActivationState = remember(memoryScopeId, activeWorldbookId) {
         WorldBookActivationState().also { state ->
@@ -229,6 +230,7 @@ fun ChatScreen(onBack: () -> Unit) {
     }
 
     LaunchedEffect(context, activeWorldbookId) {
+        worldbooksReady = false
         val loadedWorldbookEntries = withContext(Dispatchers.IO) {
             runCatching {
                 val directory = File(context.filesDir, "worldbooks")
@@ -261,6 +263,7 @@ fun ChatScreen(onBack: () -> Unit) {
             )
             emptyList()
         }
+        worldbooksReady = true
     }
     val memoryExtractionInFlight = remember { mutableSetOf<String>() }
 
@@ -811,6 +814,10 @@ fun ChatScreen(onBack: () -> Unit) {
                     onClick = {
                         val userText = draft.trim()
                         if (userText.isEmpty() || busy) return@Button
+                        if (!worldbooksReady) {
+                            status = "世界书加载中，请稍后再发送。"
+                            return@Button
+                        }
                         if (modelId.isBlank()) {
                             status = "请先填写模型 ID。"
                             return@Button
@@ -1257,12 +1264,13 @@ fun ChatScreen(onBack: () -> Unit) {
                             }
                         }
                     },
-                    enabled = !busy && historyReady && !historyLoadFailed,
+                    enabled = !busy && historyReady && !historyLoadFailed && worldbooksReady,
                 ) {
                     Text(
                         when {
                             !historyReady -> "恢复记录中…"
                             historyLoadFailed -> "记录异常，请先新建会话"
+                            !worldbooksReady -> "加载世界书中…"
                             busy -> "生成中…"
                             else -> "发送消息"
                         },
