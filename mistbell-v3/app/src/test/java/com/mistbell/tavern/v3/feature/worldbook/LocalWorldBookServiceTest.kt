@@ -39,4 +39,37 @@ class LocalWorldBookServiceTest {
         assertEquals(false, service.matchingKeys(listOf("old"), corpus).isNotEmpty())
         assertEquals(true, service.matchingKeys(listOf("recent"), corpus).isNotEmpty())
     }
+
+    @Test fun selectiveKeywordsRecursiveActivationAndMutualExclusionWork() {
+        val service = LocalWorldBookService()
+        val selective = WorldBookEntry(
+            id = "selective", bookId = "book", keys = listOf("dragon"),
+            secondaryKeys = listOf("castle"), requireSecondaryMatch = true, content = "selective",
+        )
+        val recursive = WorldBookEntry(
+            id = "recursive", bookId = "book", keys = listOf("dragon"),
+            content = "a phoenix is mentioned", recursive = true,
+        )
+        val discovered = WorldBookEntry(
+            id = "discovered", bookId = "book", keys = listOf("phoenix"), content = "discovered",
+        )
+        val groupA = WorldBookEntry(
+            id = "group-a", bookId = "book", keys = listOf("dragon"),
+            content = "group a", groupName = "exclusive",
+        )
+        val groupB = WorldBookEntry(
+            id = "group-b", bookId = "book", keys = listOf("dragon"),
+            content = "group b", groupName = "exclusive",
+        )
+
+        val results = service.activateEntries(
+            listOf(selective, recursive, discovered, groupA, groupB),
+            scanText = "dragon beside a castle",
+        )
+        assertEquals(setOf("selective", "recursive", "discovered", "group-a"), results.map { it.entry.id }.toSet())
+        assertEquals(
+            emptyList<ActivatedWorldBookEntry>(),
+            service.activateEntries(listOf(selective), scanText = "dragon in the forest"),
+        )
+    }
 }
