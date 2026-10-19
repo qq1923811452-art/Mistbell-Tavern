@@ -191,7 +191,7 @@ fun ChatScreen(onBack: () -> Unit) {
                             WorldBookParser.parse(
                                 AtomicFile(file).openRead().use { it.readBytes().toString(Charsets.UTF_8) },
                                 file.nameWithoutExtension,
-                            ).entries
+                            )?.entries.orEmpty()
                         }.getOrElse { error ->
                             diagnosticStore.warn(
                                 "worldbook.file_skipped",
