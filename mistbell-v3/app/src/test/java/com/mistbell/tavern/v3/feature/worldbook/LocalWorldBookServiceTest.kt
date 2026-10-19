@@ -80,6 +80,45 @@ class LocalWorldBookServiceTest {
         assertEquals(listOf("delayed-two"), service.activateEntries(listOf(delayed), "unrelated", state = state).map { it.entry.id })
     }
 
+    @Test fun identicalEntryIdsFromDifferentBooksKeepIndependentActivationState() {
+        val service = LocalWorldBookService()
+        val state = WorldBookActivationState()
+        val firstBook = WorldBookEntry(
+            id = "shared-id", bookId = "book-a", keys = listOf("dragon"),
+            content = "first book", sticky = true,
+        )
+        val secondBook = WorldBookEntry(
+            id = "shared-id", bookId = "book-b", keys = listOf("dragon"),
+            content = "second book", sticky = true,
+        )
+
+        val firstTurn = service.activateEntries(listOf(firstBook, secondBook), "dragon", state = state)
+        assertEquals(setOf("book-a", "book-b"), firstTurn.map { it.entry.bookId }.toSet())
+        assertEquals(2, state.lastActivatedTurn.size)
+
+        val carried = service.activateEntries(listOf(firstBook, secondBook), "unrelated", state = state)
+        assertEquals(setOf("book-a", "book-b"), carried.map { it.entry.bookId }.toSet())
+    }
+
+    @Test fun removedOrDisabledEntriesDoNotKeepStaleActivationState() {
+        val service = LocalWorldBookService()
+        val state = WorldBookActivationState()
+        val delayed = WorldBookEntry(
+            id = "delayed", bookId = "book", keys = listOf("dragon"),
+            content = "delayed content", delay = 2,
+        )
+
+        assertEquals(emptyList<ActivatedWorldBookEntry>(), service.activateEntries(listOf(delayed), "dragon", state = state))
+        assertEquals(1, state.delayedUntilTurn.size)
+
+        service.activateEntries(emptyList(), "unrelated", state = state)
+        assertEquals(0, state.delayedUntilTurn.size)
+
+        // Reintroducing the same identity must schedule a fresh delay, not use stale state.
+        assertEquals(emptyList<ActivatedWorldBookEntry>(), service.activateEntries(listOf(delayed), "dragon", state = state))
+        assertEquals(1, state.delayedUntilTurn.size)
+    }
+
     @Test fun budgetReportHasNoDropsWhenEntriesFit() {
         val report = LocalWorldBookService().activateEntriesWithReport(
             listOf(entry("fits", listOf("key"), content = "ok")),
