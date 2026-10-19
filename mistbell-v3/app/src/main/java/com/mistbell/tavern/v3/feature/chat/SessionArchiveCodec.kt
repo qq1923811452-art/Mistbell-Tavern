@@ -54,8 +54,17 @@ object SessionArchiveCodec {
         if (trimmed.isEmpty()) return null
         // JSONL records also begin with '{'. Try each parser independently so a
         // whole-document JSON parse failure does not prevent valid JSONL fallback.
-        return runCatching { parseJson(trimmed) }.getOrNull()
-            ?: runCatching { parseJsonl(trimmed) }.getOrNull()
+        val parsedJson = runCatching { parseJson(trimmed) }.getOrNull()
+        if (parsedJson != null) return parsedJson
+
+        // Do not reinterpret a complete JSON session document with unsupported
+        // metadata as a JSONL message. Single-record JSONL remains supported.
+        val jsonRoot = runCatching { JSONObject(trimmed) }.getOrNull()
+        if (jsonRoot != null && (jsonRoot.has("format") || jsonRoot.has("version") ||
+                jsonRoot.has("messages"))) {
+            return null
+        }
+        return runCatching { parseJsonl(trimmed) }.getOrNull()
     }
 
     private fun parseJson(raw: String): SessionArchive? {
