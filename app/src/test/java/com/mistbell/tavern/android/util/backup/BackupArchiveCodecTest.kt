@@ -14,7 +14,8 @@ import java.util.zip.ZipOutputStream
 class BackupArchiveCodecTest {
     @Test
     fun roundTripsEntriesAndTimestamp() {
-        val source =\n            linkedMapOf(
+        val source =
+            linkedMapOf(
             "database/tavern.db" to byteArrayOf(0, 1, 2, 3),
             "characters/card.json" to """{"name":"Ariya"}""".toByteArray(StandardCharsets.UTF_8),
         )
@@ -61,7 +62,8 @@ class BackupArchiveCodecTest {
 
     @Test
     fun rejectsArchiveWithoutManifest() {
-        val bytes =\n            ByteArrayOutputStream().also { output ->
+        val bytes =
+            ByteArrayOutputStream().also { output ->
             ZipOutputStream(output).use { zip ->
                 zip.putNextEntry(ZipEntry("database/tavern.db"))
                 zip.write(byteArrayOf(1, 2, 3))
@@ -83,7 +85,8 @@ class BackupArchiveCodecTest {
     fun rejectsChecksumMismatch() {
         val path = "characters/card.json"
         val payload = """{"name":"Ariya"}""".toByteArray(StandardCharsets.UTF_8)
-        val encodedPath =\n            Base64.getUrlEncoder().withoutPadding()
+        val encodedPath =
+            Base64.getUrlEncoder().withoutPadding()
             .encodeToString(path.toByteArray(StandardCharsets.UTF_8))
         val manifest = "mistbell-backup\t1\t1\n$encodedPath\t${payload.size}\t${"0".repeat(64)}\n"
 
@@ -107,8 +110,8 @@ class BackupArchiveCodecTest {
     private fun zipArchive(
         manifest: String,
         entries: Map<String, ByteArray>,
-    ): ByteArray =
-        ByteArrayOutputStream().also { output ->
+    ): ByteArray {
+        return ByteArrayOutputStream().also { output ->
             ZipOutputStream(output).use { zip ->
                 zip.putNextEntry(ZipEntry("META-INF/mistbell-backup-manifest.tsv"))
                 zip.write(manifest.toByteArray(StandardCharsets.UTF_8))
@@ -120,6 +123,7 @@ class BackupArchiveCodecTest {
                 }
             }
         }.toByteArray()
+    }
 
     @Test
     fun rejectsEmptyInput() {
