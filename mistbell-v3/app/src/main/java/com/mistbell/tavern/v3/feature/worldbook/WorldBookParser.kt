@@ -63,7 +63,10 @@ object WorldBookParser {
         }
         WorldBookEntry(
             id = id, bookId = bookId, comment = value.optString("comment", ""),
-            keys = keys, secondaryKeys = secondaryKeys, content = value.optString("content", ""),
+            keys = keys, secondaryKeys = secondaryKeys,
+            requireSecondaryMatch = value.optBoolean("selective", false),
+            recursive = value.optBoolean("recursive", false),
+            content = value.optString("content", ""),
             constant = value.optBoolean("constant", false), disable = disable, order = order,
             insertPosition = position.first, depth = position.second, probability = probability,
             depthRole = role, sticky = value.optBoolean("sticky", false),
