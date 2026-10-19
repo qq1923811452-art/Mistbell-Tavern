@@ -23,10 +23,7 @@ class WorldBookLibraryStore(private val directory: File) {
                     // The library filename is the stable storage identity. This also repairs
                     // older files whose embedded id is absent or disagrees with the filename.
                     val fileId = file.nameWithoutExtension
-                    parsed.copy(
-                        id = fileId,
-                        entries = parsed.entries.map { it.copy(bookId = fileId) },
-                    )
+                    parsed.withLibraryFileId(fileId)
                 }.onFailure { error ->
                     Log.w("WorldBookLibrary", "Skipping invalid worldbook file ${file.name}", error)
                 }.getOrNull()
@@ -117,3 +114,9 @@ class WorldBookLibraryStore(private val directory: File) {
         private val ID_PATTERN = Regex("[a-fA-F0-9-]{36}")
     }
 }
+
+
+internal fun WorldBook.withLibraryFileId(fileId: String): WorldBook = copy(
+    id = fileId,
+    entries = entries.map { it.copy(bookId = fileId) },
+)
