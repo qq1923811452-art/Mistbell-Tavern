@@ -119,6 +119,23 @@ class LocalWorldBookServiceTest {
         assertEquals(1, state.delayedUntilTurn.size)
     }
 
+    @Test fun unambiguousLegacyActivationStateIsMigrated() {
+        val service = LocalWorldBookService()
+        val state = WorldBookActivationState()
+        state.turn = 1
+        state.lastActivatedTurn["legacy-id"] = 1
+        val entry = WorldBookEntry(
+            id = "legacy-id", bookId = "book", keys = listOf("dragon"),
+            content = "cooldown content", cooldown = 2,
+        )
+
+        assertEquals(
+            emptyList<ActivatedWorldBookEntry>(),
+            service.activateEntries(listOf(entry), "dragon", state = state),
+        )
+        assertEquals(setOf("4:booklegacy-id"), state.lastActivatedTurn.keys)
+    }
+
     @Test fun budgetReportHasNoDropsWhenEntriesFit() {
         val report = LocalWorldBookService().activateEntriesWithReport(
             listOf(entry("fits", listOf("key"), content = "ok")),
