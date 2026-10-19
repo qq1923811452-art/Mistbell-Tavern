@@ -40,7 +40,7 @@ object PromptAssembler {
             appendEntries("Worldbook before character", plan.beforePrompt)
             input.stableCharacterDefinition?.trim()?.takeIf(String::isNotEmpty)?.let(::add)
             input.earlierConversationSummary?.trim()?.takeIf(String::isNotEmpty)?.let {
-                add("Earlier conversation notes (extractive, not a full transcript):\\n$it")
+                add("Earlier conversation notes (extractive, not a full transcript):\n$it")
             }
             val legacyEntries = input.activatedWorldbookEntries.map(String::trim).filter(String::isNotEmpty)
             if (legacyEntries.isNotEmpty()) add("Activated worldbook entries:\n" + legacyEntries.joinToString("\n\n"))
