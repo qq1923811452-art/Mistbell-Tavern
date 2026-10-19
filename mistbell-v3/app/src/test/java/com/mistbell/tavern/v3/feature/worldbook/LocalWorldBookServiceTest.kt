@@ -83,6 +83,19 @@ class LocalWorldBookServiceTest {
         assertEquals(listOf("immediate-group"), results.map { it.entry.id })
     }
 
+    @Test fun pendingDelayCannotBeBypassedByRepeatedKeywordMatches() {
+        val service = LocalWorldBookService()
+        val state = WorldBookActivationState()
+        val delayed = WorldBookEntry(
+            id = "delayed-two", bookId = "book", keys = listOf("dragon"),
+            content = "wait", delay = 2,
+        )
+
+        assertEquals(emptyList<ActivatedWorldBookEntry>(), service.activateEntries(listOf(delayed), "dragon", state = state))
+        assertEquals(emptyList<ActivatedWorldBookEntry>(), service.activateEntries(listOf(delayed), "dragon", state = state))
+        assertEquals(listOf("delayed-two"), service.activateEntries(listOf(delayed), "dragon", state = state).map { it.entry.id })
+    }
+
     @Test fun historyScanDepthUsesOnlyMostRecentItems() {
         val service = LocalWorldBookService()
         val corpus = service.buildScanCorpus("current", listOf("old", "middle", "recent"), 2)
