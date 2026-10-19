@@ -324,7 +324,24 @@ fun ChatScreen(onBack: () -> Unit) {
         coroutineScope.launch(Dispatchers.IO) {
             val result = MemoryIndexRebuilder(
                 runtime = runtime,
-                saveSourceTexts = memoryTextStore::save,
+                saveSourceTexts = { rebuiltRecords ->
+                    // Do not let a long-running rebuild overwrite facts/manual memories added
+                    // after this rebuild took its input snapshot. The vector snapshot is committed
+                    // only while the durable source text still matches the records it indexed.
+                    when (val latest = memoryTextStore.load()) {
+                        MemoryTextLoadResult.Missing -> memoryTextStore.save(rebuiltRecords)
+                        is MemoryTextLoadResult.Corrupt -> error(
+                            "Source text changed or became unreadable during index rebuild.",
+                        )
+                        is MemoryTextLoadResult.Loaded -> {
+                            val current = latest.records.sortedBy { it.id }
+                            val candidate = rebuiltRecords.sortedBy { it.id }
+                            check(current == candidate) {
+                                "Source text changed during index rebuild."
+                            }
+                        }
+                    }
+                },
                 saveSnapshot = vectorSnapshotStore::save,
             ).rebuild(records)
             withContext(Dispatchers.Main) {
