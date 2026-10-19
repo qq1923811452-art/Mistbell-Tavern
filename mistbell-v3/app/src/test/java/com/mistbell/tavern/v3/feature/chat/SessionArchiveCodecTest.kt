@@ -45,6 +45,23 @@ class SessionArchiveCodecTest {
         assertEquals(original, jsonDecoded)
     }
 
+    @Test fun unsupportedJsonFormatAndVersionAreRejected() {
+        assertNull(SessionArchiveCodec.importAny(
+            """{"format":"some-other-app","version":1,"messages":[]}""",
+        ))
+        assertNull(SessionArchiveCodec.importAny(
+            """{"format":"mistbell-session","version":2,"messages":[]}""",
+        ))
+    }
+
+    @Test fun legacyJsonWithoutFormatMetadataRemainsSupported() {
+        val imported = SessionArchiveCodec.importAny(
+            """{"messages":[{"id":"legacy-1","role":"user","content":"legacy"}]}""",
+        )
+        assertNotNull(imported)
+        assertEquals("legacy", imported!!.messages.single().content)
+    }
+
     @Test fun malformedAndOversizedArchivesAreRejected() {
         assertNull(SessionArchiveCodec.importAny("not-json"))
         assertNull(SessionArchiveCodec.importAny("x".repeat(SessionArchiveCodec.MAX_IMPORT_BYTES + 1)))
