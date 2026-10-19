@@ -65,11 +65,11 @@ import com.mistbell.tavern.v3.feature.chat.ChatScreen
 private data class BuildStage(val title: String, val detail: String)
 
 private val initialStages = listOf(
-    BuildStage("聊天与 API 核心", "已建立独立流式聊天客户端与提示词组装基础；端到端集成仍需继续验证。"),
-    BuildStage("世界书与角色卡", "按 3.0 专属格式重新实现，并为旧格式编写独立导入器；尚未完成。"),
-    BuildStage("记忆与本地向量", "已建立事实历史、批处理策略和向量快照基础；数据库接入、召回与重建仍需继续。"),
-    BuildStage("本地推理与硬件状态", "已建立推理运行状态与 Embedding 输出校验契约；EmbeddingGemma 2 / LiteRT-LM 真机后端尚未验证。"),
-    BuildStage("生图、安全与备份", "独立生图 API、凭据隔离、事务式备份恢复仍待实现。"),
+    BuildStage("聊天与 API 核心", "独立流式聊天客户端、API 路由、Token 用量和提示词组装已接入；仍需收尾边界场景与端到端验收。"),
+    BuildStage("世界书与角色卡", "属于独立的 PR #60 范围；本 PR 不重复实现，需以 PR #60 的实际合并与验收状态为准。"),
+    BuildStage("记忆与本地向量", "已接入按角色/会话隔离的本地文本与向量存储、检索、时间事实同步及后台索引重建；仍需完成边界测试与规模性能验收。"),
+    BuildStage("本地推理与硬件状态", "EmbeddingGemma 2 / LiteRT-LM 接入、后端状态与 Qualcomm 运行时打包流程已建立；CI 打包成功不代表最新 APK 的 CPU/GPU/NPU 真机验收完成。"),
+    BuildStage("生图、安全与备份", "独立生图 API 客户端与本地图片存储/导出底层已实现；生图界面接入及完整备份/恢复流程仍需收尾。"),
 )
 
 class MainActivity : ComponentActivity() {
