@@ -34,7 +34,6 @@ class MemoryExtractionQueueWorker(
         return try {
             runner.recoverInterrupted()
             val credentialStore = AndroidKeystoreMemoryCredentialStore(applicationContext)
-            val historyStore = ChatHistoryStore(applicationContext)
             val inputFactory = MemoryExtractionBatchInputFactory()
             var processedJobs = 0
             while (!isStopped && processedJobs < MAX_JOBS_PER_RUN) {
@@ -57,6 +56,15 @@ class MemoryExtractionQueueWorker(
                             val baseUrl = preferences.getString("memory_api_base_url", null)
                                 ?.trim()?.takeIf(String::isNotEmpty)
                                 ?: error("Memory extraction endpoint is no longer configured.")
+                            // Extraction jobs are conversation-scoped. Read the same history file
+                            // that ChatScreen persists for this job instead of the legacy default file.
+                            val historyStore = ChatHistoryStore(
+                                applicationContext,
+                                MemoryScopeFileNames.forScope(
+                                    ChatHistoryStore.DEFAULT_FILE_NAME,
+                                    job.conversationId,
+                                ),
+                            )
                             val history = when (val loaded = historyStore.load()) {
                                 is ChatHistoryLoadResult.Loaded -> loaded.messages
                                 ChatHistoryLoadResult.Missing -> error("Persisted source chat history is missing.")
