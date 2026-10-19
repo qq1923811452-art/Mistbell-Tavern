@@ -952,13 +952,26 @@ fun ChatScreen(onBack: () -> Unit) {
                                 "reason=${error::class.java.simpleName}",
                             )
                         }
+                        // Enforce a final deterministic history bound after summary/window selection.
+                        // The latest user message is passed separately and is never removed by this budget.
+                        val budgetedHistory = PromptHistoryBudget.select(
+                            history = contextWindow.recentMessages,
+                            maxCharacters = 24_000,
+                            maxMessages = 80,
+                        )
+                        if (budgetedHistory.size < contextWindow.recentMessages.size) {
+                            diagnosticStore.info(
+                                "chat.history_budget",
+                                "before=${contextWindow.recentMessages.size}; after=${budgetedHistory.size}; maxCharacters=24000; maxMessages=80",
+                            )
+                        }
                         val messages = PromptAssembler.assemble(
                             PromptAssemblyInput(
                                 stableSystemPrefix = "你是 Mistbell Tavern 的聊天助手。请直接、清晰地回答用户。",
                                 stableCharacterDefinition = characterDefinition,
                                 earlierConversationSummary = contextWindow.earlierSummary,
                                 worldbookEntries = activatedWorldbook.map { it.entry },
-                                conversationHistory = contextWindow.recentMessages,
+                                conversationHistory = budgetedHistory,
                                 latestUserMessage = userText,
                             ),
                         )
