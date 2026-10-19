@@ -189,7 +189,7 @@ fun ChatScreen(onBack: () -> Unit) {
     }
     var worldbooksReady by remember { mutableStateOf(false) }
     val worldbookStateKey = "worldbook_activation_state_${activeMemoryRoleId}_${memoryConversationId}_${activeWorldbookId.ifBlank { "none" }}"
-    val worldbookActivationState = remember(memoryScopeId, activeWorldbookId) {
+    val worldbookActivationState = remember(memoryScopeId, activeMemoryRoleId, activeWorldbookId) {
         WorldBookActivationState().also { state ->
             runCatching {
                 val saved = settings.getString(worldbookStateKey, null) ?: return@runCatching
