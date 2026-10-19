@@ -34,6 +34,15 @@ class WorldBookParserTest {
         assertEquals(WorldBookPlacement.DEPTH_ROLE_ASSISTANT, entry.depthRole)
     }
 
+    @Test fun parsesStringProbabilityAsPercent() {
+        val book = WorldBookParser.parse(
+            """{"entries":[{"uid":6,"content":"probabilistic","key":"dragon","probability":"50"}]}""",
+            "probability-book",
+        )
+        assertNotNull(book)
+        assertEquals(0.5, book!!.entries.single().probability, 0.00001)
+    }
+
     @Test fun depthPlacementPreservesZeroAndDefaultsMissingDepthToZero() {
         val book = WorldBookParser.parse(
             """{"entries":[
