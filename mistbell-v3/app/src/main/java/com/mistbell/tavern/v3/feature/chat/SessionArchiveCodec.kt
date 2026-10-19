@@ -130,7 +130,7 @@ object SessionArchiveCodec {
         var hasSessionHeader = false
         raw.lineSequence().forEachIndexed { lineIndex, rawLine ->
             val line = rawLine.trim()
-            if (line.isEmpty()) return@forEach
+            if (line.isEmpty()) return@forEachIndexed
             require(line.length <= MAX_IMPORT_LINE_CHARS) { "JSONL line exceeds the import limit." }
             val item = runCatching { JSONObject(line) }.getOrElse {
                 throw IllegalArgumentException("第 ${lineIndex + 1} 行不是有效 JSON。")
@@ -142,7 +142,7 @@ object SessionArchiveCodec {
                     id = session.optString("id", id).ifBlank { id }
                     title = session.optString("title", session.optString("name", title)).ifBlank { title }
                 }
-                return@forEach
+                return@forEachIndexed
             }
             if (messages.size >= MAX_IMPORT_MESSAGES) throw IllegalArgumentException("Too many messages.")
             messages += parseMessage(item, messages.size)
