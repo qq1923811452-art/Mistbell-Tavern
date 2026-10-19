@@ -34,6 +34,9 @@ class GeneratedImageStore(
         require(prompt.isNotBlank()) { "Image prompt must not be blank." }
         val encoded = image.base64Data
             ?: throw IllegalArgumentException("Remote image URLs are not downloaded automatically.")
+        require(encoded.length <= MAX_ENCODED_IMAGE_CHARS) {
+            "Encoded image exceeds the configured storage limit."
+        }
         val bytes = try {
             Base64.getDecoder().decode(encoded)
         } catch (error: IllegalArgumentException) {
@@ -190,6 +193,7 @@ class GeneratedImageStore(
 
     companion object {
         const val MAX_IMAGE_BYTES = 8 * 1024 * 1024
+        private const val MAX_ENCODED_IMAGE_CHARS = ((MAX_IMAGE_BYTES + 2) / 3) * 4
         private val UUID_PATTERN = Regex("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
     }
 }
