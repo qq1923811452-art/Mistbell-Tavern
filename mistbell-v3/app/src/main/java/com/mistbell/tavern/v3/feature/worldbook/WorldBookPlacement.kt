@@ -35,7 +35,7 @@ object WorldBookPlacement {
             anBefore = anchored.filter { it.insertPosition == POSITION_AN_BEFORE },
             anAfter = anchored.filter { it.insertPosition == POSITION_AN_AFTER },
             byDepth = active.filter { it.insertPosition == POSITION_DEPTH || it.depth > 0 }
-                .groupBy { it.depth.coerceIn(0, 10) to normalizeDepthRole(it.depthRole) }
+                .groupBy { it.depth.coerceAtLeast(0) to normalizeDepthRole(it.depthRole) }
                 .toSortedMap(compareBy({ it.first }, { it.second })),
         )
     }
