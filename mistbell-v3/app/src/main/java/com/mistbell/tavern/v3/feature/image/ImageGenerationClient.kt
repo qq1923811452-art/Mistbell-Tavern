@@ -123,7 +123,7 @@ class ImageGenerationClient(
                 message = "Image API returned an empty response body.",
             )
             val text = try {
-                readBounded(body)
+                readBounded(body, request.count)
             } catch (error: ImageGenerationException) {
                 throw error
             } catch (error: IOException) {
@@ -149,6 +149,11 @@ class ImageGenerationClient(
                 val item = data.optJSONObject(index)
                     ?: throw ImageGenerationException(message = "Image API returned an invalid image item.")
                 val base64 = item.optString("b64_json", "").takeIf(String::isNotBlank)
+                if (base64 != null && base64.length > MAX_ENCODED_IMAGE_CHARS) {
+                    throw ImageGenerationException(
+                        message = "Image API returned image data exceeding the configured per-image size limit.",
+                    )
+                }
                 val rawUrl = item.optString("url", "").takeIf(String::isNotBlank)
                 val safeUrl = rawUrl?.let(::validateRemoteImageUrl)
                 if (base64 == null && safeUrl == null) {
@@ -187,16 +192,17 @@ class ImageGenerationClient(
         return uri.toASCIIString()
     }
 
-    private fun readBounded(body: okhttp3.ResponseBody): String {
+    private fun readBounded(body: okhttp3.ResponseBody, requestedCount: Int): String {
+        val maxResponseBytes = requestedCount * MAX_ENCODED_IMAGE_CHARS + MAX_RESPONSE_OVERHEAD_BYTES
         val source = body.source()
         val buffer = Buffer()
         var totalBytes = 0L
-        while (totalBytes <= MAX_RESPONSE_BYTES) {
-            val remaining = MAX_RESPONSE_BYTES + 1L - totalBytes
+        while (totalBytes <= maxResponseBytes) {
+            val remaining = maxResponseBytes + 1L - totalBytes
             val count = source.read(buffer, minOf(8192L, remaining))
             if (count == -1L) break
             totalBytes += count
-            if (totalBytes > MAX_RESPONSE_BYTES) {
+            if (totalBytes > maxResponseBytes) {
                 throw ImageGenerationException(message = "Image API response exceeds the configured size limit.")
             }
         }
@@ -204,7 +210,9 @@ class ImageGenerationClient(
     }
 
     companion object {
-        const val MAX_RESPONSE_BYTES = 10 * 1024 * 1024
+        private const val MAX_ENCODED_IMAGE_CHARS =
+            ((GeneratedImageStore.MAX_IMAGE_BYTES + 2) / 3) * 4
+        private const val MAX_RESPONSE_OVERHEAD_BYTES = 256 * 1024
         const val IMAGE_CALL_TIMEOUT_SECONDS = 180
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
         private val REDIRECT_CODES = setOf(300, 301, 302, 303, 307, 308)
