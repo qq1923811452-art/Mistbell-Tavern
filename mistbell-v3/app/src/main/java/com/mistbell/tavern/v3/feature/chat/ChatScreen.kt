@@ -212,6 +212,35 @@ fun ChatScreen(onBack: () -> Unit) {
     }
     val memoryExtractionInFlight = remember { mutableSetOf<String>() }
 
+    fun persistHistory() {
+        val revision = historySaveRevision.incrementAndGet()
+        val snapshot = history.map { line ->
+            PersistedChatMessage(
+                id = line.id,
+                role = line.role,
+                content = line.content,
+                createdAtEpochMillis = line.createdAtEpochMillis,
+                deliveryState = line.deliveryState,
+            )
+        }
+        coroutineScope.launch {
+            historySaveMutex.withLock {
+                // A later UI mutation supersedes an older queued snapshot. Serialize writes and
+                // never let a delayed save replace the latest conversation state.
+                if (revision != historySaveRevision.get()) return@withLock
+                runCatching {
+                    withContext(Dispatchers.IO) { historyStore.save(snapshot) }
+                }.onFailure { error ->
+                    diagnosticStore.warn(
+                        "chat.history.save_failed",
+                        "reason=${error::class.java.simpleName}",
+                    )
+                }
+            }
+        }
+    }
+
+
     val importSessionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) coroutineScope.launch {
             runCatching {
@@ -279,34 +308,6 @@ fun ChatScreen(onBack: () -> Unit) {
                 }
             }.onSuccess { status = "会话 JSONL 导出完成。" }
                 .onFailure { error -> status = "会话导出失败：${error.message ?: error::class.java.simpleName}" }
-        }
-    }
-
-    fun persistHistory() {
-        val revision = historySaveRevision.incrementAndGet()
-        val snapshot = history.map { line ->
-            PersistedChatMessage(
-                id = line.id,
-                role = line.role,
-                content = line.content,
-                createdAtEpochMillis = line.createdAtEpochMillis,
-                deliveryState = line.deliveryState,
-            )
-        }
-        coroutineScope.launch {
-            historySaveMutex.withLock {
-                // A later UI mutation supersedes an older queued snapshot. Serialize writes and
-                // never let a delayed save replace the latest conversation state.
-                if (revision != historySaveRevision.get()) return@withLock
-                runCatching {
-                    withContext(Dispatchers.IO) { historyStore.save(snapshot) }
-                }.onFailure { error ->
-                    diagnosticStore.warn(
-                        "chat.history.save_failed",
-                        "reason=${error::class.java.simpleName}",
-                    )
-                }
-            }
         }
     }
 
