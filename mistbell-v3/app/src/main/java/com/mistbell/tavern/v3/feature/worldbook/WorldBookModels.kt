@@ -13,6 +13,10 @@ data class WorldBookEntry(
     val comment: String = "",
     val keys: List<String> = emptyList(),
     val secondaryKeys: List<String> = emptyList(),
+    /** Require at least one secondary keyword when primary keys match (SillyTavern selective). */
+    val requireSecondaryMatch: Boolean = false,
+    /** Allow this entry's content to participate in bounded recursive activation. */
+    val recursive: Boolean = false,
     val content: String = "",
     val constant: Boolean = false,
     val disable: Boolean = false,
