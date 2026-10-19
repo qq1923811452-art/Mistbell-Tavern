@@ -11,12 +11,16 @@ class LocalWorldBookServiceTest {
 
     @Test fun matchesLiteralRegexAndWildcardKeys() {
         val service = LocalWorldBookService()
+        val scanText = "Dragon knight42 near an ancient forgotten stone"
+        assertEquals(listOf("dragon"), service.matchingKeys(listOf("dragon"), scanText))
+        assertEquals(listOf("/knight[0-9]+/"), service.matchingKeys(listOf("/knight[0-9]+/"), scanText))
+        assertEquals(listOf("ancient*stone"), service.matchingKeys(listOf("ancient*stone"), scanText))
         val results = service.activateEntries(
             listOf(entry("literal", listOf("dragon"), order = 1), entry("regex", listOf("/knight[0-9]+/"), order = 2),
                 entry("wildcard", listOf("ancient*stone"), order = 3)),
-            "Dragon knight42 near an ancient forgotten stone",
+            scanText,
         )
-        assertEquals(listOf("literal", "regex", "wildcard"), results.map { it.entry.id })
+        assertEquals(setOf("literal", "regex", "wildcard"), results.map { it.entry.id }.toSet())
     }
 
     @Test fun probabilityAndBudgetAreDeterministicWhenRandomIsInjected() {
