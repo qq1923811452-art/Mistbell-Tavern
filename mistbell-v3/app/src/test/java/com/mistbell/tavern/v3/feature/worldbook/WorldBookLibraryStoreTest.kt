@@ -8,6 +8,30 @@ import org.junit.Test
 
 class WorldBookLibraryStoreTest {
     @Test
+    fun ordinaryBeforePromptAtDepthZeroRemainsPositionZero() {
+        val book = WorldBook(
+            id = "11111111-1111-1111-1111-111111111111",
+            name = "Ordinary book",
+            entries = listOf(
+                WorldBookEntry(
+                    id = "ordinary",
+                    bookId = "11111111-1111-1111-1111-111111111111",
+                    content = "before prompt",
+                    insertPosition = WorldBookPlacement.POSITION_BEFORE_PROMPT,
+                    depth = 0,
+                ),
+            ),
+        )
+
+        val exported = WorldBookLibraryStore(File("unused")).export(book)
+        val entryJson = JSONObject(exported).getJSONObject("entries").getJSONObject("ordinary")
+        assertEquals(0, entryJson.getInt("position"))
+        val imported = WorldBookParser.parse(exported, "fallback")
+        assertNotNull(imported)
+        assertEquals(WorldBookPlacement.POSITION_BEFORE_PROMPT, imported!!.entries.single().insertPosition)
+    }
+
+    @Test
     fun depthZeroExportRoundTripsWithSillyTavernPositionFour() {
         val book = WorldBook(
             id = "11111111-1111-1111-1111-111111111111",
