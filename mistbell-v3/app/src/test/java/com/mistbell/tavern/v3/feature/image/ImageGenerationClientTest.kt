@@ -115,6 +115,55 @@ class ImageGenerationClientTest {
         }
     }
 
+
+    @Test
+    fun acceptsMaximumConfiguredInlineImagePayload() {
+        MockWebServer().use { server ->
+            val maxEncodedChars = ((GeneratedImageStore.MAX_IMAGE_BYTES + 2) / 3) * 4
+            server.enqueue(
+                MockResponse()
+                    .setHeader("Content-Type", "application/json")
+                    .setBody("""{"data":[{"b64_json":"${"A".repeat(maxEncodedChars)}"}]}"""),
+            )
+            server.start()
+            val client = ImageGenerationClient(
+                baseUrl = server.url("/v1").toString().trimEnd('/'),
+                apiKeyProvider = { "image-only-secret" },
+            )
+
+            val result = client.generate(
+                ImageGenerationRequest(prompt = "A lighthouse", model = "image-model"),
+            )
+
+            assertEquals(maxEncodedChars, result.images.single().base64Data!!.length)
+        }
+    }
+
+    @Test
+    fun rejectsInlineImagePayloadOneCharacterOverLimit() {
+        MockWebServer().use { server ->
+            val maxEncodedChars = ((GeneratedImageStore.MAX_IMAGE_BYTES + 2) / 3) * 4
+            server.enqueue(
+                MockResponse()
+                    .setHeader("Content-Type", "application/json")
+                    .setBody("""{"data":[{"b64_json":"${"A".repeat(maxEncodedChars + 1)}"}]}"""),
+            )
+            server.start()
+            val client = ImageGenerationClient(
+                baseUrl = server.url("/v1").toString().trimEnd('/'),
+                apiKeyProvider = { "image-only-secret" },
+            )
+
+            val error = assertThrows(ImageGenerationException::class.java) {
+                client.generate(
+                    ImageGenerationRequest(prompt = "A lighthouse", model = "image-model"),
+                )
+            }
+
+            assertTrue(error.message!!.contains("per-image size limit"))
+        }
+    }
+
     @Test
     fun requestRejectsBlankPromptsAndInvalidCounts() {
         assertThrows(IllegalArgumentException::class.java) {
