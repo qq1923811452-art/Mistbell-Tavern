@@ -1,22 +1,23 @@
 package com.mistbell.tavern.v3.feature.chat
 
-/** Selects the newest whole history messages that fit both configured limits. */
+/** Selects the newest contiguous whole history messages within the configured limits. */
 object PromptHistoryBudget {
     fun select(history: List<PromptMessage>, maxCharacters: Int, maxMessages: Int): List<PromptMessage> {
         require(maxCharacters >= 0) { "maxCharacters must be non-negative." }
         require(maxMessages >= 0) { "maxMessages must be non-negative." }
-        if (maxCharacters == 0 || maxMessages == 0) return emptyList()
+        if (maxMessages == 0 || history.isEmpty()) return emptyList()
+        if (maxCharacters == 0) return emptyList()
+
         val selectedNewestFirst = mutableListOf<PromptMessage>()
         var usedCharacters = 0
         for (message in history.asReversed()) {
             if (selectedNewestFirst.size >= maxMessages) break
             val size = message.content.length
             if (usedCharacters + size > maxCharacters) {
-                // Preserve the newest message even when it alone exceeds the budget.
-                // Do not skip it and include older messages, which would create a history gap.
-                if (selectedNewestFirst.isEmpty() && maxCharacters > 0) {
-                    selectedNewestFirst += message.copy(content = message.content.take(maxCharacters))
-                }
+                // Never truncate a message, especially a character's long-form reply. If the
+                // newest message alone exceeds the budget, keep it whole; otherwise stop before
+                // the first message that would break the contiguous newest-history window.
+                if (selectedNewestFirst.isEmpty()) selectedNewestFirst += message
                 break
             }
             selectedNewestFirst += message
