@@ -35,7 +35,7 @@ object BackupArchiveCodec {
         entries: Map<String, ByteArray>,
         createdAtEpochMs: Long,
     ): ByteArray {
-        require(entries.size <= MAX_ENTRIES) { "Too many backup entries" }
+        if (entries.size > MAX_ENTRIES) throw IOException("Too many backup entries")
         require(createdAtEpochMs >= 0) { "Invalid backup timestamp" }
 
         val sorted = entries.toSortedMap()
@@ -43,9 +43,9 @@ object BackupArchiveCodec {
         sorted.forEach { (path, bytes) ->
             validatePath(path)
             require(path != MANIFEST_PATH) { "Reserved backup path" }
-            require(bytes.size <= MAX_ENTRY_BYTES) { "Backup entry is too large: $path" }
+            if (bytes.size > MAX_ENTRY_BYTES) throw IOException("Backup entry is too large: $path")
             totalBytes += bytes.size
-            require(totalBytes <= MAX_TOTAL_UNCOMPRESSED_BYTES) { "Backup payload is too large" }
+            if (totalBytes > MAX_TOTAL_UNCOMPRESSED_BYTES) throw IOException("Backup payload is too large")
         }
 
         val manifest = buildString {
@@ -71,7 +71,7 @@ object BackupArchiveCodec {
             }
         }
         val result = output.toByteArray()
-        require(result.size <= MAX_ARCHIVE_BYTES) { "Backup archive is too large" }
+        if (result.size > MAX_ARCHIVE_BYTES) throw IOException("Backup archive is too large")
         return result
     }
 
