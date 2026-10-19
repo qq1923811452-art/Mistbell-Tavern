@@ -25,12 +25,13 @@ class LocalWorldBookServiceTest {
 
     @Test fun probabilityAndBudgetAreDeterministicWhenRandomIsInjected() {
         val service = LocalWorldBookService(randomDouble = { 0.8 })
-        val results = service.activateEntries(
+        val report = service.activateEntriesWithReport(
             listOf(entry("probability", listOf("key"), probability = 0.5),
                 entry("budget", listOf("key"), content = "123456")),
             "key", maxBudget = 5,
         )
-        assertEquals(emptyList<ActivatedWorldBookEntry>(), results)
+        assertEquals(emptyList<ActivatedWorldBookEntry>(), report.activatedEntries)
+        assertEquals(1, report.droppedByBudget)
     }
 
     @Test fun historyScanDepthUsesOnlyMostRecentItems() {
