@@ -11,7 +11,14 @@ object PromptHistoryBudget {
         for (message in history.asReversed()) {
             if (selectedNewestFirst.size >= maxMessages) break
             val size = message.content.length
-            if (usedCharacters + size > maxCharacters) break
+            if (usedCharacters + size > maxCharacters) {
+                // Preserve the newest message even when it alone exceeds the budget.
+                // Do not skip it and include older messages, which would create a history gap.
+                if (selectedNewestFirst.isEmpty() && maxCharacters > 0) {
+                    selectedNewestFirst += message.copy(content = message.content.take(maxCharacters))
+                }
+                break
+            }
             selectedNewestFirst += message
             usedCharacters += size
         }
