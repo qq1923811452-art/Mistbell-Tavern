@@ -44,6 +44,63 @@ class PromptAssemblerWorldBookTest {
         assertEquals(listOf("stable", "one", "injected", "two", "now"), messages.map { it.content })
     }
 
+    @Test fun depthInjectionUsesTheBudgetedRecentHistoryWindow() {
+        val budgetedHistory = PromptHistoryBudget.select(
+            history = listOf(
+                PromptMessage(PromptRole.USER, "old-turn"),
+                PromptMessage(PromptRole.ASSISTANT, "old-answer"),
+                PromptMessage(PromptRole.USER, "recent-turn"),
+                PromptMessage(PromptRole.ASSISTANT, "recent-answer"),
+            ),
+            maxCharacters = 24,
+            maxMessages = 2,
+        )
+        val messages = PromptAssembler.assemble(
+            PromptAssemblyInput(
+                stableSystemPrefix = "stable",
+                worldbookEntries = listOf(
+                    WorldBookEntry(
+                        id = "depth",
+                        bookId = "book",
+                        content = "depth-marker",
+                        depth = 1,
+                        depthRole = WorldBookPlacement.DEPTH_ROLE_ASSISTANT,
+                    ),
+                ),
+                conversationHistory = budgetedHistory,
+                latestUserMessage = "latest-user-marker",
+            ),
+        )
+
+        assertEquals(
+            listOf("stable", "recent-turn", "depth-marker", "recent-answer", "latest-user-marker"),
+            messages.map { it.content },
+        )
+    }
+
+    @Test fun historyBudgetDoesNotRemoveLatestUserMessageOrWorldbook() {
+        val budgetedHistory = PromptHistoryBudget.select(
+            history = listOf(
+                PromptMessage(PromptRole.USER, "older"),
+                PromptMessage(PromptRole.ASSISTANT, "newer"),
+            ),
+            maxCharacters = 5,
+            maxMessages = 2,
+        )
+        val messages = PromptAssembler.assemble(
+            PromptAssemblyInput(
+                stableSystemPrefix = "stable",
+                worldbookEntries = listOf(WorldBookEntry("lore", "book", content = "worldbook-marker")),
+                conversationHistory = budgetedHistory,
+                latestUserMessage = "current-user-marker",
+            ),
+        )
+
+        assertTrue(messages.first().content.contains("worldbook-marker"))
+        assertEquals("current-user-marker", messages.last().content)
+        assertEquals(PromptRole.USER, messages.last().role)
+    }
+
     @Test fun systemRoleDepthEntryDoesNotInsertSystemMessageMidConversation() {
         val messages = PromptAssembler.assemble(
             PromptAssemblyInput(
