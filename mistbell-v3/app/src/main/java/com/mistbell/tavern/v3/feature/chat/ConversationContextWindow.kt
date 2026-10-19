@@ -30,8 +30,7 @@ object ConversationContextWindowBuilder {
             "Conversation history may contain only user and assistant messages."
         }
 
-        val recentMessageCount = recentTurns * 2
-        val splitAt = (history.size - recentMessageCount).coerceAtLeast(0)
+        val splitAt = findRecentTurnBoundary(history, recentTurns)
         val older = history.take(splitAt)
         val recent = history.drop(splitAt)
         return ConversationContextWindow(
@@ -39,9 +38,36 @@ object ConversationContextWindowBuilder {
             recentMessages = PromptHistoryBudget.select(
                 recent,
                 maxCharacters = maxHistoryChars,
-                maxMessages = recentMessageCount,
+                maxMessages = recent.size,
             ),
         )
+    }
+
+    /**
+     * Treat a turn as a user message and all following messages up to the next user message.
+     * This avoids assuming every user turn has exactly one assistant response.
+     */
+    private fun findRecentTurnBoundary(history: List<PromptMessage>, recentTurns: Int): Int {
+        if (recentTurns == 0) return history.size
+        if (history.isEmpty()) return 0
+        var userTurnsSeen = 0
+        var boundary = -1
+        for (index in history.indices.reversed()) {
+            if (history[index].role == PromptRole.USER) {
+                userTurnsSeen += 1
+                if (userTurnsSeen == recentTurns) {
+                    boundary = index
+                    break
+                }
+            }
+        }
+        if (boundary < 0) boundary = 0
+        // Do not start the recent context with an orphaned assistant response when user turns
+        // are available; let it fall into the older extractive notes instead.
+        if (history.any { it.role == PromptRole.USER } && history[boundary].role == PromptRole.ASSISTANT) {
+            boundary = history.indexOfFirst { it.role == PromptRole.USER }.coerceAtLeast(0)
+        }
+        return boundary
     }
 
     private fun buildExtractiveSummary(history: List<PromptMessage>, maxChars: Int): String {
