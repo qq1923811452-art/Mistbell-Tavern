@@ -48,10 +48,26 @@ object PromptAssembler {
             appendEntries("Author note after", plan.anAfter)
             appendEntries("Example block before", plan.emBefore)
             appendEntries("Example block after", plan.emAfter)
+            val systemDepthSections = plan.byDepth.entries
+                .filter { it.key.second == WorldBookPlacement.DEPTH_ROLE_SYSTEM }
+                .sortedBy { it.key.first }
+                .flatMap { (key, entries) ->
+                    entries.mapNotNull { entry ->
+                        entry.content.trim().takeIf(String::isNotEmpty)?.let { "[depth ${key.first}] $it" }
+                    }
+                }
+            if (systemDepthSections.isNotEmpty()) {
+                add(
+                    "Worldbook depth entries (system role; kept in the system prefix for API compatibility):\n" +
+                        systemDepthSections.joinToString("\n\n"),
+                )
+            }
         }
         val result = mutableListOf(PromptMessage(PromptRole.SYSTEM, systemSections.joinToString("\n\n")))
         val history = input.conversationHistory
-        val insertionsByIndex = plan.byDepth.entries.mapNotNull { (key, entries) ->
+        val insertionsByIndex = plan.byDepth.entries
+            .filter { it.key.second != WorldBookPlacement.DEPTH_ROLE_SYSTEM }
+            .mapNotNull { (key, entries) ->
             val content = entries.map { it.content.trim() }.filter(String::isNotEmpty).joinToString("\n\n")
             if (content.isEmpty()) return@mapNotNull null
             val role = when (key.second) {
