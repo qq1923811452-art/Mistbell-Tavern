@@ -83,7 +83,8 @@ object BackupArchiveCodec {
 
         val rawEntries = LinkedHashMap<String, ByteArray>()
         var totalBytes = 0L
-        ZipInputStream(ByteArrayInputStream(bytes)).use { zip ->
+        try {
+            ZipInputStream(ByteArrayInputStream(bytes)).use { zip ->
             while (true) {
                 val entry = zip.nextEntry ?: break
                 val path = entry.name
@@ -115,6 +116,11 @@ object BackupArchiveCodec {
                 rawEntries[path] = buffer.toByteArray()
                 zip.closeEntry()
             }
+            }
+        } catch (error: IOException) {
+            throw error
+        } catch (error: RuntimeException) {
+            throw IOException("Malformed backup archive", error)
         }
 
         val manifest = rawEntries.remove(MANIFEST_PATH)
