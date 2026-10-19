@@ -52,6 +52,17 @@ class LocalWorldBookService(
         require(maxRecursiveDepth >= 0) { "maxRecursiveDepth must be non-negative" }
         val turn = state?.advanceTurn() ?: 0
         val ordered = entries.filterNot { it.disable }.sortedBy { it.order }
+        // Entry IDs are only unique within a worldbook. Include bookId in every
+        // activation-state key so merged standalone and character-card books cannot collide.
+        fun entryKey(entry: WorldBookEntry): String = "${entry.bookId.length}:${entry.bookId}${entry.id}"
+        fun groupKey(entry: WorldBookEntry): String = "${entry.bookId.length}:${entry.bookId}${entry.groupName}"
+        val activeEntryKeys = ordered.map(::entryKey).toSet()
+        if (state != null) {
+            // Removed or disabled entries must not leave stale sticky/delay/cooldown state.
+            state.lastActivatedTurn.keys.retainAll(activeEntryKeys)
+            state.stickyUntilTurn.keys.retainAll(activeEntryKeys)
+            state.delayedUntilTurn.keys.retainAll(activeEntryKeys)
+        }
         var corpus = buildScanCorpus(scanText, recentTexts, maxDepth)
         val activated = linkedMapOf<String, ActivatedWorldBookEntry>()
         val activatedGroups = mutableSetOf<String>()
@@ -59,43 +70,46 @@ class LocalWorldBookService(
         var usedBudget = 0
 
         fun activate(entry: WorldBookEntry, matched: List<String>, carriedSticky: Boolean = false): Boolean {
-            if (entry.id in activated) return false
-            if (entry.groupName.isNotBlank() && entry.groupName in activatedGroups) return false
+            val key = entryKey(entry)
+            if (key in activated) return false
+            val group = entry.groupName.takeIf(String::isNotBlank)?.let { groupKey(entry) }
+            if (group != null && group in activatedGroups) return false
             if (!carriedSticky && !entry.constant && !passesProbability(entry.probability)) return false
             val size = entry.content.length
             if (usedBudget + size > maxBudget) {
-                droppedByBudgetIds += entry.id
+                droppedByBudgetIds += key
                 return false
             }
-            activated[entry.id] = ActivatedWorldBookEntry(entry, matched)
+            activated[key] = ActivatedWorldBookEntry(entry, matched)
             usedBudget += size
-            if (entry.groupName.isNotBlank()) activatedGroups += entry.groupName
+            if (group != null) activatedGroups += group
             if (state != null && !carriedSticky) {
-                state.lastActivatedTurn[entry.id] = turn
-                state.delayedUntilTurn.remove(entry.id)
-                if (entry.sticky) state.stickyUntilTurn[entry.id] = turn + 1
+                state.lastActivatedTurn[key] = turn
+                state.delayedUntilTurn.remove(key)
+                if (entry.sticky) state.stickyUntilTurn[key] = turn + 1
             }
             return true
         }
 
         // Constant entries are included regardless of keywords, matching the original PR #60 policy.
         ordered.filter { it.constant }.forEach { activate(it, emptyList()) }
-        corpus += ordered.filter { it.constant && it.recursive && it.id in activated }
+        corpus += ordered.filter { it.constant && it.recursive && entryKey(it) in activated }
             .joinToString(separator = "\n") { it.content }
 
         var recursiveDepth = 0
         while (true) {
             val candidates = ordered.filter { entry ->
-                if (entry.id in activated) return@filter false
-                val stickyUntil = state?.stickyUntilTurn?.get(entry.id) ?: Int.MIN_VALUE
-                val lastActivated = state?.lastActivatedTurn?.get(entry.id) ?: Int.MIN_VALUE
+                val key = entryKey(entry)
+                if (key in activated) return@filter false
+                val stickyUntil = state?.stickyUntilTurn?.get(key) ?: Int.MIN_VALUE
+                val lastActivated = state?.lastActivatedTurn?.get(key) ?: Int.MIN_VALUE
                 val carriedSticky = entry.sticky && turn > lastActivated && turn <= stickyUntil
-                val delayedDue = (state?.delayedUntilTurn?.get(entry.id) ?: Int.MAX_VALUE) <= turn
+                val delayedDue = (state?.delayedUntilTurn?.get(key) ?: Int.MAX_VALUE) <= turn
                 val primaryMatch = entry.keys.isNotEmpty() && matchingKeys(entry.keys, corpus).isNotEmpty()
                 val secondaryMatch = !entry.requireSecondaryMatch ||
                     (entry.secondaryKeys.isNotEmpty() && matchingKeys(entry.secondaryKeys, corpus).isNotEmpty())
                 val matchesNow = primaryMatch && secondaryMatch
-                val delayPending = (state?.delayedUntilTurn?.get(entry.id) ?: Int.MIN_VALUE) > turn
+                val delayPending = (state?.delayedUntilTurn?.get(key) ?: Int.MIN_VALUE) > turn
                 (carriedSticky || delayedDue || (matchesNow && !delayPending)) &&
                     (carriedSticky || delayedDue || entry.constant ||
                         lastActivated == Int.MIN_VALUE || turn - lastActivated > entry.cooldown)
@@ -105,18 +119,20 @@ class LocalWorldBookService(
             val newlyActivated = mutableListOf<WorldBookEntry>()
             val groupsSeenThisPass = mutableSetOf<String>()
             for (entry in candidates) {
-                if (entry.groupName.isNotBlank() &&
-                    (entry.groupName in activatedGroups || !groupsSeenThisPass.add(entry.groupName))) {
+                val group = entry.groupName.takeIf(String::isNotBlank)?.let { groupKey(entry) }
+                if (group != null &&
+                    (group in activatedGroups || !groupsSeenThisPass.add(group))) {
                     continue
                 }
-                val lastActivated = state?.lastActivatedTurn?.get(entry.id) ?: Int.MIN_VALUE
+                val key = entryKey(entry)
+                val lastActivated = state?.lastActivatedTurn?.get(key) ?: Int.MIN_VALUE
                 val carriedSticky = entry.sticky && turn > lastActivated &&
-                    turn <= (state?.stickyUntilTurn?.get(entry.id) ?: Int.MIN_VALUE)
-                val delayedDue = (state?.delayedUntilTurn?.get(entry.id) ?: Int.MAX_VALUE) <= turn
+                    turn <= (state?.stickyUntilTurn?.get(key) ?: Int.MIN_VALUE)
+                val delayedDue = (state?.delayedUntilTurn?.get(key) ?: Int.MAX_VALUE) <= turn
                 val matched = matchingKeys(entry.keys, corpus)
                 if (!carriedSticky && !delayedDue && !entry.constant && entry.delay > 0 &&
-                    state != null && entry.id !in state.delayedUntilTurn) {
-                    state.delayedUntilTurn[entry.id] = turn + entry.delay
+                    state != null && key !in state.delayedUntilTurn) {
+                    state.delayedUntilTurn[key] = turn + entry.delay
                     continue
                 }
                 if (activate(entry, matched, carriedSticky)) newlyActivated += entry
