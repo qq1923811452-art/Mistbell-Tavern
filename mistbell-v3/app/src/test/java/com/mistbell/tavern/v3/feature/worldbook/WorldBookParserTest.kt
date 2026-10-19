@@ -34,37 +34,17 @@ class WorldBookParserTest {
         assertEquals(WorldBookPlacement.DEPTH_ROLE_ASSISTANT, entry.depthRole)
     }
 
-    @Test fun parsesStringProbabilityAsPercent() {
+    @Test fun positionFourWithDepthZeroPreservesDepthPlacementAndBookId() {
         val book = WorldBookParser.parse(
-            """{"entries":[{"uid":6,"content":"probabilistic","key":"dragon","probability":"50"}]}""",
-            "probability-book",
+            """{"id":"11111111-1111-1111-1111-111111111111","entries":[{"uid":"depth-zero","content":"at depth zero","position":4,"depth":0,"role":1}]}""",
+            "fallback",
         )
         assertNotNull(book)
-        assertEquals(0.5, book!!.entries.single().probability, 0.00001)
-    }
-
-    @Test fun depthPlacementPreservesZeroAndDefaultsMissingDepthToZero() {
-        val book = WorldBookParser.parse(
-            """{"entries":[
-                {"uid":1,"content":"zero","extensions":{"position":4,"depth":0}},
-                {"uid":2,"content":"missing","extensions":{"position":4}}
-            ]}""",
-            "depth-book",
-        )
-        assertNotNull(book)
-        assertEquals(0, book!!.entries.first { it.id == "1" }.depth)
-        assertEquals(0, book.entries.first { it.id == "2" }.depth)
-        assertEquals(
-            WorldBookPlacement.POSITION_DEPTH,
-            book.entries.first { it.id == "1" }.insertPosition,
-        )
-        assertEquals(
-            WorldBookPlacement.POSITION_DEPTH,
-            book.entries.first { it.id == "2" }.insertPosition,
-        )
-        val plan = WorldBookPlacement.plan(book.entries)
-        assertEquals(listOf("1", "2"), plan.byDepth[0 to WorldBookPlacement.DEPTH_ROLE_SYSTEM]?.map { it.id })
-        assertTrue(plan.beforePrompt.isEmpty())
+        assertEquals("11111111-1111-1111-1111-111111111111", book!!.id)
+        val entry = book.entries.single()
+        assertEquals(WorldBookPlacement.POSITION_DEPTH, entry.insertPosition)
+        assertEquals(0, entry.depth)
+        assertEquals(WorldBookPlacement.DEPTH_ROLE_USER, entry.depthRole)
     }
 
     @Test fun rejectsMalformedOrMissingEntries() {

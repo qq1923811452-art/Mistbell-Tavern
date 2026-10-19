@@ -61,6 +61,8 @@ import com.mistbell.tavern.v3.core.inference.InferenceBackend
 import com.mistbell.tavern.v3.core.inference.InferencePhase
 import com.mistbell.tavern.v3.core.inference.InferenceRuntimeStatus
 import com.mistbell.tavern.v3.feature.chat.ChatScreen
+import com.mistbell.tavern.v3.feature.character.CharacterCardLibraryScreen
+import com.mistbell.tavern.v3.feature.worldbook.WorldBookLibraryScreen
 import com.mistbell.tavern.v3.feature.image.ImageGenerationScreen
 
 private data class BuildStage(val title: String, val detail: String)
@@ -81,6 +83,8 @@ class MainActivity : ComponentActivity() {
     private var operationBusy by mutableStateOf(false)
     private var showChat by mutableStateOf(true)
     private var showImageGeneration by mutableStateOf(false)
+    private var showCharacterLibrary by mutableStateOf(false)
+    private var showWorldBookLibrary by mutableStateOf(false)
     private val embeddingDimensionOptions = listOf(128, 256, 512, 768, 1024, 1536, 2048)
     private var selectedEmbeddingDimensions by mutableStateOf(768)
     private var qualcommModelSelected by mutableStateOf(false)
@@ -248,7 +252,11 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background,
                 ) {
-                    if (showImageGeneration) {
+                    if (showWorldBookLibrary) {
+                        WorldBookLibraryScreen(onBack = { showWorldBookLibrary = false })
+                    } else if (showCharacterLibrary) {
+                        CharacterCardLibraryScreen(onBack = { showCharacterLibrary = false })
+                    } else if (showImageGeneration) {
                         ImageGenerationScreen(onBack = { showImageGeneration = false })
                     } else if (showChat) {
                         ChatScreen(onBack = { showChat = false })
@@ -259,6 +267,8 @@ class MainActivity : ComponentActivity() {
                             operationBusy = operationBusy,
                             onOpenChat = { showChat = true },
                             onOpenImageGeneration = { showImageGeneration = true },
+                            onOpenCharacterLibrary = { showCharacterLibrary = true },
+                            onOpenWorldBookLibrary = { showWorldBookLibrary = true },
                             onDownloadModel = ::downloadEmbeddingModel,
                             onImportModel = { importModel.launch(arrayOf("*/*")) },
                             qualcommModelSelected = qualcommModelSelected,
@@ -671,6 +681,8 @@ private fun DevelopmentHome(
     operationBusy: Boolean,
     onOpenChat: () -> Unit,
     onOpenImageGeneration: () -> Unit,
+    onOpenCharacterLibrary: () -> Unit,
+    onOpenWorldBookLibrary: () -> Unit,
     onDownloadModel: () -> Unit,
     onImportModel: () -> Unit,
     qualcommModelSelected: Boolean,
@@ -705,10 +717,10 @@ private fun DevelopmentHome(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item {
-                Text("从零构建，不复用旧应用实现", style = MaterialTheme.typography.headlineSmall)
+                Text("复用 2.9 成熟交互，重接 3.0 数据层", style = MaterialTheme.typography.headlineSmall)
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    text = "这是独立的 3.0 工程。状态只反映已实现与已验证的内容，不把计划或依赖安装视为功能完成。",
+                    text = "沿用 2.9 已验证的界面交互模式，逐步接入 3.0 独立存储与业务逻辑。状态只反映已实现与已验证的内容，不把计划或依赖安装视为功能完成。",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -736,6 +748,32 @@ private fun DevelopmentHome(
                         Spacer(Modifier.height(10.dp))
                         Button(onClick = onOpenImageGeneration, modifier = Modifier.fillMaxWidth()) {
                             Text("进入图片生成与导出")
+                        }
+                    }
+                }
+            }
+            item {
+                Card(modifier = Modifier.fillMaxWidth().animateContentSize(animationSpec = tween(durationMillis = 240, easing = FastOutSlowInEasing))) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text("角色卡管理", style = MaterialTheme.typography.titleMedium)
+                        Spacer(Modifier.height(6.dp))
+                        Text("从本机角色库新建、编辑、删除角色卡；支持导入和导出 SillyTavern JSON。PNG/CHARX 容器导入及聊天会话绑定将在后续接线。", style = MaterialTheme.typography.bodyMedium)
+                        Spacer(Modifier.height(10.dp))
+                        Button(onClick = onOpenCharacterLibrary, modifier = Modifier.fillMaxWidth()) {
+                            Text("进入角色管理")
+                        }
+                    }
+                }
+            }
+            item {
+                Card(modifier = Modifier.fillMaxWidth().animateContentSize(animationSpec = tween(durationMillis = 240, easing = FastOutSlowInEasing))) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text("世界书管理", style = MaterialTheme.typography.titleMedium)
+                        Spacer(Modifier.height(6.dp))
+                        Text("复用 2.9 的世界书列表和条目管理交互，支持本地保存、启停、编辑及 World Info JSON 导入导出。", style = MaterialTheme.typography.bodyMedium)
+                        Spacer(Modifier.height(10.dp))
+                        Button(onClick = onOpenWorldBookLibrary, modifier = Modifier.fillMaxWidth()) {
+                            Text("进入世界书管理")
                         }
                     }
                 }
