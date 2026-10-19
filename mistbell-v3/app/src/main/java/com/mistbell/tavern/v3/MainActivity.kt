@@ -70,7 +70,7 @@ private val initialStages = listOf(
     BuildStage("世界书与角色卡", "属于独立的 PR #60 范围；本 PR 不重复实现，需以 PR #60 的实际合并与验收状态为准。"),
     BuildStage("记忆与本地向量", "已接入按角色/会话隔离的本地文本与向量存储、检索、时间事实同步及后台索引重建；仍需完成边界测试与规模性能验收。"),
     BuildStage("本地推理与硬件状态", "EmbeddingGemma 2 / LiteRT-LM 接入、后端状态与 Qualcomm 运行时打包流程已建立；CI 打包成功不代表最新 APK 的 CPU/GPU/NPU 真机验收完成。"),
-    BuildStage("生图、安全与备份", "独立生图 API 客户端与本地图片存储/导出底层已实现；生图界面接入及完整备份/恢复流程仍需收尾。"),
+    BuildStage("生图、安全与备份", "独立生图 API、独立密钥输入、远程图片显式下载、本地图片库及导出已接入；完整事务式备份/恢复流程仍需收尾。"),
 )
 
 class MainActivity : ComponentActivity() {
