@@ -174,6 +174,26 @@ fun ChatScreen(onBack: () -> Unit) {
     val historySaveMutex = remember { Mutex() }
     val historySaveRevision = remember { java.util.concurrent.atomic.AtomicLong(0L) }
     val diagnosticStore = remember(context) { DiagnosticLogStore(context.applicationContext.filesDir) }
+    var localWorldbookEntries by remember(context) {
+        mutableStateOf<List<com.mistbell.tavern.v3.feature.worldbook.WorldBookEntry>>(emptyList())
+    }
+
+    LaunchedEffect(context) {
+        val loadedWorldbookEntries = withContext(Dispatchers.IO) {
+            runCatching {
+                WorldBookLibraryStore(File(context.filesDir, "worldbooks"))
+                    .list()
+                    .flatMap { book -> book.entries }
+            }
+        }
+        localWorldbookEntries = loadedWorldbookEntries.getOrElse { error ->
+            diagnosticStore.warn(
+                "worldbook.load_failed",
+                "reason=${error::class.java.simpleName}",
+            )
+            emptyList()
+        }
+    }
     val memoryExtractionInFlight = remember { mutableSetOf<String>() }
 
     fun persistHistory() {
@@ -771,22 +791,10 @@ fun ChatScreen(onBack: () -> Unit) {
                             }
                         }
                         val contextWindow = ConversationContextWindowBuilder.build(completeHistory)
-                        // Load only the active local worldbook library and activate entries against
+                        // Activate entries from the asynchronously loaded local library against
                         // the current turn plus a bounded tail of recent conversation.
-                        val worldbookEntries = withContext(Dispatchers.IO) {
-                            runCatching {
-                                WorldBookLibraryStore(File(context.filesDir, "worldbooks"))
-                                    .list()
-                                    .flatMap { book -> book.entries }
-                            }.onFailure { error ->
-                                diagnosticStore.warn(
-                                    "worldbook.load_failed",
-                                    "reason=${error::class.java.simpleName}",
-                                )
-                            }.getOrDefault(emptyList())
-                        }
                         val activatedWorldbook = LocalWorldBookService().activateEntries(
-                            entries = worldbookEntries,
+                            entries = localWorldbookEntries,
                             scanText = userText,
                             recentTexts = completeHistory.takeLast(6).map { it.content },
                             maxBudget = LocalWorldBookService.DEFAULT_MAX_BUDGET,
