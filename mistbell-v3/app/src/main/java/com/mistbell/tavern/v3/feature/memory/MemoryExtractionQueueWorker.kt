@@ -113,13 +113,9 @@ class MemoryExtractionQueueWorker(
                                         complete(MemoryExtractionQueueRunner.ExecutionResult.Success)
                                     is TemporalFactPipelineOutcome.Failed ->
                                         complete(
-                                            MemoryExtractionQueueRunner.ExecutionResult.Failure(
-                                                safeCategory = when {
-                                                    outcome.safeMessage.contains("timed out", ignoreCase = true) -> "timeout"
-                                                    outcome.safeMessage.contains("HTTP 429", ignoreCase = true) -> "rate_limit"
-                                                    outcome.safeMessage.contains("HTTP 5", ignoreCase = true) -> "server"
-                                                    else -> "network"
-                                                },
+                                            MemoryExtractionFailurePolicy.classify(
+                                                safeMessage = outcome.safeMessage,
+                                                httpStatus = outcome.httpStatus,
                                             ),
                                         )
                                 }
