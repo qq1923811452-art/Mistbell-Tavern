@@ -136,8 +136,8 @@ class GeneratedImageStore(
         if (metadata == null || metadata.id != id) return false
         val imageFile = File(directory, imageFileName(id, metadata.mimeType))
         val imageDeleted = !imageFile.exists() || imageFile.delete()
-        val metadataDeleted = !metadataFile.exists() || metadataFile.delete()
-        return imageDeleted && metadataDeleted
+        if (!imageDeleted) return false
+        return !metadataFile.exists() || metadataFile.delete()
     }
 
     private fun readMetadata(file: File): StoredGeneratedImage {
