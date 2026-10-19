@@ -48,7 +48,11 @@ object WorldBookParser {
             stringPosition == "after_char" -> WorldBookPlacement.POSITION_AFTER_PROMPT to 0
             else -> WorldBookPlacement.POSITION_BEFORE_PROMPT to 0
         }
-        val rawProbability = (rawField("probability") as? Number)?.toDouble()
+        val rawProbability = when (val raw = rawField("probability")) {
+            is Number -> raw.toDouble()
+            is String -> raw.trim().toDoubleOrNull()
+            else -> null
+        }
         val useProbability = rawField("useProbability") as? Boolean
         val probability = when {
             useProbability == false -> 1.0
@@ -99,5 +103,5 @@ object WorldBookParser {
     private fun JSONObject.optIntNullable(key: String): Int? =
         if (!has(key) || isNull(key)) null else opt(key).let { (it as? Number)?.toInt() }
 
-    private val ID_PATTERN = Regex("[a-fA-F0-9-]{36}")
+    private val ID_PATTERN = Regex("^[a-fA-F0-9-]{36}$")
 }
