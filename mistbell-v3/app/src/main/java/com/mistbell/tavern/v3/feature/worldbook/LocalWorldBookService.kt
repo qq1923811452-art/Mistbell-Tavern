@@ -74,7 +74,8 @@ class LocalWorldBookService(
                 val secondaryMatch = !entry.requireSecondaryMatch ||
                     (entry.secondaryKeys.isNotEmpty() && matchingKeys(entry.secondaryKeys, corpus).isNotEmpty())
                 val matchesNow = primaryMatch && secondaryMatch
-                (carriedSticky || delayedDue || matchesNow) &&
+                val hasPendingDelay = state?.delayedUntilTurn?.containsKey(entry.id) == true
+                (carriedSticky || delayedDue || (matchesNow && !hasPendingDelay)) &&
                     (carriedSticky || delayedDue || entry.constant ||
                         lastActivated == Int.MIN_VALUE || turn - lastActivated > entry.cooldown)
             }
