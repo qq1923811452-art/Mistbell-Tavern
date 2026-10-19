@@ -39,6 +39,25 @@ class ConversationContextWindowTest {
         assertEquals(listOf("new", "new reply"), result.recentMessages.map { it.content })
     }
 
+    @Test
+    fun recentHistoryAlsoRespectsCharacterBudget() {
+        val history = listOf(
+            PromptMessage(PromptRole.USER, "old"),
+            PromptMessage(PromptRole.ASSISTANT, "older reply"),
+            PromptMessage(PromptRole.USER, "new"),
+            PromptMessage(PromptRole.ASSISTANT, "new reply"),
+        )
+
+        val result = ConversationContextWindowBuilder.build(
+            history,
+            recentTurns = 2,
+            summaryMaxChars = 300,
+            maxHistoryChars = 12,
+        )
+
+        assertEquals(listOf("new", "new reply"), result.recentMessages.map { it.content })
+    }
+
     @Test(expected = IllegalArgumentException::class)
     fun rejectsNegativeWindowSize() {
         ConversationContextWindowBuilder.build(emptyList(), recentTurns = -1)
