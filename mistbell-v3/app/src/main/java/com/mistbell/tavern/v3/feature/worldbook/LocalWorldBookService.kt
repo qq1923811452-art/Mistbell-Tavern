@@ -2,6 +2,22 @@ package com.mistbell.tavern.v3.feature.worldbook
 
 import kotlin.random.Random
 
+/**
+ * Per-conversation activation history. Keep one instance per character/session scope.
+ * Sticky entries carry for one subsequent turn; delay and cooldown are measured in turns.
+ */
+class WorldBookActivationState internal constructor() {
+    internal var turn: Int = 0
+    internal val lastActivatedTurn = mutableMapOf<String, Int>()
+    internal val stickyUntilTurn = mutableMapOf<String, Int>()
+    internal val delayedUntilTurn = mutableMapOf<String, Int>()
+
+    internal fun advanceTurn(): Int {
+        turn += 1
+        return turn
+    }
+}
+
 /** Keyword activation and budget handling for worldbook entries. */
 class LocalWorldBookService(
     private val randomDouble: () -> Double = { Random.nextDouble() },
@@ -13,24 +29,31 @@ class LocalWorldBookService(
         recentTexts: List<String> = emptyList(),
         maxDepth: Int = DEFAULT_SCAN_DEPTH,
         maxRecursiveDepth: Int = DEFAULT_RECURSIVE_DEPTH,
+        state: WorldBookActivationState? = null,
     ): List<ActivatedWorldBookEntry> {
         require(maxBudget >= 0) { "maxBudget must be non-negative" }
         require(maxRecursiveDepth >= 0) { "maxRecursiveDepth must be non-negative" }
+        val turn = state?.advanceTurn() ?: 0
         val ordered = entries.filterNot { it.disable }.sortedBy { it.order }
         var corpus = buildScanCorpus(scanText, recentTexts, maxDepth)
         val activated = linkedMapOf<String, ActivatedWorldBookEntry>()
         val activatedGroups = mutableSetOf<String>()
         var usedBudget = 0
 
-        fun activate(entry: WorldBookEntry, matched: List<String>): Boolean {
+        fun activate(entry: WorldBookEntry, matched: List<String>, carriedSticky: Boolean = false): Boolean {
             if (entry.id in activated) return false
             if (entry.groupName.isNotBlank() && entry.groupName in activatedGroups) return false
-            if (!entry.constant && !passesProbability(entry.probability)) return false
+            if (!carriedSticky && !entry.constant && !passesProbability(entry.probability)) return false
             val size = entry.content.length
             if (usedBudget + size > maxBudget) return false
             activated[entry.id] = ActivatedWorldBookEntry(entry, matched)
             usedBudget += size
             if (entry.groupName.isNotBlank()) activatedGroups += entry.groupName
+            if (state != null && !carriedSticky) {
+                state.lastActivatedTurn[entry.id] = turn
+                state.delayedUntilTurn.remove(entry.id)
+                if (entry.sticky) state.stickyUntilTurn[entry.id] = turn + 1
+            }
             return true
         }
 
@@ -42,14 +65,21 @@ class LocalWorldBookService(
         var recursiveDepth = 0
         while (true) {
             val candidates = ordered.filter { entry ->
-                entry.id !in activated &&
-                    entry.keys.isNotEmpty() &&
-                    matchingKeys(entry.keys, corpus).isNotEmpty() &&
-                    (!entry.requireSecondaryMatch ||
-                        (entry.secondaryKeys.isNotEmpty() && matchingKeys(entry.secondaryKeys, corpus).isNotEmpty()))
+                if (entry.id in activated) return@filter false
+                val stickyUntil = state?.stickyUntilTurn?.get(entry.id) ?: Int.MIN_VALUE
+                val lastActivated = state?.lastActivatedTurn?.get(entry.id) ?: Int.MIN_VALUE
+                val carriedSticky = entry.sticky && turn > lastActivated && turn <= stickyUntil
+                val delayedDue = (state?.delayedUntilTurn?.get(entry.id) ?: Int.MAX_VALUE) <= turn
+                val primaryMatch = entry.keys.isNotEmpty() && matchingKeys(entry.keys, corpus).isNotEmpty()
+                val secondaryMatch = !entry.requireSecondaryMatch ||
+                    (entry.secondaryKeys.isNotEmpty() && matchingKeys(entry.secondaryKeys, corpus).isNotEmpty())
+                val matchesNow = primaryMatch && secondaryMatch
+                (carriedSticky || delayedDue || matchesNow) &&
+                    (carriedSticky || delayedDue || entry.constant ||
+                        lastActivated == Int.MIN_VALUE || turn - lastActivated > entry.cooldown)
             }
-            if (candidates.isEmpty()) break
 
+            if (candidates.isEmpty()) break
             val newlyActivated = mutableListOf<WorldBookEntry>()
             val groupsSeenThisPass = mutableSetOf<String>()
             for (entry in candidates) {
@@ -57,8 +87,17 @@ class LocalWorldBookService(
                     (entry.groupName in activatedGroups || !groupsSeenThisPass.add(entry.groupName))) {
                     continue
                 }
+                val lastActivated = state?.lastActivatedTurn?.get(entry.id) ?: Int.MIN_VALUE
+                val carriedSticky = entry.sticky && turn > lastActivated &&
+                    turn <= (state?.stickyUntilTurn?.get(entry.id) ?: Int.MIN_VALUE)
+                val delayedDue = (state?.delayedUntilTurn?.get(entry.id) ?: Int.MAX_VALUE) <= turn
                 val matched = matchingKeys(entry.keys, corpus)
-                if (activate(entry, matched)) newlyActivated += entry
+                if (!carriedSticky && !delayedDue && !entry.constant && entry.delay > 0 &&
+                    state != null && entry.id !in state.delayedUntilTurn) {
+                    state.delayedUntilTurn[entry.id] = turn + entry.delay
+                    continue
+                }
+                if (activate(entry, matched, carriedSticky)) newlyActivated += entry
             }
             if (newlyActivated.isEmpty() || recursiveDepth >= maxRecursiveDepth) break
             val recursiveContent = newlyActivated.filter { it.recursive }.joinToString("\n") { it.content }
