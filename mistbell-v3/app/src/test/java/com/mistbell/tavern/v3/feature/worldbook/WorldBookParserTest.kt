@@ -55,9 +55,16 @@ class WorldBookParserTest {
         assertEquals(0, book!!.entries.first { it.id == "1" }.depth)
         assertEquals(0, book.entries.first { it.id == "2" }.depth)
         assertEquals(
-            WorldBookPlacement.POSITION_BEFORE_PROMPT,
+            WorldBookPlacement.POSITION_DEPTH,
             book.entries.first { it.id == "1" }.insertPosition,
         )
+        assertEquals(
+            WorldBookPlacement.POSITION_DEPTH,
+            book.entries.first { it.id == "2" }.insertPosition,
+        )
+        val plan = WorldBookPlacement.plan(book.entries)
+        assertEquals(listOf("1", "2"), plan.byDepth[0 to WorldBookPlacement.DEPTH_ROLE_SYSTEM]?.map { it.id })
+        assertTrue(plan.beforePrompt.isEmpty())
     }
 
     @Test fun rejectsMalformedOrMissingEntries() {
