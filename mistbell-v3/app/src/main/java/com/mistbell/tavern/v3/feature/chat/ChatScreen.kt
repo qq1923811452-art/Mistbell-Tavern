@@ -159,6 +159,24 @@ fun ChatScreen(onBack: () -> Unit) {
     var maxTokensText by remember(settings) {
         mutableStateOf(settings.getInt("chat_max_tokens", 4096).coerceIn(1, 200_000).toString())
     }
+    var recentTurnsText by remember(settings) {
+        mutableStateOf(
+            settings.getInt("chat_history_recent_turns", ConversationContextWindowBuilder.DEFAULT_RECENT_TURNS)
+                .coerceIn(1, 100).toString(),
+        )
+    }
+    var summaryCharsText by remember(settings) {
+        mutableStateOf(
+            settings.getInt("chat_history_summary_max_chars", ConversationContextWindowBuilder.DEFAULT_SUMMARY_MAX_CHARS)
+                .coerceIn(0, 10_000).toString(),
+        )
+    }
+    var historyCharsText by remember(settings) {
+        mutableStateOf(
+            settings.getInt("chat_history_max_chars", ConversationContextWindowBuilder.DEFAULT_MAX_HISTORY_CHARS)
+                .coerceIn(12_000, 100_000).toString(),
+        )
+    }
     var usageSummary by remember { mutableStateOf("Token 用量：本轮尚无服务端 usage 数据") }
     var selectedEmbeddingDimensions by remember(context) {
         mutableStateOf(
@@ -654,6 +672,59 @@ fun ChatScreen(onBack: () -> Unit) {
                     )
                     Text(
                         "聊天 API Key 仅保存在当前页面内存中，离开页面后需要重新输入；独立记忆 API Key 可选择加密保存到 Android Keystore。Base URL 和模型 ID 会保存在本机设置中。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text("上下文历史预算", style = MaterialTheme.typography.titleMedium)
+                    OutlinedTextField(
+                        value = recentTurnsText,
+                        onValueChange = { value ->
+                            recentTurnsText = value.filter(Char::isDigit).take(3)
+                            recentTurnsText.toIntOrNull()?.takeIf { it in 1..100 }?.let { turns ->
+                                settings.edit().putInt("chat_history_recent_turns", turns).apply()
+                            }
+                        },
+                        label = { Text("最近历史轮数（1–100）") },
+                        supportingText = { Text("按用户消息计轮；同一轮中的多条助手消息会一起保留。") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                    )
+                    OutlinedTextField(
+                        value = summaryCharsText,
+                        onValueChange = { value ->
+                            summaryCharsText = value.filter(Char::isDigit).take(5)
+                            summaryCharsText.toIntOrNull()?.takeIf { it in 0..10_000 }?.let { chars ->
+                                settings.edit().putInt("chat_history_summary_max_chars", chars).apply()
+                            }
+                        },
+                        label = { Text("较早历史摘要上限（0–10000 字符）") },
+                        supportingText = { Text("0 表示不注入较早历史摘要；摘要为本地提取式短句，不会修改原始聊天记录。") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                    )
+                    OutlinedTextField(
+                        value = historyCharsText,
+                        onValueChange = { value ->
+                            historyCharsText = value.filter(Char::isDigit).take(6)
+                            historyCharsText.toIntOrNull()?.takeIf { it in 12_000..100_000 }?.let { chars ->
+                                settings.edit().putInt("chat_history_max_chars", chars).apply()
+                            }
+                        },
+                        label = { Text("最近历史字符预算（12000–100000）") },
+                        supportingText = { Text("默认 70000。保留完整消息，不截断长回复；单条最新消息超限时仍会整条保留。") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                    )
+                    Text(
+                        "修改后从下一条消息生效。历史轮数、摘要和字符预算分别限制不同部分；字符数不等于模型 Token 数。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
