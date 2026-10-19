@@ -806,7 +806,23 @@ fun ChatScreen(onBack: () -> Unit) {
                                 )
                             }
                         }
-                        val contextWindow = ConversationContextWindowBuilder.build(completeHistory)
+                        // Read the persisted context-budget preferences so a future settings UI
+                        // can tune these limits without changing the chat-history storage.
+                        val contextWindow = ConversationContextWindowBuilder.build(
+                            history = completeHistory,
+                            recentTurns = settings.getInt(
+                                "chat_history_recent_turns",
+                                ConversationContextWindowBuilder.DEFAULT_RECENT_TURNS,
+                            ).coerceIn(1, 100),
+                            summaryMaxChars = settings.getInt(
+                                "chat_history_summary_max_chars",
+                                ConversationContextWindowBuilder.DEFAULT_SUMMARY_MAX_CHARS,
+                            ).coerceIn(0, 10_000),
+                            maxHistoryChars = settings.getInt(
+                                "chat_history_max_chars",
+                                ConversationContextWindowBuilder.DEFAULT_MAX_HISTORY_CHARS,
+                            ).coerceIn(12_000, 100_000),
+                        )
                         // Activate entries from the asynchronously loaded local library against
                         // the current turn plus a bounded tail of recent conversation.
                         val activationReport = LocalWorldBookService().activateEntriesWithReport(
