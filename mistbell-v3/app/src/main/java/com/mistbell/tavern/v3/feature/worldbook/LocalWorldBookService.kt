@@ -58,10 +58,20 @@ class LocalWorldBookService(
         fun groupKey(entry: WorldBookEntry): String = "${entry.bookId.length}:${entry.bookId}${entry.groupName}"
         val activeEntryKeys = ordered.map(::entryKey).toSet()
         if (state != null) {
-            // Removed or disabled entries must not leave stale sticky/delay/cooldown state.
-            state.lastActivatedTurn.keys.retainAll(activeEntryKeys)
-            state.stickyUntilTurn.keys.retainAll(activeEntryKeys)
-            state.delayedUntilTurn.keys.retainAll(activeEntryKeys)
+            fun migrateLegacyKeys(values: MutableMap<String, Int>) {
+                // Preserve pre-composite-key state when an ID identifies exactly one active entry.
+                // Ambiguous legacy IDs are discarded rather than assigned to the wrong book.
+                values.keys.toList().filterNot(activeEntryKeys::contains).forEach { legacyId ->
+                    val matches = ordered.filter { it.id == legacyId }
+                    val value = values.remove(legacyId) ?: return@forEach
+                    if (matches.size == 1) values.putIfAbsent(entryKey(matches.single()), value)
+                }
+                // Removed or disabled entries must not leave stale sticky/delay/cooldown state.
+                values.keys.retainAll(activeEntryKeys)
+            }
+            migrateLegacyKeys(state.lastActivatedTurn)
+            migrateLegacyKeys(state.stickyUntilTurn)
+            migrateLegacyKeys(state.delayedUntilTurn)
         }
         var corpus = buildScanCorpus(scanText, recentTexts, maxDepth)
         val activated = linkedMapOf<String, ActivatedWorldBookEntry>()
