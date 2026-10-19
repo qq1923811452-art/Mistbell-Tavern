@@ -60,6 +60,22 @@ class PromptAssemblerTest {
     }
 
     @Test
+    fun earlierConversationSummaryUsesAnActualLineBreak() {
+        val messages = PromptAssembler.assemble(
+            PromptAssemblyInput(
+                stableSystemPrefix = "Stable rules",
+                earlierConversationSummary = "Mira is waiting at the station.",
+                latestUserMessage = "Hi",
+            ),
+        )
+        assertTrue(
+            messages.first().content.contains(
+                "Earlier conversation notes (extractive, not a full transcript):\\nMira is waiting at the station.",
+            ),
+        )
+    }
+
+    @Test
     fun blankDynamicEntriesAreFilteredWithoutCreatingEmptyMessages() {
         val messages = PromptAssembler.assemble(
             PromptAssemblyInput(
