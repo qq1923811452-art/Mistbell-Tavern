@@ -1,6 +1,7 @@
 package com.mistbell.tavern.v3.feature.chat
 
 import android.os.Handler
+import android.util.AtomicFile
 import android.os.Looper
 import android.content.Context
 import androidx.compose.ui.platform.LocalContext
@@ -81,7 +82,7 @@ import com.mistbell.tavern.v3.feature.memory.TemporalFactTextSyncResult
 import com.mistbell.tavern.v3.feature.memory.TemporalFactExtractionPipeline
 import com.mistbell.tavern.v3.feature.memory.TemporalFactPipelineOutcome
 import com.mistbell.tavern.v3.feature.worldbook.LocalWorldBookService
-import com.mistbell.tavern.v3.feature.worldbook.WorldBookLibraryStore
+import com.mistbell.tavern.v3.feature.worldbook.WorldBookParser
 
 private val CHAT_EMBEDDING_DIMENSION_OPTIONS = listOf(128, 256, 512, 768, 1024, 1536, 2048)
 
@@ -181,9 +182,24 @@ fun ChatScreen(onBack: () -> Unit) {
     LaunchedEffect(context) {
         val loadedWorldbookEntries = withContext(Dispatchers.IO) {
             runCatching {
-                WorldBookLibraryStore(File(context.filesDir, "worldbooks"))
-                    .list()
-                    .flatMap { book -> book.entries }
+                val directory = File(context.filesDir, "worldbooks")
+                directory.listFiles { file -> file.isFile && file.extension == "json" }
+                    .orEmpty()
+                    .sortedBy { it.name }
+                    .flatMap { file ->
+                        runCatching {
+                            WorldBookParser.parse(
+                                AtomicFile(file).openRead().use { it.readBytes().toString(Charsets.UTF_8) },
+                                file.nameWithoutExtension,
+                            ).entries
+                        }.getOrElse { error ->
+                            diagnosticStore.warn(
+                                "worldbook.file_skipped",
+                                "reason=${error::class.java.simpleName}",
+                            )
+                            emptyList()
+                        }
+                    }
             }
         }
         localWorldbookEntries = loadedWorldbookEntries.getOrElse { error ->
