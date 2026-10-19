@@ -5,7 +5,7 @@ package com.mistbell.tavern.v3.feature.chat
  *
  * Older messages are represented as short extractive notes rather than copied wholesale.
  * This is deliberately deterministic and offline; it does not claim to be an LLM-generated
- * semantic summary.
+ * semantic summary. The persisted chat transcript is never modified by this windowing step.
  */
 data class ConversationContextWindow(
     val earlierSummary: String,
@@ -13,9 +13,10 @@ data class ConversationContextWindow(
 )
 
 object ConversationContextWindowBuilder {
-    const val DEFAULT_RECENT_TURNS = 20
-    const val DEFAULT_SUMMARY_MAX_CHARS = 300
-    const val DEFAULT_MAX_HISTORY_CHARS = 12_000
+    // Keep enough complete turns for long-form roleplay while remaining bounded.
+    const val DEFAULT_RECENT_TURNS = 40
+    const val DEFAULT_SUMMARY_MAX_CHARS = 4_000
+    const val DEFAULT_MAX_HISTORY_CHARS = 70_000
 
     fun build(
         history: List<PromptMessage>,
