@@ -866,6 +866,17 @@ fun ChatScreen(onBack: () -> Unit) {
                                 }
                             },
                         )
+                        val openingMessage = characterCards.firstOrNull { it.id == selectedCharacterId }
+                            ?.card?.firstMessage?.trim().orEmpty()
+                        if (history.isEmpty() && openingMessage.isNotBlank()) {
+                            history += ChatLine(
+                                id = UUID.randomUUID().toString(),
+                                role = "assistant",
+                                content = openingMessage,
+                                createdAtEpochMillis = System.currentTimeMillis(),
+                                deliveryState = PersistedChatMessage.DeliveryState.COMPLETE,
+                            )
+                        }
                         val now = System.currentTimeMillis()
                         history += ChatLine(
                             id = UUID.randomUUID().toString(),
