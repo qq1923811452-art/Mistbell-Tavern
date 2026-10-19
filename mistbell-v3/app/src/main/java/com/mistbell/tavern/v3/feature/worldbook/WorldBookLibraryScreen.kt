@@ -260,7 +260,7 @@ fun WorldBookLibraryScreen(onBack: () -> Unit) {
                 OutlinedTextField(secondaryKeys, { secondaryKeys = it }, label = { Text("二级关键词（逗号分隔）") })
                 OutlinedTextField(orderText, { orderText = it.filter(Char::isDigit).take(6) }, label = { Text("插入顺序") })
                 OutlinedTextField(insertPosition, { insertPosition = it }, label = { Text("插入位置（before_prompt / depth / after_prompt / an_before / an_after / em_before / em_after）") })
-                OutlinedTextField(depthText, { depthText = it.filter(Char::isDigit).take(2) }, label = { Text("深度（0-10，0 表示非深度插入）") })
+                OutlinedTextField(depthText, { depthText = it.filter(Char::isDigit).take(2) }, label = { Text("深度（0-10；位置选 depth 时，0 表示深度 0）") })
                 OutlinedTextField(probabilityText, { probabilityText = it.filter(Char::isDigit).take(3) }, label = { Text("触发概率（0-100%）") })
                 OutlinedTextField(depthRole, { depthRole = it }, label = { Text("深度角色（system / user / assistant）") })
                 OutlinedTextField(groupName, { groupName = it }, label = { Text("互斥组名称（可选）") })
