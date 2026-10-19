@@ -166,7 +166,9 @@ class LocalWorldBookService(
         entries.groupBy { it.entry.insertPosition }
 
     fun groupByDepth(entries: List<ActivatedWorldBookEntry>): Map<Pair<Int, String>, List<ActivatedWorldBookEntry>> =
-        entries.filter { it.entry.depth > 0 }.groupBy { it.entry.depth to it.entry.depthRole }
+        entries.filter {
+            it.entry.insertPosition == WorldBookPlacement.POSITION_DEPTH || it.entry.depth > 0
+        }.groupBy { it.entry.depth.coerceIn(0, 10) to it.entry.depthRole }
 
     fun calculateTotalChars(entries: List<ActivatedWorldBookEntry>): Int =
         entries.sumOf { it.entry.content.length }
