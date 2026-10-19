@@ -19,7 +19,6 @@ data class PromptAssemblyInput(
     val stableCharacterDefinition: String? = null,
     val activeMemoryFacts: List<String> = emptyList(),
     val earlierConversationSummary: String? = null,
-    val activatedWorldbookEntries: List<String> = emptyList(),
     val worldbookEntries: List<WorldBookEntry> = emptyList(),
     val conversationHistory: List<PromptMessage> = emptyList(),
     val latestUserMessage: String,
@@ -42,8 +41,6 @@ object PromptAssembler {
             input.earlierConversationSummary?.trim()?.takeIf(String::isNotEmpty)?.let {
                 add("Earlier conversation notes (extractive, not a full transcript):\n$it")
             }
-            val legacyEntries = input.activatedWorldbookEntries.map(String::trim).filter(String::isNotEmpty)
-            if (legacyEntries.isNotEmpty()) add("Activated worldbook entries:\n" + legacyEntries.joinToString("\n\n"))
             appendEntries("Worldbook after character", plan.afterPrompt)
             val memoryFacts = input.activeMemoryFacts.map(String::trim).filter(String::isNotEmpty)
             if (memoryFacts.isNotEmpty()) add("Relevant memory facts:\n" + memoryFacts.joinToString("\n") { "- $it" })
