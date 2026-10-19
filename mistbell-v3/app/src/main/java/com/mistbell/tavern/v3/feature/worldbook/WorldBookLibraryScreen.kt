@@ -259,7 +259,7 @@ fun WorldBookLibraryScreen(onBack: () -> Unit) {
                 OutlinedTextField(keys, { keys = it }, label = { Text("关键词（逗号分隔）") })
                 OutlinedTextField(secondaryKeys, { secondaryKeys = it }, label = { Text("二级关键词（逗号分隔）") })
                 OutlinedTextField(orderText, { orderText = it.filter(Char::isDigit).take(6) }, label = { Text("插入顺序") })
-                OutlinedTextField(insertPosition, { insertPosition = it }, label = { Text("插入位置（before_prompt / after_prompt / an_before / an_after / em_before / em_after）") })
+                OutlinedTextField(insertPosition, { insertPosition = it }, label = { Text("插入位置（before_prompt / depth / after_prompt / an_before / an_after / em_before / em_after）") })
                 OutlinedTextField(depthText, { depthText = it.filter(Char::isDigit).take(2) }, label = { Text("深度（0-10，0 表示非深度插入）") })
                 OutlinedTextField(probabilityText, { probabilityText = it.filter(Char::isDigit).take(3) }, label = { Text("触发概率（0-100%）") })
                 OutlinedTextField(depthRole, { depthRole = it }, label = { Text("深度角色（system / user / assistant）") })
@@ -295,6 +295,7 @@ fun WorldBookLibraryScreen(onBack: () -> Unit) {
                     order = orderText.toIntOrNull()?.coerceIn(0, 999999) ?: 0,
                     insertPosition = insertPosition.takeIf { it in setOf(
                         WorldBookPlacement.POSITION_BEFORE_PROMPT,
+                        WorldBookPlacement.POSITION_DEPTH,
                         WorldBookPlacement.POSITION_AFTER_PROMPT,
                         WorldBookPlacement.POSITION_AN_BEFORE,
                         WorldBookPlacement.POSITION_AN_AFTER,
