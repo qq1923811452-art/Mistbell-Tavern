@@ -39,6 +39,10 @@ class SessionArchiveCodecTest {
         val decoded = SessionArchiveCodec.importAny(exported)
         assertNotNull(decoded)
         assertEquals(original, decoded)
+
+        val jsonDecoded = SessionArchiveCodec.importAny(SessionArchiveCodec.exportJson(original))
+        assertNotNull(jsonDecoded)
+        assertEquals(original, jsonDecoded)
     }
 
     @Test fun malformedAndOversizedArchivesAreRejected() {
