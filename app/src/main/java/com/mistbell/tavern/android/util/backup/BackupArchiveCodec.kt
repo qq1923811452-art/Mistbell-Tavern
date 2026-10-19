@@ -1,3 +1,5 @@
+@file:Suppress("ktlint:standard:multiline-expression-wrapping")
+
 package com.mistbell.tavern.android.util.backup
 
 import java.io.ByteArrayInputStream
@@ -17,6 +19,7 @@ import java.util.zip.ZipOutputStream
  * This bounded in-memory codec is for small archives and tests. Production backup/restore must use
  * streaming and staging rather than buffering a large database and all uncompressed entries at once.
  */
+@Suppress("TooManyFunctions")
 object BackupArchiveCodec {
     private const val MANIFEST_PATH = "META-INF/mistbell-backup-manifest.tsv"
     private const val MANIFEST_FORMAT = "mistbell-backup"
@@ -123,6 +126,7 @@ object BackupArchiveCodec {
         return Archive(manifest.createdAtEpochMs, rawEntries)
     }
 
+    @Suppress("NestedBlockDepth", "ThrowsCount")
     private fun readRawEntries(bytes: ByteArray): LinkedHashMap<String, ByteArray> {
         val rawEntries = LinkedHashMap<String, ByteArray>()
         var totalBytes = 0L
@@ -179,6 +183,7 @@ object BackupArchiveCodec {
         return ParsedManifest(createdAt, entries)
     }
 
+    @Suppress("ThrowsCount")
     private fun parseManifestHeader(line: String?): Long {
         val fields = line?.split('\t')
             ?: throw IOException("Backup manifest header is missing")
@@ -194,6 +199,7 @@ object BackupArchiveCodec {
         return createdAt
     }
 
+    @Suppress("ThrowsCount")
     private fun parseManifestEntry(line: String): Pair<String, EntryMetadata> {
         val fields = line.split('\t')
         if (fields.size != MANIFEST_FIELD_COUNT) {
@@ -214,6 +220,7 @@ object BackupArchiveCodec {
         return path to EntryMetadata(size, digest)
     }
 
+    @Suppress("ThrowsCount")
     private fun verifyEntries(
         actual: Map<String, ByteArray>,
         expected: Map<String, EntryMetadata>,
