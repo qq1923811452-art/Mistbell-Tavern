@@ -10,7 +10,7 @@ object WorldBookParser {
         return try {
             val root = JSONObject(jsonString)
             val rawEntries = root.opt("entries") ?: return null
-            val bookId = UUID.randomUUID().toString()
+            val bookId = root.optString("id", "").takeIf { it.matches(ID_PATTERN) } ?: UUID.randomUUID().toString()
             val name = root.optString("name", "").takeIf { it.isNotBlank() } ?: fallbackName
             val values = when (rawEntries) {
                 is JSONObject -> rawEntries.keys().asSequence().mapNotNull { key ->
@@ -81,7 +81,7 @@ object WorldBookParser {
         1 -> WorldBookPlacement.POSITION_AFTER_PROMPT to 0
         2 -> WorldBookPlacement.POSITION_AN_BEFORE to 0
         3 -> WorldBookPlacement.POSITION_AN_AFTER to 0
-        4 -> WorldBookPlacement.POSITION_BEFORE_PROMPT to (rawDepth ?: 0).coerceIn(1, 10)
+        4 -> WorldBookPlacement.POSITION_DEPTH to (rawDepth ?: 0).coerceIn(0, 10)
         5 -> WorldBookPlacement.POSITION_EM_BEFORE to 0
         6 -> WorldBookPlacement.POSITION_EM_AFTER to 0
         else -> WorldBookPlacement.POSITION_BEFORE_PROMPT to 0
@@ -98,4 +98,6 @@ object WorldBookParser {
 
     private fun JSONObject.optIntNullable(key: String): Int? =
         if (!has(key) || isNull(key)) null else opt(key).let { (it as? Number)?.toInt() }
+
+    private val ID_PATTERN = Regex("[a-fA-F0-9-]{36}")
 }
