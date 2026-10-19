@@ -106,3 +106,27 @@ class MemoryExtractionQueueRunner(
 
     private fun now(): Long = clockMillis().also { require(it >= 0L) }
 }
+/** Classifies provider failures without exposing response bodies or credentials to durable queue state. */
+internal object MemoryExtractionFailurePolicy {
+    private val retryableClientStatuses = setOf(408, 409, 425, 429)
+
+    fun classify(
+        safeMessage: String,
+        httpStatus: Int?,
+    ): MemoryExtractionQueueRunner.ExecutionResult.Failure {
+        val category = when {
+            httpStatus == 429 -> "rate_limit"
+            httpStatus != null && httpStatus in 500..599 -> "server"
+            httpStatus != null && httpStatus in 400..499 -> "client"
+            safeMessage.contains("timed out", ignoreCase = true) -> "timeout"
+            else -> "network"
+        }
+        val permanent = httpStatus != null &&
+            httpStatus in 400..499 &&
+            httpStatus !in retryableClientStatuses
+        return MemoryExtractionQueueRunner.ExecutionResult.Failure(
+            safeCategory = category,
+            permanent = permanent,
+        )
+    }
+}
