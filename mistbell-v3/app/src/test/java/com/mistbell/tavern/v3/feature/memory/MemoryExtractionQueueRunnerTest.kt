@@ -156,6 +156,52 @@ class MemoryExtractionQueueRunnerTest {
         assertTrue(observed is MemoryExtractionQueueRunner.Result.PersistenceFailure)
     }
 
+    @Test fun unauthorizedProviderResponseIsPermanentClientFailure() {
+        val failure = MemoryExtractionFailurePolicy.classify(
+            safeMessage = "Memory-extraction provider returned HTTP 401.",
+            httpStatus = 401,
+        )
+
+        assertEquals("client", failure.safeCategory)
+        assertTrue(failure.permanent)
+    }
+
+    @Test fun rateLimitAndServerErrorsRemainRetryable() {
+        val rateLimit = MemoryExtractionFailurePolicy.classify("HTTP 429", 429)
+        val server = MemoryExtractionFailurePolicy.classify("HTTP 503", 503)
+
+        assertEquals("rate_limit", rateLimit.safeCategory)
+        assertTrue(!rateLimit.permanent)
+        assertEquals("server", server.safeCategory)
+        assertTrue(!server.permanent)
+    }
+
+    @Test fun selectedTransientClientStatusesRemainRetryable() {
+        listOf(408, 409, 425).forEach { status ->
+            val failure = MemoryExtractionFailurePolicy.classify("HTTP $status", status)
+            assertEquals("client", failure.safeCategory)
+            assertTrue("HTTP $status must be retryable", !failure.permanent)
+        }
+    }
+
+    @Test fun otherClientErrorsArePermanent() {
+        listOf(400, 401, 403, 404).forEach { status ->
+            val failure = MemoryExtractionFailurePolicy.classify("HTTP $status", status)
+            assertEquals("client", failure.safeCategory)
+            assertTrue("HTTP $status must be permanent", failure.permanent)
+        }
+    }
+
+    @Test fun missingHttpStatusFallsBackToTimeoutOrNetworkClassification() {
+        val timeout = MemoryExtractionFailurePolicy.classify("Request timed out.", null)
+        val network = MemoryExtractionFailurePolicy.classify("Connection failed.", null)
+
+        assertEquals("timeout", timeout.safeCategory)
+        assertTrue(!timeout.permanent)
+        assertEquals("network", network.safeCategory)
+        assertTrue(!network.permanent)
+    }
+
     private class FailingCompletionStore : MemoryExtractionJobPersistence {
         private var savedJobs: List<MemoryExtractionJob>? = null
         private var saveCount = 0
