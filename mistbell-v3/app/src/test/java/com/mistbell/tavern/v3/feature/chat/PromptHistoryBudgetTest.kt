@@ -13,12 +13,15 @@ class PromptHistoryBudgetTest {
         assertEquals(listOf("new"), PromptHistoryBudget.select(history, 6, 2).map { it.content })
     }
 
-    @Test fun oversizedNewestMessageStopsSelectionInsteadOfIncludingOlderGaps() {
+    @Test fun oversizedNewestMessageIsTruncatedInsteadOfClearingHistory() {
         val history = listOf(
             PromptMessage(PromptRole.USER, "old"),
             PromptMessage(PromptRole.ASSISTANT, "new but too long"),
         )
-        assertEquals(emptyList<PromptMessage>(), PromptHistoryBudget.select(history, 5, 2))
+        assertEquals(
+            listOf(PromptMessage(PromptRole.ASSISTANT, "new b")),
+            PromptHistoryBudget.select(history, 5, 2),
+        )
     }
 
     @Test fun oversizedMessageBreaksTheNewestContiguousHistoryWindow() {
