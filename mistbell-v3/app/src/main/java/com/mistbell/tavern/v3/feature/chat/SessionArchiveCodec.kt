@@ -50,14 +50,20 @@ object SessionArchiveCodec {
 
     fun importAny(raw: String): SessionArchive? {
         if (raw.toByteArray(Charsets.UTF_8).size > MAX_IMPORT_BYTES) return null
-        return try {
-            val trimmed = raw.trim()
-            if (trimmed.startsWith("{")) parseJson(trimmed) ?: parseJsonl(trimmed) else parseJsonl(trimmed)
-        } catch (_: Exception) { null }
+        val trimmed = raw.trim()
+        if (trimmed.isEmpty()) return null
+        // JSONL records also begin with '{'. Try each parser independently so a
+        // whole-document JSON parse failure does not prevent valid JSONL fallback.
+        return runCatching { parseJson(trimmed) }.getOrNull()
+            ?: runCatching { parseJsonl(trimmed) }.getOrNull()
     }
 
     private fun parseJson(raw: String): SessionArchive? {
         val root = JSONObject(raw)
+        // Explicit Mistbell metadata must be recognized and supported. Missing metadata
+        // remains accepted for legacy session JSON files with a top-level messages array.
+        if (root.has("format") && root.optString("format") != "mistbell-session") return null
+        if (root.has("version") && root.optInt("version", -1) != 1) return null
         val array = root.optJSONArray("messages") ?: return null
         if (array.length() > MAX_IMPORT_MESSAGES) return null
         val session = root.optJSONObject("session") ?: JSONObject()
