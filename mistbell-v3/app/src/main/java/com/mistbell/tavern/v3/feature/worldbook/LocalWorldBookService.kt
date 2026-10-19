@@ -46,8 +46,13 @@ class LocalWorldBookService(
                         .getOrElse { lowerText.contains(lowerKey) }
                 lowerKey.contains("*") -> {
                     val expression = lowerKey.split('*').joinToString(".*") { Regex.escape(it) }
-                    runCatching { Regex(".*$expression.*", RegexOption.IGNORE_CASE).matches(lowerText) }
-                        .getOrElse { lowerText.contains(lowerKey.replace("*", "")) }
+                    // Scan corpora are newline-terminated; avoid a whole-string match that fails on that newline.
+                    runCatching {
+                        Regex(
+                            expression,
+                            setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL),
+                        ).containsMatchIn(lowerText)
+                    }.getOrElse { lowerText.contains(lowerKey.replace("*", "")) }
                 }
                 else -> lowerText.contains(lowerKey)
             }
