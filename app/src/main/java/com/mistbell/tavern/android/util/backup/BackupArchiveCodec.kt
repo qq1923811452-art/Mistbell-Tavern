@@ -85,37 +85,37 @@ object BackupArchiveCodec {
         var totalBytes = 0L
         try {
             ZipInputStream(ByteArrayInputStream(bytes)).use { zip ->
-            while (true) {
-                val entry = zip.nextEntry ?: break
-                val path = entry.name
-                try {
-                    validatePath(path)
-                } catch (error: IllegalArgumentException) {
-                    throw IOException("Unsafe backup path", error)
-                }
-                if (entry.isDirectory) {
-                    zip.closeEntry()
-                    continue
-                }
-                if (rawEntries.containsKey(path)) throw IOException("Duplicate backup entry: $path")
-                if (rawEntries.size >= MAX_ENTRIES) throw IOException("Too many backup entries including manifest")
-
-                val buffer = ByteArrayOutputStream()
-                val chunk = ByteArray(DEFAULT_BUFFER_SIZE)
-                var entryBytes = 0L
                 while (true) {
-                    val count = zip.read(chunk)
-                    if (count < 0) break
-                    entryBytes += count
-                    totalBytes += count
-                    if (entryBytes > MAX_ENTRY_BYTES || totalBytes > MAX_TOTAL_UNCOMPRESSED_BYTES) {
-                        throw IOException("Backup payload exceeds size limits")
+                    val entry = zip.nextEntry ?: break
+                    val path = entry.name
+                    try {
+                        validatePath(path)
+                    } catch (error: IllegalArgumentException) {
+                        throw IOException("Unsafe backup path", error)
                     }
-                    buffer.write(chunk, 0, count)
+                    if (entry.isDirectory) {
+                        zip.closeEntry()
+                        continue
+                    }
+                    if (rawEntries.containsKey(path)) throw IOException("Duplicate backup entry: $path")
+                    if (rawEntries.size >= MAX_ENTRIES) throw IOException("Too many backup entries including manifest")
+    
+                    val buffer = ByteArrayOutputStream()
+                    val chunk = ByteArray(DEFAULT_BUFFER_SIZE)
+                    var entryBytes = 0L
+                    while (true) {
+                        val count = zip.read(chunk)
+                        if (count < 0) break
+                        entryBytes += count
+                        totalBytes += count
+                        if (entryBytes > MAX_ENTRY_BYTES || totalBytes > MAX_TOTAL_UNCOMPRESSED_BYTES) {
+                            throw IOException("Backup payload exceeds size limits")
+                        }
+                        buffer.write(chunk, 0, count)
+                    }
+                    rawEntries[path] = buffer.toByteArray()
+                    zip.closeEntry()
                 }
-                rawEntries[path] = buffer.toByteArray()
-                zip.closeEntry()
-            }
             }
         } catch (error: IOException) {
             throw error
