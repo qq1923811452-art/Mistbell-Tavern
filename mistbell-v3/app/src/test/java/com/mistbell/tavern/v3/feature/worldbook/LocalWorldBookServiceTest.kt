@@ -33,6 +33,39 @@ class LocalWorldBookServiceTest {
         assertEquals(emptyList<ActivatedWorldBookEntry>(), results)
     }
 
+    @Test fun stickyEntryCarriesForOneTurnOnly() {
+        val service = LocalWorldBookService()
+        val state = WorldBookActivationState()
+        val sticky = WorldBookEntry(
+            id = "sticky", bookId = "book", keys = listOf("dragon"),
+            content = "sticky content", sticky = true,
+        )
+
+        assertEquals(listOf("sticky"), service.activateEntries(listOf(sticky), "dragon", state = state).map { it.entry.id })
+        assertEquals(listOf("sticky"), service.activateEntries(listOf(sticky), "unrelated", state = state).map { it.entry.id })
+        assertEquals(emptyList<ActivatedWorldBookEntry>(), service.activateEntries(listOf(sticky), "unrelated", state = state))
+    }
+
+    @Test fun delayAndCooldownAreMeasuredInTurns() {
+        val service = LocalWorldBookService()
+        val delayedState = WorldBookActivationState()
+        val delayed = WorldBookEntry(
+            id = "delayed", bookId = "book", keys = listOf("dragon"),
+            content = "delayed content", delay = 1,
+        )
+        assertEquals(emptyList<ActivatedWorldBookEntry>(), service.activateEntries(listOf(delayed), "dragon", state = delayedState))
+        assertEquals(listOf("delayed"), service.activateEntries(listOf(delayed), "unrelated", state = delayedState).map { it.entry.id })
+
+        val cooldownState = WorldBookActivationState()
+        val cooldown = WorldBookEntry(
+            id = "cooldown", bookId = "book", keys = listOf("dragon"),
+            content = "cooldown content", cooldown = 1,
+        )
+        assertEquals(listOf("cooldown"), service.activateEntries(listOf(cooldown), "dragon", state = cooldownState).map { it.entry.id })
+        assertEquals(emptyList<ActivatedWorldBookEntry>(), service.activateEntries(listOf(cooldown), "dragon", state = cooldownState))
+        assertEquals(listOf("cooldown"), service.activateEntries(listOf(cooldown), "dragon", state = cooldownState).map { it.entry.id })
+    }
+
     @Test fun historyScanDepthUsesOnlyMostRecentItems() {
         val service = LocalWorldBookService()
         val corpus = service.buildScanCorpus("current", listOf("old", "middle", "recent"), 2)
