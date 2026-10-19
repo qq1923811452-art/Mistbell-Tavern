@@ -2,6 +2,11 @@ package com.mistbell.tavern.v3.feature.worldbook
 
 import kotlin.random.Random
 
+data class WorldBookActivationReport(
+    val activatedEntries: List<ActivatedWorldBookEntry>,
+    val droppedByBudget: Int,
+)
+
 /** Keyword activation and budget handling for worldbook entries. */
 class LocalWorldBookService(
     private val randomDouble: () -> Double = { Random.nextDouble() },
@@ -13,13 +18,25 @@ class LocalWorldBookService(
         recentTexts: List<String> = emptyList(),
         maxDepth: Int = DEFAULT_SCAN_DEPTH,
         maxRecursiveDepth: Int = DEFAULT_RECURSIVE_DEPTH,
-    ): List<ActivatedWorldBookEntry> {
+    ): List<ActivatedWorldBookEntry> = activateEntriesWithReport(
+        entries, scanText, maxBudget, recentTexts, maxDepth, maxRecursiveDepth,
+    ).activatedEntries
+
+    fun activateEntriesWithReport(
+        entries: List<WorldBookEntry>,
+        scanText: String,
+        maxBudget: Int = DEFAULT_MAX_BUDGET,
+        recentTexts: List<String> = emptyList(),
+        maxDepth: Int = DEFAULT_SCAN_DEPTH,
+        maxRecursiveDepth: Int = DEFAULT_RECURSIVE_DEPTH,
+    ): WorldBookActivationReport {
         require(maxBudget >= 0) { "maxBudget must be non-negative" }
         require(maxRecursiveDepth >= 0) { "maxRecursiveDepth must be non-negative" }
         val ordered = entries.filterNot { it.disable }.sortedBy { it.order }
         var corpus = buildScanCorpus(scanText, recentTexts, maxDepth)
         val activated = linkedMapOf<String, ActivatedWorldBookEntry>()
         val activatedGroups = mutableSetOf<String>()
+        val droppedByBudgetIds = mutableSetOf<String>()
         var usedBudget = 0
 
         fun activate(entry: WorldBookEntry, matched: List<String>): Boolean {
@@ -27,7 +44,10 @@ class LocalWorldBookService(
             if (entry.groupName.isNotBlank() && entry.groupName in activatedGroups) return false
             if (!entry.constant && !passesProbability(entry.probability)) return false
             val size = entry.content.length
-            if (usedBudget + size > maxBudget) return false
+            if (usedBudget + size > maxBudget) {
+                droppedByBudgetIds += entry.id
+                return false
+            }
             activated[entry.id] = ActivatedWorldBookEntry(entry, matched)
             usedBudget += size
             if (entry.groupName.isNotBlank()) activatedGroups += entry.groupName
@@ -66,7 +86,10 @@ class LocalWorldBookService(
             corpus += "\n" + recursiveContent
             recursiveDepth += 1
         }
-        return activated.values.toList()
+        return WorldBookActivationReport(
+            activatedEntries = activated.values.toList(),
+            droppedByBudget = droppedByBudgetIds.size,
+        )
     }
 
     fun buildScanCorpus(current: String, recentTexts: List<String>, maxDepth: Int): String =
