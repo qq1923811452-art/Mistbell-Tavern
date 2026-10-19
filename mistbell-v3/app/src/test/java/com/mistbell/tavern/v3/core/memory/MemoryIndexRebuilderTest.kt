@@ -82,22 +82,38 @@ class MemoryIndexRebuilderTest {
     }
 
     @Test
-    fun rejectsDuplicateIdsAndNegativeTimestampsBeforeWriting() = runBlocking {
+    fun rejectsDuplicateIdsBeforeWriting() = runBlocking {
         var writes = 0
-        val rebuilder = MemoryIndexRebuilder(
+        val result = MemoryIndexRebuilder(
+            runtime = TestRuntime(),
+            saveSourceTexts = { writes++ },
+            saveSnapshot = { writes++ },
+            clockMillis = { 1L },
+        ).rebuild(
+            listOf(MemoryTextRecord("same", "one"), MemoryTextRecord("same", "two")),
+        )
+
+        assertEquals(
+            MemoryIndexRebuildResult.Stage.INVALID_INPUT,
+            (result as MemoryIndexRebuildResult.Failed).stage,
+        )
+        assertEquals(0, writes)
+    }
+
+    @Test
+    fun rejectsNegativeTimestampsBeforeWriting() = runBlocking {
+        var writes = 0
+        val result = MemoryIndexRebuilder(
             runtime = TestRuntime(),
             saveSourceTexts = { writes++ },
             saveSnapshot = { writes++ },
             clockMillis = { -1L },
+        ).rebuild(listOf(MemoryTextRecord("unique", "text")))
+
+        assertEquals(
+            MemoryIndexRebuildResult.Stage.INVALID_INPUT,
+            (result as MemoryIndexRebuildResult.Failed).stage,
         )
-        val duplicateResult = rebuilder.rebuild(
-            listOf(MemoryTextRecord("same", "one"), MemoryTextRecord("same", "two")),
-        )
-        assertEquals(MemoryIndexRebuildResult.Stage.INVALID_INPUT,
-            (duplicateResult as MemoryIndexRebuildResult.Failed).stage)
-        val timestampResult = rebuilder.rebuild(listOf(MemoryTextRecord("one", "text")))
-        assertEquals(MemoryIndexRebuildResult.Stage.INVALID_INPUT,
-            (timestampResult as MemoryIndexRebuildResult.Failed).stage)
         assertEquals(0, writes)
     }
 
