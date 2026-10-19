@@ -27,6 +27,17 @@ class WorldBookPlacementTest {
         assertTrue(plan.beforePrompt.isEmpty())
     }
 
+    @Test fun depthsAboveTenRemainDistinctGroups() {
+        val plan = WorldBookPlacement.plan(listOf(
+            entry("depth-ten", depth = 10),
+            entry("depth-eleven", depth = 11),
+            entry("depth-twenty", depth = 20),
+        ))
+        assertEquals(listOf("depth-ten"), plan.byDepth[10 to "system"]?.map { it.id })
+        assertEquals(listOf("depth-eleven"), plan.byDepth[11 to "system"]?.map { it.id })
+        assertEquals(listOf("depth-twenty"), plan.byDepth[20 to "system"]?.map { it.id })
+    }
+
     @Test fun depthEntriesAreGroupedByDepthAndRole() {
         val plan = WorldBookPlacement.plan(listOf(
             entry("deep-a", depth = 2), entry("deep-b", depth = 2),
