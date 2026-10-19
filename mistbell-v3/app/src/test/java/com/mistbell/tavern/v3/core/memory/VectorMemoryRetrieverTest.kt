@@ -232,11 +232,15 @@ class VectorMemoryRetrieverTest {
     fun keywordScanIsBoundedForVeryLongMemoryText() {
         val long = MemoryTextRecord("long-keyword", "x".repeat(VectorMemoryRetriever.MAX_KEYWORD_SCAN_CHARACTERS) + " Beijing")
         val queryOnlyAtEnd = VectorMemoryRetriever.retrieve(
-            snapshot = VectorSnapshot("embedding-test", 2, emptyList()),
+            snapshot = VectorSnapshot(
+                "embedding-test",
+                2,
+                listOf(StoredVector("long-keyword-vector", long.sourceTextSha256, 1L, listOf(0f, 1f))),
+            ),
             queryVector = listOf(1f, 0f),
             texts = listOf(long),
             queryText = "Beijing",
-            minimumScore = -1.0,
+            minimumScore = 0.1,
         )
         assertTrue(queryOnlyAtEnd.isEmpty())
     }
