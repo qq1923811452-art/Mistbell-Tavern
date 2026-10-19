@@ -3,6 +3,7 @@ package com.mistbell.tavern.android.util.backup
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.nio.charset.StandardCharsets
+import java.util.Base64
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import org.junit.Assert.assertArrayEquals
@@ -70,6 +71,55 @@ class BackupArchiveCodecTest {
 
         assertThrows(IOException::class.java) { BackupArchiveCodec.read(bytes) }
     }
+
+    @Test
+    fun rejectsNegativeManifestTimestamp() {
+        val archive = zipArchive("mistbell-backup\t1\t-1\n", emptyMap())
+
+        assertThrows(IOException::class.java) { BackupArchiveCodec.read(archive) }
+    }
+
+    @Test
+    fun rejectsChecksumMismatch() {
+        val path = "characters/card.json"
+        val payload = """{"name":"Ariya"}""".toByteArray(StandardCharsets.UTF_8)
+        val encodedPath = Base64.getUrlEncoder().withoutPadding()
+            .encodeToString(path.toByteArray(StandardCharsets.UTF_8))
+        val manifest = "mistbell-backup\t1\t1\n$encodedPath\t${payload.size}\t${"0".repeat(64)}\n"
+
+        assertThrows(IOException::class.java) {
+            BackupArchiveCodec.read(zipArchive(manifest, mapOf(path to payload)))
+        }
+    }
+
+    @Test
+    fun rejectsManifestContentMismatch() {
+        val missingPath = "database/missing.db"
+        val encodedPath = Base64.getUrlEncoder().withoutPadding()
+            .encodeToString(missingPath.toByteArray(StandardCharsets.UTF_8))
+        val manifest = "mistbell-backup\t1\t1\n$encodedPath\t1\t${"0".repeat(64)}\n"
+
+        assertThrows(IOException::class.java) {
+            BackupArchiveCodec.read(zipArchive(manifest, mapOf("database/other.db" to byteArrayOf(1))))
+        }
+    }
+
+    private fun zipArchive(
+        manifest: String,
+        entries: Map<String, ByteArray>,
+    ): ByteArray =
+        ByteArrayOutputStream().also { output ->
+            ZipOutputStream(output).use { zip ->
+                zip.putNextEntry(ZipEntry("META-INF/mistbell-backup-manifest.tsv"))
+                zip.write(manifest.toByteArray(StandardCharsets.UTF_8))
+                zip.closeEntry()
+                entries.forEach { (path, payload) ->
+                    zip.putNextEntry(ZipEntry(path))
+                    zip.write(payload)
+                    zip.closeEntry()
+                }
+            }
+        }.toByteArray()
 
     @Test
     fun rejectsEmptyInput() {
