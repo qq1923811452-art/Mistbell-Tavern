@@ -59,9 +59,9 @@ class PromptAssemblerTest {
         )
         assertEquals(1, messages.count { it.role == PromptRole.SYSTEM })
         val system = messages[0].content
-        assertTrue(system.indexOf("Character: Mira") < system.indexOf("Activated worldbook entries"))
-        assertTrue(system.indexOf("Activated worldbook entries") < system.indexOf("Relevant memory facts"))
-        assertTrue(system.indexOf("Relevant memory facts") > system.indexOf("Activated worldbook entries"))
+        assertTrue(system.indexOf("Character: Mira") < system.indexOf("Worldbook after character"))
+        assertTrue(system.indexOf("Worldbook after character") < system.indexOf("Relevant memory facts"))
+        assertTrue(system.indexOf("Relevant memory facts") > system.indexOf("Worldbook after character"))
         assertEquals(PromptRole.USER, messages[1].role)
         assertEquals("Earlier", messages[1].content)
         assertEquals(PromptRole.ASSISTANT, messages[2].role)
@@ -81,7 +81,7 @@ class PromptAssemblerTest {
         )
         assertTrue(
             messages.first().content.contains(
-                "Earlier conversation notes (extractive, not a full transcript):\\nMira is waiting at the station.",
+                "Earlier conversation notes (extractive, not a full transcript):\nMira is waiting at the station.",
             ),
         )
     }
