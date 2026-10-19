@@ -1,0 +1,271 @@
+package com.mistbell.tavern.v3.core.memory
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class VectorSnapshotCodecTest {
+    @Test
+    fun roundTripsModelTaggedVectors() {
+        val snapshot = VectorSnapshot(
+            modelId = "local:embeddinggemma-2:int8",
+            dimensions = 3,
+            records = listOf(
+                StoredVector(
+                    id = "vector-1",
+                    sourceTextSha256 = HASH,
+                    createdAtEpochMillis = 1234,
+                    values = listOf(0.25f, -0.5f, 1.0f),
+                ),
+            ),
+        )
+
+        val decoded = VectorSnapshotCodec.decode(VectorSnapshotCodec.encode(snapshot))
+        assertEquals(snapshot.modelId, decoded.modelId)
+        assertEquals(snapshot.dimensions, decoded.dimensions)
+        assertEquals(snapshot.records.map { it.id }, decoded.records.map { it.id })
+        assertTrue(decoded.records.single().values !is java.util.ArrayList<*>)
+        snapshot.records.single().values.zip(decoded.records.single().values).forEach { (expected, actual) ->
+            org.junit.Assert.assertTrue(kotlin.math.abs(expected - actual) <= 0.01f)
+        }
+    }
+
+    @Test
+    fun mappedDecodeUsesLazyVectorViewsAndPreservesRecordOffsets() {
+        val original = VectorSnapshot(
+            modelId = "mapped-model",
+            dimensions = 3,
+            records = listOf(
+                StoredVector("mapped-vector-a", HASH, 17L, listOf(0.25f, -0.5f, 1.0f)),
+                StoredVector("mapped-vector-b", HASH, 18L, listOf(-1.0f, 0.125f, 0.75f)),
+            ),
+        )
+        val encoded = VectorSnapshotCodec.encode(original)
+        val decoded = VectorSnapshotCodec.decodeMapped(java.nio.ByteBuffer.wrap(encoded))
+        assertEquals("mapped-model", decoded.modelId)
+        assertEquals(2, decoded.records.size)
+        assertTrue(decoded.records.all { it.values !is java.util.ArrayList<*> })
+        original.records.zip(decoded.records).forEach { (expected, actual) ->
+            assertEquals(expected.id, actual.id)
+            assertTrue(actual.values.zip(expected.values).all { (value, expectedValue) ->
+                kotlin.math.abs(value - expectedValue) <= 0.01f
+            })
+        }
+    }
+
+    @Test
+    fun mappedLegacyVectorValidatesFloatValuesWhenAccessed() {
+        val payloadBuffer = java.io.ByteArrayOutputStream()
+        java.io.DataOutputStream(payloadBuffer).use { out ->
+            out.writeInt(0x4D425633)
+            out.writeInt(1)
+            out.writeUTF("model-legacy")
+            out.writeInt(1)
+            out.writeInt(1)
+            out.writeUTF("legacy-vector")
+            out.writeUTF(HASH)
+            out.writeLong(42L)
+            out.writeFloat(Float.NaN)
+        }
+        val payload = payloadBuffer.toByteArray()
+        val checksum = java.security.MessageDigest.getInstance("SHA-256").digest(payload)
+        val envelopeBuffer = java.io.ByteArrayOutputStream()
+        java.io.DataOutputStream(envelopeBuffer).use { out ->
+            out.writeInt(payload.size)
+            out.write(payload)
+            out.write(checksum)
+        }
+        val mapped = VectorSnapshotCodec.decodeMapped(java.nio.ByteBuffer.wrap(envelopeBuffer.toByteArray()))
+        assertThrows(IllegalArgumentException::class.java) {
+            mapped.records.single().values.single()
+        }
+    }
+
+    @Test
+    fun encoderRejectsValuesMutatedToNonFiniteAfterRecordConstruction() {
+        val mutableValues = mutableListOf(0.5f)
+        val record = StoredVector("mutable-vector", HASH, 1L, mutableValues)
+        mutableValues[0] = Float.NaN
+        val snapshot = VectorSnapshot("model-finite", 1, listOf(record))
+        assertThrows(IllegalArgumentException::class.java) {
+            VectorSnapshotCodec.encode(snapshot)
+        }
+    }
+
+    @Test
+    fun snapshotCodecUsesOneMillionRecordSanityCapAndTextStoreHasItsOwnLimit() {
+        assertEquals(1_000_000, VectorSnapshotCodec.MAX_RECORDS)
+        assertEquals(50_000, MemoryTextCodec.MAX_RECORDS)
+    }
+
+    @Test
+    fun decodesSnapshotAboveCurrentTextStoreRecordLimit() {
+        val records = (0..MemoryTextCodec.MAX_RECORDS).map { index ->
+            StoredVector("vector-$index", HASH, index.toLong(), listOf(0.5f))
+        }
+        val snapshot = VectorSnapshot(modelId = "model-a", dimensions = 1, records = records)
+
+        val decoded = VectorSnapshotCodec.decode(VectorSnapshotCodec.encode(snapshot))
+
+        assertEquals(50_001, decoded.records.size)
+        assertEquals("vector-50000", decoded.records.last().id)
+    }
+
+    @Test
+    fun byteBudgetAllowsInt8ButRejectsLegacyFloat32AtSameRecordCount() {
+        val count = 100_000
+        val dimensions = 768
+        val int8PayloadBytes = count.toLong() * (112L + dimensions.toLong())
+        assertTrue(int8PayloadBytes < VectorSnapshotCodec.MAX_SNAPSHOT_BYTES.toLong())
+        VectorSnapshotCodec.validatePayloadBudget(int8PayloadBytes, count, dimensions, 2)
+        assertThrows(IllegalArgumentException::class.java) {
+            VectorSnapshotCodec.validatePayloadBudget(
+                VectorSnapshotCodec.MAX_SNAPSHOT_BYTES.toLong(), count, dimensions, 1,
+            )
+        }
+    }
+
+    @Test
+    fun rejectsHeaderWhoseDeclaredVectorsCannotFitWithinPayloadBytes() {
+        val payloadBuffer = java.io.ByteArrayOutputStream()
+        java.io.DataOutputStream(payloadBuffer).use { out ->
+            out.writeInt(0x4D425633)
+            out.writeInt(2)
+            out.writeUTF("model-budget")
+            out.writeInt(768)
+            out.writeInt(100_000)
+        }
+        val payload = payloadBuffer.toByteArray()
+        val checksum = java.security.MessageDigest.getInstance("SHA-256").digest(payload)
+        val envelope = java.io.ByteArrayOutputStream()
+        java.io.DataOutputStream(envelope).use { out ->
+            out.writeInt(payload.size)
+            out.write(payload)
+            out.write(checksum)
+        }
+        val failure = assertThrows(IllegalArgumentException::class.java) {
+            VectorSnapshotCodec.decode(envelope.toByteArray())
+        }
+        assertTrue(failure.message.orEmpty().contains("payload is too small"))
+    }
+
+    @Test
+    fun decodesLegacyFloat32SnapshotAfterInt8FormatUpgrade() {
+        val payloadBuffer = java.io.ByteArrayOutputStream()
+        java.io.DataOutputStream(payloadBuffer).use { out ->
+            out.writeInt(0x4D425633)
+            out.writeInt(1)
+            out.writeUTF("model-legacy")
+            out.writeInt(2)
+            out.writeInt(1)
+            out.writeUTF("legacy-vector")
+            out.writeUTF(HASH)
+            out.writeLong(42L)
+            out.writeFloat(0.25f)
+            out.writeFloat(-0.5f)
+        }
+        val payload = payloadBuffer.toByteArray()
+        val checksum = java.security.MessageDigest.getInstance("SHA-256").digest(payload)
+        val envelopeBuffer = java.io.ByteArrayOutputStream()
+        java.io.DataOutputStream(envelopeBuffer).use { out ->
+            out.writeInt(payload.size)
+            out.write(payload)
+            out.write(checksum)
+        }
+
+        val decoded = VectorSnapshotCodec.decode(envelopeBuffer.toByteArray())
+        assertEquals("model-legacy", decoded.modelId)
+        assertEquals(listOf(0.25f, -0.5f), decoded.records.single().values)
+    }
+
+    @Test
+    fun int8PersistenceReducesVectorPayloadByAtLeastSeventyPercent() {
+        val records = (0 until 10_000).map { index ->
+            StoredVector(
+                id = "vector-$index",
+                sourceTextSha256 = HASH,
+                createdAtEpochMillis = index.toLong(),
+                values = List(768) { dimension -> kotlin.math.sin(index * 0.13 + dimension * 0.017).toFloat() },
+            )
+        }
+        val encoded = VectorSnapshotCodec.encode(VectorSnapshot("model-int8", 768, records))
+        val floatPayloadBytes = records.size.toLong() * 768L * 4L
+        assertTrue("encoded=${encoded.size}; floatVectorBytes=$floatPayloadBytes", encoded.size.toLong() < floatPayloadBytes * 0.30)
+    }
+
+    @Test
+    fun int8RoundTripKeepsTopFiveNearestNeighbors() {
+        val records = (0 until 64).map { index ->
+            val values = List(128) { dimension ->
+                when (dimension) { 0 -> 1.0f - index * 0.02f; 1 -> 0.1f; else -> 0f }
+            }
+            StoredVector("vector-$index", HASH, index.toLong(), values)
+        }
+        val original = VectorSnapshot("model-int8", 128, records)
+        val restored = VectorSnapshotCodec.decode(VectorSnapshotCodec.encode(original))
+        val query = List(128) { dimension -> if (dimension == 0) 1f else 0f }
+        fun topFive(snapshot: VectorSnapshot) = VectorSimilaritySearch.search(
+            snapshot = snapshot,
+            query = query,
+            limit = 5,
+            minimumScore = -1.0,
+        ).map { it.id }.toSet()
+        assertTrue(topFive(original).intersect(topFive(restored)).size >= 4)
+    }
+
+    @Test
+    fun zeroVectorPersistsAndRemainsNonMatchable() {
+        val zero = StoredVector("zero", HASH, 1L, List(3) { 0f })
+        val snapshot = VectorSnapshot("model-zero", 3, listOf(zero))
+        val decoded = VectorSnapshotCodec.decode(VectorSnapshotCodec.encode(snapshot))
+        assertEquals(listOf(0f, 0f, 0f), decoded.records.single().values)
+        assertTrue(
+            VectorSimilaritySearch.search(
+                snapshot = decoded,
+                query = listOf(1f, 0f, 0f),
+                minimumScore = -1.0,
+            ).isEmpty(),
+        )
+    }
+
+    @Test
+    fun rejectsChecksumMismatch() {
+        val encoded = VectorSnapshotCodec.encode(
+            VectorSnapshot(
+                modelId = "model-a",
+                dimensions = 1,
+                records = listOf(
+                    StoredVector("v1", HASH, 1, listOf(0.5f)),
+                ),
+            ),
+        )
+        encoded[encoded.lastIndex - 1] = (encoded[encoded.lastIndex - 1].toInt() xor 0x01).toByte()
+
+        assertThrows(IllegalArgumentException::class.java) {
+            VectorSnapshotCodec.decode(encoded)
+        }
+    }
+
+    @Test
+    fun rejectsVectorsWithWrongDimensions() {
+        assertThrows(IllegalArgumentException::class.java) {
+            VectorSnapshot(
+                modelId = "model-a",
+                dimensions = 2,
+                records = listOf(StoredVector("v1", HASH, 1, listOf(0.5f))),
+            )
+        }
+    }
+
+    @Test
+    fun rejectsNonFiniteVectorValues() {
+        assertThrows(IllegalArgumentException::class.java) {
+            StoredVector("v1", HASH, 1, listOf(Float.NaN))
+        }
+    }
+
+    companion object {
+        private const val HASH = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    }
+}
