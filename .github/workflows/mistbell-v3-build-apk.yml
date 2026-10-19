@@ -1,0 +1,117 @@
+name: Mistbell 3.0 Final Device-Test APK
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mistbell-v3-final-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-verified-apk:
+    # This workflow is triggered manually from GitHub Actions (workflow_dispatch).
+    # It always compiles and tests the checked-out source before packaging the APK.
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    name: Verify 3.0 source, then package debug APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact source commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # LiteRT-LM 0.18.0's Android AAR does not include the separate GPU
+      # accelerator plugins. Fetch matching upstream prebuilts at the exact
+      # release tag and package them into the APK's arm64 native-library dir.
+      - name: Package pinned LiteRT-LM GPU runtime
+        shell: bash
+        run: bash .github/scripts/package-litertlm-gpu-runtime.sh
+
+      - name: Ensure root Gradle wrapper is executable
+        run: chmod +x ./gradlew
+
+      - name: Compile and run unit tests before packaging
+        run: ./gradlew -p mistbell-v3 :app:compileDebugKotlin :app:testDebugUnitTest --no-daemon --no-parallel
+
+      - name: Package final debug APK only after tests pass
+        run: ./gradlew -p mistbell-v3 :app:assembleDebug --no-daemon --no-parallel
+
+      - name: Audit native libraries merged into final APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="$(find mistbell-v3/app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          test -n "$apk"
+          audit_dir="$RUNNER_TEMP/apk-native-audit"
+          mkdir -p "$audit_dir"
+          unzip -q "$apk" 'lib/arm64-v8a/*.so' -d "$audit_dir"
+          chmod +x .github/scripts/audit-native-libraries.sh
+          .github/scripts/audit-native-libraries.sh "$audit_dir/lib/arm64-v8a"
+
+      - name: Verify packaged LiteRT-LM GPU library hashes
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="$(find mistbell-v3/app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          test -n "$apk"
+          checksums="$RUNNER_TEMP/litertlm-gpu.sha256"
+          unzip -p "$apk" assets/native-runtime/litertlm-gpu.sha256 > "$checksums"
+          test -s "$checksums"
+          mapfile -t checksum_lines < "$checksums"
+          [[ "${#checksum_lines[@]}" -eq 7 ]] || {
+            echo "Expected exactly 7 GPU checksum rows; found ${#checksum_lines[@]}." >&2
+            exit 1
+          }
+          count=0
+          declare -A seen=()
+          for line in "${checksum_lines[@]}"; do
+            read -r expected name extra <<< "$line"
+            [[ -n "${expected:-}" && -n "${name:-}" && -z "${extra:-}" ]] || {
+              echo "Malformed GPU checksum row." >&2
+              exit 1
+            }
+            [[ "$expected" =~ ^[0-9a-fA-F]{64}$ ]] || { echo "Malformed SHA-256 for $name." >&2; exit 1; }
+            [[ "$name" =~ ^[A-Za-z0-9._+-]+\.so$ ]] || { echo "Malformed GPU library name: $name" >&2; exit 1; }
+            [[ -z "${seen[$name]+x}" ]] || { echo "Duplicate runtime checksum entry: $name" >&2; exit 1; }
+            seen["$name"]=1
+            actual="$(unzip -p "$apk" "lib/arm64-v8a/$name" | sha256sum | awk '{print $1}')"
+            [[ "$actual" == "$expected" ]] || {
+              echo "Packaged GPU runtime hash mismatch for $name" >&2
+              exit 1
+            }
+            count=$((count + 1))
+          done
+          echo "Verified all $count LiteRT-LM GPU library hashes inside the final APK."
+
+      - name: Generate APK checksum and source provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build-artifacts
+          find mistbell-v3/app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' -exec cp {} build-artifacts/ \;
+          test -n "$(find build-artifacts -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          cd build-artifacts
+          sha256sum *.apk | tee SHA256SUMS.txt
+          printf 'source_sha=%s\nworkflow_run_id=%s\nartifact_role=3.0-device-test-debug-apk\n' "$GITHUB_SHA" "$GITHUB_RUN_ID" > SOURCE.txt
+
+      - name: Upload final device-test APK and provenance
+        uses: actions/upload-artifact@v4
+        with:
+          name: mistbell-v3-device-test-apk-${{ github.run_number }}
+          path: build-artifacts/*
+          if-no-files-found: error
+          retention-days: 14
