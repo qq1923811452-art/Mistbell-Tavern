@@ -81,10 +81,10 @@ class LocalWorldBookService(
 
             if (candidates.isEmpty()) break
             val newlyActivated = mutableListOf<WorldBookEntry>()
-            val groupsSeenThisPass = mutableSetOf<String>()
             for (entry in candidates) {
-                if (entry.groupName.isNotBlank() &&
-                    (entry.groupName in activatedGroups || !groupsSeenThisPass.add(entry.groupName))) {
+                // A group is consumed only after an entry actually activates. A delayed,
+                // probability-rejected, or over-budget candidate must not suppress a viable peer.
+                if (entry.groupName.isNotBlank() && entry.groupName in activatedGroups) {
                     continue
                 }
                 val lastActivated = state?.lastActivatedTurn?.get(entry.id) ?: Int.MIN_VALUE
