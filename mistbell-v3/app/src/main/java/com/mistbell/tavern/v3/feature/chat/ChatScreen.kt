@@ -1,6 +1,7 @@
 package com.mistbell.tavern.v3.feature.chat
 
 import android.os.Handler
+import android.util.AtomicFile
 import android.os.Looper
 import android.content.Context
 import androidx.compose.ui.platform.LocalContext
@@ -80,6 +81,8 @@ import com.mistbell.tavern.v3.feature.memory.TemporalFactTextSynchronizer
 import com.mistbell.tavern.v3.feature.memory.TemporalFactTextSyncResult
 import com.mistbell.tavern.v3.feature.memory.TemporalFactExtractionPipeline
 import com.mistbell.tavern.v3.feature.memory.TemporalFactPipelineOutcome
+import com.mistbell.tavern.v3.feature.worldbook.LocalWorldBookService
+import com.mistbell.tavern.v3.feature.worldbook.WorldBookParser
 
 private val CHAT_EMBEDDING_DIMENSION_OPTIONS = listOf(128, 256, 512, 768, 1024, 1536, 2048)
 
@@ -172,6 +175,41 @@ fun ChatScreen(onBack: () -> Unit) {
     val historySaveMutex = remember { Mutex() }
     val historySaveRevision = remember { java.util.concurrent.atomic.AtomicLong(0L) }
     val diagnosticStore = remember(context) { DiagnosticLogStore(context.applicationContext.filesDir) }
+    var localWorldbookEntries by remember(context) {
+        mutableStateOf<List<com.mistbell.tavern.v3.feature.worldbook.WorldBookEntry>>(emptyList())
+    }
+
+    LaunchedEffect(context) {
+        val loadedWorldbookEntries = withContext(Dispatchers.IO) {
+            runCatching {
+                val directory = File(context.filesDir, "worldbooks")
+                directory.listFiles { file -> file.isFile && file.extension == "json" }
+                    .orEmpty()
+                    .sortedBy { it.name }
+                    .flatMap { file ->
+                        runCatching {
+                            WorldBookParser.parse(
+                                AtomicFile(file).openRead().use { it.readBytes().toString(Charsets.UTF_8) },
+                                file.nameWithoutExtension,
+                            )?.entries.orEmpty()
+                        }.getOrElse { error ->
+                            diagnosticStore.warn(
+                                "worldbook.file_skipped",
+                                "reason=${error::class.java.simpleName}",
+                            )
+                            emptyList()
+                        }
+                    }
+            }
+        }
+        localWorldbookEntries = loadedWorldbookEntries.getOrElse { error ->
+            diagnosticStore.warn(
+                "worldbook.load_failed",
+                "reason=${error::class.java.simpleName}",
+            )
+            emptyList()
+        }
+    }
     val memoryExtractionInFlight = remember { mutableSetOf<String>() }
 
     fun persistHistory() {
@@ -758,19 +796,31 @@ fun ChatScreen(onBack: () -> Unit) {
                         busy = true
                         memoryStatusNotice = ""
                         status = "正在连接聊天 API……"
+                        val completeHistory = history.dropLast(2).mapNotNull { line ->
+                            if (line.content.isBlank()) {
+                                null
+                            } else {
+                                PromptMessage(
+                                    if (line.role == "user") PromptRole.USER else PromptRole.ASSISTANT,
+                                    line.content,
+                                )
+                            }
+                        }
+                        val contextWindow = ConversationContextWindowBuilder.build(completeHistory)
+                        // Activate entries from the asynchronously loaded local library against
+                        // the current turn plus a bounded tail of recent conversation.
+                        val activatedWorldbook = LocalWorldBookService().activateEntries(
+                            entries = localWorldbookEntries,
+                            scanText = userText,
+                            recentTexts = completeHistory.takeLast(6).map { it.content },
+                            maxBudget = LocalWorldBookService.DEFAULT_MAX_BUDGET,
+                        )
                         val messages = PromptAssembler.assemble(
                             PromptAssemblyInput(
                                 stableSystemPrefix = "你是 Mistbell Tavern 的聊天助手。请直接、清晰地回答用户。",
-                                conversationHistory = history.dropLast(2).mapNotNull { line ->
-                                    if (line.content.isBlank()) {
-                                        null
-                                    } else {
-                                        PromptMessage(
-                                            if (line.role == "user") PromptRole.USER else PromptRole.ASSISTANT,
-                                            line.content,
-                                        )
-                                    }
-                                },
+                                earlierConversationSummary = contextWindow.earlierSummary,
+                                worldbookEntries = activatedWorldbook.map { it.entry },
+                                conversationHistory = contextWindow.recentMessages,
                                 latestUserMessage = userText,
                             ),
                         )
