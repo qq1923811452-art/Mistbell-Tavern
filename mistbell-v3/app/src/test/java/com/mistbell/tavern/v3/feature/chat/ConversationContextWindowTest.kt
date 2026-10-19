@@ -58,6 +58,36 @@ class ConversationContextWindowTest {
         assertEquals(listOf("new", "new reply"), result.recentMessages.map { it.content })
     }
 
+    @Test
+    fun recentWindowCountsUserTurnsAndKeepsMultipleAssistantMessagesInTurn() {
+        val history = listOf(
+            PromptMessage(PromptRole.USER, "user-1"),
+            PromptMessage(PromptRole.ASSISTANT, "assistant-1a"),
+            PromptMessage(PromptRole.ASSISTANT, "assistant-1b"),
+            PromptMessage(PromptRole.USER, "user-2"),
+            PromptMessage(PromptRole.ASSISTANT, "assistant-2"),
+        )
+
+        val result = ConversationContextWindowBuilder.build(history, recentTurns = 1)
+
+        assertEquals(listOf("user-2", "assistant-2"), result.recentMessages.map { it.content })
+        assertTrue(result.earlierSummary.contains("user-1"))
+    }
+
+    @Test
+    fun recentWindowDoesNotBeginWithAnOrphanAssistantMessage() {
+        val history = listOf(
+            PromptMessage(PromptRole.ASSISTANT, "orphaned reply"),
+            PromptMessage(PromptRole.USER, "first user"),
+            PromptMessage(PromptRole.ASSISTANT, "first reply"),
+        )
+
+        val result = ConversationContextWindowBuilder.build(history, recentTurns = 20)
+
+        assertEquals(listOf("first user", "first reply"), result.recentMessages.map { it.content })
+        assertTrue(result.earlierSummary.contains("orphaned reply"))
+    }
+
     @Test(expected = IllegalArgumentException::class)
     fun rejectsNegativeWindowSize() {
         ConversationContextWindowBuilder.build(emptyList(), recentTurns = -1)
