@@ -295,6 +295,76 @@ fun ChatScreen(onBack: () -> Unit) {
         }
     }
 
+    val importSessionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) coroutineScope.launch {
+            runCatching {
+                val raw = withContext(Dispatchers.IO) {
+                    context.contentResolver.openInputStream(uri)?.use { input ->
+                        val output = java.io.ByteArrayOutputStream()
+                        val buffer = ByteArray(8192)
+                        while (true) {
+                            val count = input.read(buffer)
+                            if (count < 0) break
+                            require(output.size() + count <= SessionArchiveCodec.MAX_IMPORT_BYTES) {
+                                "会话文件超过 32 MiB 导入上限。"
+                            }
+                            output.write(buffer, 0, count)
+                        }
+                        output.toByteArray().toString(Charsets.UTF_8)
+                    } ?: error("无法读取会话文件")
+                }
+                SessionArchiveCodec.importAny(raw) ?: error("JSON/JSONL 格式无效，或消息数量/长度超过限制。")
+            }.onSuccess { archive ->
+                history.clear()
+                history.addAll(archive.messages.map { message ->
+                    ChatLine(message.id, message.role, message.content, message.createdAtEpochMillis, message.deliveryState)
+                })
+                persistHistory()
+                status = "已导入会话「${archive.title}」：${archive.messages.size} 条消息（写入当前会话；原文件不会修改）。"
+            }.onFailure { error ->
+                status = "会话导入失败：${error.message ?: error::class.java.simpleName}"
+            }
+        }
+    }
+    val exportJsonLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        if (uri != null) coroutineScope.launch {
+            runCatching {
+                val archive = SessionArchive(
+                    id = memoryConversationId,
+                    title = "Mistbell Tavern session",
+                    messages = history.map { line ->
+                        PersistedChatMessage(line.id, line.role, line.content, line.createdAtEpochMillis, line.deliveryState)
+                    },
+                )
+                val raw = SessionArchiveCodec.exportJson(archive)
+                withContext(Dispatchers.IO) {
+                    context.contentResolver.openOutputStream(uri)?.use { it.write(raw.toByteArray(Charsets.UTF_8)) }
+                        ?: error("无法写入导出文件")
+                }
+            }.onSuccess { status = "会话 JSON 导出完成。" }
+                .onFailure { error -> status = "会话导出失败：${error.message ?: error::class.java.simpleName}" }
+        }
+    }
+    val exportJsonlLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/jsonl")) { uri ->
+        if (uri != null) coroutineScope.launch {
+            runCatching {
+                val archive = SessionArchive(
+                    id = memoryConversationId,
+                    title = "Mistbell Tavern session",
+                    messages = history.map { line ->
+                        PersistedChatMessage(line.id, line.role, line.content, line.createdAtEpochMillis, line.deliveryState)
+                    },
+                )
+                val raw = SessionArchiveCodec.exportJsonl(archive)
+                withContext(Dispatchers.IO) {
+                    context.contentResolver.openOutputStream(uri)?.use { it.write(raw.toByteArray(Charsets.UTF_8)) }
+                        ?: error("无法写入导出文件")
+                }
+            }.onSuccess { status = "会话 JSONL 导出完成。" }
+                .onFailure { error -> status = "会话导出失败：${error.message ?: error::class.java.simpleName}" }
+        }
+    }
+
     LaunchedEffect(historyStore) {
         // A role or conversation change must never leave the previous scope's messages on screen.
         historyReady = false
@@ -615,6 +685,23 @@ fun ChatScreen(onBack: () -> Unit) {
                         singleLine = true,
                     )
                     Text(usageSummary, style = MaterialTheme.typography.bodySmall)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Button(
+                            enabled = historyReady && !busy,
+                            onClick = { importSessionLauncher.launch(arrayOf("application/json", "application/jsonl", "text/plain", "*/*")) },
+                            modifier = Modifier.weight(1f),
+                        ) { Text("导入 JSON/JSONL") }
+                        Button(
+                            enabled = historyReady && !busy,
+                            onClick = { exportJsonLauncher.launch("mistbell-session.json") },
+                            modifier = Modifier.weight(1f),
+                        ) { Text("导出 JSON") }
+                        Button(
+                            enabled = historyReady && !busy,
+                            onClick = { exportJsonlLauncher.launch("mistbell-session.jsonl") },
+                            modifier = Modifier.weight(1f),
+                        ) { Text("导出 JSONL") }
+                    }
                     OutlinedTextField(
                         value = baseUrl,
                         onValueChange = {
