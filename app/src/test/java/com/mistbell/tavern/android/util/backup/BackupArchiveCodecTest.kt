@@ -18,7 +18,7 @@ class BackupArchiveCodecTest {
             linkedMapOf(
                 "database/tavern.db" to byteArrayOf(0, 1, 2, 3),
                 "characters/card.json" to """{"name":"Ariya"}""".toByteArray(StandardCharsets.UTF_8),
-        )
+            )
 
         val restored = BackupArchiveCodec.read(BackupArchiveCodec.write(source, 1_792_000_000_000L))
 
