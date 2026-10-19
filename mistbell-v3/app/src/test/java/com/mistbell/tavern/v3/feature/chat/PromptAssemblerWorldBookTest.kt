@@ -11,7 +11,7 @@ class PromptAssemblerWorldBookTest {
         val messages = PromptAssembler.assemble(
             PromptAssemblyInput(
                 stableSystemPrefix = "stable-prefix",
-                stableCharacterDefinition = "character",
+                stableCharacterDefinition = "character-definition-marker",
                 activeMemoryFacts = listOf("fact"),
                 worldbookEntries = listOf(
                     WorldBookEntry("before", "book", content = "before-lore"),
@@ -23,8 +23,8 @@ class PromptAssemblerWorldBookTest {
         )
         val system = messages.first().content
         assertTrue(system.indexOf("stable-prefix") < system.indexOf("before-lore"))
-        assertTrue(system.indexOf("before-lore") < system.indexOf("character"))
-        assertTrue(system.indexOf("character") < system.indexOf("after-lore"))
+        assertTrue(system.indexOf("before-lore") < system.indexOf("character-definition-marker"))
+        assertTrue(system.indexOf("character-definition-marker") < system.indexOf("after-lore"))
         assertTrue(system.indexOf("after-lore") < system.indexOf("fact"))
     }
 
