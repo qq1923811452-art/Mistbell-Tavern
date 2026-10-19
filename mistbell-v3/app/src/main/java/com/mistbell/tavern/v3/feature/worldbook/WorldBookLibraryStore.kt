@@ -16,10 +16,17 @@ class WorldBookLibraryStore(private val directory: File) {
             .orEmpty()
             .mapNotNull { file ->
                 runCatching {
-                    WorldBookParser.parse(
+                    val parsed = WorldBookParser.parse(
                         AtomicFile(file).openRead().use { it.readBytes().toString(Charsets.UTF_8) },
                         file.nameWithoutExtension,
                     ) ?: error("Invalid worldbook JSON")
+                    // The library filename is the stable storage identity. This also repairs
+                    // older files whose embedded id is absent or disagrees with the filename.
+                    val fileId = file.nameWithoutExtension
+                    parsed.copy(
+                        id = fileId,
+                        entries = parsed.entries.map { it.copy(bookId = fileId) },
+                    )
                 }.onFailure { error ->
                     Log.w("WorldBookLibrary", "Skipping invalid worldbook file ${file.name}", error)
                 }.getOrNull()
