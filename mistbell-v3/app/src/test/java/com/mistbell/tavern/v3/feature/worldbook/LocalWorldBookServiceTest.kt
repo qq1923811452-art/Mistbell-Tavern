@@ -66,6 +66,23 @@ class LocalWorldBookServiceTest {
         assertEquals(listOf("cooldown"), service.activateEntries(listOf(cooldown), "dragon", state = cooldownState).map { it.entry.id })
     }
 
+    @Test fun delayedGroupCandidateDoesNotBlockAnImmediatelyEligiblePeer() {
+        val service = LocalWorldBookService()
+        val state = WorldBookActivationState()
+        val delayed = WorldBookEntry(
+            id = "delayed-group", bookId = "book", keys = listOf("dragon"),
+            content = "wait", delay = 1, groupName = "exclusive", order = 1,
+        )
+        val immediate = WorldBookEntry(
+            id = "immediate-group", bookId = "book", keys = listOf("dragon"),
+            content = "now", groupName = "exclusive", order = 2,
+        )
+
+        val results = service.activateEntries(listOf(delayed, immediate), "dragon", state = state)
+
+        assertEquals(listOf("immediate-group"), results.map { it.entry.id })
+    }
+
     @Test fun historyScanDepthUsesOnlyMostRecentItems() {
         val service = LocalWorldBookService()
         val corpus = service.buildScanCorpus("current", listOf("old", "middle", "recent"), 2)
