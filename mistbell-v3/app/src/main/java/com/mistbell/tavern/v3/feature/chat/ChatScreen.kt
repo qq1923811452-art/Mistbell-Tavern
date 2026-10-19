@@ -315,7 +315,7 @@ fun ChatScreen(onBack: () -> Unit) {
                         output.toByteArray().toString(Charsets.UTF_8)
                     } ?: error("无法读取会话文件")
                 }
-                SessionArchiveCodec.importAny(raw) ?: error("JSON/JSONL 格式无效，或消息数量/长度超过限制。")
+                SessionArchiveCodec.importAnyDetailed(raw).let { result -> result.archive ?: error(result.error ?: "会话文件无效。") }
             }.onSuccess { archive ->
                 history.clear()
                 history.addAll(archive.messages.map { message ->
