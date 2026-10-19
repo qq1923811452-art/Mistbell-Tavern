@@ -15,14 +15,17 @@ data class ConversationContextWindow(
 object ConversationContextWindowBuilder {
     const val DEFAULT_RECENT_TURNS = 20
     const val DEFAULT_SUMMARY_MAX_CHARS = 300
+    const val DEFAULT_MAX_HISTORY_CHARS = 12_000
 
     fun build(
         history: List<PromptMessage>,
         recentTurns: Int = DEFAULT_RECENT_TURNS,
         summaryMaxChars: Int = DEFAULT_SUMMARY_MAX_CHARS,
+        maxHistoryChars: Int = DEFAULT_MAX_HISTORY_CHARS,
     ): ConversationContextWindow {
         require(recentTurns >= 0) { "recentTurns must be non-negative." }
         require(summaryMaxChars >= 0) { "summaryMaxChars must be non-negative." }
+        require(maxHistoryChars >= 0) { "maxHistoryChars must be non-negative." }
         require(history.all { it.role == PromptRole.USER || it.role == PromptRole.ASSISTANT }) {
             "Conversation history may contain only user and assistant messages."
         }
@@ -33,7 +36,11 @@ object ConversationContextWindowBuilder {
         val recent = history.drop(splitAt)
         return ConversationContextWindow(
             earlierSummary = buildExtractiveSummary(older, summaryMaxChars),
-            recentMessages = recent,
+            recentMessages = PromptHistoryBudget.select(
+                recent,
+                maxCharacters = maxHistoryChars,
+                maxMessages = recentMessageCount,
+            ),
         )
     }
 
