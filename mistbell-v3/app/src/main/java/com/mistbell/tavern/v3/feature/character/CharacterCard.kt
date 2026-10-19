@@ -27,6 +27,7 @@ data class CharacterCard(
         description.trim().takeIf(String::isNotEmpty)?.let { add("Description: $it") }
         personality.trim().takeIf(String::isNotEmpty)?.let { add("Personality: $it") }
         scenario.trim().takeIf(String::isNotEmpty)?.let { add("Scenario: $it") }
+        exampleDialogue.trim().takeIf(String::isNotEmpty)?.let { add("Example dialogue:\n$it") }
         systemPrompt.trim().takeIf(String::isNotEmpty)?.let { add("System instructions: $it") }
         postHistoryInstructions.trim().takeIf(String::isNotEmpty)?.let {
             add("Post-history instructions: $it")
