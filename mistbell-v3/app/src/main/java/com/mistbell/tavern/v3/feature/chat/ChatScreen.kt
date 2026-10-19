@@ -46,6 +46,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenu
@@ -137,6 +138,7 @@ fun ChatScreen(onBack: () -> Unit) {
     var historyReady by remember { mutableStateOf(false) }
     var historyLoadFailed by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("填写模型 ID 和 API 配置后即可测试聊天。") }
+    var showImportWarning by remember { mutableStateOf(false) }
     var memoryConversationId by remember(settings) {
         mutableStateOf(
             settings.getString("memory_extraction_conversation_id", null)
@@ -326,6 +328,25 @@ fun ChatScreen(onBack: () -> Unit) {
             }
         }
     }
+    if (showImportWarning) {
+        AlertDialog(
+            onDismissRequest = { showImportWarning = false },
+            title = { Text("导入会覆盖当前会话") },
+            text = {
+                Text("导入的消息会替换当前会话的聊天记录，不会自动创建新会话。建议先导出当前会话备份。是否继续选择文件？")
+            },
+            confirmButton = {
+                Button(onClick = {
+                    showImportWarning = false
+                    importSessionLauncher.launch(arrayOf("application/json", "application/jsonl", "text/plain", "*/*"))
+                }) { Text("继续选择文件") }
+            },
+            dismissButton = {
+                Button(onClick = { showImportWarning = false }) { Text("取消") }
+            },
+        )
+    }
+
     val exportJsonLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         if (uri != null) coroutineScope.launch {
             runCatching {
@@ -688,7 +709,7 @@ fun ChatScreen(onBack: () -> Unit) {
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         Button(
                             enabled = historyReady && !busy,
-                            onClick = { importSessionLauncher.launch(arrayOf("application/json", "application/jsonl", "text/plain", "*/*")) },
+                            onClick = { showImportWarning = true },
                             modifier = Modifier.weight(1f),
                         ) { Text("导入 JSON/JSONL") }
                         Button(
