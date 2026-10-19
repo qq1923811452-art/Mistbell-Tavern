@@ -56,6 +56,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -162,10 +163,18 @@ fun ChatScreen(onBack: () -> Unit) {
     val listState = rememberLazyListState()
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
     val historyStore = remember(context, memoryScopeId) {
-        ChatHistoryStore(
+        val legacyStore = ChatHistoryStore(
             context.applicationContext,
             MemoryScopeFileNames.forScope(ChatHistoryStore.DEFAULT_FILE_NAME, memoryScopeId),
         )
+        SqliteChatHistoryRepository(
+            context.applicationContext,
+            memoryScopeId,
+            legacyStore,
+        )
+    }
+    DisposableEffect(historyStore) {
+        onDispose { historyStore.close() }
     }
     val memoryCredentialStore = remember(context) { AndroidKeystoreMemoryCredentialStore(context.applicationContext) }
     val coroutineScope = rememberCoroutineScope()

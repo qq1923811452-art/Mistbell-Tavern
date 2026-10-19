@@ -35,13 +35,91 @@ class SqliteChatStore(
     }
 
     override fun upsert(scopeId: String, message: PersistedChatMessage) {
+        upsertAll(scopeId, listOf(message))
+    }
+
+    /** Commits a batch atomically; callers should pass only changed/new rows. */
+    fun upsertAll(scopeId: String, messages: List<PersistedChatMessage>) {
+        syncSnapshot(scopeId, messages, emptySet())
+    }
+
+    /**
+     * Applies changed/new rows and removals as one transaction, so a crash cannot leave the
+     * database with only half of a UI snapshot applied.
+     */
+    fun syncSnapshot(
+        scopeId: String,
+        upserts: List<PersistedChatMessage>,
+        removedMessageIds: Set<String>,
+    ) {
         validateScope(scopeId)
-        writableDatabase.insertWithOnConflict(
-            TABLE_MESSAGES,
-            null,
-            values(scopeId, message),
-            SQLiteDatabase.CONFLICT_REPLACE,
-        )
+        require(upserts.map(PersistedChatMessage::id).distinct().size == upserts.size) {
+            "Chat message IDs must be unique within a batch."
+        }
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            upserts.forEach { message ->
+                db.insertWithOnConflict(
+                    TABLE_MESSAGES,
+                    null,
+                    values(scopeId, message),
+                    SQLiteDatabase.CONFLICT_REPLACE,
+                )
+            }
+            removedMessageIds.forEach { id ->
+                db.delete(TABLE_MESSAGES, "scope_id = ? AND id = ?", arrayOf(scopeId, id))
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    /**
+     * Imports a legacy snapshot only when this scope is empty, verifying every row before
+     * committing. A mismatch or exception rolls the whole import back, so a later load can retry
+     * from the untouched JSON recovery source.
+     */
+    fun importScopeAtomically(scopeId: String, messages: List<PersistedChatMessage>): Boolean {
+        validateScope(scopeId)
+        require(messages.map(PersistedChatMessage::id).distinct().size == messages.size) {
+            "Chat message IDs must be unique within a batch."
+        }
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            val existingCount = db.rawQuery(
+                "SELECT COUNT(*) FROM $TABLE_MESSAGES WHERE scope_id = ?",
+                arrayOf(scopeId),
+            ).use { cursor -> if (cursor.moveToFirst()) cursor.getLong(0) else 0L }
+            if (existingCount != 0L) return false
+
+            messages.forEach { message ->
+                db.insertOrThrow(TABLE_MESSAGES, null, values(scopeId, message))
+            }
+            val imported = db.query(
+                TABLE_MESSAGES,
+                MESSAGE_COLUMNS,
+                "scope_id = ?",
+                arrayOf(scopeId),
+                null,
+                null,
+                "created_at ASC, id ASC",
+            ).use { cursor ->
+                buildList(cursor.count) {
+                    while (cursor.moveToNext()) add(cursor.toPersistedMessage())
+                }
+            }
+            if (imported.size != messages.size ||
+                imported.associateBy(PersistedChatMessage::id) != messages.associateBy(PersistedChatMessage::id)
+            ) return false
+
+            db.setTransactionSuccessful()
+            return true
+        } finally {
+            db.endTransaction()
+        }
     }
 
     override fun loadRecent(
@@ -94,6 +172,22 @@ class SqliteChatStore(
     override fun deleteScope(scopeId: String) {
         validateScope(scopeId)
         writableDatabase.delete(TABLE_MESSAGES, "scope_id = ?", arrayOf(scopeId))
+    }
+
+    /** Deletes only the specified message IDs within one conversation scope. */
+    fun deleteMessages(scopeId: String, messageIds: Set<String>) {
+        validateScope(scopeId)
+        if (messageIds.isEmpty()) return
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            messageIds.forEach { id ->
+                db.delete(TABLE_MESSAGES, "scope_id = ? AND id = ?", arrayOf(scopeId, id))
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
     }
 
     private fun values(scopeId: String, message: PersistedChatMessage) =
