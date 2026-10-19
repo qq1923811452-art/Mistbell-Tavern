@@ -129,8 +129,9 @@ object BackupArchiveCodec {
             ?: throw IOException("Backup manifest is missing")
         val lines = manifest.toString(StandardCharsets.UTF_8).lineSequence().filter { it.isNotEmpty() }.toList()
         val header = lines.firstOrNull()?.split('\t')
+        val createdAtEpochMs = header?.getOrNull(2)?.toLongOrNull()
         if (header == null || header.size != 3 || header[0] != "mistbell-backup" ||
-            header[1] != "1" || header[2].toLongOrNull() == null
+            header[1] != "1" || createdAtEpochMs == null || createdAtEpochMs < 0
         ) {
             throw IOException("Unsupported or malformed backup manifest")
         }
@@ -162,7 +163,7 @@ object BackupArchiveCodec {
                 throw IOException("Backup checksum mismatch: $path")
             }
         }
-        return Archive(header[2].toLong(), rawEntries)
+        return Archive(createdAtEpochMs, rawEntries)
     }
 
     private fun validatePath(path: String) {
