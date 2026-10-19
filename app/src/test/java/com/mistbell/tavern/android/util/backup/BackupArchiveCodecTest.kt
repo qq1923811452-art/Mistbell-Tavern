@@ -33,7 +33,7 @@ class BackupArchiveCodecTest {
     }
 
     @Test
-    fun rejectsAbsoluteAndBackslashPaths() {
+    fun rejectsAbsoluteBackslashAndDirectoryPaths() {
         assertThrows(IllegalArgumentException::class.java) {
             BackupArchiveCodec.write(mapOf("/outside.txt" to byteArrayOf(1)), 1L)
         }
