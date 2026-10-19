@@ -1,20 +1,20 @@
 package com.mistbell.tavern.android.util.backup
 
+import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
+import org.junit.Test
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.nio.charset.StandardCharsets
 import java.util.Base64
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
-import org.junit.Assert.assertArrayEquals
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertThrows
-import org.junit.Test
 
 class BackupArchiveCodecTest {
     @Test
     fun roundTripsEntriesAndTimestamp() {
-        val source = linkedMapOf(
+        val source =\n            linkedMapOf(
             "database/tavern.db" to byteArrayOf(0, 1, 2, 3),
             "characters/card.json" to """{"name":"Ariya"}""".toByteArray(StandardCharsets.UTF_8),
         )
@@ -61,7 +61,7 @@ class BackupArchiveCodecTest {
 
     @Test
     fun rejectsArchiveWithoutManifest() {
-        val bytes = ByteArrayOutputStream().also { output ->
+        val bytes =\n            ByteArrayOutputStream().also { output ->
             ZipOutputStream(output).use { zip ->
                 zip.putNextEntry(ZipEntry("database/tavern.db"))
                 zip.write(byteArrayOf(1, 2, 3))
@@ -83,7 +83,7 @@ class BackupArchiveCodecTest {
     fun rejectsChecksumMismatch() {
         val path = "characters/card.json"
         val payload = """{"name":"Ariya"}""".toByteArray(StandardCharsets.UTF_8)
-        val encodedPath = Base64.getUrlEncoder().withoutPadding()
+        val encodedPath =\n            Base64.getUrlEncoder().withoutPadding()
             .encodeToString(path.toByteArray(StandardCharsets.UTF_8))
         val manifest = "mistbell-backup\t1\t1\n$encodedPath\t${payload.size}\t${"0".repeat(64)}\n"
 
