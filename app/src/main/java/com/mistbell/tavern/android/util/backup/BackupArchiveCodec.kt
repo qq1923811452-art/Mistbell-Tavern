@@ -92,6 +92,9 @@ object BackupArchiveCodec {
                     .append(sha256(bytes)).append('\n')
             }
         }.toByteArray(StandardCharsets.UTF_8)
+        if (manifest.size > MAX_ENTRY_BYTES) {
+            throw IOException("Backup manifest is too large")
+        }
 
         val output = ByteArrayOutputStream()
         ZipOutputStream(output).use { zip ->
@@ -250,7 +253,9 @@ object BackupArchiveCodec {
         require(!path.startsWith('/') && !path.startsWith('\\')) { "Absolute backup path" }
         require(!Regex("^[A-Za-z]:").containsMatchIn(path)) { "Drive-qualified backup path" }
         require(!path.contains(':')) { "Colon is not valid in backup paths" }
-        require(path.length <= MAX_PATH_LENGTH) { "Backup path is too long" }
+        require(path.toByteArray(StandardCharsets.UTF_8).size <= MAX_PATH_LENGTH) {
+            "Backup path is too long"
+        }
         require(path.none { it.code < MIN_PRINTABLE_PATH_CHAR || it.code == DELETE_CHAR }) {
             "Control characters are not valid in backup paths"
         }
