@@ -3,6 +3,8 @@ package com.mistbell.tavern.v3.feature.chat
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import com.mistbell.tavern.v3.feature.worldbook.WorldBookEntry
+import com.mistbell.tavern.v3.feature.worldbook.WorldBookPlacement
 
 class PromptAssemblerTest {
     @Test
@@ -12,7 +14,10 @@ class PromptAssemblerTest {
                 stableSystemPrefix = "Follow the roleplay rules.",
                 stableCharacterDefinition = "Character: Mira",
                 activeMemoryFacts = listOf("Mira likes tea."),
-                activatedWorldbookEntries = listOf("The city has three moons."),
+                worldbookEntries = listOf(WorldBookEntry(
+                    id = "city", bookId = "book", content = "The city has three moons.",
+                    insertPosition = WorldBookPlacement.POSITION_AFTER_PROMPT, constant = true,
+                )),
                 latestUserMessage = "Hello",
             ),
         )
@@ -21,7 +26,10 @@ class PromptAssemblerTest {
                 stableSystemPrefix = "Follow the roleplay rules.",
                 stableCharacterDefinition = "Character: Mira",
                 activeMemoryFacts = listOf("Mira now prefers coffee."),
-                activatedWorldbookEntries = listOf("The city has four moons."),
+                worldbookEntries = listOf(WorldBookEntry(
+                    id = "city", bookId = "book", content = "The city has four moons.",
+                    insertPosition = WorldBookPlacement.POSITION_AFTER_PROMPT, constant = true,
+                )),
                 latestUserMessage = "Good morning",
             ),
         )
@@ -38,7 +46,10 @@ class PromptAssemblerTest {
                 stableSystemPrefix = "Role rules",
                 stableCharacterDefinition = "Character: Mira",
                 activeMemoryFacts = listOf("Fact A"),
-                activatedWorldbookEntries = listOf("World B"),
+                worldbookEntries = listOf(WorldBookEntry(
+                    id = "world", bookId = "book", content = "World B",
+                    insertPosition = WorldBookPlacement.POSITION_AFTER_PROMPT, constant = true,
+                )),
                 conversationHistory = listOf(
                     PromptMessage(PromptRole.USER, "Earlier"),
                     PromptMessage(PromptRole.ASSISTANT, "Earlier reply"),
@@ -81,7 +92,7 @@ class PromptAssemblerTest {
             PromptAssemblyInput(
                 stableSystemPrefix = "Stable rules",
                 activeMemoryFacts = listOf("", "  "),
-                activatedWorldbookEntries = listOf(""),
+                worldbookEntries = listOf(WorldBookEntry(id = "blank", bookId = "book", content = "")),
                 latestUserMessage = "Hi",
             ),
         )
