@@ -16,8 +16,8 @@ class BackupArchiveCodecTest {
     fun roundTripsEntriesAndTimestamp() {
         val source =
             linkedMapOf(
-            "database/tavern.db" to byteArrayOf(0, 1, 2, 3),
-            "characters/card.json" to """{"name":"Ariya"}""".toByteArray(StandardCharsets.UTF_8),
+                "database/tavern.db" to byteArrayOf(0, 1, 2, 3),
+                "characters/card.json" to """{"name":"Ariya"}""".toByteArray(StandardCharsets.UTF_8),
         )
 
         val restored = BackupArchiveCodec.read(BackupArchiveCodec.write(source, 1_792_000_000_000L))
@@ -64,12 +64,12 @@ class BackupArchiveCodecTest {
     fun rejectsArchiveWithoutManifest() {
         val bytes =
             ByteArrayOutputStream().also { output ->
-            ZipOutputStream(output).use { zip ->
-                zip.putNextEntry(ZipEntry("database/tavern.db"))
-                zip.write(byteArrayOf(1, 2, 3))
-                zip.closeEntry()
-            }
-        }.toByteArray()
+                ZipOutputStream(output).use { zip ->
+                    zip.putNextEntry(ZipEntry("database/tavern.db"))
+                    zip.write(byteArrayOf(1, 2, 3))
+                    zip.closeEntry()
+                }
+            }.toByteArray()
 
         assertThrows(IOException::class.java) { BackupArchiveCodec.read(bytes) }
     }
@@ -87,7 +87,7 @@ class BackupArchiveCodecTest {
         val payload = """{"name":"Ariya"}""".toByteArray(StandardCharsets.UTF_8)
         val encodedPath =
             Base64.getUrlEncoder().withoutPadding()
-            .encodeToString(path.toByteArray(StandardCharsets.UTF_8))
+                .encodeToString(path.toByteArray(StandardCharsets.UTF_8))
         val manifest = "mistbell-backup\t1\t1\n$encodedPath\t${payload.size}\t${"0".repeat(64)}\n"
 
         assertThrows(IOException::class.java) {
@@ -98,8 +98,9 @@ class BackupArchiveCodecTest {
     @Test
     fun rejectsManifestContentMismatch() {
         val missingPath = "database/missing.db"
-        val encodedPath = Base64.getUrlEncoder().withoutPadding()
-            .encodeToString(missingPath.toByteArray(StandardCharsets.UTF_8))
+        val encodedPath =
+            Base64.getUrlEncoder().withoutPadding()
+                .encodeToString(missingPath.toByteArray(StandardCharsets.UTF_8))
         val manifest = "mistbell-backup\t1\t1\n$encodedPath\t1\t${"0".repeat(64)}\n"
 
         assertThrows(IOException::class.java) {
