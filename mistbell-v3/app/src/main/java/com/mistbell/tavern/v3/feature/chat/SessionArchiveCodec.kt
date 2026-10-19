@@ -11,6 +11,13 @@ data class SessionArchive(
     val messages: List<PersistedChatMessage>,
 )
 
+data class SessionArchiveImportResult(
+    val archive: SessionArchive?,
+    val error: String? = null,
+) {
+    val isSuccess: Boolean get() = archive != null
+}
+
 /** Bounded JSON/JSONL import and export for v3 sessions, including common Tavern JSONL fields. */
 object SessionArchiveCodec {
     const val MAX_IMPORT_BYTES = 32 * 1024 * 1024
@@ -48,23 +55,48 @@ object SessionArchiveCodec {
         return lines
     }
 
-    fun importAny(raw: String): SessionArchive? {
-        if (raw.toByteArray(Charsets.UTF_8).size > MAX_IMPORT_BYTES) return null
-        val trimmed = raw.trim()
-        if (trimmed.isEmpty()) return null
-        // JSONL records also begin with '{'. Try each parser independently so a
-        // whole-document JSON parse failure does not prevent valid JSONL fallback.
-        val parsedJson = runCatching { parseJson(trimmed) }.getOrNull()
-        if (parsedJson != null) return parsedJson
+    fun importAny(raw: String): SessionArchive? = importAnyDetailed(raw).archive
 
-        // Do not reinterpret a complete JSON session document with unsupported
-        // metadata as a JSONL message. Single-record JSONL remains supported.
+    /** Returns a user-displayable reason instead of silently collapsing every failure to null. */
+    fun importAnyDetailed(raw: String): SessionArchiveImportResult {
+        if (raw.toByteArray(Charsets.UTF_8).size > MAX_IMPORT_BYTES) {
+            return SessionArchiveImportResult(null, "文件超过 32 MiB 导入上限。")
+        }
+        val trimmed = raw.trim()
+        if (trimmed.isEmpty()) return SessionArchiveImportResult(null, "文件为空。")
+
+        // JSONL records also begin with '{'. Try a complete JSON document first.
         val jsonRoot = runCatching { JSONObject(trimmed) }.getOrNull()
         if (jsonRoot != null && (jsonRoot.has("format") || jsonRoot.has("version") ||
                 jsonRoot.has("messages"))) {
-            return null
+            val format = jsonRoot.optString("format", "mistbell-session")
+            if (format != "mistbell-session") {
+                return SessionArchiveImportResult(null, "不支持的会话文件格式：$format。")
+            }
+            if (jsonRoot.has("version") && jsonRoot.optInt("version", -1) != 1) {
+                return SessionArchiveImportResult(null, "不支持的会话文件版本。")
+            }
+            return runCatching { parseJson(trimmed) }
+                .fold(
+                    onSuccess = { archive ->
+                        if (archive == null) SessionArchiveImportResult(null, "JSON 文件缺少有效的 messages 数组。")
+                        else SessionArchiveImportResult(archive)
+                    },
+                    onFailure = { error ->
+                        SessionArchiveImportResult(null, error.message ?: "JSON 会话文件内容无效。")
+                    },
+                )
         }
-        return runCatching { parseJsonl(trimmed) }.getOrNull()
+
+        return runCatching { parseJsonl(trimmed) }.fold(
+            onSuccess = { archive ->
+                if (archive == null) SessionArchiveImportResult(null, "JSONL 文件中没有有效的会话头或消息记录。")
+                else SessionArchiveImportResult(archive)
+            },
+            onFailure = { error ->
+                SessionArchiveImportResult(null, error.message ?: "JSONL 会话文件内容无效。")
+            },
+        )
     }
 
     private fun parseJson(raw: String): SessionArchive? {
@@ -76,7 +108,11 @@ object SessionArchiveCodec {
         val array = root.optJSONArray("messages") ?: return null
         if (array.length() > MAX_IMPORT_MESSAGES) return null
         val session = root.optJSONObject("session") ?: JSONObject()
-        val messages = (0 until array.length()).map { index -> parseMessage(array.getJSONObject(index), index) }
+        val messages = (0 until array.length()).map { index ->
+            val item = array.opt(index)
+            require(item is JSONObject) { "第 ${index + 1} 条消息必须是 JSON 对象。" }
+            parseMessage(item, index)
+        }
         val archive = SessionArchive(
             id = session.optString("id", "").ifBlank { UUID.randomUUID().toString() },
             title = session.optString("title", "Imported session").ifBlank { "Imported session" },
@@ -92,11 +128,13 @@ object SessionArchiveCodec {
         var title = "Imported session"
         val messages = mutableListOf<PersistedChatMessage>()
         var hasSessionHeader = false
-        raw.lineSequence().forEach { rawLine ->
+        raw.lineSequence().forEachIndexed { lineIndex, rawLine ->
             val line = rawLine.trim()
             if (line.isEmpty()) return@forEach
             require(line.length <= MAX_IMPORT_LINE_CHARS) { "JSONL line exceeds the import limit." }
-            val item = JSONObject(line)
+            val item = runCatching { JSONObject(line) }.getOrElse {
+                throw IllegalArgumentException("第 ${lineIndex + 1} 行不是有效 JSON。")
+            }
             if (item.optString("type") == "session" || item.has("session")) {
                 hasSessionHeader = true
                 val session = item.optJSONObject("session")
