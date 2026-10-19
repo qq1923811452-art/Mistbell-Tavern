@@ -6,8 +6,8 @@ import org.junit.Test
 
 class ConversationContextWindowTest {
     @Test
-    fun keepsOnlyNewestTwentyTurnsByDefaultAndSummarizesOlderMessages() {
-        val history = (1..50).map { index ->
+    fun keepsOnlyNewestFortyTurnsByDefaultAndSummarizesOlderMessages() {
+        val history = (1..100).map { index ->
             PromptMessage(
                 if (index % 2 == 1) PromptRole.USER else PromptRole.ASSISTANT,
                 "message-$index",
@@ -16,12 +16,19 @@ class ConversationContextWindowTest {
 
         val result = ConversationContextWindowBuilder.build(history)
 
-        assertEquals(40, result.recentMessages.size)
-        assertEquals("message-11", result.recentMessages.first().content)
-        assertEquals("message-50", result.recentMessages.last().content)
-        assertTrue(result.earlierSummary.contains("message-10"))
+        assertEquals(80, result.recentMessages.size)
+        assertEquals("message-21", result.recentMessages.first().content)
+        assertEquals("message-100", result.recentMessages.last().content)
+        assertTrue(result.earlierSummary.contains("message-20"))
         assertTrue(result.earlierSummary.length <= ConversationContextWindowBuilder.DEFAULT_SUMMARY_MAX_CHARS)
-        assertTrue(!result.earlierSummary.contains("message-11"))
+        assertTrue(!result.earlierSummary.contains("message-21"))
+    }
+
+    @Test
+    fun defaultsProvideLongFormHistoryBudget() {
+        assertEquals(40, ConversationContextWindowBuilder.DEFAULT_RECENT_TURNS)
+        assertEquals(4_000, ConversationContextWindowBuilder.DEFAULT_SUMMARY_MAX_CHARS)
+        assertEquals(70_000, ConversationContextWindowBuilder.DEFAULT_MAX_HISTORY_CHARS)
     }
 
     @Test
@@ -86,6 +93,23 @@ class ConversationContextWindowTest {
 
         assertEquals(listOf("first user", "first reply"), result.recentMessages.map { it.content })
         assertTrue(result.earlierSummary.contains("orphaned reply"))
+    }
+
+    @Test
+    fun keepsLongRoleplayRepliesWholeWithinTheDefaultBudget() {
+        val longReply = "剧".repeat(1_000)
+        val history = buildList {
+            repeat(40) { index ->
+                add(PromptMessage(PromptRole.USER, "用户输入 $index"))
+                add(PromptMessage(PromptRole.ASSISTANT, longReply))
+            }
+        }
+
+        val result = ConversationContextWindowBuilder.build(history)
+
+        assertEquals(80, result.recentMessages.size)
+        assertTrue(result.recentMessages.all { it.content.length == longReply.length || it.role == PromptRole.USER })
+        assertTrue(result.recentMessages.sumOf { it.content.length } <= 70_000)
     }
 
     @Test(expected = IllegalArgumentException::class)
