@@ -54,6 +54,14 @@ class BackupArchiveCodecTest {
     }
 
     @Test
+    fun rejectsPathsWhoseUtf8EncodingExceedsThePathLimit() {
+        val multibytePath = "${"界".repeat(400)}.txt"
+        assertThrows(IllegalArgumentException::class.java) {
+            BackupArchiveCodec.write(mapOf(multibytePath to byteArrayOf(1)), 1L)
+        }
+    }
+
+    @Test
     fun rejectsDirectoryStylePaths() {
         assertThrows(IllegalArgumentException::class.java) {
             BackupArchiveCodec.write(mapOf("folder/" to byteArrayOf(1)), 1L)
