@@ -80,6 +80,8 @@ import com.mistbell.tavern.v3.feature.memory.TemporalFactTextSynchronizer
 import com.mistbell.tavern.v3.feature.memory.TemporalFactTextSyncResult
 import com.mistbell.tavern.v3.feature.memory.TemporalFactExtractionPipeline
 import com.mistbell.tavern.v3.feature.memory.TemporalFactPipelineOutcome
+import com.mistbell.tavern.v3.feature.worldbook.LocalWorldBookService
+import com.mistbell.tavern.v3.feature.worldbook.WorldBookLibraryStore
 
 private val CHAT_EMBEDDING_DIMENSION_OPTIONS = listOf(128, 256, 512, 768, 1024, 1536, 2048)
 
@@ -769,10 +771,31 @@ fun ChatScreen(onBack: () -> Unit) {
                             }
                         }
                         val contextWindow = ConversationContextWindowBuilder.build(completeHistory)
+                        // Load only the active local worldbook library and activate entries against
+                        // the current turn plus a bounded tail of recent conversation.
+                        val worldbookEntries = withContext(Dispatchers.IO) {
+                            runCatching {
+                                WorldBookLibraryStore(File(context.filesDir, "worldbooks"))
+                                    .list()
+                                    .flatMap { book -> book.entries }
+                            }.onFailure { error ->
+                                diagnosticStore.warn(
+                                    "worldbook.load_failed",
+                                    "reason=${error::class.java.simpleName}",
+                                )
+                            }.getOrDefault(emptyList())
+                        }
+                        val activatedWorldbook = LocalWorldBookService().activateEntries(
+                            entries = worldbookEntries,
+                            scanText = userText,
+                            recentTexts = completeHistory.takeLast(6).map { it.content },
+                            maxBudget = LocalWorldBookService.DEFAULT_MAX_BUDGET,
+                        )
                         val messages = PromptAssembler.assemble(
                             PromptAssemblyInput(
                                 stableSystemPrefix = "你是 Mistbell Tavern 的聊天助手。请直接、清晰地回答用户。",
                                 earlierConversationSummary = contextWindow.earlierSummary,
+                                worldbookEntries = activatedWorldbook.map { it.entry },
                                 conversationHistory = contextWindow.recentMessages,
                                 latestUserMessage = userText,
                             ),
