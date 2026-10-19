@@ -8,6 +8,22 @@ import org.junit.Test
 
 class WorldBookLibraryStoreTest {
     @Test
+    fun libraryFilenameOverridesMismatchedEmbeddedId() {
+        val parsed = WorldBook(
+            id = "embedded-id",
+            name = "Legacy book",
+            entries = listOf(
+                WorldBookEntry(id = "entry", bookId = "embedded-id", content = "lore"),
+            ),
+        )
+
+        val normalized = parsed.withLibraryFileId("stable-file-id")
+
+        assertEquals("stable-file-id", normalized.id)
+        assertEquals("stable-file-id", normalized.entries.single().bookId)
+    }
+
+    @Test
     fun ordinaryBeforePromptAtDepthZeroRemainsPositionZero() {
         val book = WorldBook(
             id = "11111111-1111-1111-1111-111111111111",
