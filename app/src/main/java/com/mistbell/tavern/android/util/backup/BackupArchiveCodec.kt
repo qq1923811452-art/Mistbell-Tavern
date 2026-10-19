@@ -20,9 +20,9 @@ import java.util.zip.ZipOutputStream
 object BackupArchiveCodec {
     private const val MANIFEST_PATH = "META-INF/mistbell-backup-manifest.tsv"
     private const val MANIFEST_HEADER = "mistbell-backup\t1"
-    const val MAX_ARCHIVE_BYTES = 512 * 1024 * 1024
-    const val MAX_ENTRY_BYTES = 128 * 1024 * 1024
-    const val MAX_TOTAL_UNCOMPRESSED_BYTES = 1024L * 1024 * 1024
+    const val MAX_ARCHIVE_BYTES = 64 * 1024 * 1024
+    const val MAX_ENTRY_BYTES = 16 * 1024 * 1024
+    const val MAX_TOTAL_UNCOMPRESSED_BYTES = 128L * 1024 * 1024
     const val MAX_ENTRIES = 10_000
 
     data class Archive(
@@ -35,7 +35,7 @@ object BackupArchiveCodec {
         entries: Map<String, ByteArray>,
         createdAtEpochMs: Long,
     ): ByteArray {
-        if (entries.size > MAX_ENTRIES) throw IOException("Too many backup entries")
+        if (entries.size + 1 > MAX_ENTRIES) throw IOException("Too many backup entries including manifest")
         require(createdAtEpochMs >= 0) { "Invalid backup timestamp" }
 
         val sorted = entries.toSortedMap()
@@ -97,7 +97,7 @@ object BackupArchiveCodec {
                     continue
                 }
                 if (rawEntries.containsKey(path)) throw IOException("Duplicate backup entry: $path")
-                if (rawEntries.size >= MAX_ENTRIES + 1) throw IOException("Too many backup entries")
+                if (rawEntries.size >= MAX_ENTRIES) throw IOException("Too many backup entries including manifest")
 
                 val buffer = ByteArrayOutputStream()
                 val chunk = ByteArray(DEFAULT_BUFFER_SIZE)
