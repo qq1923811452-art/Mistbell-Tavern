@@ -12,8 +12,8 @@ class LocalWorldBookServiceTest {
     @Test fun matchesLiteralRegexAndWildcardKeys() {
         val service = LocalWorldBookService()
         val results = service.activateEntries(
-            listOf(entry("literal", listOf("dragon")), entry("regex", listOf("/knight[0-9]+/")),
-                entry("wildcard", listOf("ancient*stone"))),
+            listOf(entry("literal", listOf("dragon"), order = 1), entry("regex", listOf("/knight[0-9]+/"), order = 2),
+                entry("wildcard", listOf("ancient*stone"), order = 3)),
             "Dragon knight42 near an ancient forgotten stone",
         )
         assertEquals(listOf("literal", "regex", "wildcard"), results.map { it.entry.id })
