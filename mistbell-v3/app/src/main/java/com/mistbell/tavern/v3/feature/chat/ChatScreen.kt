@@ -916,6 +916,7 @@ fun ChatScreen(onBack: () -> Unit) {
                                 )
                             }
                         }
+                        // Clamp persisted preferences so a stale or malformed setting cannot create an unbounded prompt.
                         val contextWindow = ConversationContextWindowBuilder.build(
                             history = completeHistory,
                             recentTurns = settings.getInt(
