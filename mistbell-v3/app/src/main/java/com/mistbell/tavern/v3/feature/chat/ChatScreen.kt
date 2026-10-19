@@ -758,19 +758,22 @@ fun ChatScreen(onBack: () -> Unit) {
                         busy = true
                         memoryStatusNotice = ""
                         status = "正在连接聊天 API……"
+                        val completeHistory = history.dropLast(2).mapNotNull { line ->
+                            if (line.content.isBlank()) {
+                                null
+                            } else {
+                                PromptMessage(
+                                    if (line.role == "user") PromptRole.USER else PromptRole.ASSISTANT,
+                                    line.content,
+                                )
+                            }
+                        }
+                        val contextWindow = ConversationContextWindowBuilder.build(completeHistory)
                         val messages = PromptAssembler.assemble(
                             PromptAssemblyInput(
                                 stableSystemPrefix = "你是 Mistbell Tavern 的聊天助手。请直接、清晰地回答用户。",
-                                conversationHistory = history.dropLast(2).mapNotNull { line ->
-                                    if (line.content.isBlank()) {
-                                        null
-                                    } else {
-                                        PromptMessage(
-                                            if (line.role == "user") PromptRole.USER else PromptRole.ASSISTANT,
-                                            line.content,
-                                        )
-                                    }
-                                },
+                                earlierConversationSummary = contextWindow.earlierSummary,
+                                conversationHistory = contextWindow.recentMessages,
                                 latestUserMessage = userText,
                             ),
                         )
