@@ -1,0 +1,161 @@
+name: Mistbell 3.0 Clean-Room CI
+
+on:
+  push:
+    branches:
+      - codex/mistbell-development-3.0
+    paths:
+      - "mistbell-v3/**"
+      - "gradle/**"
+      - "gradlew"
+      - "gradle.properties"
+      - ".github/workflows/mistbell-v3-ci.yml"
+      - ".github/workflows/ci.yml"
+      - ".github/workflows/mistbell-v3-build-apk.yml"
+      - ".github/scripts/**"
+  pull_request:
+    paths:
+      - "mistbell-v3/**"
+      - "gradle/**"
+      - "gradlew"
+      - "gradle.properties"
+      - ".github/workflows/mistbell-v3-ci.yml"
+      - ".github/workflows/ci.yml"
+      - ".github/workflows/mistbell-v3-build-apk.yml"
+      - ".github/scripts/**"
+  workflow_dispatch:
+    inputs:
+      build_device_test_apk:
+        description: "Build the optional generic 3.0 device-test APK after tests pass"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mistbell-v3-ci-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  compile-and-test:
+    outputs:
+      tested_sha: ${{ steps.source.outputs.sha }}
+    name: Compile and focused JVM tests (no APK)
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Ensure root Gradle wrapper is executable
+        run: chmod +x ./gradlew
+      - name: Record tested source SHA
+        id: source
+        shell: bash
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Compile clean-room 3.0 app
+        run: ./gradlew -p mistbell-v3 :app:compileDebugKotlin --no-daemon --no-parallel
+      - name: Run clean-room 3.0 unit tests
+        run: ./gradlew -p mistbell-v3 :app:testDebugUnitTest --no-daemon --no-parallel
+      - name: Upload reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mistbell-v3-test-reports
+          path: mistbell-v3/app/build/reports/
+          if-no-files-found: ignore
+
+  # Optional packaging is manual-only. Routine PR CI stays compile + JVM tests.
+  device-test-apk:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_device_test_apk == true && needs.compile-and-test.result == 'success' }}
+    needs: compile-and-test
+    name: Optional final 3.0 device-test APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact verified source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.compile-and-test.outputs.tested_sha }}
+          fetch-depth: 0
+
+      - name: Confirm explicit manual packaging request
+        id: request
+        shell: bash
+        run: echo "enabled=true" >> "$GITHUB_OUTPUT"
+
+      - name: Set up JDK 17
+        if: ${{ steps.request.outputs.enabled == 'true' }}
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        if: ${{ steps.request.outputs.enabled == 'true' }}
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Ensure root Gradle wrapper is executable
+        if: ${{ steps.request.outputs.enabled == 'true' }}
+        run: chmod +x ./gradlew
+
+      - name: Confirm artifact source matches tested source
+        if: ${{ steps.request.outputs.enabled == 'true' }}
+        shell: bash
+        env:
+          VERIFIED_SHA: ${{ needs.compile-and-test.outputs.tested_sha }}
+        run: test "$(git rev-parse HEAD)" = "$VERIFIED_SHA"
+
+      - name: Package pinned LiteRT-LM GPU runtime
+        if: ${{ steps.request.outputs.enabled == 'true' }}
+        shell: bash
+        run: bash .github/scripts/package-litertlm-gpu-runtime.sh
+
+      - name: Package debug APK after quality gate only
+        if: ${{ steps.request.outputs.enabled == 'true' }}
+        run: ./gradlew -p mistbell-v3 :app:assembleDebug --no-daemon --no-parallel
+
+      - name: Audit native libraries merged into final APK
+        if: ${{ steps.request.outputs.enabled == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="$(find mistbell-v3/app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          test -n "$apk"
+          audit_dir="$RUNNER_TEMP/apk-native-audit"
+          mkdir -p "$audit_dir"
+          unzip -q "$apk" 'lib/arm64-v8a/*.so' -d "$audit_dir"
+          bash .github/scripts/audit-native-libraries.sh "$audit_dir/lib/arm64-v8a"
+
+      - name: Generate checksum and provenance
+        if: ${{ steps.request.outputs.enabled == 'true' }}
+        shell: bash
+        env:
+          VERIFIED_SHA: ${{ needs.compile-and-test.outputs.tested_sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p build-artifacts
+          find mistbell-v3/app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' -exec cp {} build-artifacts/ \;
+          test -n "$(find build-artifacts -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          cd build-artifacts
+          sha256sum *.apk | tee SHA256SUMS.txt
+          printf 'source_sha=%s\nworkflow_run_id=%s\nartifact_role=3.0-device-test-debug-apk\n' "$VERIFIED_SHA" "$GITHUB_RUN_ID" > SOURCE.txt
+
+      - name: Upload final device-test APK
+        if: ${{ steps.request.outputs.enabled == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: mistbell-v3-device-test-apk-${{ github.run_number }}
+          path: build-artifacts/*
+          if-no-files-found: error
+          retention-days: 14
