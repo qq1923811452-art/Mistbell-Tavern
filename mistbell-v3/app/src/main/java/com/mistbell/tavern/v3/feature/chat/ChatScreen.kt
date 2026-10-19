@@ -741,20 +741,22 @@ fun ChatScreen(onBack: () -> Unit) {
                         busy = true
                         memoryStatusNotice = ""
                         status = "正在连接聊天 API……"
-                        val messages = buildList {
-                            add(PromptMessage(PromptRole.SYSTEM, "你是 Mistbell Tavern 的聊天助手。请直接、清晰地回答用户。"))
-                            history.dropLast(2).forEach { line ->
-                                if (line.content.isNotBlank()) {
-                                    add(
+                        val messages = PromptAssembler.assemble(
+                            PromptAssemblyInput(
+                                stableSystemPrefix = "你是 Mistbell Tavern 的聊天助手。请直接、清晰地回答用户。",
+                                conversationHistory = history.dropLast(2).mapNotNull { line ->
+                                    if (line.content.isBlank()) {
+                                        null
+                                    } else {
                                         PromptMessage(
                                             if (line.role == "user") PromptRole.USER else PromptRole.ASSISTANT,
                                             line.content,
-                                        ),
-                                    )
-                                }
-                            }
-                            add(PromptMessage(PromptRole.USER, userText))
-                        }
+                                        )
+                                    }
+                                },
+                                latestUserMessage = userText,
+                            ),
+                        )
                         val observer = object : ChatStreamObserver {
                             override fun onDelta(text: String) {
                                 mainHandler.post {
