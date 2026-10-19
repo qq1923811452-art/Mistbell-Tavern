@@ -34,14 +34,50 @@ class LocalWorldBookServiceTest {
         assertEquals(1, report.droppedByBudget)
     }
 
-    @Test fun budgetReportHasNoDropsWhenEntriesFit() {
-        val report = LocalWorldBookService().activateEntriesWithReport(
-            listOf(entry("fits", listOf("key"), content = "ok")),
-            scanText = "key",
-            maxBudget = 2,
+    @Test fun stickyEntryCarriesForOneTurnOnly() {
+        val service = LocalWorldBookService()
+        val state = WorldBookActivationState()
+        val sticky = WorldBookEntry(
+            id = "sticky", bookId = "book", keys = listOf("dragon"),
+            content = "sticky content", sticky = true,
         )
-        assertEquals(listOf("fits"), report.activatedEntries.map { it.entry.id })
-        assertEquals(0, report.droppedByBudget)
+
+        assertEquals(listOf("sticky"), service.activateEntries(listOf(sticky), "dragon", state = state).map { it.entry.id })
+        assertEquals(listOf("sticky"), service.activateEntries(listOf(sticky), "unrelated", state = state).map { it.entry.id })
+        assertEquals(emptyList<ActivatedWorldBookEntry>(), service.activateEntries(listOf(sticky), "unrelated", state = state))
+    }
+
+    @Test fun delayAndCooldownAreMeasuredInTurns() {
+        val service = LocalWorldBookService()
+        val delayedState = WorldBookActivationState()
+        val delayed = WorldBookEntry(
+            id = "delayed", bookId = "book", keys = listOf("dragon"),
+            content = "delayed content", delay = 1,
+        )
+        assertEquals(emptyList<ActivatedWorldBookEntry>(), service.activateEntries(listOf(delayed), "dragon", state = delayedState))
+        assertEquals(listOf("delayed"), service.activateEntries(listOf(delayed), "unrelated", state = delayedState).map { it.entry.id })
+
+        val cooldownState = WorldBookActivationState()
+        val cooldown = WorldBookEntry(
+            id = "cooldown", bookId = "book", keys = listOf("dragon"),
+            content = "cooldown content", cooldown = 1,
+        )
+        assertEquals(listOf("cooldown"), service.activateEntries(listOf(cooldown), "dragon", state = cooldownState).map { it.entry.id })
+        assertEquals(emptyList<ActivatedWorldBookEntry>(), service.activateEntries(listOf(cooldown), "dragon", state = cooldownState))
+        assertEquals(listOf("cooldown"), service.activateEntries(listOf(cooldown), "dragon", state = cooldownState).map { it.entry.id })
+    }
+
+    @Test fun delayedEntryWaitsUntilItsScheduledTurnEvenWhileKeywordsStillMatch() {
+        val service = LocalWorldBookService()
+        val state = WorldBookActivationState()
+        val delayed = WorldBookEntry(
+            id = "delayed-two", bookId = "book", keys = listOf("dragon"),
+            content = "delayed content", delay = 2,
+        )
+
+        assertEquals(emptyList<ActivatedWorldBookEntry>(), service.activateEntries(listOf(delayed), "dragon", state = state))
+        assertEquals(emptyList<ActivatedWorldBookEntry>(), service.activateEntries(listOf(delayed), "dragon", state = state))
+        assertEquals(listOf("delayed-two"), service.activateEntries(listOf(delayed), "unrelated", state = state).map { it.entry.id })
     }
 
     @Test fun historyScanDepthUsesOnlyMostRecentItems() {
