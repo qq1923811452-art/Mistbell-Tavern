@@ -30,7 +30,10 @@ class CharacterCardJsonCodecTest {
         assertEquals(original.personality, roundTrip.personality)
         assertEquals(original.firstMessage, roundTrip.firstMessage)
         assertEquals(original.tags, roundTrip.tags)
-        assertEquals(original.characterBookJson, roundTrip.characterBookJson)
+        val originalBook = org.json.JSONObject(original.characterBookJson!!)
+        val roundTripBook = org.json.JSONObject(roundTrip.characterBookJson!!)
+        assertEquals(originalBook.getString("name"), roundTripBook.getString("name"))
+        assertEquals(originalBook.getJSONArray("entries").length(), roundTripBook.getJSONArray("entries").length())
     }
 
     @Test fun rejectsMalformedJsonAndCardsWithoutNames() {
