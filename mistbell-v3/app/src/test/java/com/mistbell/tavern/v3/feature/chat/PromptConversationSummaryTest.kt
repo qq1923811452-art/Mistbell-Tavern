@@ -18,7 +18,7 @@ class PromptConversationSummaryTest {
             ),
         )
 
-        assertTrue(messages.first().content.contains("Earlier conversation notes"))
+        assertTrue(messages.first().content.contains("Earlier conversation notes (extractive, not a full transcript):\n"))
         assertTrue(messages.first().content.contains("蓝色灯塔"))
         assertTrue(messages.any { it.content == "recent question" })
         assertTrue(messages.none { it.content.contains("old transcript") })
