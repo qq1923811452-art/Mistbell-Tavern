@@ -24,6 +24,8 @@ object BackupArchiveCodec {
     const val MAX_ENTRY_BYTES = 16 * 1024 * 1024
     const val MAX_TOTAL_UNCOMPRESSED_BYTES = 128L * 1024 * 1024
     const val MAX_ENTRIES = 10_000
+    private const val MAX_PATH_LENGTH = 1024
+    private const val MAX_PATH_SEGMENT_LENGTH = 255
 
     data class Archive(
         val createdAtEpochMs: Long,
@@ -166,9 +168,14 @@ object BackupArchiveCodec {
     private fun validatePath(path: String) {
         require(path.isNotBlank()) { "Empty backup path" }
         require(!path.startsWith('/') && !path.startsWith('\\')) { "Absolute backup path" }
+        require(!Regex("^[A-Za-z]:").containsMatchIn(path)) { "Drive-qualified backup path" }
+        require(!path.contains(':')) { "Colon is not valid in backup paths" }
+        require(path.length <= MAX_PATH_LENGTH) { "Backup path is too long" }
+        require(path.none { it.code < 0x20 || it.code == 0x7f }) { "Control characters are not valid in backup paths" }
         require(!path.endsWith('/')) { "Directory paths are not valid backup entries" }
         require(!path.contains('\\')) { "Backslashes are not valid archive path separators" }
         require(path.split('/').none { it.isEmpty() || it == "." || it == ".." }) { "Unsafe backup path" }
+        require(path.split('/').all { it.length <= MAX_PATH_SEGMENT_LENGTH }) { "Backup path segment is too long" }
         require(!path.contains('\u0000')) { "NUL in backup path" }
     }
 
