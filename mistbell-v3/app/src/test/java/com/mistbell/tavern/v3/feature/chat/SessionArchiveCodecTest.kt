@@ -90,6 +90,21 @@ class SessionArchiveCodecTest {
         assertNull(SessionArchiveCodec.importAny(invalid))
     }
 
+    @Test fun detailedImportReportsInvalidMessageAndJsonlLine() {
+        val invalidJson = """{"format":"mistbell-session","version":1,"messages":[{"id":"ok","role":"user","content":"hi"},42]}"""
+        val jsonResult = SessionArchiveCodec.importAnyDetailed(invalidJson)
+        assertNull(jsonResult.archive)
+        org.junit.Assert.assertEquals("第 2 条消息必须是 JSON 对象。", jsonResult.error)
+
+        val invalidJsonl = listOf(
+            """{"type":"session","session":{"id":"session-1","title":"Bad line"}}""",
+            """{"id":"broken","role":""",
+        ).joinToString("\n")
+        val jsonlResult = SessionArchiveCodec.importAnyDetailed(invalidJsonl)
+        assertNull(jsonlResult.archive)
+        org.junit.Assert.assertEquals("第 2 行不是有效 JSON。", jsonlResult.error)
+    }
+
     @Test fun malformedAndOversizedArchivesAreRejected() {
         assertNull(SessionArchiveCodec.importAny("not-json"))
         assertNull(SessionArchiveCodec.importAny("x".repeat(SessionArchiveCodec.MAX_IMPORT_BYTES + 1)))
