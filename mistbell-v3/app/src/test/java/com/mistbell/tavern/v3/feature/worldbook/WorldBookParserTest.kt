@@ -34,6 +34,19 @@ class WorldBookParserTest {
         assertEquals(WorldBookPlacement.DEPTH_ROLE_ASSISTANT, entry.depthRole)
     }
 
+    @Test fun positionFourWithDepthZeroPreservesDepthPlacementAndBookId() {
+        val book = WorldBookParser.parse(
+            """{"id":"11111111-1111-1111-1111-111111111111","entries":[{"uid":"depth-zero","content":"at depth zero","position":4,"depth":0,"role":1}]}""",
+            "fallback",
+        )
+        assertNotNull(book)
+        assertEquals("11111111-1111-1111-1111-111111111111", book!!.id)
+        val entry = book.entries.single()
+        assertEquals(WorldBookPlacement.POSITION_DEPTH, entry.insertPosition)
+        assertEquals(0, entry.depth)
+        assertEquals(WorldBookPlacement.DEPTH_ROLE_USER, entry.depthRole)
+    }
+
     @Test fun rejectsMalformedOrMissingEntries() {
         assertNull(WorldBookParser.parse("not-json", "fallback"))
         assertNull(WorldBookParser.parse("""{"name":"empty"}""", "fallback"))
