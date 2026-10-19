@@ -43,6 +43,13 @@ class BackupArchiveCodecTest {
     }
 
     @Test
+    fun rejectsDirectoryStylePaths() {
+        assertThrows(IllegalArgumentException::class.java) {
+            BackupArchiveCodec.write(mapOf("folder/" to byteArrayOf(1)), 1L)
+        }
+    }
+
+    @Test
     fun rejectsArchiveWithoutManifest() {
         val bytes = ByteArrayOutputStream().also { output ->
             ZipOutputStream(output).use { zip ->
