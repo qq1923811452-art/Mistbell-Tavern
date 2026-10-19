@@ -62,6 +62,34 @@ class SessionArchiveCodecTest {
         assertEquals("legacy", imported!!.messages.single().content)
     }
 
+    @Test fun duplicateMessageIdsAreRejectedForJsonAndJsonl() {
+        val duplicateJson = """{
+            "format":"mistbell-session","version":1,
+            "session":{"id":"session-1","title":"Duplicate IDs"},
+            "messages":[
+                {"id":"same","role":"user","content":"first"},
+                {"id":"same","role":"assistant","content":"second"}
+            ]
+        }""".trimIndent()
+        assertNull(SessionArchiveCodec.importAny(duplicateJson))
+
+        val duplicateJsonl = listOf(
+            """{"type":"session","session":{"id":"session-1","title":"Duplicate IDs"}}""",
+            """{"id":"same","role":"user","content":"first"}""",
+            """{"id":"same","role":"assistant","content":"second"}""",
+        ).joinToString("\n")
+        assertNull(SessionArchiveCodec.importAny(duplicateJsonl))
+    }
+
+    @Test fun invalidJsonlRecordDoesNotProducePartialArchive() {
+        val invalid = listOf(
+            """{"type":"session","session":{"id":"session-1","title":"Partial"}}""",
+            """{"id":"valid","role":"user","content":"keep me"}""",
+            """{"id":"broken","role":""",
+        ).joinToString("\n")
+        assertNull(SessionArchiveCodec.importAny(invalid))
+    }
+
     @Test fun malformedAndOversizedArchivesAreRejected() {
         assertNull(SessionArchiveCodec.importAny("not-json"))
         assertNull(SessionArchiveCodec.importAny("x".repeat(SessionArchiveCodec.MAX_IMPORT_BYTES + 1)))
