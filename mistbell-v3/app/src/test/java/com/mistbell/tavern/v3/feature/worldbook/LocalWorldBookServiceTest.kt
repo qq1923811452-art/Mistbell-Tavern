@@ -34,6 +34,16 @@ class LocalWorldBookServiceTest {
         assertEquals(1, report.droppedByBudget)
     }
 
+    @Test fun budgetReportHasNoDropsWhenEntriesFit() {
+        val report = LocalWorldBookService().activateEntriesWithReport(
+            listOf(entry("fits", listOf("key"), content = "ok")),
+            scanText = "key",
+            maxBudget = 2,
+        )
+        assertEquals(listOf("fits"), report.activatedEntries.map { it.entry.id })
+        assertEquals(0, report.droppedByBudget)
+    }
+
     @Test fun historyScanDepthUsesOnlyMostRecentItems() {
         val service = LocalWorldBookService()
         val corpus = service.buildScanCorpus("current", listOf("old", "middle", "recent"), 2)
