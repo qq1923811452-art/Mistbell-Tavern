@@ -16,7 +16,7 @@ sealed interface TemporalFactPipelineOutcome {
         val indexingWarning: String? = null,
     ) : TemporalFactPipelineOutcome
 
-    data class Failed(val safeMessage: String) : TemporalFactPipelineOutcome
+    data class Failed(val safeMessage: String, val httpStatus: Int? = null) : TemporalFactPipelineOutcome
 }
 
 /**
@@ -35,7 +35,7 @@ class TemporalFactExtractionPipeline(
     ): Call = client.extract(input, MemoryExtractionObserver { outcome ->
         when (outcome) {
             is MemoryExtractionOutcome.Failure -> observer(
-                TemporalFactPipelineOutcome.Failed(outcome.safeMessage),
+                TemporalFactPipelineOutcome.Failed(outcome.safeMessage, outcome.httpStatus),
             )
             is MemoryExtractionOutcome.Success -> {
                 val persisted = runCatching {
