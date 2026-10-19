@@ -23,6 +23,7 @@ import com.mistbell.tavern.v3.core.storage.AtomicMemoryTextStore
 import com.mistbell.tavern.v3.core.storage.AtomicTemporalFactStore
 import com.mistbell.tavern.v3.core.storage.MemoryTextLoadResult
 import com.mistbell.tavern.v3.core.storage.MemoryScopeId
+import com.mistbell.tavern.v3.core.storage.MemoryScopeFileNames
 import com.mistbell.tavern.v3.core.storage.AtomicVectorSnapshotStore
 import com.mistbell.tavern.v3.core.storage.PersistedVectorSnapshotProvider
 import com.mistbell.tavern.v3.core.storage.VectorSnapshotLoadResult
@@ -160,7 +161,12 @@ fun ChatScreen(onBack: () -> Unit) {
     val history = remember { mutableStateListOf<ChatLine>() }
     val listState = rememberLazyListState()
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
-    val historyStore = remember(context) { ChatHistoryStore(context.applicationContext) }
+    val historyStore = remember(context, memoryScopeId) {
+        ChatHistoryStore(
+            context.applicationContext,
+            MemoryScopeFileNames.forScope(ChatHistoryStore.DEFAULT_FILE_NAME, memoryScopeId),
+        )
+    }
     val memoryCredentialStore = remember(context) { AndroidKeystoreMemoryCredentialStore(context.applicationContext) }
     val coroutineScope = rememberCoroutineScope()
     val historySaveMutex = remember { Mutex() }
@@ -197,6 +203,10 @@ fun ChatScreen(onBack: () -> Unit) {
     }
 
     LaunchedEffect(historyStore) {
+        // A role or conversation change must never leave the previous scope's messages on screen.
+        historyReady = false
+        historyLoadFailed = false
+        history.clear()
         val loaded = withContext(Dispatchers.IO) { historyStore.load() }
         when (loaded) {
             ChatHistoryLoadResult.Missing -> Unit
@@ -1081,7 +1091,8 @@ fun ChatScreen(onBack: () -> Unit) {
                             .remove("memory_extraction_last_success_turn_id")
                             .putString("memory_extraction_conversation_id", memoryConversationId)
                             .apply()
-                        persistHistory()
+                        // The new scope gets its own history file. Do not overwrite the
+                        // previous scope's persisted conversation with an empty list.
                         status = if (replacingUnreadableHistory) {
                             "已放弃无法读取的旧聊天记录并新建会话；新会话使用独立记忆索引，旧会话记忆文件保留但不会自动注入。"
                         } else {
