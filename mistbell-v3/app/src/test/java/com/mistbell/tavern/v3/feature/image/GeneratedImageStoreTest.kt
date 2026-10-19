@@ -60,6 +60,17 @@ class GeneratedImageStoreTest {
     }
 
     @Test
+    fun rejectsOversizedBase64BeforeDecoding() {
+        val oversized = "A".repeat(((GeneratedImageStore.MAX_IMAGE_BYTES + 2) / 3) * 4 + 4)
+        val error = assertThrows(IllegalArgumentException::class.java) {
+            store.save(GeneratedImage(base64Data = oversized), prompt = "large image", model = null)
+        }
+
+        assertTrue(error.message.orEmpty().contains("Encoded image exceeds"))
+        assertTrue(store.list().isEmpty())
+    }
+
+    @Test
     fun rejectsNonImageDataAndInvalidBase64() {
         assertThrows(IllegalArgumentException::class.java) {
             store.save(GeneratedImage(base64Data = Base64.getEncoder().encodeToString("not an image".toByteArray())),
