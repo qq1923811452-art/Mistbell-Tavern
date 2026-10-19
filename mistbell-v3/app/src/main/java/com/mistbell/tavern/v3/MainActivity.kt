@@ -61,6 +61,7 @@ import com.mistbell.tavern.v3.core.inference.InferenceBackend
 import com.mistbell.tavern.v3.core.inference.InferencePhase
 import com.mistbell.tavern.v3.core.inference.InferenceRuntimeStatus
 import com.mistbell.tavern.v3.feature.chat.ChatScreen
+import com.mistbell.tavern.v3.feature.image.ImageGenerationScreen
 
 private data class BuildStage(val title: String, val detail: String)
 
@@ -79,6 +80,7 @@ class MainActivity : ComponentActivity() {
     private var operationMessage by mutableStateOf("正在检查本地模型……")
     private var operationBusy by mutableStateOf(false)
     private var showChat by mutableStateOf(true)
+    private var showImageGeneration by mutableStateOf(false)
     private val embeddingDimensionOptions = listOf(128, 256, 512, 768, 1024, 1536, 2048)
     private var selectedEmbeddingDimensions by mutableStateOf(768)
     private var qualcommModelSelected by mutableStateOf(false)
@@ -246,7 +248,9 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background,
                 ) {
-                    if (showChat) {
+                    if (showImageGeneration) {
+                        ImageGenerationScreen(onBack = { showImageGeneration = false })
+                    } else if (showChat) {
                         ChatScreen(onBack = { showChat = false })
                     } else {
                         DevelopmentHome(
@@ -254,6 +258,7 @@ class MainActivity : ComponentActivity() {
                             operationMessage = operationMessage,
                             operationBusy = operationBusy,
                             onOpenChat = { showChat = true },
+                            onOpenImageGeneration = { showImageGeneration = true },
                             onDownloadModel = ::downloadEmbeddingModel,
                             onImportModel = { importModel.launch(arrayOf("*/*")) },
                             qualcommModelSelected = qualcommModelSelected,
@@ -665,6 +670,7 @@ private fun DevelopmentHome(
     operationMessage: String,
     operationBusy: Boolean,
     onOpenChat: () -> Unit,
+    onOpenImageGeneration: () -> Unit,
     onDownloadModel: () -> Unit,
     onImportModel: () -> Unit,
     qualcommModelSelected: Boolean,
@@ -717,6 +723,19 @@ private fun DevelopmentHome(
                         Spacer(Modifier.height(10.dp))
                         Button(onClick = onOpenChat, modifier = Modifier.fillMaxWidth()) {
                             Text("进入聊天")
+                        }
+                    }
+                }
+            }
+            item {
+                Card(modifier = Modifier.fillMaxWidth().animateContentSize(animationSpec = tween(durationMillis = 240, easing = FastOutSlowInEasing))) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text("图片生成与本地图片库", style = MaterialTheme.typography.titleMedium)
+                        Spacer(Modifier.height(6.dp))
+                        Text("使用独立图片 API Key 生成图片，并将内联图片安全保存到应用私有目录；远程图片只有在你明确点击下载后才会获取。", style = MaterialTheme.typography.bodyMedium)
+                        Spacer(Modifier.height(10.dp))
+                        Button(onClick = onOpenImageGeneration, modifier = Modifier.fillMaxWidth()) {
+                            Text("进入图片生成与导出")
                         }
                     }
                 }
