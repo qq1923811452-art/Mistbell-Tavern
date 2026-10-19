@@ -160,6 +160,7 @@ object BackupArchiveCodec {
     private fun validatePath(path: String) {
         require(path.isNotBlank()) { "Empty backup path" }
         require(!path.startsWith('/') && !path.startsWith('\\')) { "Absolute backup path" }
+        require(!path.endsWith('/')) { "Directory paths are not valid backup entries" }
         require(!path.contains('\\')) { "Backslashes are not valid archive path separators" }
         require(path.split('/').none { it.isEmpty() || it == "." || it == ".." }) { "Unsafe backup path" }
         require(!path.contains('\u0000')) { "NUL in backup path" }
