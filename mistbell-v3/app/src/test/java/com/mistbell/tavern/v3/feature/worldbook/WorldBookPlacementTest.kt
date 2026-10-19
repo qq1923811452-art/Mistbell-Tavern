@@ -19,6 +19,14 @@ class WorldBookPlacementTest {
         assertEquals(listOf("after"), plan.afterPrompt.map { it.id })
     }
 
+    @Test fun explicitDepthPositionIncludesDepthZero() {
+        val plan = WorldBookPlacement.plan(listOf(
+            entry("depth-zero", WorldBookPlacement.POSITION_DEPTH, depth = 0, role = WorldBookPlacement.DEPTH_ROLE_USER),
+        ))
+        assertEquals(listOf("depth-zero"), plan.byDepth[0 to WorldBookPlacement.DEPTH_ROLE_USER]?.map { it.id })
+        assertTrue(plan.beforePrompt.isEmpty())
+    }
+
     @Test fun depthEntriesAreGroupedByDepthAndRole() {
         val plan = WorldBookPlacement.plan(listOf(
             entry("deep-a", depth = 2), entry("deep-b", depth = 2),
