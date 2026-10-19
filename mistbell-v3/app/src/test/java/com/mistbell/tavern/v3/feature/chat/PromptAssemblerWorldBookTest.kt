@@ -36,10 +36,32 @@ class PromptAssemblerWorldBookTest {
                     PromptMessage(PromptRole.USER, "one"),
                     PromptMessage(PromptRole.ASSISTANT, "two"),
                 ),
-                worldbookEntries = listOf(WorldBookEntry("depth", "book", content = "injected", depth = 1)),
+                worldbookEntries = listOf(WorldBookEntry("depth", "book", content = "injected", depth = 1,
+                    depthRole = WorldBookPlacement.DEPTH_ROLE_ASSISTANT)),
                 latestUserMessage = "now",
             ),
         )
         assertEquals(listOf("stable", "one", "injected", "two", "now"), messages.map { it.content })
+    }
+
+    @Test fun systemRoleDepthEntryDoesNotInsertSystemMessageMidConversation() {
+        val messages = PromptAssembler.assemble(
+            PromptAssemblyInput(
+                stableSystemPrefix = "stable",
+                conversationHistory = listOf(
+                    PromptMessage(PromptRole.USER, "one"),
+                    PromptMessage(PromptRole.ASSISTANT, "two"),
+                ),
+                worldbookEntries = listOf(WorldBookEntry(
+                    "system-depth", "book", content = "system-injected", depth = 1,
+                    depthRole = WorldBookPlacement.DEPTH_ROLE_SYSTEM,
+                )),
+                latestUserMessage = "now",
+            ),
+        )
+
+        assertEquals(1, messages.count { it.role == PromptRole.SYSTEM })
+        assertTrue(messages.first().content.contains("[depth 1] system-injected"))
+        assertEquals(listOf(PromptRole.SYSTEM, PromptRole.USER, PromptRole.ASSISTANT, PromptRole.USER), messages.map { it.role })
     }
 }
