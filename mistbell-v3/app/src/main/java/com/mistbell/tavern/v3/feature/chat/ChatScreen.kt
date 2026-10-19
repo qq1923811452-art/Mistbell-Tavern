@@ -809,12 +809,22 @@ fun ChatScreen(onBack: () -> Unit) {
                         val contextWindow = ConversationContextWindowBuilder.build(completeHistory)
                         // Activate entries from the asynchronously loaded local library against
                         // the current turn plus a bounded tail of recent conversation.
-                        val activatedWorldbook = LocalWorldBookService().activateEntries(
+                        val activationReport = LocalWorldBookService().activateEntriesWithReport(
                             entries = localWorldbookEntries,
                             scanText = userText,
                             recentTexts = completeHistory.takeLast(6).map { it.content },
                             maxBudget = LocalWorldBookService.DEFAULT_MAX_BUDGET,
                         )
+                        val activatedWorldbook = activationReport.activatedEntries
+                        if (activationReport.droppedByBudget > 0) {
+                            diagnosticStore.warn(
+                                "worldbook.budget_dropped",
+                                "count=${activationReport.droppedByBudget}; budget=${LocalWorldBookService.DEFAULT_MAX_BUDGET}",
+                            )
+                            mainHandler.post {
+                                status = "世界书预算超限：本轮有 ${activationReport.droppedByBudget} 个条目未注入"
+                            }
+                        }
                         val messages = PromptAssembler.assemble(
                             PromptAssemblyInput(
                                 stableSystemPrefix = "你是 Mistbell Tavern 的聊天助手。请直接、清晰地回答用户。",
