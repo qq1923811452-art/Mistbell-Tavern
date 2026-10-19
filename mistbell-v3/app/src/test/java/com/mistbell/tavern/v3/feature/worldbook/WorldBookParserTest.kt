@@ -34,6 +34,17 @@ class WorldBookParserTest {
         assertEquals(WorldBookPlacement.DEPTH_ROLE_ASSISTANT, entry.depthRole)
     }
 
+    @Test fun parsesStringProbabilityAndRejectsIdsContainingOnlyAUuidSubstring() {
+        val uuid = "11111111-1111-1111-1111-111111111111"
+        val book = WorldBookParser.parse(
+            """{"id":"prefix-$uuid-suffix","entries":[{"content":"probability","probability":" 50 " }]}""",
+            "fallback",
+        )
+        assertNotNull(book)
+        assertTrue(book!!.id != "prefix-$uuid-suffix")
+        assertEquals(0.5, book.entries.single().probability, 0.00001)
+    }
+
     @Test fun positionFourWithDepthZeroPreservesDepthPlacementAndBookId() {
         val book = WorldBookParser.parse(
             """{"id":"11111111-1111-1111-1111-111111111111","entries":[{"uid":"depth-zero","content":"at depth zero","position":4,"depth":0,"role":1}]}""",
