@@ -65,13 +65,13 @@ object BackupArchiveCodec {
         if (entries.size + MANIFEST_ENTRY_COUNT > MAX_ENTRIES) {
             throw IOException("Too many backup entries including manifest")
         }
-        require(createdAtEpochMs >= MIN_TIMESTAMP) { "Invalid backup timestamp" }
+        if (createdAtEpochMs < MIN_TIMESTAMP) throw IOException("Invalid backup timestamp")
 
         val sorted = entries.toSortedMap()
         var totalBytes = 0L
         sorted.forEach { (path, bytes) ->
-            validatePath(path)
-            require(path != MANIFEST_PATH) { "Reserved backup path" }
+            safeArchivePath(path)
+            if (path == MANIFEST_PATH) throw IOException("Reserved backup path")
             if (bytes.size > MAX_ENTRY_BYTES) {
                 throw IOException("Backup entry is too large: $path")
             }
