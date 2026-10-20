@@ -21,9 +21,9 @@ concurrency:
 
 jobs:
   generate-baseline:
-    name: Generate baseline from current Mistbell 3.0 source
+    name: Generate and verify independent 3.0 Detekt baseline
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - name: Checkout PR branch
         uses: actions/checkout@v4
@@ -42,6 +42,9 @@ jobs:
 
       - name: Generate independent 3.0 Detekt baseline
         run: ./gradlew -p mistbell-v3 :app:detektBaseline --no-daemon --no-parallel
+
+      - name: Verify Detekt against generated 3.0 baseline
+        run: ./gradlew -p mistbell-v3 :app:detekt --no-daemon --no-parallel
 
       - name: Commit generated baseline to PR branch
         if: github.event_name == 'pull_request'
