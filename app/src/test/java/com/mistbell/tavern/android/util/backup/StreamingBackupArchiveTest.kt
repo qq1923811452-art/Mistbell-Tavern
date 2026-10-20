@@ -120,7 +120,7 @@ class StreamingBackupArchiveTest {
             try {
                 StreamingBackupArchive.write(ByteArrayOutputStream(), mapOf("../escape.bin" to source), 1L)
                 throw AssertionError("Expected unsafe path to be rejected")
-            } catch (_: IllegalArgumentException) {
+            } catch (_: IOException) {
                 // Expected.
             }
         } finally {
