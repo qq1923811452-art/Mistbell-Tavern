@@ -4,6 +4,7 @@ import com.mistbell.tavern.v3.core.memory.EligibleConversationTurn
 import com.mistbell.tavern.v3.core.model.ProviderKind
 import com.mistbell.tavern.v3.core.model.ProviderProfile
 import com.mistbell.tavern.v3.core.model.ProviderProfileSet
+import com.mistbell.tavern.v3.feature.memory.MemoryCredentialResolver
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.Assert.assertEquals
@@ -46,13 +47,13 @@ class MemoryExtractionClientTest {
                     ProviderKind.MEMORY_EXTRACTION to "memory",
                 ),
             )
-            val client = MemoryExtractionClient(profiles) { handle ->
+            val client = MemoryExtractionClient(profiles, MemoryCredentialResolver { handle ->
                 when (handle) {
                     "chat-key" -> "chat-secret"
                     "memory-key" -> "memory-secret"
                     else -> null
                 }
-            }
+            })
             val outcome = execute(client)
             assertTrue(outcome is MemoryExtractionOutcome.Success)
             val success = outcome as MemoryExtractionOutcome.Success
@@ -92,7 +93,7 @@ class MemoryExtractionClientTest {
                 selectedProfileIds = mapOf(ProviderKind.MEMORY_EXTRACTION to "memory"),
             )
             val outcome = execute(
-                MemoryExtractionClient(profiles) { "memory-secret" },
+                MemoryExtractionClient(profiles, MemoryCredentialResolver { "memory-secret" }),
             )
             assertTrue(outcome is MemoryExtractionOutcome.Failure)
             assertEquals(
