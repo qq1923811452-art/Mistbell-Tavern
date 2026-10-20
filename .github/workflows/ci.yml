@@ -101,13 +101,12 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
-  # PR #57 policy: routine CI does not package APKs. Keep PR #61's branch exclusions on instrumented-tests.
-  # Emulator/instrumentation tests are a normal CI gate, not an opt-in release step.
-  # Gradle builds the debug/test APKs required to execute tests, but no APK is
-  # copied or published as a release artifact during routine verification.
+  # Emulator/instrumentation tests are a normal CI gate for every PR and push
+  # that reaches this workflow, including PR #61's core-features branch.
+  # Routine CI runs tests but does not publish a downloadable APK artifact.
   instrumented-tests:
     needs: verify
-    if: ${{ ((github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call') && inputs.full_android_validation == true || (github.event_name == 'pull_request' && github.event.pull_request.head.ref != 'codex/mistbell-development-3.0' && github.event.pull_request.head.ref != 'codex/mistbell-3.0-core-features') || (github.event_name == 'push' && github.ref_name != 'codex/mistbell-development-3.0' && github.ref_name != 'codex/mistbell-3.0-core-features')) && needs.verify.result == 'success' && needs.verify.outputs.quality_gate == 'success' }}
+    if: ${{ (github.event_name != 'workflow_dispatch' && github.event_name != 'workflow_call' || inputs.full_android_validation == true) && needs.verify.result == 'success' && needs.verify.outputs.quality_gate == 'success' }}
     name: Android emulator and migration validation
     runs-on: ubuntu-latest
     timeout-minutes: 55
