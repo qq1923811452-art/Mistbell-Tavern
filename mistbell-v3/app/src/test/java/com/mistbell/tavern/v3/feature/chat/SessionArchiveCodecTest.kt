@@ -109,4 +109,11 @@ class SessionArchiveCodecTest {
         assertNull(SessionArchiveCodec.importAny("not-json"))
         assertNull(SessionArchiveCodec.importAny("x".repeat(SessionArchiveCodec.MAX_IMPORT_BYTES + 1)))
     }
+
+    @Test fun oversizedLineReturnsDetailedFailureInsteadOfThrowing() {
+        val raw = "{\"messages\":[]}" + "x".repeat(SessionArchiveCodec.MAX_IMPORT_LINE_CHARS)
+        val result = SessionArchiveCodec.importAnyDetailed(raw)
+        assertNull(result.archive)
+        assertEquals("第 1 行超过导入长度上限。", result.error)
+    }
 }
