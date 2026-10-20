@@ -65,6 +65,14 @@ object SessionArchiveCodec {
         val trimmed = raw.trim()
         if (trimmed.isEmpty()) return SessionArchiveImportResult(null, "文件为空。")
 
+        // Enforce the per-line bound before constructing a full JSON tree. This also
+        // bounds unusually large lines in JSON documents, not only JSONL records.
+        trimmed.lineSequence().forEachIndexed { lineIndex, line ->
+            require(line.length <= MAX_IMPORT_LINE_CHARS) {
+                "第 ${lineIndex + 1} 行超过导入长度上限。"
+            }
+        }
+
         // JSONL records also begin with '{'. Try a complete JSON document first.
         val jsonRoot = runCatching { JSONObject(trimmed) }.getOrNull()
         if (jsonRoot != null && (jsonRoot.has("format") || jsonRoot.has("version") ||
