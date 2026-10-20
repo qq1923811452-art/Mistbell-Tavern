@@ -5,6 +5,12 @@ plugins {
     id("org.jlleitschuh.gradle.ktlint")
 }
 
+detekt {
+    config.setFrom(files(rootProject.file("config/detekt/detekt.yml")))
+    buildUponDefaultConfig = true
+    autoCorrect = false
+}
+
 val enableQualcommNpuRuntime = providers.gradleProperty("enableQualcommNpuRuntime").orNull == "true"
 
 android {
