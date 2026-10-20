@@ -1,0 +1,42 @@
+name: Mistbell 3.0 Generate Independent Detekt Baseline
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mistbell-v3-independent-detekt-baseline
+  cancel-in-progress: false
+
+jobs:
+  generate-baseline:
+    name: Generate baseline from current Mistbell 3.0 source
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout 3.0 branch
+        uses: actions/checkout@v4
+        with:
+          ref: codex/mistbell-development-3.0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Generate independent 3.0 Detekt baseline
+        run: ./gradlew -p mistbell-v3 :app:detektBaseline --no-daemon --no-parallel
+
+      - name: Upload generated baseline
+        uses: actions/upload-artifact@v4
+        with:
+          name: mistbell-v3-detekt-baseline
+          path: mistbell-v3/config/detekt/baseline.xml
+          if-no-files-found: error
+          retention-days: 7
