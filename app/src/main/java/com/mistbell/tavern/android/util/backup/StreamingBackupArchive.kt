@@ -85,6 +85,8 @@ object StreamingBackupArchive {
             throw IOException("Cannot create restore staging directory")
         }
         val root = stagingDirectory.canonicalFile
+        val createdPaths = mutableListOf<File>()
+        if (!stagingExisted) createdPaths.add(stagingDirectory)
         val files = LinkedHashMap<String, File>()
         var manifestBytes: ByteArray? = null
         var total = 0L
@@ -105,9 +107,22 @@ object StreamingBackupArchive {
                         if (files.size + 1 >= MAX_ENTRIES) throw IOException("Too many backup entries")
                         val destination = File(root, path).canonicalFile
                         if (!destination.toPath().startsWith(root.toPath())) throw IOException("Unsafe backup path")
-                        destination.parentFile?.let {
-                            if (!it.exists() && !it.mkdirs()) throw IOException("Cannot create staging path")
+                        destination.parentFile?.let { parent ->
+                            if (!parent.exists()) {
+                                val missing = mutableListOf<File>()
+                                var current: File? = parent
+                                while (current != null && current != root && !current.exists()) {
+                                    missing.add(current)
+                                    current = current.parentFile
+                                }
+                                if (current == null || !current.toPath().startsWith(root.toPath())) {
+                                    throw IOException("Unsafe staging path")
+                                }
+                                if (!parent.mkdirs()) throw IOException("Cannot create staging path")
+                                createdPaths.addAll(missing.asReversed())
+                            }
                         }
+                        createdPaths.add(destination)
                         var entrySize = 0L
                         destination.outputStream().buffered(BUFFER).use { out ->
                             val buffer = ByteArray(BUFFER)
@@ -135,10 +150,12 @@ object StreamingBackupArchive {
             }
             return RestoreResult(parsed.first, files.toMap())
         } catch (error: Exception) {
-            if (stagingExisted) {
-                stagingDirectory.listFiles()?.forEach { it.deleteRecursively() }
-            } else {
-                stagingDirectory.deleteRecursively()
+            createdPaths.asReversed().forEach { path ->
+                if (path.isFile) {
+                    path.delete()
+                } else if (path.isDirectory && path.list()?.isEmpty() == true) {
+                    path.delete()
+                }
             }
             if (error is IOException) throw error
             throw IOException("Backup restore validation failed", error)
