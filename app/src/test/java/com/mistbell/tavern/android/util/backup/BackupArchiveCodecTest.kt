@@ -29,7 +29,7 @@ class BackupArchiveCodecTest {
 
     @Test
     fun rejectsPathTraversalBeforeWriting() {
-        assertThrows(IllegalArgumentException::class.java) {
+        assertThrows(IOException::class.java) {
             BackupArchiveCodec.write(mapOf("../outside.txt" to byteArrayOf(1)), 1L)
         }
     }
