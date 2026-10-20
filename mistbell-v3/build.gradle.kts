@@ -9,10 +9,10 @@ plugins {
 }
 
 licenseReport {
-    projects = listOf(project, project(":app"))
-    configurations = listOf("releaseRuntimeClasspath")
+    projects = arrayOf(project, project(":app"))
+    configurations = arrayOf("releaseRuntimeClasspath")
     outputDir = layout.buildDirectory.dir("reports/licenses").get().asFile.absolutePath
-    renderers = listOf(CsvReportRenderer("licenses.csv"))
+    renderers = arrayOf(CsvReportRenderer("licenses.csv"))
 }
 
 tasks.register("licenseGuard") {
