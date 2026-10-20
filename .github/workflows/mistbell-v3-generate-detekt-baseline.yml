@@ -2,6 +2,9 @@ name: Mistbell 3.0 Generate Independent Detekt Baseline
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - codex/mistbell-v3-independent-detekt-baseline
 
 permissions:
   contents: read
@@ -19,7 +22,7 @@ jobs:
       - name: Checkout 3.0 branch
         uses: actions/checkout@v4
         with:
-          ref: codex/mistbell-development-3.0
+          ref: ${{ github.sha }}
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
