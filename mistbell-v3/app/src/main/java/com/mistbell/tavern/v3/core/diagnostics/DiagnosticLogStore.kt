@@ -69,10 +69,10 @@ class DiagnosticLogStore(
         if (!logFile.exists() || logFile.length() < MAX_LOG_BYTES) return
         val previous = File(directory, "$LOG_FILE_NAME.1")
         if (previous.exists() && !previous.delete()) {
-            throw IllegalStateException("Previous diagnostic log could not be rotated.")
+            error("Previous diagnostic log could not be rotated.")
         }
         if (!logFile.renameTo(previous)) {
-            throw IllegalStateException("Diagnostic log could not be rotated.")
+            error("Diagnostic log could not be rotated.")
         }
     }
 
