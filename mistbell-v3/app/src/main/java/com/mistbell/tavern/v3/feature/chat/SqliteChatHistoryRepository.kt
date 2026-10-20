@@ -87,6 +87,31 @@ class SqliteChatHistoryRepository(
         cachedById = currentById
     }
 
+    /**
+     * Replace the complete imported session in one SQLite transaction. The in-memory cache is
+     * updated only after the transaction succeeds, so callers can leave the visible history intact
+     * when an import fails.
+     */
+    @Synchronized
+    fun replaceAll(messages: List<PersistedChatMessage>) {
+        require(messages.size <= MAX_SNAPSHOT_MESSAGES) {
+            "Chat history contains too many messages for a single UI snapshot."
+        }
+        require(messages.map(PersistedChatMessage::id).distinct().size == messages.size) {
+            "Chat message IDs must be unique."
+        }
+
+        val previous = cachedById ?: when (val loaded = load()) {
+            is ChatHistoryLoadResult.Loaded -> loaded.messages.associateBy(PersistedChatMessage::id)
+            ChatHistoryLoadResult.Missing -> emptyMap()
+            else -> throw IllegalStateException("Chat history is unavailable; refusing to replace it.")
+        }
+        val currentById = messages.associateBy(PersistedChatMessage::id)
+        // syncSnapshot applies deletions and upserts under one database transaction.
+        store.syncSnapshot(scopeId, messages, previous.keys - currentById.keys)
+        cachedById = currentById
+    }
+
     private fun loadAllFromSqlite(): ChatHistoryLoadResult {
         return try {
             val newestFirst = mutableListOf<PersistedChatMessage>()
