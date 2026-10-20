@@ -138,6 +138,66 @@ class SqliteChatHistoryRepositoryTest {
     }
 
     @Test
+    fun replaceAllAtomicallyReplacesSessionAndKeepsCacheAfterFailedImport() {
+        val suffix = UUID.randomUUID().toString()
+        val databaseName = "history-replace-all-$suffix.db"
+        val legacyName = "history-replace-all-$suffix.json"
+        val legacy = ChatHistoryStore(context, legacyName)
+        val original = listOf(
+            message("old-1", "user", "old user", 1L),
+            message("old-2", "assistant", "old reply", 2L),
+        )
+        legacy.save(original)
+        val repository = SqliteChatHistoryRepository(
+            context,
+            "role/session-$suffix",
+            legacy,
+            databaseName,
+        )
+        try {
+            assertEquals(ChatHistoryLoadResult.Loaded(original), repository.load())
+
+            val imported = listOf(message("new-1", "user", "imported session", 3L))
+            repository.replaceAll(imported)
+            assertEquals(ChatHistoryLoadResult.Loaded(imported), repository.load())
+
+            val store = SqliteChatStore(context, databaseName)
+            try {
+                store.writableDatabase.execSQL(
+                    """
+                    CREATE TRIGGER fail_invalid_replace
+                    BEFORE INSERT ON chat_messages
+                    WHEN NEW.id = 'invalid'
+                    BEGIN
+                        SELECT RAISE(ABORT, 'forced replace failure');
+                    END
+                    """.trimIndent(),
+                )
+            } finally {
+                store.close()
+            }
+
+            var failed = false
+            try {
+                repository.replaceAll(listOf(message("invalid", "assistant", "must roll back", 4L)))
+            } catch (_: android.database.SQLException) {
+                failed = true
+            }
+            assertTrue("failed imported snapshot must throw", failed)
+            assertEquals("failed replace must keep database rows intact", ChatHistoryLoadResult.Loaded(imported), repository.load())
+
+            val appended = imported + message("new-2", "assistant", "follow-up", 5L)
+            repository.save(appended)
+            assertEquals("cache must remain aligned after failed replace", ChatHistoryLoadResult.Loaded(appended), repository.load())
+        } finally {
+            repository.close()
+            context.deleteDatabase(databaseName)
+            context.deleteFile(legacyName)
+            context.deleteFile("$legacyName.bak")
+        }
+    }
+
+    @Test
     fun savingShorterSnapshotDeletesRemovedMessagesFromSqlite() {
         val suffix = UUID.randomUUID().toString()
         val databaseName = "history-delete-sync-$suffix.db"
