@@ -1,0 +1,549 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>ComplexCondition:ConversationContextWindow.kt$ConversationContextWindowBuilder$limit &gt; 0 &amp;&amp; limit &lt; length &amp;&amp; this[limit - 1].isHighSurrogate() &amp;&amp; this[limit].isLowSurrogate()</ID>
+    <ID>ComplexCondition:EmbeddingGemma2ModelAssetManager.kt$EmbeddingGemma2ModelAssetManager$!modelFile.isFile || !digestFile.isFile || (modelFile.length() &lt; 1L || modelFile.length() &gt; MAX_MODEL_BYTES)</ID>
+    <ID>ComplexCondition:EmbeddingGemma2ModelAssetManager.kt$EmbeddingGemma2ModelAssetManager$lines.size == 5 &amp;&amp; lines[0] == stampVersion &amp;&amp; lines[1] == canonicalPath &amp;&amp; lines[2] == modelFile.length().toString() &amp;&amp; lines[3] == modelFile.lastModified().toString() &amp;&amp; lines[4].equals(expectedDigest, ignoreCase = true)</ID>
+    <ID>ComplexCondition:EmbeddingGemma2TextPolicy.kt$EmbeddingGemma2TextPolicy$end &gt; 0 &amp;&amp; Character.isHighSurrogate(text[end - 1]) &amp;&amp; end &lt; text.length &amp;&amp; Character.isLowSurrogate(text[end])</ID>
+    <ID>ComplexCondition:ImageGenerationScreen.kt$baseUrl.isBlank() || model.isBlank() || apiKey.isBlank() || prompt.isBlank()</ID>
+    <ID>ComplexCondition:LocalWorldBookService.kt$LocalWorldBookService$!carriedSticky &amp;&amp; !delayedDue &amp;&amp; !entry.constant &amp;&amp; entry.delay &gt; 0 &amp;&amp; state != null &amp;&amp; entry.id !in state.delayedUntilTurn</ID>
+    <ID>ComplexCondition:SessionArchiveCodec.kt$SessionArchiveCodec$jsonRoot != null &amp;&amp; (jsonRoot.has("format") || jsonRoot.has("version") || jsonRoot.has("messages"))</ID>
+    <ID>ComplexCondition:VectorMemoryContextService.kt$VectorMemoryContextService$queryVector.size != snapshot.dimensions || queryVector.isEmpty() || queryVector.any { !it.isFinite() } || queryVector.all { it == 0f }</ID>
+    <ID>CyclomaticComplexMethod:CharacterCardLibraryScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun CharacterCardLibraryScreen(onBack: () -&gt; Unit)</ID>
+    <ID>CyclomaticComplexMethod:ChatScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun ChatScreen(onBack: () -&gt; Unit)</ID>
+    <ID>CyclomaticComplexMethod:ConversationContextWindow.kt$ConversationContextWindowBuilder$private fun collectSnippets( messages: List&lt;Pair&lt;PromptMessage, String&gt;&gt;, maxChars: Int, newestFirst: Boolean, ): List&lt;String&gt;</ID>
+    <ID>CyclomaticComplexMethod:EmbeddingGemma2ModelAssetManager.kt$EmbeddingGemma2ModelAssetManager$suspend fun download( onProgress: (downloadedBytes: Long, totalBytes: Long?) -&gt; Unit = { _, _ -&gt; }, ): DownloadedEmbeddingModel</ID>
+    <ID>CyclomaticComplexMethod:EmbeddingGemma2ModelAssetManager.kt$EmbeddingGemma2ModelAssetManager$suspend fun importModel( sourceName: String, input: InputStream, onProgress: (downloadedBytes: Long, totalBytes: Long?) -&gt; Unit = { _, _ -&gt; }, ): DownloadedEmbeddingModel</ID>
+    <ID>CyclomaticComplexMethod:EmbeddingGemma2RuntimeAdapter.kt$EmbeddingGemma2RuntimeAdapter$private suspend fun inferAndValidate( texts: List&lt;String&gt;, formatter: (String, Int) -&gt; String, ): EmbeddingBatch</ID>
+    <ID>CyclomaticComplexMethod:GeneratedImageStore.kt$GeneratedImageStore$private fun detectFormat(bytes: ByteArray): ImageFormat?</ID>
+    <ID>CyclomaticComplexMethod:ImageGenerationScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun ImageGenerationScreen(onBack: () -&gt; Unit)</ID>
+    <ID>CyclomaticComplexMethod:LiteRtLmEmbeddingGemma2Engine.kt$LiteRtLmEmbeddingGemma2Engine$override suspend fun infer(formattedInputs: List&lt;String&gt;): EmbeddingBatch</ID>
+    <ID>CyclomaticComplexMethod:LiteRtLmEmbeddingGemma2Engine.kt$LiteRtLmEmbeddingGemma2Engine$suspend fun initialize()</ID>
+    <ID>CyclomaticComplexMethod:LocalWorldBookService.kt$LocalWorldBookService$fun activateEntriesWithReport( entries: List&lt;WorldBookEntry&gt;, scanText: String, maxBudget: Int = DEFAULT_MAX_BUDGET, recentTexts: List&lt;String&gt; = emptyList(), maxDepth: Int = DEFAULT_SCAN_DEPTH, maxRecursiveDepth: Int = DEFAULT_RECURSIVE_DEPTH, state: WorldBookActivationState? = null, ): WorldBookActivationReport</ID>
+    <ID>CyclomaticComplexMethod:MainActivity.kt$@Composable private fun InferenceStatusCard(status: InferenceRuntimeStatus)</ID>
+    <ID>CyclomaticComplexMethod:MainActivity.kt$MainActivity$override fun onCreate(savedInstanceState: Bundle?)</ID>
+    <ID>CyclomaticComplexMethod:MainActivity.kt$MainActivity$private fun runEmbeddingSelfTest(allowDiagnosticNpuProbe: Boolean = false)</ID>
+    <ID>CyclomaticComplexMethod:MainActivity.kt$MainActivity$private suspend fun backupModelToPublicDownloads(model: DownloadedEmbeddingModel): PublicModelBackup</ID>
+    <ID>CyclomaticComplexMethod:MemoryExtractionJobRepository.kt$MemoryExtractionJobRepository$@Synchronized fun claimDue(now: Long): MemoryExtractionJob?</ID>
+    <ID>CyclomaticComplexMethod:MemoryExtractionQueueRunner.kt$MemoryExtractionQueueRunner$fun &lt;T&gt; runNext( buildInput: (MemoryExtractionJob) -&gt; T, execute: (MemoryExtractionJob, T, (ExecutionResult) -&gt; Unit) -&gt; Unit, observer: (Result) -&gt; Unit = {}, ): Result</ID>
+    <ID>CyclomaticComplexMethod:MemoryExtractionQueueWorker.kt$MemoryExtractionQueueWorker$override suspend fun doWork(): Result</ID>
+    <ID>CyclomaticComplexMethod:MemoryIndexRebuilder.kt$MemoryIndexRebuilder$suspend fun rebuild(records: List&lt;MemoryTextRecord&gt;): MemoryIndexRebuildResult</ID>
+    <ID>CyclomaticComplexMethod:NpuEvidenceStore.kt$NpuEvidenceStore$fun hasValidEvidence(context: Context, modelFile: File): Boolean</ID>
+    <ID>CyclomaticComplexMethod:NpuEvidenceStore.kt$NpuEvidenceStore$fun write( context: Context, modelFile: File, outcomes: List&lt;String&gt;, mappedLibrariesObserved: Map&lt;String, Boolean&gt; = captureMappedLibraries(), ): WriteResult</ID>
+    <ID>CyclomaticComplexMethod:OpenAiCompatibleChatClient.kt$OpenAiCompatibleChatClient$fun stream( messages: List&lt;PromptMessage&gt;, observer: ChatStreamObserver, options: ChatGenerationOptions = ChatGenerationOptions(), ): Call</ID>
+    <ID>CyclomaticComplexMethod:SessionArchiveCodec.kt$SessionArchiveCodec$fun importAnyDetailed(raw: String): SessionArchiveImportResult</ID>
+    <ID>CyclomaticComplexMethod:TemporalFactLedger.kt$TemporalFactLedger$fun apply( existing: List&lt;TemporalMemoryFact&gt;, observations: List&lt;TemporalFactObservation&gt;, ): List&lt;TemporalMemoryFact&gt;</ID>
+    <ID>CyclomaticComplexMethod:VectorMemoryContextService.kt$VectorMemoryContextService$suspend fun retrieveForQuery(query: String): VectorMemoryContextResult</ID>
+    <ID>CyclomaticComplexMethod:VectorMemoryRetriever.kt$VectorMemoryRetriever$fun retrieve( snapshot: VectorSnapshot, queryVector: List&lt;Float&gt;, texts: List&lt;MemoryTextRecord&gt;, limit: Int = VectorSimilaritySearch.DEFAULT_RESULT_LIMIT, minimumScore: Double = VectorSimilaritySearch.DEFAULT_MINIMUM_SCORE, maxCharacters: Int = DEFAULT_MAX_CHARACTERS, queryText: String? = null, rrfConstant: Int = DEFAULT_RRF_CONSTANT, vectorWeight: Double = DEFAULT_VECTOR_WEIGHT, keywordWeight: Double = DEFAULT_KEYWORD_WEIGHT, ): List&lt;RetrievedMemory&gt;</ID>
+    <ID>CyclomaticComplexMethod:WorldBookLibraryScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun WorldBookLibraryScreen(onBack: () -&gt; Unit)</ID>
+    <ID>CyclomaticComplexMethod:WorldBookParser.kt$WorldBookParser$private fun parseEntry(value: JSONObject, bookId: String, mapKey: String?): WorldBookEntry?</ID>
+    <ID>FunctionNaming:CharacterCardLibraryScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun CharacterCardLibraryScreen(onBack: () -&gt; Unit)</ID>
+    <ID>FunctionNaming:ChatScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun ChatScreen(onBack: () -&gt; Unit)</ID>
+    <ID>FunctionNaming:ImageGenerationScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun ImageGenerationScreen(onBack: () -&gt; Unit)</ID>
+    <ID>FunctionNaming:MainActivity.kt$@Composable private fun InferenceStatusCard(status: InferenceRuntimeStatus)</ID>
+    <ID>FunctionNaming:MainActivity.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable private fun DevelopmentHome( inferenceStatus: InferenceRuntimeStatus, operationMessage: String, operationBusy: Boolean, onOpenChat: () -&gt; Unit, onOpenImageGeneration: () -&gt; Unit, onOpenCharacterLibrary: () -&gt; Unit, onOpenWorldBookLibrary: () -&gt; Unit, onDownloadModel: () -&gt; Unit, onImportModel: () -&gt; Unit, qualcommModelSelected: Boolean, onSelectModelProfile: (Boolean) -&gt; Unit, selectedEmbeddingDimensions: Int, onCycleEmbeddingDimensions: () -&gt; Unit, onRunEmbeddingTest: () -&gt; Unit, onRunNpuDiagnosticProbe: () -&gt; Unit, onRunAlternateBackendBenchmark: () -&gt; Unit, onExportNpuEvidence: () -&gt; Unit, onExportLogs: () -&gt; Unit, )</ID>
+    <ID>FunctionNaming:WorldBookLibraryScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun WorldBookLibraryScreen(onBack: () -&gt; Unit)</ID>
+    <ID>FunctionOnlyReturningConstant:MainActivity.kt$MainActivity$private fun publicModelDirectoryLabel(): String</ID>
+    <ID>InstanceOfCheckForException:MainActivity.kt$MainActivity$error is IllegalArgumentException</ID>
+    <ID>LongMethod:CharacterCardLibraryScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun CharacterCardLibraryScreen(onBack: () -&gt; Unit)</ID>
+    <ID>LongMethod:ChatScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun ChatScreen(onBack: () -&gt; Unit)</ID>
+    <ID>LongMethod:ChatScreen.kt$fun scheduleMemoryExtractionIfDue(providers: ProviderProfileSet)</ID>
+    <ID>LongMethod:EmbeddingGemma2ModelAssetManager.kt$EmbeddingGemma2ModelAssetManager$suspend fun download( onProgress: (downloadedBytes: Long, totalBytes: Long?) -&gt; Unit = { _, _ -&gt; }, ): DownloadedEmbeddingModel</ID>
+    <ID>LongMethod:EmbeddingGemma2ModelAssetManager.kt$EmbeddingGemma2ModelAssetManager$suspend fun importModel( sourceName: String, input: InputStream, onProgress: (downloadedBytes: Long, totalBytes: Long?) -&gt; Unit = { _, _ -&gt; }, ): DownloadedEmbeddingModel</ID>
+    <ID>LongMethod:EmbeddingGemma2RuntimeAdapter.kt$EmbeddingGemma2RuntimeAdapter$private suspend fun inferAndValidate( texts: List&lt;String&gt;, formatter: (String, Int) -&gt; String, ): EmbeddingBatch</ID>
+    <ID>LongMethod:GeneratedImageStore.kt$GeneratedImageStore$fun save(image: GeneratedImage, prompt: String, model: String?): StoredGeneratedImage</ID>
+    <ID>LongMethod:ImageGenerationScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun ImageGenerationScreen(onBack: () -&gt; Unit)</ID>
+    <ID>LongMethod:LiteRtLmEmbeddingGemma2Engine.kt$LiteRtLmEmbeddingGemma2Engine$override suspend fun infer(formattedInputs: List&lt;String&gt;): EmbeddingBatch</ID>
+    <ID>LongMethod:LiteRtLmEmbeddingGemma2Engine.kt$LiteRtLmEmbeddingGemma2Engine$suspend fun initialize()</ID>
+    <ID>LongMethod:LocalWorldBookService.kt$LocalWorldBookService$fun activateEntriesWithReport( entries: List&lt;WorldBookEntry&gt;, scanText: String, maxBudget: Int = DEFAULT_MAX_BUDGET, recentTexts: List&lt;String&gt; = emptyList(), maxDepth: Int = DEFAULT_SCAN_DEPTH, maxRecursiveDepth: Int = DEFAULT_RECURSIVE_DEPTH, state: WorldBookActivationState? = null, ): WorldBookActivationReport</ID>
+    <ID>LongMethod:MainActivity.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable private fun DevelopmentHome( inferenceStatus: InferenceRuntimeStatus, operationMessage: String, operationBusy: Boolean, onOpenChat: () -&gt; Unit, onOpenImageGeneration: () -&gt; Unit, onOpenCharacterLibrary: () -&gt; Unit, onOpenWorldBookLibrary: () -&gt; Unit, onDownloadModel: () -&gt; Unit, onImportModel: () -&gt; Unit, qualcommModelSelected: Boolean, onSelectModelProfile: (Boolean) -&gt; Unit, selectedEmbeddingDimensions: Int, onCycleEmbeddingDimensions: () -&gt; Unit, onRunEmbeddingTest: () -&gt; Unit, onRunNpuDiagnosticProbe: () -&gt; Unit, onRunAlternateBackendBenchmark: () -&gt; Unit, onExportNpuEvidence: () -&gt; Unit, onExportLogs: () -&gt; Unit, )</ID>
+    <ID>LongMethod:MainActivity.kt$MainActivity$override fun onCreate(savedInstanceState: Bundle?)</ID>
+    <ID>LongMethod:MainActivity.kt$MainActivity$private fun runEmbeddingSelfTest(allowDiagnosticNpuProbe: Boolean = false)</ID>
+    <ID>LongMethod:MainActivity.kt$MainActivity$private suspend fun backupModelToPublicDownloads(model: DownloadedEmbeddingModel): PublicModelBackup</ID>
+    <ID>LongMethod:MemoryAwareChatRequestTest.kt$MemoryAwareChatRequestTest$@Test fun retrievedMemoryIsSentWithRequestWithoutMutatingConversationHistory()</ID>
+    <ID>LongMethod:MemoryExtractionPipeline.kt$MemoryExtractionWorker$@Synchronized fun processNext(observer: (MemoryPipelineResult) -&gt; Unit): Call?</ID>
+    <ID>LongMethod:MemoryExtractionQueueWorker.kt$MemoryExtractionQueueWorker$override suspend fun doWork(): Result</ID>
+    <ID>LongMethod:MemoryFactHistory.kt$FactHistoryReducer$fun append(history: List&lt;MemoryFact&gt;, incoming: MemoryFact): FactHistoryUpdate</ID>
+    <ID>LongMethod:MemoryIndexRebuilder.kt$MemoryIndexRebuilder$suspend fun rebuild(records: List&lt;MemoryTextRecord&gt;): MemoryIndexRebuildResult</ID>
+    <ID>LongMethod:NpuEvidenceStore.kt$NpuEvidenceStore$fun write( context: Context, modelFile: File, outcomes: List&lt;String&gt;, mappedLibrariesObserved: Map&lt;String, Boolean&gt; = captureMappedLibraries(), ): WriteResult</ID>
+    <ID>LongMethod:OpenAiCompatibleChatClient.kt$OpenAiCompatibleChatClient$fun stream( messages: List&lt;PromptMessage&gt;, observer: ChatStreamObserver, options: ChatGenerationOptions = ChatGenerationOptions(), ): Call</ID>
+    <ID>LongMethod:OpenAiCompatibleChatClient.kt$OpenAiCompatibleChatClient.&lt;no name provided&gt;$override fun onResponse(call: Call, response: Response)</ID>
+    <ID>LongMethod:PromptAssembler.kt$PromptAssembler$fun assemble(input: PromptAssemblyInput): List&lt;PromptMessage&gt;</ID>
+    <ID>LongMethod:TemporalFactExtractionPipeline.kt$TemporalFactExtractionPipeline$fun extractAndPersist( input: MemoryExtractionInput, observer: (TemporalFactPipelineOutcome) -&gt; Unit, ): Call</ID>
+    <ID>LongMethod:TemporalFactLedger.kt$TemporalFactLedger$fun apply( existing: List&lt;TemporalMemoryFact&gt;, observations: List&lt;TemporalFactObservation&gt;, ): List&lt;TemporalMemoryFact&gt;</ID>
+    <ID>LongMethod:VectorMemoryContextService.kt$VectorMemoryContextService$suspend fun retrieveForQuery(query: String): VectorMemoryContextResult</ID>
+    <ID>LongMethod:VectorMemoryRetriever.kt$VectorMemoryRetriever$fun retrieve( snapshot: VectorSnapshot, queryVector: List&lt;Float&gt;, texts: List&lt;MemoryTextRecord&gt;, limit: Int = VectorSimilaritySearch.DEFAULT_RESULT_LIMIT, minimumScore: Double = VectorSimilaritySearch.DEFAULT_MINIMUM_SCORE, maxCharacters: Int = DEFAULT_MAX_CHARACTERS, queryText: String? = null, rrfConstant: Int = DEFAULT_RRF_CONSTANT, vectorWeight: Double = DEFAULT_VECTOR_WEIGHT, keywordWeight: Double = DEFAULT_KEYWORD_WEIGHT, ): List&lt;RetrievedMemory&gt;</ID>
+    <ID>LongMethod:VectorSnapshot.kt$VectorSnapshotCodec$fun decodeMapped(source: ByteBuffer): VectorSnapshot</ID>
+    <ID>LongMethod:WorldBookLibraryScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun WorldBookLibraryScreen(onBack: () -&gt; Unit)</ID>
+    <ID>LongParameterList:LiteRtBackendAvailability.kt$LiteRtBackendAvailability.Companion$( nativeLibraryDir: File, isArm64: Boolean, npuModelCompatible: Boolean, npuRuntimeValidated: Boolean = false, apkFiles: List&lt;File&gt; = emptyList(), androidApiLevel: Int = Int.MAX_VALUE, allowDiagnosticNpuProbe: Boolean = false, )</ID>
+    <ID>LongParameterList:LiteRtLmEmbeddingGemma2Engine.kt$LiteRtLmEmbeddingGemma2Engine$( context: Context, private val modelFile: File, private val preferredBackends: List&lt;InferenceBackend&gt; = listOf( InferenceBackend.NPU, InferenceBackend.GPU, InferenceBackend.CPU, ), private val npuModelCompatible: Boolean = false, /** Explicit one-shot diagnostic only; never marks the runtime as verified. */ private val allowDiagnosticNpuProbe: Boolean = false, private val diagnostics: DiagnosticLogStore = DiagnosticLogStore(context.applicationContext.filesDir), /** Explicit experimental route for GPU/CPU baselines using the Qualcomm-targeted model. */ private val allowDiagnosticAlternateBackendProbe: Boolean = false, )</ID>
+    <ID>LongParameterList:LocalWorldBookService.kt$LocalWorldBookService$( entries: List&lt;WorldBookEntry&gt;, scanText: String, maxBudget: Int = DEFAULT_MAX_BUDGET, recentTexts: List&lt;String&gt; = emptyList(), maxDepth: Int = DEFAULT_SCAN_DEPTH, maxRecursiveDepth: Int = DEFAULT_RECURSIVE_DEPTH, state: WorldBookActivationState? = null, )</ID>
+    <ID>LongParameterList:LocalWorldBookServiceTest.kt$LocalWorldBookServiceTest$(id: String, key: List&lt;String&gt;, content: String = id, constant: Boolean = false, probability: Double = 1.0, order: Int = 0)</ID>
+    <ID>LongParameterList:MainActivity.kt$( inferenceStatus: InferenceRuntimeStatus, operationMessage: String, operationBusy: Boolean, onOpenChat: () -&gt; Unit, onOpenImageGeneration: () -&gt; Unit, onOpenCharacterLibrary: () -&gt; Unit, onOpenWorldBookLibrary: () -&gt; Unit, onDownloadModel: () -&gt; Unit, onImportModel: () -&gt; Unit, qualcommModelSelected: Boolean, onSelectModelProfile: (Boolean) -&gt; Unit, selectedEmbeddingDimensions: Int, onCycleEmbeddingDimensions: () -&gt; Unit, onRunEmbeddingTest: () -&gt; Unit, onRunNpuDiagnosticProbe: () -&gt; Unit, onRunAlternateBackendBenchmark: () -&gt; Unit, onExportNpuEvidence: () -&gt; Unit, onExportLogs: () -&gt; Unit, )</ID>
+    <ID>LongParameterList:TemporalFactLedgerTest.kt$TemporalFactLedgerTest$( turn: String, conversation: String = "conversation-1", subject: String = "user", predicate: String = "likes", value: String, at: Long, )</ID>
+    <ID>LongParameterList:VectorMemoryContextService.kt$VectorMemoryContextService$( private val snapshots: VectorSnapshotProvider, private val embeddings: QueryEmbeddingProvider, private val textProvider: MemoryTextProvider, private val resultLimit: Int = VectorSimilaritySearch.DEFAULT_RESULT_LIMIT, private val minimumScore: Double = VectorSimilaritySearch.DEFAULT_MINIMUM_SCORE, private val maxCharacters: Int = VectorMemoryRetriever.DEFAULT_MAX_CHARACTERS, private val vectorRrfWeight: Double = VectorMemoryRetriever.DEFAULT_VECTOR_WEIGHT, private val keywordRrfWeight: Double = VectorMemoryRetriever.DEFAULT_KEYWORD_WEIGHT, )</ID>
+    <ID>LongParameterList:VectorMemoryRetriever.kt$VectorMemoryRetriever$( snapshot: VectorSnapshot, queryVector: List&lt;Float&gt;, texts: List&lt;MemoryTextRecord&gt;, limit: Int = VectorSimilaritySearch.DEFAULT_RESULT_LIMIT, minimumScore: Double = VectorSimilaritySearch.DEFAULT_MINIMUM_SCORE, maxCharacters: Int = DEFAULT_MAX_CHARACTERS, queryText: String? = null, rrfConstant: Int = DEFAULT_RRF_CONSTANT, vectorWeight: Double = DEFAULT_VECTOR_WEIGHT, keywordWeight: Double = DEFAULT_KEYWORD_WEIGHT, )</ID>
+    <ID>LoopWithTooManyJumpStatements:ConversationContextWindow.kt$ConversationContextWindowBuilder$for</ID>
+    <ID>LoopWithTooManyJumpStatements:LiteRtLmEmbeddingGemma2Engine.kt$LiteRtLmEmbeddingGemma2Engine$for</ID>
+    <ID>LoopWithTooManyJumpStatements:LocalWorldBookService.kt$LocalWorldBookService$for</ID>
+    <ID>LoopWithTooManyJumpStatements:LocalWorldBookService.kt$LocalWorldBookService$while</ID>
+    <ID>LoopWithTooManyJumpStatements:OpenAiCompatibleChatClient.kt$OpenAiCompatibleChatClient.&lt;no name provided&gt;$while</ID>
+    <ID>LoopWithTooManyJumpStatements:PromptHistoryBudget.kt$PromptHistoryBudget$for</ID>
+    <ID>LoopWithTooManyJumpStatements:SqliteChatHistoryRepository.kt$SqliteChatHistoryRepository$while</ID>
+    <ID>LoopWithTooManyJumpStatements:TemporalFactLedger.kt$TemporalFactLedger$for</ID>
+    <ID>LoopWithTooManyJumpStatements:VectorMemoryRetriever.kt$VectorMemoryRetriever$for</ID>
+    <ID>MagicNumber:AndroidKeystoreMemoryCredentialStore.kt$AndroidKeystoreMemoryCredentialStore$0xff</ID>
+    <ID>MagicNumber:AndroidKeystoreMemoryCredentialStore.kt$AndroidKeystoreMemoryCredentialStore$256</ID>
+    <ID>MagicNumber:CharacterCardLibraryScreen.kt$8192</ID>
+    <ID>MagicNumber:ChatScreen.kt$100</ID>
+    <ID>MagicNumber:ChatScreen.kt$100_000</ID>
+    <ID>MagicNumber:ChatScreen.kt$1024</ID>
+    <ID>MagicNumber:ChatScreen.kt$10_000</ID>
+    <ID>MagicNumber:ChatScreen.kt$120</ID>
+    <ID>MagicNumber:ChatScreen.kt$128</ID>
+    <ID>MagicNumber:ChatScreen.kt$12_000</ID>
+    <ID>MagicNumber:ChatScreen.kt$1536</ID>
+    <ID>MagicNumber:ChatScreen.kt$180</ID>
+    <ID>MagicNumber:ChatScreen.kt$200_000</ID>
+    <ID>MagicNumber:ChatScreen.kt$2048</ID>
+    <ID>MagicNumber:ChatScreen.kt$256</ID>
+    <ID>MagicNumber:ChatScreen.kt$3</ID>
+    <ID>MagicNumber:ChatScreen.kt$4096</ID>
+    <ID>MagicNumber:ChatScreen.kt$4_000</ID>
+    <ID>MagicNumber:ChatScreen.kt$5</ID>
+    <ID>MagicNumber:ChatScreen.kt$512</ID>
+    <ID>MagicNumber:ChatScreen.kt$6</ID>
+    <ID>MagicNumber:ChatScreen.kt$768</ID>
+    <ID>MagicNumber:ChatScreen.kt$8</ID>
+    <ID>MagicNumber:ChatScreen.kt$8192</ID>
+    <ID>MagicNumber:ConversationContextWindow.kt$ConversationContextWindowBuilder$3</ID>
+    <ID>MagicNumber:DiagnosticLogStore.kt$DiagnosticLogStore$3</ID>
+    <ID>MagicNumber:EmbeddingContracts.kt$EmbeddingModelSpec$256</ID>
+    <ID>MagicNumber:EmbeddingContracts.kt$EmbeddingModelSpec$4096</ID>
+    <ID>MagicNumber:EmbeddingGemma2ModelAssetManager.kt$EmbeddingGemma2ModelAssetManager$3</ID>
+    <ID>MagicNumber:EmbeddingGemma2ModelAssetManager.kt$EmbeddingGemma2ModelAssetManager$300</ID>
+    <ID>MagicNumber:EmbeddingGemma2ModelAssetManager.kt$EmbeddingGemma2ModelAssetManager$399</ID>
+    <ID>MagicNumber:EmbeddingGemma2ModelAssetManager.kt$EmbeddingGemma2ModelAssetManager$4</ID>
+    <ID>MagicNumber:EmbeddingGemma2ModelAssetManager.kt$EmbeddingGemma2ModelAssetManager$5</ID>
+    <ID>MagicNumber:EmbeddingGemma2TextPolicy.kt$EmbeddingGemma2TextPolicy$128</ID>
+    <ID>MagicNumber:EmbeddingGemma2TextPolicy.kt$EmbeddingGemma2TextPolicy$256</ID>
+    <ID>MagicNumber:EmbeddingGemma2TextPolicy.kt$EmbeddingGemma2TextPolicy$512</ID>
+    <ID>MagicNumber:EmbeddingGemma2TextPolicy.kt$EmbeddingGemma2TextPolicy$768</ID>
+    <ID>MagicNumber:EmbeddingVectorCache.kt$EmbeddingVectorCache$0xff</ID>
+    <ID>MagicNumber:EmbeddingVectorCache.kt$EmbeddingVectorCache.&lt;no name provided&gt;$0.75f</ID>
+    <ID>MagicNumber:GeneratedImageStore.kt$GeneratedImageStore$0x42</ID>
+    <ID>MagicNumber:GeneratedImageStore.kt$GeneratedImageStore$0x45</ID>
+    <ID>MagicNumber:GeneratedImageStore.kt$GeneratedImageStore$0x46</ID>
+    <ID>MagicNumber:GeneratedImageStore.kt$GeneratedImageStore$0x49</ID>
+    <ID>MagicNumber:GeneratedImageStore.kt$GeneratedImageStore$0x50</ID>
+    <ID>MagicNumber:GeneratedImageStore.kt$GeneratedImageStore$0x52</ID>
+    <ID>MagicNumber:GeneratedImageStore.kt$GeneratedImageStore$0x57</ID>
+    <ID>MagicNumber:GeneratedImageStore.kt$GeneratedImageStore$12</ID>
+    <ID>MagicNumber:GeneratedImageStore.kt$GeneratedImageStore$3</ID>
+    <ID>MagicNumber:GeneratedImageStore.kt$GeneratedImageStore$4</ID>
+    <ID>MagicNumber:GeneratedImageStore.kt$GeneratedImageStore$5</ID>
+    <ID>MagicNumber:GeneratedImageStore.kt$GeneratedImageStore$6</ID>
+    <ID>MagicNumber:GeneratedImageStore.kt$GeneratedImageStore$7</ID>
+    <ID>MagicNumber:GeneratedImageStore.kt$GeneratedImageStore$8</ID>
+    <ID>MagicNumber:ImageGenerationClient.kt$ImageGenerationClient$8192L</ID>
+    <ID>MagicNumber:ImageGenerationScreen.kt$1024</ID>
+    <ID>MagicNumber:ImageGenerationScreen.kt$120</ID>
+    <ID>MagicNumber:ImageGenerationScreen.kt$30</ID>
+    <ID>MagicNumber:ImageGenerationScreen.kt$300</ID>
+    <ID>MagicNumber:ImageGenerationScreen.kt$399</ID>
+    <ID>MagicNumber:ImageGenerationScreen.kt$8192L</ID>
+    <ID>MagicNumber:LiteRtLmEmbeddingGemma2Engine.kt$LiteRtLmEmbeddingGemma2Engine$0.50</ID>
+    <ID>MagicNumber:LiteRtLmEmbeddingGemma2Engine.kt$LiteRtLmEmbeddingGemma2Engine$0.90</ID>
+    <ID>MagicNumber:LiteRtLmEmbeddingGemma2Engine.kt$LiteRtLmEmbeddingGemma2Engine$100</ID>
+    <ID>MagicNumber:LiteRtLmEmbeddingGemma2Engine.kt$LiteRtLmEmbeddingGemma2Engine$1024</ID>
+    <ID>MagicNumber:LiteRtLmEmbeddingGemma2Engine.kt$LiteRtLmEmbeddingGemma2Engine$1024L</ID>
+    <ID>MagicNumber:LiteRtLmEmbeddingGemma2Engine.kt$LiteRtLmEmbeddingGemma2Engine$128</ID>
+    <ID>MagicNumber:LiteRtLmEmbeddingGemma2Engine.kt$LiteRtLmEmbeddingGemma2Engine$150</ID>
+    <ID>MagicNumber:LiteRtLmEmbeddingGemma2Engine.kt$LiteRtLmEmbeddingGemma2Engine$180</ID>
+    <ID>MagicNumber:LiteRtLmEmbeddingGemma2Engine.kt$LiteRtLmEmbeddingGemma2Engine$1_000_000L</ID>
+    <ID>MagicNumber:LiteRtLmEmbeddingGemma2Engine.kt$LiteRtLmEmbeddingGemma2Engine$256</ID>
+    <ID>MagicNumber:LiteRtLmEmbeddingGemma2Engine.kt$LiteRtLmEmbeddingGemma2Engine$260</ID>
+    <ID>MagicNumber:LiteRtLmEmbeddingGemma2Engine.kt$LiteRtLmEmbeddingGemma2Engine$3</ID>
+    <ID>MagicNumber:LiteRtLmEmbeddingGemma2Engine.kt$LiteRtLmEmbeddingGemma2Engine$300</ID>
+    <ID>MagicNumber:LiteRtLmEmbeddingGemma2Engine.kt$LiteRtLmEmbeddingGemma2Engine$32</ID>
+    <ID>MagicNumber:LiteRtLmEmbeddingGemma2Engine.kt$LiteRtLmEmbeddingGemma2Engine$40</ID>
+    <ID>MagicNumber:LiteRtLmEmbeddingGemma2Engine.kt$LiteRtLmEmbeddingGemma2Engine$5</ID>
+    <ID>MagicNumber:LiteRtLmEmbeddingGemma2Engine.kt$LiteRtLmEmbeddingGemma2Engine$512</ID>
+    <ID>MagicNumber:LiteRtLmEmbeddingGemma2Engine.kt$LiteRtLmEmbeddingGemma2Engine$70</ID>
+    <ID>MagicNumber:LiteRtLmEmbeddingGemma2Engine.kt$LiteRtLmEmbeddingGemma2Engine$74</ID>
+    <ID>MagicNumber:LiteRtLmEmbeddingGemma2Engine.kt$LiteRtLmEmbeddingGemma2Engine$90</ID>
+    <ID>MagicNumber:LocalWorldBookService.kt$LocalWorldBookService$10</ID>
+    <ID>MagicNumber:MainActivity.kt$MainActivity$100</ID>
+    <ID>MagicNumber:MainActivity.kt$MainActivity$1024</ID>
+    <ID>MagicNumber:MainActivity.kt$MainActivity$128</ID>
+    <ID>MagicNumber:MainActivity.kt$MainActivity$1536</ID>
+    <ID>MagicNumber:MainActivity.kt$MainActivity$180</ID>
+    <ID>MagicNumber:MainActivity.kt$MainActivity$1_000_000L</ID>
+    <ID>MagicNumber:MainActivity.kt$MainActivity$2048</ID>
+    <ID>MagicNumber:MainActivity.kt$MainActivity$256</ID>
+    <ID>MagicNumber:MainActivity.kt$MainActivity$512</ID>
+    <ID>MagicNumber:MainActivity.kt$MainActivity$768</ID>
+    <ID>MagicNumber:MemoryExtractionClient.kt$MemoryExtractionClient$90</ID>
+    <ID>MagicNumber:MemoryExtractionClient.kt$MemoryExtractionClient.&lt;no name provided&gt;$8192L</ID>
+    <ID>MagicNumber:MemoryExtractionJob.kt$MemoryExtractionJob$100</ID>
+    <ID>MagicNumber:MemoryExtractionJob.kt$MemoryExtractionJob$20</ID>
+    <ID>MagicNumber:MemoryExtractionJob.kt$MemoryExtractionJob$256</ID>
+    <ID>MagicNumber:MemoryExtractionJob.kt$MemoryExtractionJob$512</ID>
+    <ID>MagicNumber:MemoryExtractionJobCodec.kt$MemoryExtractionJobCodec$20</ID>
+    <ID>MagicNumber:MemoryExtractionJobRepository.kt$MemoryExtractionJobRepository$10</ID>
+    <ID>MagicNumber:MemoryExtractionJobRepository.kt$MemoryExtractionJobRepository$30_000L</ID>
+    <ID>MagicNumber:MemoryExtractionPipeline.kt$MemoryExtractionWorker$10</ID>
+    <ID>MagicNumber:MemoryExtractionPipeline.kt$MemoryExtractionWorker$30_000L</ID>
+    <ID>MagicNumber:MemoryExtractionQueueRunner.kt$MemoryExtractionFailurePolicy$400</ID>
+    <ID>MagicNumber:MemoryExtractionQueueRunner.kt$MemoryExtractionFailurePolicy$408</ID>
+    <ID>MagicNumber:MemoryExtractionQueueRunner.kt$MemoryExtractionFailurePolicy$409</ID>
+    <ID>MagicNumber:MemoryExtractionQueueRunner.kt$MemoryExtractionFailurePolicy$425</ID>
+    <ID>MagicNumber:MemoryExtractionQueueRunner.kt$MemoryExtractionFailurePolicy$429</ID>
+    <ID>MagicNumber:MemoryExtractionQueueRunner.kt$MemoryExtractionFailurePolicy$499</ID>
+    <ID>MagicNumber:MemoryExtractionQueueRunner.kt$MemoryExtractionFailurePolicy$500</ID>
+    <ID>MagicNumber:MemoryExtractionQueueRunner.kt$MemoryExtractionFailurePolicy$599</ID>
+    <ID>MagicNumber:MemoryFactHistoryCodec.kt$MemoryFactHistoryCodec$12</ID>
+    <ID>MagicNumber:MemoryFactHistoryCodec.kt$MemoryFactHistoryCodec$4</ID>
+    <ID>MagicNumber:MemoryJobLedgerCodec.kt$MemoryJobLedgerCodec$12</ID>
+    <ID>MagicNumber:MemoryJobLedgerCodec.kt$MemoryJobLedgerCodec$4</ID>
+    <ID>MagicNumber:MemoryJobLedgerCodec.kt$MemoryJobLedgerCodec$8</ID>
+    <ID>MagicNumber:MemoryScopeFileNames.kt$MemoryScopeFileNames$12</ID>
+    <ID>MagicNumber:MemoryTextCodec.kt$MemoryTextCodec$12</ID>
+    <ID>MagicNumber:MemoryTextCodec.kt$MemoryTextCodec$16</ID>
+    <ID>MagicNumber:MemoryTextCodec.kt$MemoryTextCodec$32</ID>
+    <ID>MagicNumber:MemoryTextCodec.kt$MemoryTextCodec$4</ID>
+    <ID>MagicNumber:MemoryTextCodec.kt$MemoryTextCodec$64</ID>
+    <ID>MagicNumber:NpuEvidenceStore.kt$NpuEvidenceStatusPolicy$1024</ID>
+    <ID>MagicNumber:NpuEvidenceStore.kt$NpuEvidenceStatusPolicy$128</ID>
+    <ID>MagicNumber:NpuEvidenceStore.kt$NpuEvidenceStatusPolicy$256</ID>
+    <ID>MagicNumber:NpuEvidenceStore.kt$NpuEvidenceStatusPolicy$32</ID>
+    <ID>MagicNumber:NpuEvidenceStore.kt$NpuEvidenceStatusPolicy$512</ID>
+    <ID>MagicNumber:NpuEvidenceStore.kt$NpuEvidenceStatusPolicy$74</ID>
+    <ID>MagicNumber:NpuEvidenceStore.kt$NpuEvidenceStatusPolicy$768</ID>
+    <ID>MagicNumber:NpuEvidenceStore.kt$NpuEvidenceStore$0xff</ID>
+    <ID>MagicNumber:NpuEvidenceStore.kt$NpuEvidenceStore$28</ID>
+    <ID>MagicNumber:NpuEvidenceStore.kt$NpuEvidenceStore$300</ID>
+    <ID>MagicNumber:NpuEvidenceStore.kt$NpuEvidenceStore$5</ID>
+    <ID>MagicNumber:NpuEvidenceStore.kt$NpuEvidenceStore$6</ID>
+    <ID>MagicNumber:NpuEvidenceStore.kt$NpuEvidenceStore$8</ID>
+    <ID>MagicNumber:OpenAiCompatibleChatClient.kt$ChatGenerationOptions$200_000</ID>
+    <ID>MagicNumber:SessionArchiveCodec.kt$SessionArchiveCodec$500</ID>
+    <ID>MagicNumber:SqliteChatStore.kt$SqliteChatStore$5</ID>
+    <ID>MagicNumber:TemporalFactCodec.kt$TemporalFactCodec$12</ID>
+    <ID>MagicNumber:TemporalFactCodec.kt$TemporalFactCodec$4</ID>
+    <ID>MagicNumber:VectorSnapshot.kt$VectorSnapshotCodec$0xffff</ID>
+    <ID>MagicNumber:VectorSnapshot.kt$VectorSnapshotCodec$1.17549435E-38f</ID>
+    <ID>MagicNumber:VectorSnapshot.kt$VectorSnapshotCodec$127</ID>
+    <ID>MagicNumber:VectorSnapshot.kt$VectorSnapshotCodec$127f</ID>
+    <ID>MagicNumber:VectorSnapshot.kt$VectorSnapshotCodec$4</ID>
+    <ID>MagicNumber:VectorSnapshot.kt$VectorSnapshotCodec$8</ID>
+    <ID>MagicNumber:WorldBookLibraryScreen.kt$10</ID>
+    <ID>MagicNumber:WorldBookLibraryScreen.kt$100</ID>
+    <ID>MagicNumber:WorldBookLibraryScreen.kt$1024</ID>
+    <ID>MagicNumber:WorldBookLibraryScreen.kt$3</ID>
+    <ID>MagicNumber:WorldBookLibraryScreen.kt$4</ID>
+    <ID>MagicNumber:WorldBookLibraryScreen.kt$5</ID>
+    <ID>MagicNumber:WorldBookLibraryScreen.kt$6</ID>
+    <ID>MagicNumber:WorldBookLibraryScreen.kt$8192</ID>
+    <ID>MagicNumber:WorldBookLibraryScreen.kt$9999</ID>
+    <ID>MagicNumber:WorldBookLibraryScreen.kt$999999</ID>
+    <ID>MagicNumber:WorldBookLibraryStore.kt$WorldBookLibraryStore$100</ID>
+    <ID>MagicNumber:WorldBookLibraryStore.kt$WorldBookLibraryStore$3</ID>
+    <ID>MagicNumber:WorldBookLibraryStore.kt$WorldBookLibraryStore$4</ID>
+    <ID>MagicNumber:WorldBookLibraryStore.kt$WorldBookLibraryStore$5</ID>
+    <ID>MagicNumber:WorldBookLibraryStore.kt$WorldBookLibraryStore$6</ID>
+    <ID>MagicNumber:WorldBookParser.kt$WorldBookParser$10</ID>
+    <ID>MagicNumber:WorldBookParser.kt$WorldBookParser$100.0</ID>
+    <ID>MagicNumber:WorldBookParser.kt$WorldBookParser$3</ID>
+    <ID>MagicNumber:WorldBookParser.kt$WorldBookParser$4</ID>
+    <ID>MagicNumber:WorldBookParser.kt$WorldBookParser$5</ID>
+    <ID>MagicNumber:WorldBookParser.kt$WorldBookParser$6</ID>
+    <ID>MaxLineLength:AndroidKeystoreMemoryCredentialStore.kt$AndroidKeystoreMemoryCredentialStore$handle.length == HANDLE_LENGTH &amp;&amp; runCatching { UUID.fromString(handle).toString() == handle }.getOrDefault(false)</ID>
+    <ID>MaxLineLength:CharacterCardJsonCodecTest.kt$CharacterCardJsonCodecTest$"""{"spec":"chara_card_v2","spec_version":"2.0","data":{"name":"Mira","description":"A mage","first_mes":"Hello","alternate_greetings":["Hi","Welcome"],"tags":["fantasy"],"character_book":{"name":"Lore","entries":[]}}}"""</ID>
+    <ID>MaxLineLength:CharacterCardJsonCodecTest.kt$CharacterCardJsonCodecTest$"Name: Mira\n\nDescription: A mage\n\nPersonality: Curious\n\nExample dialogue:\nExample: The mage smiles.\n\nSystem instructions: Be kind\n\nPost-history instructions: Stay in character"</ID>
+    <ID>MaxLineLength:CharacterCardLibraryScreen.kt$Button(onClick = { importLauncher.launch(arrayOf("application/json", "text/json", "*/*")) }, modifier = Modifier.weight(1f)) { Text("导入 JSON") }</ID>
+    <ID>MaxLineLength:CharacterCardLibraryScreen.kt$OutlinedTextField(alternateGreetingsText, { alternateGreetingsText = it }, label = { Text("备用开场白（每行一条）") }, modifier = Modifier.fillMaxWidth(), minLines = 2)</ID>
+    <ID>MaxLineLength:CharacterCardLibraryScreen.kt$OutlinedTextField(characterBookJson, { characterBookJson = it }, label = { Text("角色内嵌世界书 JSON（可选）") }, modifier = Modifier.fillMaxWidth(), minLines = 3)</ID>
+    <ID>MaxLineLength:CharacterCardLibraryScreen.kt$OutlinedTextField(creator, { creator = it }, label = { Text("创作者") }, modifier = Modifier.fillMaxWidth(), singleLine = true)</ID>
+    <ID>MaxLineLength:CharacterCardLibraryScreen.kt$OutlinedTextField(creatorNotes, { creatorNotes = it }, label = { Text("创作者备注") }, modifier = Modifier.fillMaxWidth(), minLines = 2)</ID>
+    <ID>MaxLineLength:CharacterCardLibraryScreen.kt$OutlinedTextField(description, { description = it }, label = { Text("描述") }, modifier = Modifier.fillMaxWidth(), minLines = 3)</ID>
+    <ID>MaxLineLength:CharacterCardLibraryScreen.kt$OutlinedTextField(exampleDialogue, { exampleDialogue = it }, label = { Text("示例对话") }, modifier = Modifier.fillMaxWidth(), minLines = 3)</ID>
+    <ID>MaxLineLength:CharacterCardLibraryScreen.kt$OutlinedTextField(firstMessage, { firstMessage = it }, label = { Text("开场白") }, modifier = Modifier.fillMaxWidth(), minLines = 3)</ID>
+    <ID>MaxLineLength:CharacterCardLibraryScreen.kt$OutlinedTextField(name, { name = it }, label = { Text("角色名称 *") }, modifier = Modifier.fillMaxWidth(), singleLine = true)</ID>
+    <ID>MaxLineLength:CharacterCardLibraryScreen.kt$OutlinedTextField(personality, { personality = it }, label = { Text("性格") }, modifier = Modifier.fillMaxWidth(), minLines = 3)</ID>
+    <ID>MaxLineLength:CharacterCardLibraryScreen.kt$OutlinedTextField(postHistoryInstructions, { postHistoryInstructions = it }, label = { Text("历史后置指令") }, modifier = Modifier.fillMaxWidth(), minLines = 3)</ID>
+    <ID>MaxLineLength:CharacterCardLibraryScreen.kt$OutlinedTextField(scenario, { scenario = it }, label = { Text("场景") }, modifier = Modifier.fillMaxWidth(), minLines = 3)</ID>
+    <ID>MaxLineLength:CharacterCardLibraryScreen.kt$OutlinedTextField(systemPrompt, { systemPrompt = it }, label = { Text("系统提示词") }, modifier = Modifier.fillMaxWidth(), minLines = 3)</ID>
+    <ID>MaxLineLength:CharacterCardLibraryScreen.kt$OutlinedTextField(tagsText, { tagsText = it }, label = { Text("标签（逗号分隔）") }, modifier = Modifier.fillMaxWidth())</ID>
+    <ID>MaxLineLength:CharacterCardLibraryScreen.kt$Row</ID>
+    <ID>MaxLineLength:CharacterCardLibraryScreen.kt$Text(item.card.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)</ID>
+    <ID>MaxLineLength:CharacterCardLibraryScreen.kt$TextButton(onClick = { exportTarget = item; exportLauncher.launch("${item.card.name}.json") }) { Text("导出") }</ID>
+    <ID>MaxLineLength:CharacterCardLibraryScreen.kt$alternateGreetings = alternateGreetingsText.lines().map { it.trim() }.filter(String::isNotEmpty)</ID>
+    <ID>MaxLineLength:CharacterCardLibraryScreen.kt$if (item.card.tags.isNotEmpty()) Text(item.card.tags.joinToString(" · "), style = MaterialTheme.typography.labelMedium)</ID>
+    <ID>MaxLineLength:CharacterCardLibraryScreen.kt$val</ID>
+    <ID>MaxLineLength:CharacterCardLibraryStore.kt$CharacterCardLibraryStore$.</ID>
+    <ID>MaxLineLength:ChatScreen.kt$"count=${activationReport.droppedByBudget}; budget=${LocalWorldBookService.DEFAULT_MAX_BUDGET}"</ID>
+    <ID>MaxLineLength:ChatScreen.kt$"facts=${matchingFacts.size}; currentFacts=${matchingFacts.count { it.isCurrent }}; scope=${memoryScopeId.take(8)}"</ID>
+    <ID>MaxLineLength:ChatScreen.kt$"phase=${backendStatus.phase}; backend=${backendStatus.backend}; evidence=${backendStatus.backendEvidence}"</ID>
+    <ID>MaxLineLength:ChatScreen.kt$"reason=unsupported_dimension; dimensions=$configuredDimensions; native_max_dimensions=768"</ID>
+    <ID>MaxLineLength:ChatScreen.kt$"与聊天 API 分开配置。Base URL 和模型 ID 保存在本机；密钥可仅本次使用，或通过 Android Keystore 加密保存。每累计 3 轮已完成对话后异步整理，失败不会撤销聊天回复。"</ID>
+    <ID>MaxLineLength:ChatScreen.kt$"聊天 API Key 仅保存在当前页面内存中，离开页面后需要重新输入；独立记忆 API Key 可选择加密保存到 Android Keystore。Base URL 和模型 ID 会保存在本机设置中。"</ID>
+    <ID>MaxLineLength:ChatScreen.kt$.</ID>
+    <ID>MaxLineLength:ChatScreen.kt$// Clamp persisted preferences so a stale or malformed setting cannot create an unbounded prompt.</ID>
+    <ID>MaxLineLength:ChatScreen.kt$&lt;no name provided&gt;$"promptTokens=${usage.promptTokens}; completionTokens=${usage.completionTokens}; totalTokens=${usage.totalTokens}; cachedPromptTokens=${usage.cachedPromptTokens ?: "unknown"}"</ID>
+    <ID>MaxLineLength:ChatScreen.kt$&lt;no name provided&gt;$usageSummary = "Token 用量：输入 ${usage.promptTokens} · 输出 ${usage.completionTokens} · 合计 ${usage.totalTokens} · 缓存输入 ${usage.cachedPromptTokens?.toString() ?: "未知"}"</ID>
+    <ID>MaxLineLength:ChatScreen.kt$ChatLine(message.id, message.role, message.content, message.createdAtEpochMillis, message.deliveryState)</ID>
+    <ID>MaxLineLength:ChatScreen.kt$DropdownMenu</ID>
+    <ID>MaxLineLength:ChatScreen.kt$PersistedChatMessage(line.id, line.role, line.content, line.createdAtEpochMillis, line.deliveryState)</ID>
+    <ID>MaxLineLength:ChatScreen.kt$SessionArchiveCodec.importAnyDetailed(raw).let { result -&gt; result.archive ?: error(result.error ?: "会话文件无效。") }</ID>
+    <ID>MaxLineLength:ChatScreen.kt$Text("当前角色：${selectedCharacter?.card?.name ?: "默认助手"}", style = MaterialTheme.typography.bodyMedium)</ID>
+    <ID>MaxLineLength:ChatScreen.kt$client.stream(messages, observer, ChatGenerationOptions(maxTokens = maxTokensText.toIntOrNull()?.takeIf { it in 1..200_000 } ?: 4096))</ID>
+    <ID>MaxLineLength:ChatScreen.kt$com.mistbell.tavern.v3.core.storage.TemporalFactLoadResult.Missing -&gt; Unit</ID>
+    <ID>MaxLineLength:ChatScreen.kt$createdAtEpochMillis = (System.currentTimeMillis().coerceAtLeast(0L) + batchIndex).coerceAtMost(Long.MAX_VALUE)</ID>
+    <ID>MaxLineLength:ChatScreen.kt$diagnosticStore.info("memory.index.rebuild_not_needed", "reason=empty_source; scope=${memoryScopeId.take(8)}")</ID>
+    <ID>MaxLineLength:ChatScreen.kt$diagnosticStore.warn("memory.credential.save_failed", "reason=${error::class.java.simpleName}")</ID>
+    <ID>MaxLineLength:ChatScreen.kt$id = TemporalFactExtractionPipeline.FACT_TEXT_ID_PREFIX + fact.id</ID>
+    <ID>MaxLineLength:ChatScreen.kt$if</ID>
+    <ID>MaxLineLength:ChatScreen.kt$if (currentTexts.isNotEmpty()) memoryTextStore.save(currentTexts)</ID>
+    <ID>MaxLineLength:ChatScreen.kt$if (installedModelResult.isFailure) "reason=model_asset_verification_failed" else "reason=model_not_installed"</ID>
+    <ID>MaxLineLength:ChatScreen.kt$if (selectedCharacter == null) "尚未绑定角色卡；本轮使用默认系统提示。" else "角色卡会注入描述、性格、场景、开场白、示例对话及系统指令。"</ID>
+    <ID>MaxLineLength:ChatScreen.kt$is com.mistbell.tavern.v3.core.storage.TemporalFactLoadResult.Corrupt</ID>
+    <ID>MaxLineLength:ChatScreen.kt$is com.mistbell.tavern.v3.core.storage.TemporalFactLoadResult.Loaded</ID>
+    <ID>MaxLineLength:ChatScreen.kt$maxTokens = maxTokensText.toIntOrNull()?.takeIf { it in 1..200_000 } ?: 4096</ID>
+    <ID>MaxLineLength:ChatScreen.kt$mutableStateOf(settings.getString("chat_api_base_url", "https://api.odys.work/v1") ?: "https://api.odys.work/v1")</ID>
+    <ID>MaxLineLength:ChatScreen.kt$mutableStateOf(settings.getString("memory_api_base_url", "https://api.odys.work/v1") ?: "https://api.odys.work/v1")</ID>
+    <ID>MaxLineLength:ChatScreen.kt$settings.getInt("chat_history_summary_max_chars", ConversationContextWindowBuilder.DEFAULT_SUMMARY_MAX_CHARS)</ID>
+    <ID>MaxLineLength:ChatScreen.kt$status</ID>
+    <ID>MaxLineLength:ChatScreen.kt$text = "${fact.subject} ${fact.predicate}: ${fact.value}"</ID>
+    <ID>MaxLineLength:ChatScreen.kt$val</ID>
+    <ID>MaxLineLength:ChatScreen.kt$val currentHashes = sourceTexts.records.map { it.sourceTextSha256 }.sorted()</ID>
+    <ID>MaxLineLength:ChatScreen.kt$val embeddingSettings = context.getSharedPreferences("mistbell-v3-settings", Context.MODE_PRIVATE)</ID>
+    <ID>MaxLineLength:ChatScreen.kt$val indexedHashes = existingSnapshot.snapshot.records.map { it.sourceTextSha256 }.sorted()</ID>
+    <ID>MaxLineLength:ChatScreen.kt$val worldbookStateKey = "worldbook_activation_state_${activeMemoryRoleId}_${memoryConversationId}_${activeWorldbookId.ifBlank { "none" }}"</ID>
+    <ID>MaxLineLength:ChatScreen.kt$var characterCards by remember(context) { mutableStateOf(emptyList&lt;com.mistbell.tavern.v3.feature.character.StoredCharacterCard&gt;()) }</ID>
+    <ID>MaxLineLength:ChatScreen.kt$when</ID>
+    <ID>MaxLineLength:DiagnosticLogStore.kt$DiagnosticLogStore$.</ID>
+    <ID>MaxLineLength:DiagnosticLogStore.kt$DiagnosticLogStore$Regex("(?i)\\b(?:sk-[A-Za-z0-9_-]{16,}|AIza[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|ya29\\.[A-Za-z0-9_-]{20,})\\b")</ID>
+    <ID>MaxLineLength:DiagnosticLogStoreTest.kt$DiagnosticLogStoreTest$"Authorization: Basic dXNlcjpwYXNz; X-Api-Key=api-secret; https://example.test/?token=query-secret; hf_abcdefghijklmnopqrstuvwxyz; \"token\": \"json-secret\""</ID>
+    <ID>MaxLineLength:DiagnosticLogStoreTest.kt$DiagnosticLogStoreTest$"sk-12345678901234567890 ghp_123456789012345678901234567890 github_pat_123456789012345678901234567890 xoxb-1234567890-abcdefghij AKIA1234567890123456 ya29.123456789012345678901234567890"</ID>
+    <ID>MaxLineLength:EmbeddingGemma2ModelAssetManager.kt$EmbeddingGemma2ModelAssetManager$"Downloaded model checksum does not match the pinned model for the selected runtime profile; refusing to install it."</ID>
+    <ID>MaxLineLength:EmbeddingGemma2ModelAssetManager.kt$EmbeddingGemma2ModelAssetManager$"The Qualcomm SM8650-specific model requires a verified NPU runtime profile; use the portable model for CPU/GPU testing."</ID>
+    <ID>MaxLineLength:EmbeddingGemma2ModelAssetManager.kt$EmbeddingGemma2ModelAssetManager$if (!modelFile.isFile || !digestFile.isFile || (modelFile.length() &lt; 1L || modelFile.length() &gt; MAX_MODEL_BYTES)) return@withContext null</ID>
+    <ID>MaxLineLength:EmbeddingGemma2ModelAssetManager.kt$EmbeddingGemma2ModelAssetManager$val metadata = "$stampVersion\n$canonicalPath\n${modelFile.length()}\n${modelFile.lastModified()}\n$expectedDigest"</ID>
+    <ID>MaxLineLength:EmbeddingGemma2ModelAssetManager.kt$EmbeddingGemma2ModelAssetManager.Companion$"https://huggingface.co/litert-community/embeddinggemma-2-740m-litert-lm/resolve/86b903a/embeddinggemma-2-740m.litertlm"</ID>
+    <ID>MaxLineLength:EmbeddingGemma2ModelAssetManager.kt$EmbeddingGemma2ModelAssetManager.Companion$"https://huggingface.co/litert-community/embeddinggemma-2-740m-litert-lm/resolve/ed3f5e1/embeddinggemma-2-740m_Qualcomm_SM8650.litertlm"</ID>
+    <ID>MaxLineLength:EmbeddingGemma2ModelAssetManagerTest.kt$EmbeddingGemma2ModelAssetManagerTest$assertTrue(EmbeddingGemma2ModelAssetManager.MODEL_DOWNLOAD_URL.contains("86b903a/embeddinggemma-2-740m.litertlm"))</ID>
+    <ID>MaxLineLength:EmbeddingGemma2ModelAssetManagerTest.kt$EmbeddingGemma2ModelAssetManagerTest$assertTrue(EmbeddingGemma2ModelAssetManager.QUALCOMM_SM8650_MODEL_DOWNLOAD_URL.contains("ed3f5e1/embeddinggemma-2-740m_Qualcomm_SM8650.litertlm"))</ID>
+    <ID>MaxLineLength:EmbeddingGemma2RuntimeAdapter.kt$EmbeddingGemma2RuntimeAdapter$"Formatted input $index exceeds the $MAX_FORMATTED_INPUT_BYTES-byte model input limit; split the text into smaller passages."</ID>
+    <ID>MaxLineLength:EmbeddingGemma2RuntimeAdapter.kt$EmbeddingGemma2RuntimeAdapter$onDiagnostic("embedding.input.truncated", "originalLength=${original.length}; truncatedLength=${bounded.length}")</ID>
+    <ID>MaxLineLength:EmbeddingGemma2RuntimeAdapter.kt$EmbeddingGemma2RuntimeAdapter$val key = EmbeddingVectorCache.key(formatted, model.modelId, model.dimensions, EmbeddingGemma2TextPolicy.POLICY_VERSION, engine.cacheProfileId)</ID>
+    <ID>MaxLineLength:EmbeddingGemma2RuntimeAdapter.kt$EmbeddingGemma2RuntimeAdapter.Companion$onDiagnostic("embedding.cache.hit", "modelId=${EmbeddingGemma2TextPolicy.MODEL_ID}; dimensions=$outputDimensions; engineInitializationSkipped=true")</ID>
+    <ID>MaxLineLength:EmbeddingGemma2RuntimeAdapter.kt$EmbeddingGemma2RuntimeAdapter.Companion$return EmbeddingBatch(listOf(cached.vector), cached.status.copy(lastExecutionMillis = null, isCachedResult = true))</ID>
+    <ID>MaxLineLength:EmbeddingGemma2RuntimeAdapter.kt$EmbeddingGemma2RuntimeAdapter.Companion$val key = EmbeddingVectorCache.key(formatted, EmbeddingGemma2TextPolicy.MODEL_ID, outputDimensions, EmbeddingGemma2TextPolicy.POLICY_VERSION, modelProfileId)</ID>
+    <ID>MaxLineLength:EmbeddingGemma2RuntimeAdapterTest.kt$EmbeddingGemma2RuntimeAdapterTest$adapter.embedDocuments(listOf("short text"), listOf("x".repeat(EmbeddingGemma2RuntimeAdapter.MAX_FORMATTED_INPUT_BYTES)))</ID>
+    <ID>MaxLineLength:EmbeddingGemma2RuntimeAdapterTest.kt$EmbeddingGemma2RuntimeAdapterTest$val cached = EmbeddingGemma2RuntimeAdapter.cachedQuery(query, modelProfileId = EmbeddingGemma2TextPolicy.MODEL_ID)</ID>
+    <ID>MaxLineLength:EmbeddingGemma2RuntimeAdapterTest.kt$EmbeddingGemma2RuntimeAdapterTest$val d = EmbeddingVectorCache.key("same", "model-a", 768, policyVersion = EmbeddingGemma2TextPolicy.POLICY_VERSION + 1)</ID>
+    <ID>MaxLineLength:EmbeddingVectorCache.kt$EmbeddingVectorCache$fun</ID>
+    <ID>MaxLineLength:ImageGenerationClientTest.kt$ImageGenerationClientTest$.</ID>
+    <ID>MaxLineLength:ImageGenerationScreen.kt$ImageGenerationRequest(prompt = promptForRequest, model = modelForRequest)</ID>
+    <ID>MaxLineLength:ImageGenerationScreen.kt$Text("${image.mimeType} · ${image.sizeBytes / 1024} KiB · ${image.prompt.take(120)}", style = MaterialTheme.typography.bodySmall)</ID>
+    <ID>MaxLineLength:ImageGenerationScreen.kt$mutableStateOf(settings.getString("image_api_base_url", "https://api.odys.work/v1") ?: "https://api.odys.work/v1")</ID>
+    <ID>MaxLineLength:ImageGenerationScreen.kt$remote += PendingRemoteImage(image.remoteUrl, promptForRequest, result.model ?: modelForRequest)</ID>
+    <ID>MaxLineLength:ImageGenerationScreen.kt$store.save(GeneratedImage(base64Data = encoded), remote.prompt, remote.model)</ID>
+    <ID>MaxLineLength:ImageGenerationScreen.kt$stored += store.save(image, promptForRequest, result.model ?: modelForRequest)</ID>
+    <ID>MaxLineLength:ImageGenerationScreen.kt$val bitmap = selected?.let { BitmapFactory.decodeFile(File(context.filesDir, "generated-images/${it.fileName}").absolutePath)?.asImageBitmap() }</ID>
+    <ID>MaxLineLength:InferenceRuntimeStatus.kt$InferenceBackendSelection$/** Preference order never implies availability; probes must identify their evidence level before claiming hardware execution. */</ID>
+    <ID>MaxLineLength:LegacyCharacterCardImporter.kt$LegacyCharacterCardImporter$exampleDialogue = data.optString("mes_example", data.optString("example_dialogue", data.optString("exampleDialogue", "")))</ID>
+    <ID>MaxLineLength:LegacyCharacterCardImporter.kt$LegacyCharacterCardImporter$firstMessage = data.optString("first_mes", data.optString("first_message", data.optString("firstMessage", "")))</ID>
+    <ID>MaxLineLength:LegacyCharacterCardImporterTest.kt$LegacyCharacterCardImporterTest$"""{"name":"Rowan","firstMessage":"Stay close.","exampleDialogue":"{{char}}: Ready.","creatorcomment":"Notes"}"""</ID>
+    <ID>MaxLineLength:LegacyCharacterCardImporterTest.kt$LegacyCharacterCardImporterTest$"""{"spec":"chara_card_v2","data":{"name":"Mira","first_mes":"Hello","alternate_greetings":["Hi","Welcome"],"tags":["fantasy"],"character_book":{"name":"Lore","entries":[]}}}"""</ID>
+    <ID>MaxLineLength:LiteRtBackendAvailability.kt$LiteRtBackendAvailability.Companion$add("Android API $NPU_MIN_ANDROID_API or newer is required for LiteRT NPU; device API is $androidApiLevel")</ID>
+    <ID>MaxLineLength:LiteRtBackendAvailabilityTest.kt$LiteRtBackendAvailabilityTest$LiteRtBackendAvailability.SM8650_NPU_REQUIRED_LIBRARIES.forEach { File(directory, it).writeBytes(byteArrayOf(1)) }</ID>
+    <ID>MaxLineLength:LiteRtLmEmbeddingGemma2Engine.kt$LiteRtLmEmbeddingGemma2Engine$"No requested embedding backend is available. Check the packaged GPU runtime; CPU fallback is available only for the portable model."</ID>
+    <ID>MaxLineLength:LiteRtLmEmbeddingGemma2Engine.kt$LiteRtLmEmbeddingGemma2Engine$"The Qualcomm SM8650 model requires a verified NPU runtime. Install a compatible runtime or select the portable EmbeddingGemma model for CPU/GPU testing."</ID>
+    <ID>MaxLineLength:LiteRtLmEmbeddingGemma2Engine.kt$LiteRtLmEmbeddingGemma2Engine$"backendOrder=${backendOrder.joinToString(",")}; nativeLibraryDir=${appContext.applicationInfo.nativeLibraryDir}; runtimeFallbackApplied=false"</ID>
+    <ID>MaxLineLength:LiteRtLmEmbeddingGemma2Engine.kt$LiteRtLmEmbeddingGemma2Engine$"caseLengths=${lengths.joinToString(",")}; modelProfile=QUALCOMM_SM8650; padding=not_applied; evidenceStatus=pending"</ID>
+    <ID>MaxLineLength:LiteRtLmEmbeddingGemma2Engine.kt$LiteRtLmEmbeddingGemma2Engine$"cases=${outcomes.size}; successes=${evidence.successes}; failures=${outcomes.size - evidence.successes}; status=${evidence.status}; evidence=${evidence.file.name}; apkSha256MatchesCurrent=${evidence.apkSha256MatchesCurrent}"</ID>
+    <ID>MaxLineLength:LiteRtLmEmbeddingGemma2Engine.kt$LiteRtLmEmbeddingGemma2Engine$"elapsedMs=$elapsedMillis; backend=${backend.name}; runtimeFallbackApplied=${fallbackReason != null}; "</ID>
+    <ID>MaxLineLength:LiteRtLmEmbeddingGemma2Engine.kt$LiteRtLmEmbeddingGemma2Engine$"tokenLengths=unavailable; normalize=true; outputSize=${EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS}"</ID>
+    <ID>MaxLineLength:LiteRtLmEmbeddingGemma2Engine.kt$LiteRtLmEmbeddingGemma2Engine$backend = if (selectedBackend == InferenceBackend.NPU &amp;&amp; !npuEvidenceVerified) InferenceBackend.UNKNOWN else selectedBackend</ID>
+    <ID>MaxLineLength:LiteRtLmEmbeddingGemma2Engine.kt$LiteRtLmEmbeddingGemma2Engine$logInfo("embedding.benchmark.completed", "backend=${backend.name}; cases=${outcomes.size}; successes=$successes; failures=${outcomes.size - successes}")</ID>
+    <ID>MaxLineLength:LiteRtLmEmbeddingGemma2Engine.kt$LiteRtLmEmbeddingGemma2Engine$logInfo("embedding.initialize.succeeded", "backend=${backend.name}; runtimeFallbackApplied=${fallbackReason != null}")</ID>
+    <ID>MaxLineLength:LiteRtLmEmbeddingGemma2Engine.kt$LiteRtLmEmbeddingGemma2Engine$logWarn("embedding.benchmark.started", "backend=${backend.name}; modelProfile=QUALCOMM_SM8650; warmup=1; repeats=5")</ID>
+    <ID>MaxLineLength:LiteRtLmEmbeddingGemma2Engine.kt$LiteRtLmEmbeddingGemma2Engine$logWarn("embedding.npu.diagnostic_probe.enabled", "manifestVerified=$npuEvidenceVerified; productionBackendVerification=unchanged")</ID>
+    <ID>MaxLineLength:LiteRtLmEmbeddingGemma2Engine.kt$LiteRtLmEmbeddingGemma2Engine$runCatching { engine?.close() }.onFailure { logWarn("embedding.engine.close.failed", it::class.java.simpleName) }</ID>
+    <ID>MaxLineLength:LiteRtLmEmbeddingGemma2Engine.kt$LiteRtLmEmbeddingGemma2Engine$val outcome = "backend=${backend.name}; payloadChars=$length; formattedChars=${input.length}; warmup=1; repeats=5; p50Ms=$p50; p90Ms=$p90; result=success; dimensions=${EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS}"</ID>
+    <ID>MaxLineLength:LiteRtLmEmbeddingGemma2Engine.kt$LiteRtLmEmbeddingGemma2Engine$val outcome = "backend=${backend.name}; payloadChars=$length; warmup=1; repeats=5; result=failed; error=${error::class.java.simpleName}: ${(error.message ?: "benchmark failed").take(180)}"</ID>
+    <ID>MaxLineLength:LiteRtLmEmbeddingGemma2Engine.kt$LiteRtLmEmbeddingGemma2Engine$val outcome = "chars=$length; result=success; dimensions=$dimensions; elapsedMs=${result.status.lastExecutionMillis ?: -1}"</ID>
+    <ID>MaxLineLength:LocalWorldBookService.kt$LocalWorldBookService$runCatching { Regex(key.substring(1, key.length - 1), RegexOption.IGNORE_CASE).containsMatchIn(text) }</ID>
+    <ID>MaxLineLength:LocalWorldBookServiceTest.kt$LocalWorldBookServiceTest$assertEquals(emptyList&lt;ActivatedWorldBookEntry&gt;(), service.activateEntries(listOf(cooldown), "dragon", state = cooldownState))</ID>
+    <ID>MaxLineLength:LocalWorldBookServiceTest.kt$LocalWorldBookServiceTest$assertEquals(emptyList&lt;ActivatedWorldBookEntry&gt;(), service.activateEntries(listOf(delayed), "dragon", state = delayedState))</ID>
+    <ID>MaxLineLength:LocalWorldBookServiceTest.kt$LocalWorldBookServiceTest$assertEquals(emptyList&lt;ActivatedWorldBookEntry&gt;(), service.activateEntries(listOf(delayed), "dragon", state = state))</ID>
+    <ID>MaxLineLength:LocalWorldBookServiceTest.kt$LocalWorldBookServiceTest$assertEquals(emptyList&lt;ActivatedWorldBookEntry&gt;(), service.activateEntries(listOf(sticky), "unrelated", state = state))</ID>
+    <ID>MaxLineLength:LocalWorldBookServiceTest.kt$LocalWorldBookServiceTest$assertEquals(listOf("cooldown"), service.activateEntries(listOf(cooldown), "dragon", state = cooldownState).map { it.entry.id })</ID>
+    <ID>MaxLineLength:LocalWorldBookServiceTest.kt$LocalWorldBookServiceTest$assertEquals(listOf("delayed"), service.activateEntries(listOf(delayed), "unrelated", state = delayedState).map { it.entry.id })</ID>
+    <ID>MaxLineLength:LocalWorldBookServiceTest.kt$LocalWorldBookServiceTest$assertEquals(listOf("delayed-two"), service.activateEntries(listOf(delayed), "unrelated", state = state).map { it.entry.id })</ID>
+    <ID>MaxLineLength:LocalWorldBookServiceTest.kt$LocalWorldBookServiceTest$assertEquals(listOf("sticky"), service.activateEntries(listOf(sticky), "dragon", state = state).map { it.entry.id })</ID>
+    <ID>MaxLineLength:LocalWorldBookServiceTest.kt$LocalWorldBookServiceTest$assertEquals(listOf("sticky"), service.activateEntries(listOf(sticky), "unrelated", state = state).map { it.entry.id })</ID>
+    <ID>MaxLineLength:MainActivity.kt$.</ID>
+    <ID>MaxLineLength:MainActivity.kt$BuildStage("本地推理与硬件状态", "EmbeddingGemma 2 / LiteRT-LM 接入、后端状态与 Qualcomm 运行时打包流程已建立；CI 打包成功不代表最新 APK 的 CPU/GPU/NPU 真机验收完成。")</ID>
+    <ID>MaxLineLength:MainActivity.kt$Button</ID>
+    <ID>MaxLineLength:MainActivity.kt$Card</ID>
+    <ID>MaxLineLength:MainActivity.kt$MainActivity$"Qualcomm 专用模型已导入且 SHA-256 校验通过，但当前 APK 没有经过验证的 NPU 运行库，因此暂时不能执行该模型。已导入模型不会被删除。请切换到通用版，下载/导入通用模型后进行 CPU/GPU 测试；Qualcomm 专用模型仍保留在公共下载目录。"</ID>
+    <ID>MaxLineLength:MainActivity.kt$MainActivity$"bytes=${downloaded.sizeBytes}; sha256=${downloaded.sha256}; publicBackup=${backup.displayName}; reused=${backup.reused}"</ID>
+    <ID>MaxLineLength:MainActivity.kt$MainActivity$"cases=${outcomes.size}; successes=$successes; failures=${outcomes.size - successes}; status=$evidenceStatus; evidenceFile=$evidenceName; apkSha256MatchesCurrent=${evidence?.apkSha256MatchesCurrent}"</ID>
+    <ID>MaxLineLength:MainActivity.kt$MainActivity$"dimensions=${result.vectors.single().size}; configuredBackend=${result.status.backend}; evidence=${result.status.backendEvidence}; elapsedMs=${result.status.lastExecutionMillis}"</ID>
+    <ID>MaxLineLength:MainActivity.kt$MainActivity$"profile=${if (profileAtStart) "QUALCOMM_SM8650" else "PORTABLE"}; installed=${installed != null}; stale=${generationAtStart != modelProfileGeneration}"</ID>
+    <ID>MaxLineLength:MainActivity.kt$MainActivity$.</ID>
+    <ID>MaxLineLength:MainActivity.kt$MainActivity$contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)</ID>
+    <ID>MaxLineLength:MainActivity.kt$MainActivity$diagnostics.error("diagnostics.export.failed", error::class.java.simpleName + ": " + (error.message ?: "unknown error"))</ID>
+    <ID>MaxLineLength:MainActivity.kt$MainActivity$diagnostics.error("embedding.model.profile.verify.failed", "profile=${if (qualcomm) "QUALCOMM_SM8650" else "PORTABLE"}; $detail")</ID>
+    <ID>MaxLineLength:MainActivity.kt$MainActivity$diagnostics.error("embedding.npu.diagnostic_probe.inference_failed", "evidenceStatus=not_generated; $detail")</ID>
+    <ID>MaxLineLength:MainActivity.kt$MainActivity$diagnostics.info("embedding.model.import.private_copy", "bytes=${imported.sizeBytes}; sha256=${imported.sha256}")</ID>
+    <ID>MaxLineLength:MainActivity.kt$MainActivity$diagnostics.info("embedding.model.import.succeeded", "bytes=${imported.sizeBytes}; sha256=${imported.sha256}")</ID>
+    <ID>MaxLineLength:MainActivity.kt$MainActivity$diagnostics.info("embedding.selftest.succeeded", "cacheHit=true; modelProfileMatched=true; dimensions=${cached.vectors.single().size}; backendEvidence=${cached.status.backendEvidence}; cacheLookupMs=$cacheLookupMillis; engineInitializationSkipped=true")</ID>
+    <ID>MaxLineLength:MainActivity.kt$MainActivity$diagnostics.warn("embedding.npu.diagnostic_probe.started", "modelProfile=QUALCOMM_SM8650; purpose=one_shot_runtime_diagnosis; evidencePolicy=runtime_generated_only")</ID>
+    <ID>MaxLineLength:MainActivity.kt$MainActivity$diagnostics.warn("embedding.selftest.unsupported_dimension_for_model", "model=EmbeddingGemma2; nativeDimensions=768; selectedDimensions=$selectedEmbeddingDimensions")</ID>
+    <ID>MaxLineLength:MainActivity.kt$MainActivity$if</ID>
+    <ID>MaxLineLength:MainActivity.kt$MainActivity$operationMessage = "GPU/CPU 对照实验无法启动：${error::class.java.simpleName}: ${error.message ?: "unknown error"}"</ID>
+    <ID>MaxLineLength:MainActivity.kt$MainActivity$operationMessage = "NPU 输入长度矩阵结束：成功 $successes/${outcomes.size}，失败 ${outcomes.size - successes}；证据状态=$evidenceStatus；文件=$evidenceName。可导出证据 JSON。"</ID>
+    <ID>MaxLineLength:MainActivity.kt$MainActivity$operationMessage = "Qualcomm 同模型 GPU/CPU 实验结束：${summaries.joinToString("；")}。各档预热 1 次、测量 5 次，p50/p90 已写入诊断日志。实验失败不影响 NPU/GPU 生产路径。"</ID>
+    <ID>MaxLineLength:MainActivity.kt$MainActivity$operationMessage = "当前 EmbeddingGemma 2 原生最高支持 768 维；已保留 ${selectedEmbeddingDimensions} 维选项，但需要切换到原生支持该维度的模型后才能测试。未启动不兼容的推理任务。"</ID>
+    <ID>MaxLineLength:MainActivity.kt$MainActivity$operationMessage = "模型已校验并安装到软件内部目录：${downloaded.file.absolutePath}\n公共目录备份：${backup.displayName}\nSHA-256：${downloaded.sha256}"</ID>
+    <ID>MaxLineLength:MainActivity.kt$MainActivity$val</ID>
+    <ID>MaxLineLength:MainActivity.kt$MainActivity$val detail = "${error::class.java.simpleName}: ${error.message ?: "backend unavailable"}".take(180)</ID>
+    <ID>MaxLineLength:MainActivity.kt$MainActivity$val localPathKey = if (qualcommModelSelected) "embedding_local_model_path_qualcomm" else "embedding_local_model_path_portable"</ID>
+    <ID>MaxLineLength:MainActivity.kt$MainActivity$val profileKey = if (qualcommModelSelected) "embedding_public_model_name_qualcomm" else "embedding_public_model_name_portable"</ID>
+    <ID>MaxLineLength:MainActivity.kt$Text("EmbeddingGemma 2 原生最高为 768 维，768 档可直接使用；1024 / 1536 / 2048 档为未来兼容更高维模型预留，当前选择这些档位时会明确提示模型不兼容，不会伪造高维向量。设置保存在本机；更换维度后需要重建旧向量索引。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)</ID>
+    <ID>MaxLineLength:MainActivity.kt$Text("仅供开发诊断：将尝试初始化 Qualcomm NPU，不会把运行库标记为已验证，也不会自动启用聊天生产路径。若 SDK/ABI 不兼容，可能失败；失败日志可用于定位。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)</ID>
+    <ID>MaxLineLength:MainActivity.kt$Text("从本机角色库新建、编辑、删除角色卡；支持导入和导出 SillyTavern JSON。PNG/CHARX 容器导入及聊天会话绑定将在后续接线。", style = MaterialTheme.typography.bodyMedium)</ID>
+    <ID>MaxLineLength:MainActivity.kt$Text("使用独立图片 API Key 生成图片，并将内联图片安全保存到应用私有目录；远程图片只有在你明确点击下载后才会获取。", style = MaterialTheme.typography.bodyMedium)</ID>
+    <ID>MaxLineLength:MainActivity.kt$Text("复用 2.9 的世界书列表和条目管理交互，支持本地保存、启停、编辑及 World Info JSON 导入导出。", style = MaterialTheme.typography.bodyMedium)</ID>
+    <ID>MaxLineLength:MainActivity.kt$Text("运行副本：软件内部私有目录。联网下载会另备份到 Download/向量模型，重装后可从文件导入；本地导入不会另建公共副本。", style = MaterialTheme.typography.bodyMedium)</ID>
+    <ID>MaxLineLength:MainActivity.kt$Text("进入独立聊天测试页面，配置 OpenAI 兼容 API 并验证流式回复。API 密钥仅保存在当前页面的内存状态中。", style = MaterialTheme.typography.bodyMedium)</ID>
+    <ID>MaxLineLength:MainActivity.kt$Text(if (qualcommModelSelected) "✓ 已选：Qualcomm SM8650 专用版（约 563 MB）" else "选择 Qualcomm SM8650 专用版（约 563 MB）")</ID>
+    <ID>MaxLineLength:MainActivity.kt$modifier = Modifier.fillMaxWidth().animateContentSize(animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing))</ID>
+    <ID>MaxLineLength:MainActivity.kt$status.backendEvidence.takeIf { it != BackendEvidence.NOT_AVAILABLE }?.let { "硬件证据：${when (it) { BackendEvidence.NOT_AVAILABLE -&gt; "无"; BackendEvidence.CONFIGURED_ONLY -&gt; "仅配置成功，未独立确认实际硬件调用"; BackendEvidence.RUNTIME_REPORTED -&gt; "NPU 运行时已验证（7/7、运行时加载与推理成功；未独立证明 DSP 执行）"; BackendEvidence.DEVICE_VERIFIED -&gt; "设备实测确认（需独立硬件执行证据）" }}" }</ID>
+    <ID>MaxLineLength:MemoryExtractionClient.kt$MemoryExtractionClient.&lt;no name provided&gt;$observer.onFinished(MemoryExtractionOutcome.Failure("Memory-extraction response is empty or too large."))</ID>
+    <ID>MaxLineLength:MemoryExtractionClientTest.kt$MemoryExtractionClientTest$"""{"choices":[{"message":{"content":"{\"facts\":[{\"subject\":\"user\",\"predicate\":\"likes\",\"value\":\"tea\",\"source_turn_id\":\"not-a-real-turn\"}]}"}}]}"""</ID>
+    <ID>MaxLineLength:MemoryExtractionClientTest.kt$MemoryExtractionClientTest$"""{"choices":[{"message":{"content":"{\"facts\":[{\"subject\":\"user\",\"predicate\":\"likes\",\"value\":\"tea\",\"source_turn_id\":\"turn-1\"}]}"}}]}"""</ID>
+    <ID>MaxLineLength:MemoryExtractionJobCodecTest.kt$MemoryExtractionJobCodecTest$val</ID>
+    <ID>MaxLineLength:MemoryExtractionQueueRunner.kt$MemoryExtractionQueueRunner.RetryableInputException$class</ID>
+    <ID>MaxLineLength:MemoryExtractionQueueWorker.kt$MemoryExtractionQueueWorker$ChatHistoryLoadResult.Unavailable -&gt; throw MemoryExtractionQueueRunner.RetryableInputException()</ID>
+    <ID>MaxLineLength:MemoryIndexRebuilder.kt$MemoryIndexRebuilder$"Vector snapshot could not be saved. Source hashes prevent stale vectors from matching changed text; retry the rebuild."</ID>
+    <ID>MaxLineLength:NpuEvidenceStatusPolicyTest.kt$NpuEvidenceStatusPolicyTest$listOf(1, 32, 74, 128, 256, 512, 1024).forEach { chars -&gt; put(JSONObject().put("inputChars", chars).put("result", "success").put("dimensions", 768)) }</ID>
+    <ID>MaxLineLength:NpuEvidenceStatusPolicyTest.kt$NpuEvidenceStatusPolicyTest$val wrongLengths = cases().apply { put(0, JSONObject().put("inputChars", 2).put("result", "success").put("dimensions", 768)) }</ID>
+    <ID>MaxLineLength:NpuEvidenceStore.kt$NpuEvidenceStore$.</ID>
+    <ID>MaxLineLength:OpenAiCompatibleChatClient.kt$OpenAiCompatibleChatClient.&lt;no name provided&gt;$val completionTokens = usage.optInt("completion_tokens", usage.optInt("output_tokens", 0))</ID>
+    <ID>MaxLineLength:OpenAiCompatibleChatClientTest.kt$OpenAiCompatibleChatClientTest$"data: {\"choices\":[],\"usage\":{\"prompt_tokens\":17,\"completion_tokens\":2,\"total_tokens\":19,\"prompt_tokens_details\":{\"cached_tokens\":9}}}\n\n"</ID>
+    <ID>MaxLineLength:PromptHistoryBudgetTest.kt$PromptHistoryBudgetTest$assertEquals(emptyList&lt;PromptMessage&gt;(), PromptHistoryBudget.select(listOf(PromptMessage(PromptRole.USER, "x")), 0, 5))</ID>
+    <ID>MaxLineLength:PromptHistoryBudgetTest.kt$PromptHistoryBudgetTest$assertEquals(listOf(PromptMessage(PromptRole.ASSISTANT, oversizedReply)), PromptHistoryBudget.select(history, 5, 2))</ID>
+    <ID>MaxLineLength:SessionArchiveCodecTest.kt$SessionArchiveCodecTest$val invalidJson = """{"format":"mistbell-session","version":1,"messages":[{"id":"ok","role":"user","content":"hi"},42]}"""</ID>
+    <ID>MaxLineLength:TemporalFactExtractionPipeline.kt$TemporalFactExtractionPipeline$"Facts were saved, but vector source text could not be updated; local index refresh is required."</ID>
+    <ID>MaxLineLength:TemporalFactLedgerTest.kt$TemporalFactLedgerTest$assertTrue(facts.all { it.validUntilEpochMillis == null || it.validUntilEpochMillis &gt;= it.validFromEpochMillis })</ID>
+    <ID>MaxLineLength:VectorMemoryRetrieverTest.kt$VectorMemoryRetrieverTest$StoredVector("v-${case.distractor.id}", case.distractor.sourceTextSha256, 2L, case.distractorVector)</ID>
+    <ID>MaxLineLength:VectorMemoryRetrieverTest.kt$VectorMemoryRetrieverTest$val long = MemoryTextRecord("long-keyword", "x".repeat(VectorMemoryRetriever.MAX_KEYWORD_SCAN_CHARACTERS) + " Beijing")</ID>
+    <ID>MaxLineLength:VectorSnapshotCodecTest.kt$VectorSnapshotCodecTest$assertTrue("encoded=${encoded.size}; floatVectorBytes=$floatPayloadBytes", encoded.size.toLong() &lt; floatPayloadBytes * 0.30)</ID>
+    <ID>MaxLineLength:WorldBookLibraryScreen.kt$OutlinedTextField(cooldownText, { cooldownText = it.filter(Char::isDigit).take(4) }, label = { Text("冷却轮数") })</ID>
+    <ID>MaxLineLength:WorldBookLibraryScreen.kt$OutlinedTextField(depthText, { depthText = it.filter(Char::isDigit).take(2) }, label = { Text("深度（0-10；位置选 depth 时，0 表示深度 0）") })</ID>
+    <ID>MaxLineLength:WorldBookLibraryScreen.kt$OutlinedTextField(insertPosition, { insertPosition = it }, label = { Text("插入位置（before_prompt / depth / after_prompt / an_before / an_after / em_before / em_after）") })</ID>
+    <ID>MaxLineLength:WorldBookLibraryScreen.kt$OutlinedTextField(probabilityText, { probabilityText = it.filter(Char::isDigit).take(3) }, label = { Text("触发概率（0-100%）") })</ID>
+    <ID>MaxLineLength:WorldBookLibraryScreen.kt$TextButton(onClick = { exportTarget.value = book; exportLauncher.launch(book.name + ".json") }) { Text("导出") }</ID>
+    <ID>MaxLineLength:WorldBookLibraryScreen.kt$else</ID>
+    <ID>MaxLineLength:WorldBookLibraryScreen.kt$store.save(selected.copy(entries = selected.entries.filterNot { it.id == entry.id } + entry))</ID>
+    <ID>MaxLineLength:WorldBookLibraryScreen.kt$store.save(selected.copy(entries = selected.entries.filterNot { it.id == entry.id }))</ID>
+    <ID>MaxLineLength:WorldBookLibraryScreen.kt$val</ID>
+    <ID>MaxLineLength:WorldBookLibraryScreen.kt$withContext(Dispatchers.IO) { store.save(WorldBook(UUID.randomUUID().toString(), newBookName.trim(), emptyList())) }</ID>
+    <ID>MaxLineLength:WorldBookParserTest.kt$WorldBookParserTest$"""{"entries":[{"uid":5,"content":"at depth","key":["dragon"],"extensions":{"position":4,"depth":3,"probability":50,"role":2}}]}"""</ID>
+    <ID>MaxLineLength:WorldBookParserTest.kt$WorldBookParserTest$"""{"id":"11111111-1111-1111-1111-111111111111","entries":[{"uid":"depth-zero","content":"at depth zero","position":4,"depth":0,"role":1}]}"""</ID>
+    <ID>MaxLineLength:WorldBookParserTest.kt$WorldBookParserTest$"""{"name":"Lore","entries":{"1":{"comment":"rule","content":"night","key":"night","enabled":true,"insertion_order":2},"2":{"content":"hidden","disable":true,"order":8}}}"""</ID>
+    <ID>MaxLineLength:WorldBookPlacementTest.kt$WorldBookPlacementTest$entry("depth-zero", WorldBookPlacement.POSITION_DEPTH, depth = 0, role = WorldBookPlacement.DEPTH_ROLE_USER)</ID>
+    <ID>NestedBlockDepth:LiteRtLmEmbeddingGemma2Engine.kt$LiteRtLmEmbeddingGemma2Engine$suspend fun runNpuInputLengthProbe(): List&lt;String&gt;</ID>
+    <ID>NestedBlockDepth:VectorMemoryRetriever.kt$VectorMemoryRetriever$private fun countMatchedQueryTerms(text: String, queryTerms: Set&lt;String&gt;): Int</ID>
+    <ID>NewLineAtEndOfFile:CharacterCard.kt$com.mistbell.tavern.v3.feature.character.CharacterCard.kt</ID>
+    <ID>RethrowCaughtException:EmbeddingGemma2ModelAssetManager.kt$EmbeddingGemma2ModelAssetManager$throw cancelled</ID>
+    <ID>RethrowCaughtException:EmbeddingGemma2ModelAssetManager.kt$EmbeddingGemma2ModelAssetManager$throw error</ID>
+    <ID>ReturnCount:AndroidKeystoreMemoryCredentialStore.kt$AndroidKeystoreMemoryCredentialStore$@Synchronized override fun resolve(handle: String): String?</ID>
+    <ID>ReturnCount:AtomicMemoryFactHistoryStore.kt$AtomicMemoryFactHistoryStore$@Synchronized override fun load(): MemoryFactHistoryLoadResult</ID>
+    <ID>ReturnCount:AtomicMemoryJobLedgerStore.kt$AtomicMemoryJobLedgerStore$@Synchronized override fun load(): MemoryJobLedgerLoadResult</ID>
+    <ID>ReturnCount:AtomicMemoryTextStore.kt$AtomicMemoryTextStore$@Synchronized override fun load(): MemoryTextLoadResult</ID>
+    <ID>ReturnCount:AtomicTemporalFactStore.kt$AtomicTemporalFactStore$@Synchronized override fun load(): TemporalFactLoadResult</ID>
+    <ID>ReturnCount:AtomicVectorSnapshotStore.kt$AtomicVectorSnapshotStore$@Synchronized override fun load(expectedModelId: String, expectedDimensions: Int): VectorSnapshotLoadResult</ID>
+    <ID>ReturnCount:CharacterCardLibraryStore.kt$CharacterCardLibraryStore$fun delete(id: String): Boolean</ID>
+    <ID>ReturnCount:ChatHistoryStore.kt$ChatHistoryStore$@Synchronized fun load(): ChatHistoryLoadResult</ID>
+    <ID>ReturnCount:ChatScreen.kt$fun scheduleMemoryExtractionIfDue(providers: ProviderProfileSet)</ID>
+    <ID>ReturnCount:ConversationContextWindow.kt$ConversationContextWindowBuilder$private fun buildExtractiveSummary(history: List&lt;PromptMessage&gt;, maxChars: Int): String</ID>
+    <ID>ReturnCount:ConversationContextWindow.kt$ConversationContextWindowBuilder$private fun findRecentTurnBoundary(history: List&lt;PromptMessage&gt;, recentTurns: Int): Int</ID>
+    <ID>ReturnCount:EmbeddingGemma2RuntimeAdapter.kt$EmbeddingGemma2RuntimeAdapter.Companion$fun cachedQuery( query: String, outputDimensions: Int = EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS, modelProfileId: String = EmbeddingGemma2TextPolicy.MODEL_ID, onDiagnostic: (String, String) -&gt; Unit = { event, detail -&gt; EmbeddingVectorCache.log(event, detail) }, ): EmbeddingBatch?</ID>
+    <ID>ReturnCount:EndpointPolicy.kt$EndpointPolicy$fun validateBaseUrl(rawValue: String): EndpointValidation</ID>
+    <ID>ReturnCount:GeneratedImageStore.kt$GeneratedImageStore$fun delete(id: String): Boolean</ID>
+    <ID>ReturnCount:LocalWorldBookService.kt$LocalWorldBookService$fun activate(entry: WorldBookEntry, matched: List&lt;String&gt;, carriedSticky: Boolean = false): Boolean</ID>
+    <ID>ReturnCount:MainActivity.kt$MainActivity$private fun runEmbeddingSelfTest(allowDiagnosticNpuProbe: Boolean = false)</ID>
+    <ID>ReturnCount:MemoryExtractionClient.kt$MemoryExtractionClient.&lt;no name provided&gt;$override fun onResponse(call: Call, response: Response)</ID>
+    <ID>ReturnCount:MemoryExtractionJobRepository.kt$MemoryExtractionJobRepository$private fun update(id: String, transform: (MemoryExtractionJob) -&gt; MemoryExtractionJob): Boolean</ID>
+    <ID>ReturnCount:MemoryExtractionJobStore.kt$MemoryExtractionJobStore$@Synchronized override fun load(): MemoryExtractionJobLoadResult</ID>
+    <ID>ReturnCount:MemoryExtractionPipeline.kt$MemoryExtractionWorker$@Synchronized fun processNext(observer: (MemoryPipelineResult) -&gt; Unit): Call?</ID>
+    <ID>ReturnCount:MemoryExtractionPipeline.kt$MemoryExtractionWorker$private fun failJob( planId: String, safeMessage: String, permanent: Boolean = false, ): MemoryPipelineResult</ID>
+    <ID>ReturnCount:MemoryExtractionPipeline.kt$MemoryTurnCompletionCoordinator$@Synchronized fun onTurnsCompleted( conversationId: String, orderedTurns: List&lt;EligibleConversationTurn&gt;, ): MemoryEnqueueResult</ID>
+    <ID>ReturnCount:MemoryExtractionQueueRunner.kt$MemoryExtractionQueueRunner$fun &lt;T&gt; runNext( buildInput: (MemoryExtractionJob) -&gt; T, execute: (MemoryExtractionJob, T, (ExecutionResult) -&gt; Unit) -&gt; Unit, observer: (Result) -&gt; Unit = {}, ): Result</ID>
+    <ID>ReturnCount:MemoryFactHistory.kt$FactHistoryReducer$fun append(history: List&lt;MemoryFact&gt;, incoming: MemoryFact): FactHistoryUpdate</ID>
+    <ID>ReturnCount:MemoryIndexRebuilder.kt$MemoryIndexRebuilder$suspend fun rebuild(records: List&lt;MemoryTextRecord&gt;): MemoryIndexRebuildResult</ID>
+    <ID>ReturnCount:NpuEvidenceStore.kt$NpuEvidenceStatusPolicy$fun shouldVerify( modelHashMatches: Boolean, apkHashMatches: Boolean, cases: JSONArray, mappedLibraries: JSONObject, requiredMappings: List&lt;String&gt;, ): Boolean</ID>
+    <ID>ReturnCount:OpenAiCompatibleChatClient.kt$OpenAiCompatibleChatClient.&lt;no name provided&gt;$override fun onResponse(call: Call, response: Response)</ID>
+    <ID>ReturnCount:PersistedVectorSnapshotProvider.kt$PersistedVectorSnapshotProvider$override fun loadSnapshot(): VectorSnapshotReadResult</ID>
+    <ID>ReturnCount:PromptHistoryBudget.kt$PromptHistoryBudget$fun select(history: List&lt;PromptMessage&gt;, maxCharacters: Int, maxMessages: Int): List&lt;PromptMessage&gt;</ID>
+    <ID>ReturnCount:SessionArchiveCodec.kt$SessionArchiveCodec$fun importAnyDetailed(raw: String): SessionArchiveImportResult</ID>
+    <ID>ReturnCount:SessionArchiveCodec.kt$SessionArchiveCodec$private fun parseJson(raw: String): SessionArchive?</ID>
+    <ID>ReturnCount:SessionArchiveCodec.kt$SessionArchiveCodec$private fun parseJsonl(raw: String): SessionArchive?</ID>
+    <ID>ReturnCount:SessionArchiveCodec.kt$SessionArchiveCodec$private fun parseTimestamp(raw: String?): Long</ID>
+    <ID>ReturnCount:SqliteChatHistoryRepository.kt$SqliteChatHistoryRepository$@Synchronized fun load(): ChatHistoryLoadResult</ID>
+    <ID>ReturnCount:SqliteChatStore.kt$SqliteChatStore$fun importScopeAtomically(scopeId: String, messages: List&lt;PersistedChatMessage&gt;): Boolean</ID>
+    <ID>ReturnCount:TemporalFactTextSynchronizer.kt$TemporalFactTextSynchronizer$fun synchronize(): TemporalFactTextSyncResult</ID>
+    <ID>ReturnCount:VectorMemoryContextService.kt$VectorMemoryContextService$suspend fun retrieveForQuery(query: String): VectorMemoryContextResult</ID>
+    <ID>ReturnCount:VectorMemoryPromptComposer.kt$VectorMemoryPromptComposer$fun compose( messages: List&lt;PromptMessage&gt;, memoryResult: VectorMemoryContextResult, ): List&lt;PromptMessage&gt;</ID>
+    <ID>ReturnCount:WorldBookLibraryStore.kt$WorldBookLibraryStore$fun delete(id: String): Boolean</ID>
+    <ID>ReturnCount:WorldBookParser.kt$WorldBookParser$fun parse(jsonString: String, fallbackName: String): WorldBook?</ID>
+    <ID>SwallowedException:AtomicVectorSnapshotStore.kt$AtomicVectorSnapshotStore$failure: BufferUnderflowException</ID>
+    <ID>SwallowedException:AtomicVectorSnapshotStore.kt$AtomicVectorSnapshotStore$failure: IOException</ID>
+    <ID>SwallowedException:MemoryExtractionQueueRunner.kt$MemoryExtractionQueueRunner$retryable: RetryableInputException</ID>
+    <ID>ThrowsCount:EmbeddingContracts.kt$EmbeddingOutputValidator$fun validate( runtime: LocalEmbeddingRuntime, inputTexts: List&lt;String&gt;, output: EmbeddingBatch, ): ValidatedEmbeddingBatch</ID>
+    <ID>ThrowsCount:EmbeddingGemma2RuntimeAdapter.kt$EmbeddingGemma2RuntimeAdapter$private fun validateRawBatch(raw: EmbeddingBatch, expectedCount: Int)</ID>
+    <ID>ThrowsCount:EmbeddingGemma2RuntimeAdapter.kt$EmbeddingGemma2RuntimeAdapter$private suspend fun inferAndValidate( texts: List&lt;String&gt;, formatter: (String, Int) -&gt; String, ): EmbeddingBatch</ID>
+    <ID>ThrowsCount:GeneratedImageStore.kt$GeneratedImageStore$fun save(image: GeneratedImage, prompt: String, model: String?): StoredGeneratedImage</ID>
+    <ID>ThrowsCount:ImageGenerationClient.kt$ImageGenerationClient$@Throws(ImageGenerationException::class) fun generate(request: ImageGenerationRequest): ImageGenerationResult</ID>
+    <ID>ThrowsCount:ImageGenerationClient.kt$ImageGenerationClient$private fun parseResponse(json: String, requestedCount: Int): ImageGenerationResult</ID>
+    <ID>ThrowsCount:ImageGenerationScreen.kt$private fun downloadExplicitlySelectedImage(url: String): ByteArray</ID>
+    <ID>ThrowsCount:OpenAiCompatibleChatClient.kt$OpenAiCompatibleChatClient$fun stream( messages: List&lt;PromptMessage&gt;, observer: ChatStreamObserver, options: ChatGenerationOptions = ChatGenerationOptions(), ): Call</ID>
+    <ID>TooGenericExceptionCaught:AtomicMemoryFactHistoryStore.kt$AtomicMemoryFactHistoryStore$failure: Throwable</ID>
+    <ID>TooGenericExceptionCaught:AtomicMemoryJobLedgerStore.kt$AtomicMemoryJobLedgerStore$failure: Throwable</ID>
+    <ID>TooGenericExceptionCaught:AtomicMemoryTextStore.kt$AtomicMemoryTextStore$failure: Throwable</ID>
+    <ID>TooGenericExceptionCaught:AtomicTemporalFactStore.kt$AtomicTemporalFactStore$failure: Throwable</ID>
+    <ID>TooGenericExceptionCaught:AtomicVectorSnapshotStore.kt$AtomicVectorSnapshotStore$failure: Throwable</ID>
+    <ID>TooGenericExceptionCaught:CharacterCardLibraryStore.kt$CharacterCardLibraryStore$error: Exception</ID>
+    <ID>TooGenericExceptionCaught:ChatHistoryStore.kt$ChatHistoryStore$failure: Throwable</ID>
+    <ID>TooGenericExceptionCaught:ChatScreen.kt$chatError: Exception</ID>
+    <ID>TooGenericExceptionCaught:ChatScreen.kt$error: Exception</ID>
+    <ID>TooGenericExceptionCaught:EmbeddingEngineProcessHolder.kt$EmbeddingEngineProcessHolder$failure: Throwable</ID>
+    <ID>TooGenericExceptionCaught:EmbeddingGemma2ModelAssetManager.kt$EmbeddingGemma2ModelAssetManager$error: Exception</ID>
+    <ID>TooGenericExceptionCaught:GeneratedImageStore.kt$GeneratedImageStore$error: Exception</ID>
+    <ID>TooGenericExceptionCaught:ImageGenerationClient.kt$ImageGenerationClient$error: Exception</ID>
+    <ID>TooGenericExceptionCaught:ImageGenerationScreen.kt$error: Exception</ID>
+    <ID>TooGenericExceptionCaught:LiteRtLmEmbeddingGemma2Engine.kt$LiteRtLmEmbeddingGemma2Engine$error: Exception</ID>
+    <ID>TooGenericExceptionCaught:MainActivity.kt$MainActivity$error: Exception</ID>
+    <ID>TooGenericExceptionCaught:MemoryExtractionJobStore.kt$MemoryExtractionJobStore$failure: Throwable</ID>
+    <ID>TooGenericExceptionCaught:WorldBookLibraryStore.kt$WorldBookLibraryStore$error: Exception</ID>
+    <ID>TooManyFunctions:LiteRtLmEmbeddingGemma2Engine.kt$LiteRtLmEmbeddingGemma2Engine : EmbeddingGemma2InferenceEngineAutoCloseable</ID>
+    <ID>TooManyFunctions:MainActivity.kt$MainActivity : ComponentActivity</ID>
+    <ID>TooManyFunctions:NpuEvidenceStore.kt$NpuEvidenceStore</ID>
+    <ID>TooManyFunctions:SqliteChatStore.kt$SqliteChatStore : SQLiteOpenHelperChatStore</ID>
+    <ID>UnusedPrivateMember:MainActivity.kt$MainActivity$@Suppress("DEPRECATION") private fun resolveReadableModelFile(uri: Uri): File?</ID>
+    <ID>UnusedPrivateProperty:ChatScreen.kt$val memoryExtractionInFlight = remember { mutableSetOf&lt;String&gt;() }</ID>
+    <ID>UseCheckOrError:CharacterCardLibraryScreen.kt$throw IllegalStateException("无法写入所选导出位置。")</ID>
+    <ID>UseCheckOrError:CharacterCardLibraryScreen.kt$throw IllegalStateException("无法读取所选文件。")</ID>
+    <ID>UseCheckOrError:CharacterCardLibraryStore.kt$CharacterCardLibraryStore$throw IllegalStateException("Unable to create the character library directory.")</ID>
+    <ID>UseCheckOrError:SqliteChatHistoryRepository.kt$SqliteChatHistoryRepository$throw IllegalStateException("Chat history is unavailable; refusing to replace it.")</ID>
+    <ID>UseCheckOrError:WorldBookLibraryStore.kt$WorldBookLibraryStore$throw IllegalStateException("Unable to create the worldbook directory.")</ID>
+    <ID>UseRequire:SessionArchiveCodec.kt$SessionArchiveCodec$throw IllegalArgumentException("Too many messages.")</ID>
+  </CurrentIssues>
+</SmellBaseline>
