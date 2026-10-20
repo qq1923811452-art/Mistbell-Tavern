@@ -68,8 +68,11 @@ object SessionArchiveCodec {
         // Enforce the per-line bound before constructing a full JSON tree. This also
         // bounds unusually large lines in JSON documents, not only JSONL records.
         trimmed.lineSequence().forEachIndexed { lineIndex, line ->
-            require(line.length <= MAX_IMPORT_LINE_CHARS) {
-                "第 ${lineIndex + 1} 行超过导入长度上限。"
+            if (line.length > MAX_IMPORT_LINE_CHARS) {
+                return SessionArchiveImportResult(
+                    null,
+                    "第 ${lineIndex + 1} 行超过导入长度上限。",
+                )
             }
         }
 
