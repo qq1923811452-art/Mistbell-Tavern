@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - codex/mistbell-development-3.0
-      - codex/mistbell-3.0-core-features
+      - "codex/**"
     paths:
       - "mistbell-v3/**"
       - "gradle/**"
