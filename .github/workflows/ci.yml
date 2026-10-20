@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [feature, mistbell-2.0, main, master, 'upgrade/**']
+    branches: [feature, mistbell-2.0, main, master, 'upgrade/**', 'codex/mistbell-development-3.0', 'codex/mistbell-3.0-core-features']
     paths:
       - "app/**"
       - "config/**"
