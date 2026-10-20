@@ -54,6 +54,29 @@ class StreamingBackupArchiveTest {
     }
 
     @Test
+    fun failedRestorePreservesCallerOwnedEmptyStagingDirectory() {
+        val root = createTempDirectory(prefix = "mistbell-stream-owned").toFile()
+        val source = File(root, "source.bin").apply { writeBytes(byteArrayOf(1, 2, 3)) }
+        val archive = ByteArrayOutputStream()
+        StreamingBackupArchive.write(archive, mapOf("data.bin" to source), 1L)
+        val stage = File(root, "stage").apply { mkdir() }
+        try {
+            val damaged = archive.toByteArray().also {
+                it[it.lastIndex / 2] = (it[it.lastIndex / 2].toInt() xor 0x40).toByte()
+            }
+            try {
+                StreamingBackupArchive.restore(ByteArrayInputStream(damaged), stage)
+            } catch (_: IOException) {
+                // Expected: failed validation must clean extracted files.
+            }
+            assertTrue("caller-owned staging directory should remain", stage.isDirectory)
+            assertEquals(0, stage.list()?.size ?: -1)
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
     fun rejectsTraversalPathsWhenWriting() {
         val root = createTempDirectory(prefix = "mistbell-stream-path").toFile()
         val source = File(root, "source.bin").apply { writeBytes(byteArrayOf(1)) }
