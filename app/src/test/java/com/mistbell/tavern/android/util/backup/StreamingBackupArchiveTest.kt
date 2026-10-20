@@ -77,9 +77,10 @@ class StreamingBackupArchiveTest {
         StreamingBackupArchive.write(archive, mapOf("data.bin" to source), 1L)
         val stage = File(root, "stage").apply { mkdir() }
         try {
-            val damaged = archive.toByteArray().also {
-                it[it.lastIndex / 2] = (it[it.lastIndex / 2].toInt() xor 0x40).toByte()
-            }
+            val damaged =
+                archive.toByteArray().also {
+                    it[it.lastIndex / 2] = (it[it.lastIndex / 2].toInt() xor 0x40).toByte()
+                }
             try {
                 StreamingBackupArchive.restore(ByteArrayInputStream(damaged), stage)
             } catch (_: IOException) {
