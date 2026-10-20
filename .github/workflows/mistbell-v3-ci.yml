@@ -172,7 +172,7 @@ jobs:
           retention-days: 14
   instrumented-tests:
     needs: compile-and-test
-    if: always() && needs.compile-and-test.outputs.tested_sha != ''
+    if: needs.compile-and-test.result == 'success' && needs.compile-and-test.outputs.tested_sha != ''
     name: Android emulator instrumentation tests
     runs-on: ubuntu-latest
     timeout-minutes: 55
