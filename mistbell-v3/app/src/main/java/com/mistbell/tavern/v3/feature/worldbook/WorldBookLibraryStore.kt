@@ -73,7 +73,7 @@ class WorldBookLibraryStore(private val directory: File) {
                 WorldBookPlacement.POSITION_AN_BEFORE -> 2
                 WorldBookPlacement.POSITION_AN_AFTER -> 3
                 WorldBookPlacement.POSITION_DEPTH -> 4
-                WorldBookPlacement.POSITION_BEFORE_PROMPT -> 0
+                WorldBookPlacement.POSITION_BEFORE_PROMPT -> if (entry.depth > 0) 4 else 0
                 WorldBookPlacement.POSITION_EM_BEFORE -> 5
                 WorldBookPlacement.POSITION_EM_AFTER -> 6
                 else -> 0
