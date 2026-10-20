@@ -84,11 +84,21 @@ class SqliteChatHistoryRepositoryTest {
         val store = SqliteChatStore(context, databaseName)
         try {
             val valid = message("valid", "user", "first row", 1L)
-            val invalid = message("invalid", "unknown-role", "must fail", 2L)
+            val invalid = message("invalid", "user", "must fail", 2L)
+            store.writableDatabase.execSQL(
+                """
+                CREATE TRIGGER fail_invalid_import
+                BEFORE INSERT ON chat_messages
+                WHEN NEW.id = 'invalid'
+                BEGIN
+                    SELECT RAISE(ABORT, 'forced import failure');
+                END
+                """.trimIndent(),
+            )
             var failed = false
             try {
                 store.importScopeAtomically("role/session", listOf(valid, invalid))
-            } catch (_: IllegalArgumentException) {
+            } catch (_: android.database.SQLException) {
                 failed = true
             }
             assertTrue("invalid row must fail the transaction", failed)
@@ -174,11 +184,21 @@ class SqliteChatHistoryRepositoryTest {
         val existing = message("keep", "user", "must survive", 1L)
         try {
             store.upsertAll("role/session", listOf(existing))
-            val invalid = message("invalid", "unknown-role", "must fail", 2L)
+            val invalid = message("invalid", "user", "must fail", 2L)
+            store.writableDatabase.execSQL(
+                """
+                CREATE TRIGGER fail_invalid_snapshot
+                BEFORE INSERT ON chat_messages
+                WHEN NEW.id = 'invalid'
+                BEGIN
+                    SELECT RAISE(ABORT, 'forced snapshot failure');
+                END
+                """.trimIndent(),
+            )
             var failed = false
             try {
                 store.syncSnapshot("role/session", listOf(invalid), setOf("keep"))
-            } catch (_: IllegalArgumentException) {
+            } catch (_: android.database.SQLException) {
                 failed = true
             }
             assertTrue("invalid upsert must fail the snapshot transaction", failed)
