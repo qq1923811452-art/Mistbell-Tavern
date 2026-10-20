@@ -297,7 +297,7 @@ fun ChatScreen(onBack: () -> Unit) {
                 val result = runCatching {
                     withContext(Dispatchers.IO) {
                         context.contentResolver.openOutputStream(uri)?.use(diagnosticStore::exportTo)
-                            ?: throw IllegalStateException("无法创建日志文件。")
+                            ?: error("无法创建日志文件。")
                     }
                 }
                 status = if (result.isSuccess) {
@@ -581,7 +581,7 @@ fun ChatScreen(onBack: () -> Unit) {
                                         val oldHandle = settings.getString("memory_api_credential_handle", null)
                                         if (!settings.edit().putString("memory_api_credential_handle", newHandle).commit()) {
                                             memoryCredentialStore.delete(newHandle)
-                                            throw IllegalStateException("Credential handle could not be saved.")
+                                            error("Credential handle could not be saved.")
                                         }
                                         if (!oldHandle.isNullOrBlank() && oldHandle != newHandle) {
                                             memoryCredentialStore.delete(oldHandle)
