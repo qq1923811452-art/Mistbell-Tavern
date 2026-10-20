@@ -174,7 +174,7 @@ fun ChatScreen(onBack: () -> Unit) {
     var historyCharsText by remember(settings) {
         mutableStateOf(
             settings.getInt("chat_history_max_chars", ConversationContextWindowBuilder.DEFAULT_MAX_HISTORY_CHARS)
-                .coerceIn(12_000, 100_000).toString(),
+                .coerceIn(4_000, 100_000).toString(),
         )
     }
     var usageSummary by remember { mutableStateOf("Token 用量：本轮尚无服务端 usage 数据") }
@@ -718,8 +718,8 @@ fun ChatScreen(onBack: () -> Unit) {
                                 settings.edit().putInt("chat_history_max_chars", chars).apply()
                             }
                         },
-                        label = { Text("最近历史字符预算（12000–100000）") },
-                        supportingText = { Text("默认 70000。保留完整消息，不截断长回复；单条最新消息超限时仍会整条保留。") },
+                        label = { Text("最近历史字符预算（4000–100000）") },
+                        supportingText = { Text("默认 24000 字符。字符数不等于 Token 数；保留完整消息，不截断长回复，单条最新消息超限时仍会整条保留。") },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
                     )
@@ -1001,7 +1001,7 @@ fun ChatScreen(onBack: () -> Unit) {
                             maxHistoryChars = settings.getInt(
                                 "chat_history_max_chars",
                                 ConversationContextWindowBuilder.DEFAULT_MAX_HISTORY_CHARS,
-                            ).coerceIn(12_000, 100_000),
+                            ).coerceIn(4_000, 100_000),
                         )
                         // Activate entries from the asynchronously loaded local library against
                         // the current turn plus a bounded tail of recent conversation.
