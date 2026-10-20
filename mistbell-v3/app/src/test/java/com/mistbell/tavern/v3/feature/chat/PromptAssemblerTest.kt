@@ -1,5 +1,7 @@
 package com.mistbell.tavern.v3.feature.chat
 
+import com.mistbell.tavern.v3.feature.worldbook.WorldBookEntry
+import com.mistbell.tavern.v3.feature.worldbook.WorldBookPlacement
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -12,7 +14,10 @@ class PromptAssemblerTest {
                 stableSystemPrefix = "Follow the roleplay rules.",
                 stableCharacterDefinition = "Character: Mira",
                 activeMemoryFacts = listOf("Mira likes tea."),
-                activatedWorldbookEntries = listOf("The city has three moons."),
+                worldbookEntries = listOf(WorldBookEntry(
+                    id = "city", bookId = "book", content = "The city has three moons.",
+                    insertPosition = WorldBookPlacement.POSITION_AFTER_PROMPT, constant = true,
+                )),
                 latestUserMessage = "Hello",
             ),
         )
@@ -21,7 +26,10 @@ class PromptAssemblerTest {
                 stableSystemPrefix = "Follow the roleplay rules.",
                 stableCharacterDefinition = "Character: Mira",
                 activeMemoryFacts = listOf("Mira now prefers coffee."),
-                activatedWorldbookEntries = listOf("The city has four moons."),
+                worldbookEntries = listOf(WorldBookEntry(
+                    id = "city", bookId = "book", content = "The city has four moons.",
+                    insertPosition = WorldBookPlacement.POSITION_AFTER_PROMPT, constant = true,
+                )),
                 latestUserMessage = "Good morning",
             ),
         )
@@ -32,13 +40,16 @@ class PromptAssemblerTest {
     }
 
     @Test
-    fun assemblesRoleCardThenWorldbookThenMemoryThenHistoryAndCurrentUser() {
+    fun assemblesCharacterWorldbookMemoryHistoryAndCurrentUser() {
         val messages = PromptAssembler.assemble(
             PromptAssemblyInput(
                 stableSystemPrefix = "Role rules",
                 stableCharacterDefinition = "Character: Mira",
                 activeMemoryFacts = listOf("Fact A"),
-                activatedWorldbookEntries = listOf("World B"),
+                worldbookEntries = listOf(WorldBookEntry(
+                    id = "world", bookId = "book", content = "World B",
+                    insertPosition = WorldBookPlacement.POSITION_AFTER_PROMPT, constant = true,
+                )),
                 conversationHistory = listOf(
                     PromptMessage(PromptRole.USER, "Earlier"),
                     PromptMessage(PromptRole.ASSISTANT, "Earlier reply"),
@@ -48,9 +59,8 @@ class PromptAssemblerTest {
         )
         assertEquals(1, messages.count { it.role == PromptRole.SYSTEM })
         val system = messages[0].content
-        assertTrue(system.indexOf("Character: Mira") < system.indexOf("Activated worldbook entries"))
-        assertTrue(system.indexOf("Activated worldbook entries") < system.indexOf("Relevant memory facts"))
-        assertTrue(system.indexOf("Relevant memory facts") > system.indexOf("Activated worldbook entries"))
+        assertTrue(system.indexOf("Character: Mira") < system.indexOf("Worldbook after character"))
+        assertTrue(system.indexOf("Worldbook after character") < system.indexOf("Relevant memory facts"))
         assertEquals(PromptRole.USER, messages[1].role)
         assertEquals("Earlier", messages[1].content)
         assertEquals(PromptRole.ASSISTANT, messages[2].role)
@@ -60,12 +70,26 @@ class PromptAssemblerTest {
     }
 
     @Test
+    fun earlierConversationSummaryUsesAnActualLineBreak() {
+        val messages = PromptAssembler.assemble(
+            PromptAssemblyInput(
+                stableSystemPrefix = "Stable rules",
+                earlierConversationSummary = "Mira is waiting at the station.",
+                latestUserMessage = "Hi",
+            ),
+        )
+        assertTrue(messages.first().content.contains(
+            "Earlier conversation notes (extractive, not a full transcript):\nMira is waiting at the station.",
+        ))
+    }
+
+    @Test
     fun blankDynamicEntriesAreFilteredWithoutCreatingEmptyMessages() {
         val messages = PromptAssembler.assemble(
             PromptAssemblyInput(
                 stableSystemPrefix = "Stable rules",
                 activeMemoryFacts = listOf("", "  "),
-                activatedWorldbookEntries = listOf(""),
+                worldbookEntries = listOf(WorldBookEntry(id = "blank", bookId = "book", content = "")),
                 latestUserMessage = "Hi",
             ),
         )

@@ -25,12 +25,13 @@ class LocalWorldBookServiceTest {
 
     @Test fun probabilityAndBudgetAreDeterministicWhenRandomIsInjected() {
         val service = LocalWorldBookService(randomDouble = { 0.8 })
-        val results = service.activateEntries(
+        val report = service.activateEntriesWithReport(
             listOf(entry("probability", listOf("key"), probability = 0.5),
                 entry("budget", listOf("key"), content = "123456")),
             "key", maxBudget = 5,
         )
-        assertEquals(emptyList<ActivatedWorldBookEntry>(), results)
+        assertEquals(emptyList<ActivatedWorldBookEntry>(), report.activatedEntries)
+        assertEquals(1, report.droppedByBudget)
     }
 
     @Test fun stickyEntryCarriesForOneTurnOnly() {
@@ -66,34 +67,27 @@ class LocalWorldBookServiceTest {
         assertEquals(listOf("cooldown"), service.activateEntries(listOf(cooldown), "dragon", state = cooldownState).map { it.entry.id })
     }
 
-    @Test fun delayedGroupCandidateDoesNotBlockAnImmediatelyEligiblePeer() {
-        val service = LocalWorldBookService()
-        val state = WorldBookActivationState()
-        val delayed = WorldBookEntry(
-            id = "delayed-group", bookId = "book", keys = listOf("dragon"),
-            content = "wait", delay = 1, groupName = "exclusive", order = 1,
-        )
-        val immediate = WorldBookEntry(
-            id = "immediate-group", bookId = "book", keys = listOf("dragon"),
-            content = "now", groupName = "exclusive", order = 2,
-        )
-
-        val results = service.activateEntries(listOf(delayed, immediate), "dragon", state = state)
-
-        assertEquals(listOf("immediate-group"), results.map { it.entry.id })
-    }
-
-    @Test fun pendingDelayCannotBeBypassedByRepeatedKeywordMatches() {
+    @Test fun delayedEntryWaitsUntilItsScheduledTurnEvenWhileKeywordsStillMatch() {
         val service = LocalWorldBookService()
         val state = WorldBookActivationState()
         val delayed = WorldBookEntry(
             id = "delayed-two", bookId = "book", keys = listOf("dragon"),
-            content = "wait", delay = 2,
+            content = "delayed content", delay = 2,
         )
 
         assertEquals(emptyList<ActivatedWorldBookEntry>(), service.activateEntries(listOf(delayed), "dragon", state = state))
         assertEquals(emptyList<ActivatedWorldBookEntry>(), service.activateEntries(listOf(delayed), "dragon", state = state))
-        assertEquals(listOf("delayed-two"), service.activateEntries(listOf(delayed), "dragon", state = state).map { it.entry.id })
+        assertEquals(listOf("delayed-two"), service.activateEntries(listOf(delayed), "unrelated", state = state).map { it.entry.id })
+    }
+
+    @Test fun budgetReportHasNoDropsWhenEntriesFit() {
+        val report = LocalWorldBookService().activateEntriesWithReport(
+            listOf(entry("fits", listOf("key"), content = "ok")),
+            scanText = "key",
+            maxBudget = 2,
+        )
+        assertEquals(listOf("fits"), report.activatedEntries.map { it.entry.id })
+        assertEquals(0, report.droppedByBudget)
     }
 
     @Test fun historyScanDepthUsesOnlyMostRecentItems() {

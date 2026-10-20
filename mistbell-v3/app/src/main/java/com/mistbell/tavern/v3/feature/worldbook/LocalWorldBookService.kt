@@ -18,6 +18,11 @@ class WorldBookActivationState internal constructor() {
     }
 }
 
+data class WorldBookActivationReport(
+    val activatedEntries: List<ActivatedWorldBookEntry>,
+    val droppedByBudget: Int,
+)
+
 /** Keyword activation and budget handling for worldbook entries. */
 class LocalWorldBookService(
     private val randomDouble: () -> Double = { Random.nextDouble() },
@@ -30,7 +35,19 @@ class LocalWorldBookService(
         maxDepth: Int = DEFAULT_SCAN_DEPTH,
         maxRecursiveDepth: Int = DEFAULT_RECURSIVE_DEPTH,
         state: WorldBookActivationState? = null,
-    ): List<ActivatedWorldBookEntry> {
+    ): List<ActivatedWorldBookEntry> = activateEntriesWithReport(
+        entries, scanText, maxBudget, recentTexts, maxDepth, maxRecursiveDepth, state,
+    ).activatedEntries
+
+    fun activateEntriesWithReport(
+        entries: List<WorldBookEntry>,
+        scanText: String,
+        maxBudget: Int = DEFAULT_MAX_BUDGET,
+        recentTexts: List<String> = emptyList(),
+        maxDepth: Int = DEFAULT_SCAN_DEPTH,
+        maxRecursiveDepth: Int = DEFAULT_RECURSIVE_DEPTH,
+        state: WorldBookActivationState? = null,
+    ): WorldBookActivationReport {
         require(maxBudget >= 0) { "maxBudget must be non-negative" }
         require(maxRecursiveDepth >= 0) { "maxRecursiveDepth must be non-negative" }
         val turn = state?.advanceTurn() ?: 0
@@ -38,6 +55,7 @@ class LocalWorldBookService(
         var corpus = buildScanCorpus(scanText, recentTexts, maxDepth)
         val activated = linkedMapOf<String, ActivatedWorldBookEntry>()
         val activatedGroups = mutableSetOf<String>()
+        val droppedByBudgetIds = mutableSetOf<String>()
         var usedBudget = 0
 
         fun activate(entry: WorldBookEntry, matched: List<String>, carriedSticky: Boolean = false): Boolean {
@@ -45,7 +63,10 @@ class LocalWorldBookService(
             if (entry.groupName.isNotBlank() && entry.groupName in activatedGroups) return false
             if (!carriedSticky && !entry.constant && !passesProbability(entry.probability)) return false
             val size = entry.content.length
-            if (usedBudget + size > maxBudget) return false
+            if (usedBudget + size > maxBudget) {
+                droppedByBudgetIds += entry.id
+                return false
+            }
             activated[entry.id] = ActivatedWorldBookEntry(entry, matched)
             usedBudget += size
             if (entry.groupName.isNotBlank()) activatedGroups += entry.groupName
@@ -74,18 +95,18 @@ class LocalWorldBookService(
                 val secondaryMatch = !entry.requireSecondaryMatch ||
                     (entry.secondaryKeys.isNotEmpty() && matchingKeys(entry.secondaryKeys, corpus).isNotEmpty())
                 val matchesNow = primaryMatch && secondaryMatch
-                val hasPendingDelay = state?.delayedUntilTurn?.containsKey(entry.id) == true
-                (carriedSticky || delayedDue || (matchesNow && !hasPendingDelay)) &&
+                val delayPending = (state?.delayedUntilTurn?.get(entry.id) ?: Int.MIN_VALUE) > turn
+                (carriedSticky || delayedDue || (matchesNow && !delayPending)) &&
                     (carriedSticky || delayedDue || entry.constant ||
                         lastActivated == Int.MIN_VALUE || turn - lastActivated > entry.cooldown)
             }
 
             if (candidates.isEmpty()) break
             val newlyActivated = mutableListOf<WorldBookEntry>()
+            val groupsSeenThisPass = mutableSetOf<String>()
             for (entry in candidates) {
-                // A group is consumed only after an entry actually activates. A delayed,
-                // probability-rejected, or over-budget candidate must not suppress a viable peer.
-                if (entry.groupName.isNotBlank() && entry.groupName in activatedGroups) {
+                if (entry.groupName.isNotBlank() &&
+                    (entry.groupName in activatedGroups || !groupsSeenThisPass.add(entry.groupName))) {
                     continue
                 }
                 val lastActivated = state?.lastActivatedTurn?.get(entry.id) ?: Int.MIN_VALUE
@@ -106,7 +127,10 @@ class LocalWorldBookService(
             corpus += "\n" + recursiveContent
             recursiveDepth += 1
         }
-        return activated.values.toList()
+        return WorldBookActivationReport(
+            activatedEntries = activated.values.toList(),
+            droppedByBudget = droppedByBudgetIds.size,
+        )
     }
 
     fun buildScanCorpus(current: String, recentTexts: List<String>, maxDepth: Int): String =
@@ -142,7 +166,9 @@ class LocalWorldBookService(
         entries.groupBy { it.entry.insertPosition }
 
     fun groupByDepth(entries: List<ActivatedWorldBookEntry>): Map<Pair<Int, String>, List<ActivatedWorldBookEntry>> =
-        entries.filter { it.entry.depth > 0 }.groupBy { it.entry.depth to it.entry.depthRole }
+        entries.filter {
+            it.entry.insertPosition == WorldBookPlacement.POSITION_DEPTH || it.entry.depth > 0
+        }.groupBy { it.entry.depth.coerceIn(0, 10) to it.entry.depthRole }
 
     fun calculateTotalChars(entries: List<ActivatedWorldBookEntry>): Int =
         entries.sumOf { it.entry.content.length }

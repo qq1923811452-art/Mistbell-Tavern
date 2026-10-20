@@ -1,6 +1,7 @@
 package com.mistbell.tavern.v3.feature.chat
 
 import android.os.Handler
+import android.util.AtomicFile
 import android.os.Looper
 import android.content.Context
 import androidx.compose.ui.platform.LocalContext
@@ -81,6 +82,13 @@ import com.mistbell.tavern.v3.feature.memory.TemporalFactTextSynchronizer
 import com.mistbell.tavern.v3.feature.memory.TemporalFactTextSyncResult
 import com.mistbell.tavern.v3.feature.memory.TemporalFactExtractionPipeline
 import com.mistbell.tavern.v3.feature.memory.TemporalFactPipelineOutcome
+import com.mistbell.tavern.v3.feature.character.CharacterCard
+import com.mistbell.tavern.v3.feature.character.CharacterCardLibraryStore
+import com.mistbell.tavern.v3.feature.worldbook.LocalWorldBookService
+import com.mistbell.tavern.v3.feature.worldbook.WorldBookActivationState
+import com.mistbell.tavern.v3.feature.worldbook.WorldBookParser
+
+private fun formatCharacterCardForPrompt(card: CharacterCard): String = card.stableDefinition()
 
 private val CHAT_EMBEDDING_DIMENSION_OPTIONS = listOf(128, 256, 512, 768, 1024, 1536, 2048)
 
@@ -139,9 +147,10 @@ fun ChatScreen(onBack: () -> Unit) {
                 },
         )
     }
-    val activeMemoryRoleId = settings.getString("active_character_id", null)
-        ?.takeIf(String::isNotBlank)
-        ?: "default-character"
+    var selectedCharacterId by remember(settings) {
+        mutableStateOf(settings.getString("active_character_id", "") ?: "")
+    }
+    val activeMemoryRoleId = selectedCharacterId.takeIf(String::isNotBlank) ?: "default-character"
     val memoryScopeId = remember(activeMemoryRoleId, memoryConversationId) {
         MemoryScopeId.forRoleAndConversation(activeMemoryRoleId, memoryConversationId)
     }
@@ -149,6 +158,24 @@ fun ChatScreen(onBack: () -> Unit) {
     var memoryStatusNotice by remember { mutableStateOf("") }
     var maxTokensText by remember(settings) {
         mutableStateOf(settings.getInt("chat_max_tokens", 4096).coerceIn(1, 200_000).toString())
+    }
+    var recentTurnsText by remember(settings) {
+        mutableStateOf(
+            settings.getInt("chat_history_recent_turns", ConversationContextWindowBuilder.DEFAULT_RECENT_TURNS)
+                .coerceIn(1, 100).toString(),
+        )
+    }
+    var summaryCharsText by remember(settings) {
+        mutableStateOf(
+            settings.getInt("chat_history_summary_max_chars", ConversationContextWindowBuilder.DEFAULT_SUMMARY_MAX_CHARS)
+                .coerceIn(0, 10_000).toString(),
+        )
+    }
+    var historyCharsText by remember(settings) {
+        mutableStateOf(
+            settings.getInt("chat_history_max_chars", ConversationContextWindowBuilder.DEFAULT_MAX_HISTORY_CHARS)
+                .coerceIn(4_000, 100_000).toString(),
+        )
     }
     var usageSummary by remember { mutableStateOf("Token 用量：本轮尚无服务端 usage 数据") }
     var selectedEmbeddingDimensions by remember(context) {
@@ -181,6 +208,90 @@ fun ChatScreen(onBack: () -> Unit) {
     val historySaveMutex = remember { Mutex() }
     val historySaveRevision = remember { java.util.concurrent.atomic.AtomicLong(0L) }
     val diagnosticStore = remember(context) { DiagnosticLogStore(context.applicationContext.filesDir) }
+    val activeWorldbookId = remember(settings) {
+        settings.getString("active_worldbook_id", "") ?: ""
+    }
+    var localWorldbookEntries by remember(context) {
+        mutableStateOf<List<com.mistbell.tavern.v3.feature.worldbook.WorldBookEntry>>(emptyList())
+    }
+    var worldbooksReady by remember { mutableStateOf(false) }
+    val worldbookStateKey = "worldbook_activation_state_${activeMemoryRoleId}_${memoryConversationId}_${activeWorldbookId.ifBlank { "none" }}"
+    val worldbookActivationState = remember(memoryScopeId, activeMemoryRoleId, activeWorldbookId) {
+        WorldBookActivationState().also { state ->
+            runCatching {
+                val saved = settings.getString(worldbookStateKey, null) ?: return@runCatching
+                val json = org.json.JSONObject(saved)
+                state.turn = json.optInt("turn", 0)
+                fun restoreMap(name: String, target: MutableMap<String, Int>) {
+                    val values = json.optJSONObject(name) ?: return
+                    val keys = values.keys()
+                    while (keys.hasNext()) {
+                        val key = keys.next()
+                        if (values.has(key) && !values.isNull(key)) target[key] = values.optInt(key)
+                    }
+                }
+                restoreMap("lastActivatedTurn", state.lastActivatedTurn)
+                restoreMap("stickyUntilTurn", state.stickyUntilTurn)
+                restoreMap("delayedUntilTurn", state.delayedUntilTurn)
+            }.onFailure { error ->
+                diagnosticStore.warn(
+                    "worldbook.state_restore_failed",
+                    "reason=${error::class.java.simpleName}",
+                )
+            }
+        }
+    }
+    var characterCards by remember(context) { mutableStateOf(emptyList<com.mistbell.tavern.v3.feature.character.StoredCharacterCard>()) }
+    var characterMenuExpanded by remember { mutableStateOf(false) }
+    val selectedCharacter = characterCards.firstOrNull { it.id == selectedCharacterId }
+
+    LaunchedEffect(context) {
+        characterCards = withContext(Dispatchers.IO) {
+            runCatching {
+                CharacterCardLibraryStore(File(context.filesDir, "characters")).list()
+            }.getOrDefault(emptyList())
+        }
+        if (selectedCharacterId.isNotBlank() && characterCards.none { it.id == selectedCharacterId }) {
+            selectedCharacterId = ""
+        }
+    }
+
+    LaunchedEffect(context, activeWorldbookId) {
+        worldbooksReady = false
+        val loadedWorldbookEntries = withContext(Dispatchers.IO) {
+            runCatching {
+                val directory = File(context.filesDir, "worldbooks")
+                if (activeWorldbookId.isBlank()) {
+                    emptyList()
+                } else {
+                    directory.listFiles { file ->
+                        file.isFile && file.extension == "json" && file.nameWithoutExtension == activeWorldbookId
+                    }.orEmpty().flatMap { file ->
+                        runCatching {
+                            WorldBookParser.parse(
+                                AtomicFile(file).openRead().use { it.readBytes().toString(Charsets.UTF_8) },
+                                file.nameWithoutExtension,
+                            )?.entries.orEmpty()
+                        }.getOrElse { error ->
+                            diagnosticStore.warn(
+                                "worldbook.file_skipped",
+                                "book_id=$activeWorldbookId reason=${error::class.java.simpleName}",
+                            )
+                            emptyList()
+                        }
+                    }
+                }
+            }
+        }
+        localWorldbookEntries = loadedWorldbookEntries.getOrElse { error ->
+            diagnosticStore.warn(
+                "worldbook.load_failed",
+                "book_id=$activeWorldbookId reason=${error::class.java.simpleName}",
+            )
+            emptyList()
+        }
+        worldbooksReady = true
+    }
     val memoryExtractionInFlight = remember { mutableSetOf<String>() }
 
     fun persistHistory() {
@@ -487,6 +598,37 @@ fun ChatScreen(onBack: () -> Unit) {
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Text("聊天 API 配置", style = MaterialTheme.typography.titleMedium)
+                    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("当前角色：${selectedCharacter?.card?.name ?: "默认助手"}", style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                if (selectedCharacter == null) "尚未绑定角色卡；本轮使用默认系统提示。" else "角色卡会注入描述、性格、场景、开场白、示例对话及系统指令。",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Button(onClick = { characterMenuExpanded = true }) { Text("选择角色") }
+                        DropdownMenu(expanded = characterMenuExpanded, onDismissRequest = { characterMenuExpanded = false }) {
+                            DropdownMenuItem(
+                                text = { Text("默认助手") },
+                                onClick = {
+                                    selectedCharacterId = ""
+                                    settings.edit().remove("active_character_id").apply()
+                                    characterMenuExpanded = false
+                                },
+                            )
+                            characterCards.forEach { stored ->
+                                DropdownMenuItem(
+                                    text = { Text(stored.card.name) },
+                                    onClick = {
+                                        selectedCharacterId = stored.id
+                                        settings.edit().putString("active_character_id", stored.id).apply()
+                                        characterMenuExpanded = false
+                                    },
+                                )
+                            }
+                        }
+                    }
                     OutlinedTextField(
                         value = maxTokensText,
                         onValueChange = { value ->
@@ -530,6 +672,59 @@ fun ChatScreen(onBack: () -> Unit) {
                     )
                     Text(
                         "聊天 API Key 仅保存在当前页面内存中，离开页面后需要重新输入；独立记忆 API Key 可选择加密保存到 Android Keystore。Base URL 和模型 ID 会保存在本机设置中。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text("上下文历史预算", style = MaterialTheme.typography.titleMedium)
+                    OutlinedTextField(
+                        value = recentTurnsText,
+                        onValueChange = { value ->
+                            recentTurnsText = value.filter(Char::isDigit).take(3)
+                            recentTurnsText.toIntOrNull()?.takeIf { it in 1..100 }?.let { turns ->
+                                settings.edit().putInt("chat_history_recent_turns", turns).apply()
+                            }
+                        },
+                        label = { Text("最近历史轮数（1–100）") },
+                        supportingText = { Text("按用户消息计轮；同一轮中的多条助手消息会一起保留。") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                    )
+                    OutlinedTextField(
+                        value = summaryCharsText,
+                        onValueChange = { value ->
+                            summaryCharsText = value.filter(Char::isDigit).take(5)
+                            summaryCharsText.toIntOrNull()?.takeIf { it in 0..10_000 }?.let { chars ->
+                                settings.edit().putInt("chat_history_summary_max_chars", chars).apply()
+                            }
+                        },
+                        label = { Text("较早历史摘要上限（0–10000 字符）") },
+                        supportingText = { Text("0 表示不注入较早历史摘要；摘要为本地提取式短句，不会修改原始聊天记录。") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                    )
+                    OutlinedTextField(
+                        value = historyCharsText,
+                        onValueChange = { value ->
+                            historyCharsText = value.filter(Char::isDigit).take(6)
+                            historyCharsText.toIntOrNull()?.takeIf { it in 12_000..100_000 }?.let { chars ->
+                                settings.edit().putInt("chat_history_max_chars", chars).apply()
+                            }
+                        },
+                        label = { Text("最近历史字符预算（4000–100000）") },
+                        supportingText = { Text("默认 24000 字符。字符数不等于 Token 数；保留完整消息，不截断长回复，单条最新消息超限时仍会整条保留。") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                    )
+                    Text(
+                        "修改后从下一条消息生效。历史轮数、摘要和字符预算分别限制不同部分；字符数不等于模型 Token 数。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -699,6 +894,10 @@ fun ChatScreen(onBack: () -> Unit) {
                     onClick = {
                         val userText = draft.trim()
                         if (userText.isEmpty() || busy) return@Button
+                        if (!worldbooksReady) {
+                            status = "世界书加载中，请稍后再发送。"
+                            return@Button
+                        }
                         if (modelId.isBlank()) {
                             status = "请先填写模型 ID。"
                             return@Button
@@ -747,6 +946,17 @@ fun ChatScreen(onBack: () -> Unit) {
                                 }
                             },
                         )
+                        val openingMessage = characterCards.firstOrNull { it.id == selectedCharacterId }
+                            ?.card?.firstMessage?.trim().orEmpty()
+                        if (history.isEmpty() && openingMessage.isNotBlank()) {
+                            history += ChatLine(
+                                id = UUID.randomUUID().toString(),
+                                role = "assistant",
+                                content = openingMessage,
+                                createdAtEpochMillis = System.currentTimeMillis(),
+                                deliveryState = PersistedChatMessage.DeliveryState.COMPLETE,
+                            )
+                        }
                         val now = System.currentTimeMillis()
                         history += ChatLine(
                             id = UUID.randomUUID().toString(),
@@ -767,19 +977,83 @@ fun ChatScreen(onBack: () -> Unit) {
                         busy = true
                         memoryStatusNotice = ""
                         status = "正在连接聊天 API……"
+                        val completeHistory = history.dropLast(2).mapNotNull { line ->
+                            if (line.content.isBlank()) {
+                                null
+                            } else {
+                                PromptMessage(
+                                    if (line.role == "user") PromptRole.USER else PromptRole.ASSISTANT,
+                                    line.content,
+                                )
+                            }
+                        }
+                        // Clamp persisted preferences so a stale or malformed setting cannot create an unbounded prompt.
+                        val contextWindow = ConversationContextWindowBuilder.build(
+                            history = completeHistory,
+                            recentTurns = settings.getInt(
+                                "chat_history_recent_turns",
+                                ConversationContextWindowBuilder.DEFAULT_RECENT_TURNS,
+                            ).coerceIn(1, 100),
+                            summaryMaxChars = settings.getInt(
+                                "chat_history_summary_max_chars",
+                                ConversationContextWindowBuilder.DEFAULT_SUMMARY_MAX_CHARS,
+                            ).coerceIn(0, 10_000),
+                            maxHistoryChars = settings.getInt(
+                                "chat_history_max_chars",
+                                ConversationContextWindowBuilder.DEFAULT_MAX_HISTORY_CHARS,
+                            ).coerceIn(4_000, 100_000),
+                        )
+                        // Activate entries from the asynchronously loaded local library against
+                        // the current turn plus a bounded tail of recent conversation.
+                        val selectedCard = characterCards.firstOrNull { it.id == selectedCharacterId }?.card
+                        val characterDefinition = selectedCard?.let(::formatCharacterCardForPrompt)
+                        val embeddedBookEntries = selectedCard?.characterBookJson?.let { raw ->
+                            runCatching {
+                                WorldBookParser.parse(raw, "角色卡：${selectedCard.name}")?.entries.orEmpty().map { entry ->
+                                    entry.copy(
+                                        id = "character-book:${selectedCard.name}:${entry.id}",
+                                        bookId = "character-book:${selectedCard.name}:${entry.bookId}",
+                                    )
+                                }
+                            }.getOrDefault(emptyList())
+                        }.orEmpty()
+                        val activationReport = LocalWorldBookService().activateEntriesWithReport(
+                            entries = localWorldbookEntries + embeddedBookEntries,
+                            scanText = userText,
+                            recentTexts = completeHistory.takeLast(6).map { it.content },
+                            maxBudget = LocalWorldBookService.DEFAULT_MAX_BUDGET,
+                            state = worldbookActivationState,
+                        )
+                        val activatedWorldbook = activationReport.activatedEntries
+                        if (activationReport.droppedByBudget > 0) {
+                            diagnosticStore.warn(
+                                "worldbook.budget_dropped",
+                                "count=${activationReport.droppedByBudget}; budget=${LocalWorldBookService.DEFAULT_MAX_BUDGET}",
+                            )
+                            mainHandler.post {
+                                status = "世界书预算超限：本轮有 ${activationReport.droppedByBudget} 个条目未注入"
+                            }
+                        }
+                        runCatching {
+                            val stateJson = org.json.JSONObject()
+                                .put("turn", worldbookActivationState.turn)
+                                .put("lastActivatedTurn", org.json.JSONObject(worldbookActivationState.lastActivatedTurn.mapValues { it.value as Any }))
+                                .put("stickyUntilTurn", org.json.JSONObject(worldbookActivationState.stickyUntilTurn.mapValues { it.value as Any }))
+                                .put("delayedUntilTurn", org.json.JSONObject(worldbookActivationState.delayedUntilTurn.mapValues { it.value as Any }))
+                            settings.edit().putString(worldbookStateKey, stateJson.toString()).apply()
+                        }.onFailure { error ->
+                            diagnosticStore.warn(
+                                "worldbook.state_persist_failed",
+                                "reason=${error::class.java.simpleName}",
+                            )
+                        }
                         val messages = PromptAssembler.assemble(
                             PromptAssemblyInput(
                                 stableSystemPrefix = "你是 Mistbell Tavern 的聊天助手。请直接、清晰地回答用户。",
-                                conversationHistory = history.dropLast(2).mapNotNull { line ->
-                                    if (line.content.isBlank()) {
-                                        null
-                                    } else {
-                                        PromptMessage(
-                                            if (line.role == "user") PromptRole.USER else PromptRole.ASSISTANT,
-                                            line.content,
-                                        )
-                                    }
-                                },
+                                stableCharacterDefinition = characterDefinition,
+                                earlierConversationSummary = contextWindow.earlierSummary,
+                                worldbookEntries = activatedWorldbook.map { it.entry },
+                                conversationHistory = contextWindow.recentMessages,
                                 latestUserMessage = userText,
                             ),
                         )
@@ -1096,12 +1370,13 @@ fun ChatScreen(onBack: () -> Unit) {
                             }
                         }
                     },
-                    enabled = !busy && historyReady && !historyLoadFailed,
+                    enabled = !busy && historyReady && !historyLoadFailed && worldbooksReady,
                 ) {
                     Text(
                         when {
                             !historyReady -> "恢复记录中…"
                             historyLoadFailed -> "记录异常，请先新建会话"
+                            !worldbooksReady -> "加载世界书中…"
                             busy -> "生成中…"
                             else -> "发送消息"
                         },
