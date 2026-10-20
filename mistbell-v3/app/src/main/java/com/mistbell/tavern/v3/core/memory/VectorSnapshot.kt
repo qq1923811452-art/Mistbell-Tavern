@@ -144,7 +144,7 @@ object VectorSnapshotCodec {
                 require(maxAbs.isFinite()) { "Vector magnitude must be finite." }
                 val scale = when {
                     maxAbs == 0f -> 1f
-                    else -> (maxAbs / 127f).coerceAtLeast(Float.MIN_NORMAL)
+                    else -> (maxAbs / 127f).coerceAtLeast(1.17549435E-38f)
                 }
                 require(scale.isFinite() && scale > 0f && scale <= Float.MAX_VALUE / 127f) {
                     "Vector quantization scale is invalid."
