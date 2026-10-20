@@ -36,10 +36,10 @@ class BackupArchiveCodecTest {
 
     @Test
     fun rejectsAbsoluteBackslashAndDirectoryPaths() {
-        assertThrows(IllegalArgumentException::class.java) {
+        assertThrows(IOException::class.java) {
             BackupArchiveCodec.write(mapOf("/outside.txt" to byteArrayOf(1)), 1L)
         }
-        assertThrows(IllegalArgumentException::class.java) {
+        assertThrows(IOException::class.java) {
             BackupArchiveCodec.write(mapOf("folder\\outside.txt" to byteArrayOf(1)), 1L)
         }
     }
@@ -47,7 +47,7 @@ class BackupArchiveCodecTest {
     @Test
     fun rejectsDriveQualifiedAndPlatformSpecificPaths() {
         listOf("C:/outside.txt", "folder/name:stream", "folder/line\u0007break").forEach { path ->
-            assertThrows(IllegalArgumentException::class.java) {
+            assertThrows(IOException::class.java) {
                 BackupArchiveCodec.write(mapOf(path to byteArrayOf(1)), 1L)
             }
         }
@@ -56,14 +56,14 @@ class BackupArchiveCodecTest {
     @Test
     fun rejectsPathsWhoseUtf8EncodingExceedsThePathLimit() {
         val multibytePath = "${"界".repeat(400)}.txt"
-        assertThrows(IllegalArgumentException::class.java) {
+        assertThrows(IOException::class.java) {
             BackupArchiveCodec.write(mapOf(multibytePath to byteArrayOf(1)), 1L)
         }
     }
 
     @Test
     fun rejectsDirectoryStylePaths() {
-        assertThrows(IllegalArgumentException::class.java) {
+        assertThrows(IOException::class.java) {
             BackupArchiveCodec.write(mapOf("folder/" to byteArrayOf(1)), 1L)
         }
     }
