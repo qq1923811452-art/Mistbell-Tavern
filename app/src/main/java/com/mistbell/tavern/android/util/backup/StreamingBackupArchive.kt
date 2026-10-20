@@ -85,7 +85,7 @@ object StreamingBackupArchive {
             ZipInputStream(input.buffered(BUFFER)).use { zip ->
                 while (true) {
                     val entry = zip.nextEntry ?: break
-                    val path = safePath(entry.name)
+                    val path = safePath(if (entry.isDirectory) entry.name.removeSuffix("/") else entry.name)
                     if (entry.isDirectory) {
                         zip.closeEntry()
                         continue
