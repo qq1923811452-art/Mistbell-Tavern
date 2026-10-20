@@ -9,10 +9,10 @@ import org.junit.Test
 
 class EmbeddingOutputValidatorTest {
     private val model = EmbeddingModelSpec("embeddinggemma-2-candidate", dimensions = 3, maxBatchSize = 4)
-    private val runtime = object : LocalEmbeddingRuntime {
+    private val runtime: LocalEmbeddingRuntime = object : LocalEmbeddingRuntime {
         override val model = this@EmbeddingOutputValidatorTest.model
         override val runtimeId = "test-runtime"
-        override suspend fun embed(texts: List<String>) = result(texts.size)
+        override suspend fun embed(texts: List<String>): EmbeddingBatch = result(texts.size)
     }
 
     private fun result(count: Int, dimensions: Int = 3, backend: InferenceBackend = InferenceBackend.CPU) =
