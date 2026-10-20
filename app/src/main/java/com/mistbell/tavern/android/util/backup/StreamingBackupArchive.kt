@@ -75,9 +75,12 @@ object StreamingBackupArchive {
     @Throws(IOException::class)
     fun restore(input: InputStream, stagingDirectory: File): RestoreResult {
         val stagingExisted = stagingDirectory.exists()
-        if (stagingExisted &&
+        if (
+            stagingExisted &&
             (!stagingDirectory.isDirectory || stagingDirectory.list()?.isNotEmpty() == true)
-        ) throw IOException("Restore staging directory must be empty")
+        ) {
+            throw IOException("Restore staging directory must be empty")
+        }
         if (!stagingExisted && !stagingDirectory.mkdirs()) {
             throw IOException("Cannot create restore staging directory")
         }
