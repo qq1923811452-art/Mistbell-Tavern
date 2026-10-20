@@ -21,9 +21,7 @@ tasks.register("licenseGuard") {
     dependsOn("generateLicenseReport")
     doLast {
         val reportDir = layout.buildDirectory.dir("reports/licenses").get().asFile
-        if (!reportDir.isDirectory) {
-            throw GradleException("licenseGuard: license report directory missing: $reportDir")
-        }
+        if (!reportDir.isDirectory) throw GradleException("licenseGuard: report directory missing: $reportDir")
         val forbidden = Regex("AGPL|AFFERO|SSPL|(^|[^A-Za-z])GPL")
         val violations = reportDir.walkTopDown()
             .filter { it.isFile && it.extension.lowercase() in setOf("csv", "json", "html") }
