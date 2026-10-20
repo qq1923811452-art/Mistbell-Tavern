@@ -88,7 +88,7 @@ class SqliteChatHistoryRepositoryTest {
             var failed = false
             try {
                 store.importScopeAtomically("role/session", listOf(valid, invalid))
-            } catch (_: android.database.SQLException) {
+            } catch (_: IllegalArgumentException) {
                 failed = true
             }
             assertTrue("invalid row must fail the transaction", failed)
@@ -178,7 +178,7 @@ class SqliteChatHistoryRepositoryTest {
             var failed = false
             try {
                 store.syncSnapshot("role/session", listOf(invalid), setOf("keep"))
-            } catch (_: android.database.SQLException) {
+            } catch (_: IllegalArgumentException) {
                 failed = true
             }
             assertTrue("invalid upsert must fail the snapshot transaction", failed)
