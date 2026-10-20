@@ -60,10 +60,10 @@ class EmbeddingGemma2ModelAssetManager(
         val temporaryFile = File(modelDirectory, "$selectedModelFileName.download")
         val temporaryDigestFile = File(modelDirectory, "$selectedModelFileName.sha256.tmp")
         if (temporaryDigestFile.exists() && !temporaryDigestFile.delete()) {
-            throw IllegalStateException("An incomplete model digest could not be removed.")
+            error("An incomplete model digest could not be removed.")
         }
         if (temporaryFile.exists() && !temporaryFile.delete()) {
-            throw IllegalStateException("An incomplete model download could not be removed.")
+            error("An incomplete model download could not be removed.")
         }
         val connection = openSecureConnection()
         try {
@@ -169,10 +169,10 @@ class EmbeddingGemma2ModelAssetManager(
             val temporaryFile = File(modelDirectory, "$selectedModelFileName.import")
             val temporaryDigestFile = File(modelDirectory, "$selectedModelFileName.sha256.tmp")
             if (temporaryFile.exists() && !temporaryFile.delete()) {
-                throw IllegalStateException("An incomplete model import could not be removed.")
+                error("An incomplete model import could not be removed.")
             }
             if (temporaryDigestFile.exists() && !temporaryDigestFile.delete()) {
-                throw IllegalStateException("An incomplete model digest could not be removed.")
+                error("An incomplete model digest could not be removed.")
             }
             try {
                 var importedBytes = 0L
@@ -341,7 +341,7 @@ class EmbeddingGemma2ModelAssetManager(
                 throw error
             }
         }
-        throw IllegalStateException("Model download exceeded the redirect limit.")
+        error("Model download exceeded the redirect limit.")
     }
 
     companion object {
