@@ -236,3 +236,35 @@ jobs:
           path: build-artifacts/*
           if-no-files-found: error
           retention-days: 14
+
+  # Temporary 3.0 baseline generation for PR #73. Remove this job after committing the
+  # generated baseline artifact; the permanent 3.0 Detekt gate will then use that baseline.
+  detekt-baseline-3-0:
+    if: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.ref == 'codex/mistbell-development-3.0' && github.event.pull_request.head.ref == 'codex/3.0-detekt-baseline-20261020' }}
+    name: Generate Mistbell 3.0 Detekt baseline
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout PR source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Generate baseline
+        working-directory: mistbell-v3
+        run: |
+          chmod +x ./gradlew
+          ./gradlew :app:detektBaseline --no-daemon --stacktrace
+      - name: Upload generated baseline
+        uses: actions/upload-artifact@v4
+        with:
+          name: mistbell-v3-detekt-baseline
+          path: mistbell-v3/config/detekt/baseline.xml
+          if-no-files-found: error
+          retention-days: 7
