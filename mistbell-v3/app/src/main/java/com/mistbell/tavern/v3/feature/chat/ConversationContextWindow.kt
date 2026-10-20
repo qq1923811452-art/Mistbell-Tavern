@@ -87,8 +87,8 @@ object ConversationContextWindowBuilder {
         val oldestCount = (normalized.size + 1) / 2
         val oldest = normalized.take(oldestCount)
         val newest = normalized.drop(oldestCount)
-        val oldestBudget = maxChars / 3
-        val newestBudget = maxChars - oldestBudget
+        val oldestBudget = if (newest.isEmpty()) maxChars else maxChars / 3
+        val newestBudget = if (oldest.isEmpty()) maxChars else maxChars - oldestBudget
         val oldestSnippets = collectSnippets(oldest, oldestBudget, newestFirst = false)
         val newestSnippets = collectSnippets(newest, newestBudget, newestFirst = true)
         val sections = buildList {
