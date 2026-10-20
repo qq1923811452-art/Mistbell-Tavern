@@ -84,8 +84,20 @@ internal object NpuEvidenceStore {
             .put("schemaVersion", 1)
             .put("createdAtEpochMillis", System.currentTimeMillis())
             .put("status", status)
+            .put(
+                "statusMeaning",
+                if (status == "verified") {
+                    "model_apk_matrix_and_runtime_library_checks_passed"
+                } else {
+                    "one_or_more_device_evidence_checks_failed"
+                },
+            )
             .put("evidenceLevel", if (status == "verified") "runtime_loaded" else "unverified")
             .put("hardwareExecutionVerified", false)
+            .put(
+                "hardwareExecutionVerificationNote",
+                "Runtime libraries being mapped and successful embeddings do not prove that every inference executed on the NPU. Hardware execution remains unverified without backend-specific execution evidence.",
+            )
             .put("modelSha256", modelHash)
             .put("expectedModelSha256", EXPECTED_MODEL_SHA256)
             .put("apkSha256", apkAfter)
