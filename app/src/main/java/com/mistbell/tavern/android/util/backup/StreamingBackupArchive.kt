@@ -41,8 +41,9 @@ object StreamingBackupArchive {
         val sorted = sourceFiles.toSortedMap()
         val metadata = LinkedHashMap<String, Metadata>()
         var total = 0L
+        var writtenTotal = 0L
         sorted.forEach { (path, file) ->
-            validatePath(path)
+            safePath(path)
             if (path == MANIFEST) throw IOException("Reserved backup path")
             if (!file.isFile || !file.canRead()) throw IOException("Backup source is not readable: $path")
             val size = file.length()
@@ -53,7 +54,9 @@ object StreamingBackupArchive {
             sorted.forEach { (path, file) ->
                 zip.putNextEntry(ZipEntry(path))
                 file.inputStream().buffered(BUFFER).use { input ->
-                    metadata[path] = copyBounded(input, zip, file.length())
+                    val copied = copyBounded(input, zip, file.length())
+                    writtenTotal = checkedTotal(writtenTotal, copied.size)
+                    metadata[path] = copied
                 }
                 zip.closeEntry()
             }
