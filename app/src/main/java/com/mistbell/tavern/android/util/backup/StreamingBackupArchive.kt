@@ -48,12 +48,13 @@ object StreamingBackupArchive {
             val size = file.length()
             if (size > MAX_ENTRY_BYTES) throw IOException("Backup entry is too large: $path")
             total = checkedTotal(total, size)
-            metadata[path] = Metadata(size, digest(file))
         }
         ZipOutputStream(output).use { zip ->
             sorted.forEach { (path, file) ->
                 zip.putNextEntry(ZipEntry(path))
-                file.inputStream().buffered(BUFFER).use { input -> copyBounded(input, zip, file.length()) }
+                file.inputStream().buffered(BUFFER).use { input ->
+                    metadata[path] = copyBounded(input, zip, file.length())
+                }
                 zip.closeEntry()
             }
             val manifest = buildString {
@@ -177,17 +178,21 @@ object StreamingBackupArchive {
         return md.digest().joinToString("") { "%02x".format(it) }
     }
 
-    private fun copyBounded(input: InputStream, output: OutputStream, expected: Long) {
+    private fun copyBounded(input: InputStream, output: OutputStream, expected: Long): Metadata {
         var copied = 0L
+        val digest = MessageDigest.getInstance("SHA-256")
         val buffer = ByteArray(BUFFER)
         while (true) {
             val count = input.read(buffer)
             if (count < 0) break
             copied += count
             if (copied > MAX_ENTRY_BYTES || copied > expected) throw IOException("Backup source changed while archiving")
+            digest.update(buffer, 0, count)
             output.write(buffer, 0, count)
         }
         if (copied != expected) throw IOException("Backup source changed while archiving")
+        val sha256 = digest.digest().joinToString("") { "%02x".format(it) }
+        return Metadata(copied, sha256)
     }
 
     private fun readBounded(input: InputStream, limit: Long): ByteArray {
