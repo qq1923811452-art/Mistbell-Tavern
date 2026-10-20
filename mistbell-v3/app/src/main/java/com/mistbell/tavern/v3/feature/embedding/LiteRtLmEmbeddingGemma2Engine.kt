@@ -345,7 +345,7 @@ class LiteRtLmEmbeddingGemma2Engine(
                     if (mapped) mappedLibrariesObserved[name] = true
                 }
                 val dimensions = result.vectors.firstOrNull()?.size ?: 0
-                val outcome = "chars=$length; result=success; dimensions=$dimensions; elapsedMs=${result.status.lastExecutionMillis ?: -1}"
+                val outcome = "chars=$length; payloadChars=$length; formattedChars=${input.length}; result=success; dimensions=$dimensions; elapsedMs=${result.status.lastExecutionMillis ?: -1}"
                 outcomes += outcome
                 logInfo("embedding.npu.input_length_matrix.case", outcome)
             } catch (cancelled: CancellationException) {
@@ -353,7 +353,7 @@ class LiteRtLmEmbeddingGemma2Engine(
                 throw cancelled
             } catch (error: Exception) {
                 val detail = "${error::class.java.simpleName}: ${(error.message ?: "inference failed").take(180)}"
-                val outcome = "chars=$length; result=failed; error=$detail"
+                val outcome = "chars=$length; payloadChars=$length; formattedChars=${input.length}; result=failed; error=$detail"
                 outcomes += outcome
                 logWarn("embedding.npu.input_length_matrix.case", outcome)
             } finally {
