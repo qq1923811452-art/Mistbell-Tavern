@@ -58,6 +58,17 @@ class WorldBookParserTest {
         assertEquals(WorldBookPlacement.DEPTH_ROLE_USER, entry.depthRole)
     }
 
+    @Test fun capsImportedDepthAtTenAndParsesStringProbability() {
+        val book = WorldBookParser.parse(
+            """{"entries":[{"uid":"bounded","position":4,"depth":1000,"probability":" 50 " }]}""",
+            "fallback",
+        )
+        assertNotNull(book)
+        val entry = book!!.entries.single()
+        assertEquals(10, entry.depth)
+        assertEquals(0.5, entry.probability, 0.00001)
+    }
+
     @Test fun rejectsMalformedOrMissingEntries() {
         assertNull(WorldBookParser.parse("not-json", "fallback"))
         assertNull(WorldBookParser.parse("""{"name":"empty"}""", "fallback"))
