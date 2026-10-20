@@ -150,7 +150,7 @@ class MainActivity : ComponentActivity() {
                                 val column = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
                                 if (cursor.moveToFirst() && column >= 0) cursor.getString(column) else null
                             }
-                        } ?: throw IllegalStateException("无法读取所选文件名。")
+                        } ?: error("无法读取所选文件名。")
                         require(
                             sourceName.endsWith(".litertlm", ignoreCase = true) &&
                                 (sourceName.contains("embeddinggemma", ignoreCase = true) ||
@@ -159,7 +159,7 @@ class MainActivity : ComponentActivity() {
                             "请选择文件名标明 EmbeddingGemma 的 .litertlm 模型文件。"
                         }
                         val input = withContext(Dispatchers.IO) { contentResolver.openInputStream(uri) }
-                            ?: throw IllegalStateException("所选文件无法打开。")
+                            ?: error("所选文件无法打开。")
                         operationMessage = "正在验证并复制到软件内部目录……"
                         val imported = modelAssets.importModel(sourceName, input) { bytes, _ ->
                             runOnUiThread { operationMessage = "模型导入中：${bytes / (1024 * 1024)} MiB" }
@@ -208,9 +208,9 @@ class MainActivity : ComponentActivity() {
                             val latest = directory.listFiles { file ->
                                 file.name.startsWith("npu-evidence-") && file.name.endsWith(".json")
                             }.orEmpty().maxByOrNull(File::lastModified)
-                                ?: throw IllegalStateException("No NPU evidence file exists yet.")
+                                ?: error("No NPU evidence file exists yet.")
                             val output = contentResolver.openOutputStream(uri)
-                                ?: throw IllegalStateException("Selected export destination could not be opened.")
+                                ?: error("Selected export destination could not be opened.")
                             output.use { target -> latest.inputStream().use { it.copyTo(target) } }
                         }
                         diagnostics.info("npu.evidence.export.succeeded")
@@ -230,7 +230,7 @@ class MainActivity : ComponentActivity() {
                     try {
                         withContext(Dispatchers.IO) {
                             val output = contentResolver.openOutputStream(uri)
-                                ?: throw IllegalStateException("Selected export destination could not be opened.")
+                                ?: error("Selected export destination could not be opened.")
                             output.use { diagnostics.exportTo(it) }
                         }
                         Toast.makeText(this@MainActivity, "诊断日志已导出", Toast.LENGTH_LONG).show()
@@ -383,11 +383,11 @@ class MainActivity : ComponentActivity() {
                     put(MediaStore.Downloads.IS_PENDING, 1)
                 }
                 val destination = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
-                    ?: throw IllegalStateException("无法在公共目录创建模型备份文件。")
+                    ?: error("无法在公共目录创建模型备份文件。")
                 try {
                     resolver.openOutputStream(destination, "w")?.use { output ->
                         FileInputStream(model.file).use { input -> input.copyTo(output) }
-                    } ?: throw IllegalStateException("无法写入公共目录模型备份。")
+                    } ?: error("无法写入公共目录模型备份。")
                     val savedHash = resolver.openInputStream(destination)?.use { input ->
                         val digest = MessageDigest.getInstance("SHA-256")
                         val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
@@ -408,7 +408,7 @@ class MainActivity : ComponentActivity() {
                     throw error
                 }
             }
-            throw IllegalStateException("公共目录存在过多同名模型备份，未覆盖任何现有文件。")
+            error("公共目录存在过多同名模型备份，未覆盖任何现有文件。")
         }
     private fun downloadEmbeddingModel() {
         if (operationBusy) return
@@ -480,7 +480,7 @@ class MainActivity : ComponentActivity() {
             val summaries = mutableListOf<String>()
             try {
                 val asset = withContext(Dispatchers.IO) { modelAssets.verifyInstalled() }
-                    ?: throw IllegalStateException("模型不存在或 SHA-256 校验失败。")
+                    ?: error("模型不存在或 SHA-256 校验失败。")
                 check(asset.isQualcommSm8650Optimized) { "当前安装模型不是 Qualcomm SM8650 专用模型。" }
                 for (backend in listOf(InferenceBackend.GPU, InferenceBackend.CPU)) {
                     var benchmark: LiteRtLmEmbeddingGemma2Engine? = null
@@ -560,7 +560,7 @@ class MainActivity : ComponentActivity() {
             var verifiedAsset: DownloadedEmbeddingModel? = null
             try {
                 val asset = withContext(Dispatchers.IO) { modelAssets.verifyInstalled() }
-                    ?: throw IllegalStateException("模型不存在或 SHA-256 校验失败；请重新下载模型。")
+                    ?: error("模型不存在或 SHA-256 校验失败；请重新下载模型。")
                 verifiedAsset = asset
                 val initializedRuntime = if (allowDiagnosticNpuProbe) {
                     withContext(Dispatchers.IO) {
