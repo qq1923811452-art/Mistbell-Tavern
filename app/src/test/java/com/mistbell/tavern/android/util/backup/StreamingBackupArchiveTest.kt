@@ -94,6 +94,25 @@ class StreamingBackupArchiveTest {
     }
 
     @Test
+    fun refusesNonEmptyCallerOwnedStagingDirectoryWithoutDeletingItsContents() {
+        val root = createTempDirectory(prefix = "mistbell-stream-nonempty").toFile()
+        val stage = File(root, "stage").apply { mkdir() }
+        val sentinel = File(stage, "keep.txt").apply { writeText("caller data") }
+        try {
+            try {
+                StreamingBackupArchive.restore(ByteArrayInputStream(byteArrayOf()), stage)
+                throw AssertionError("Expected non-empty staging directory to be rejected")
+            } catch (_: IOException) {
+                // A caller-owned directory with data must not be reused or cleaned.
+            }
+            assertTrue("caller data should remain untouched", sentinel.isFile)
+            assertEquals("caller data", sentinel.readText())
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
     fun rejectsTraversalPathsWhenWriting() {
         val root = createTempDirectory(prefix = "mistbell-stream-path").toFile()
         val source = File(root, "source.bin").apply { writeBytes(byteArrayOf(1)) }
