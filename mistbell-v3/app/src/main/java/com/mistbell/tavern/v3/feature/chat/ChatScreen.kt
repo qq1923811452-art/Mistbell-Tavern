@@ -46,6 +46,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenu
@@ -57,7 +58,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -138,6 +138,7 @@ fun ChatScreen(onBack: () -> Unit) {
     var historyReady by remember { mutableStateOf(false) }
     var historyLoadFailed by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("填写模型 ID 和 API 配置后即可测试聊天。") }
+    var showImportWarning by remember { mutableStateOf(false) }
     var memoryConversationId by remember(settings) {
         mutableStateOf(
             settings.getString("memory_extraction_conversation_id", null)
@@ -159,24 +160,6 @@ fun ChatScreen(onBack: () -> Unit) {
     var maxTokensText by remember(settings) {
         mutableStateOf(settings.getInt("chat_max_tokens", 4096).coerceIn(1, 200_000).toString())
     }
-    var recentTurnsText by remember(settings) {
-        mutableStateOf(
-            settings.getInt("chat_history_recent_turns", ConversationContextWindowBuilder.DEFAULT_RECENT_TURNS)
-                .coerceIn(1, 100).toString(),
-        )
-    }
-    var summaryCharsText by remember(settings) {
-        mutableStateOf(
-            settings.getInt("chat_history_summary_max_chars", ConversationContextWindowBuilder.DEFAULT_SUMMARY_MAX_CHARS)
-                .coerceIn(0, 10_000).toString(),
-        )
-    }
-    var historyCharsText by remember(settings) {
-        mutableStateOf(
-            settings.getInt("chat_history_max_chars", ConversationContextWindowBuilder.DEFAULT_MAX_HISTORY_CHARS)
-                .coerceIn(12_000, 100_000).toString(),
-        )
-    }
     var usageSummary by remember { mutableStateOf("Token 用量：本轮尚无服务端 usage 数据") }
     var selectedEmbeddingDimensions by remember(context) {
         mutableStateOf(
@@ -190,18 +173,10 @@ fun ChatScreen(onBack: () -> Unit) {
     val listState = rememberLazyListState()
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
     val historyStore = remember(context, memoryScopeId) {
-        val legacyStore = ChatHistoryStore(
+        ChatHistoryStore(
             context.applicationContext,
             MemoryScopeFileNames.forScope(ChatHistoryStore.DEFAULT_FILE_NAME, memoryScopeId),
         )
-        SqliteChatHistoryRepository(
-            context.applicationContext,
-            memoryScopeId,
-            legacyStore,
-        )
-    }
-    DisposableEffect(historyStore) {
-        onDispose { historyStore.close() }
     }
     val memoryCredentialStore = remember(context) { AndroidKeystoreMemoryCredentialStore(context.applicationContext) }
     val coroutineScope = rememberCoroutineScope()
@@ -319,6 +294,95 @@ fun ChatScreen(onBack: () -> Unit) {
                     )
                 }
             }
+        }
+    }
+
+    val importSessionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) coroutineScope.launch {
+            runCatching {
+                val raw = withContext(Dispatchers.IO) {
+                    context.contentResolver.openInputStream(uri)?.use { input ->
+                        val output = java.io.ByteArrayOutputStream()
+                        val buffer = ByteArray(8192)
+                        while (true) {
+                            val count = input.read(buffer)
+                            if (count < 0) break
+                            require(output.size() + count <= SessionArchiveCodec.MAX_IMPORT_BYTES) {
+                                "会话文件超过 32 MiB 导入上限。"
+                            }
+                            output.write(buffer, 0, count)
+                        }
+                        output.toByteArray().toString(Charsets.UTF_8)
+                    } ?: error("无法读取会话文件")
+                }
+                SessionArchiveCodec.importAnyDetailed(raw).let { result -> result.archive ?: error(result.error ?: "会话文件无效。") }
+            }.onSuccess { archive ->
+                history.clear()
+                history.addAll(archive.messages.map { message ->
+                    ChatLine(message.id, message.role, message.content, message.createdAtEpochMillis, message.deliveryState)
+                })
+                persistHistory()
+                status = "已导入会话「${archive.title}」：${archive.messages.size} 条消息（写入当前会话；原文件不会修改）。"
+            }.onFailure { error ->
+                status = "会话导入失败：${error.message ?: error::class.java.simpleName}"
+            }
+        }
+    }
+    if (showImportWarning) {
+        AlertDialog(
+            onDismissRequest = { showImportWarning = false },
+            title = { Text("导入会覆盖当前会话") },
+            text = {
+                Text("导入的消息会替换当前会话的聊天记录，不会自动创建新会话。建议先导出当前会话备份。是否继续选择文件？")
+            },
+            confirmButton = {
+                Button(onClick = {
+                    showImportWarning = false
+                    importSessionLauncher.launch(arrayOf("application/json", "application/jsonl", "text/plain", "*/*"))
+                }) { Text("继续选择文件") }
+            },
+            dismissButton = {
+                Button(onClick = { showImportWarning = false }) { Text("取消") }
+            },
+        )
+    }
+
+    val exportJsonLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        if (uri != null) coroutineScope.launch {
+            runCatching {
+                val archive = SessionArchive(
+                    id = memoryConversationId,
+                    title = "Mistbell Tavern session",
+                    messages = history.map { line ->
+                        PersistedChatMessage(line.id, line.role, line.content, line.createdAtEpochMillis, line.deliveryState)
+                    },
+                )
+                val raw = SessionArchiveCodec.exportJson(archive)
+                withContext(Dispatchers.IO) {
+                    context.contentResolver.openOutputStream(uri)?.use { it.write(raw.toByteArray(Charsets.UTF_8)) }
+                        ?: error("无法写入导出文件")
+                }
+            }.onSuccess { status = "会话 JSON 导出完成。" }
+                .onFailure { error -> status = "会话导出失败：${error.message ?: error::class.java.simpleName}" }
+        }
+    }
+    val exportJsonlLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/jsonl")) { uri ->
+        if (uri != null) coroutineScope.launch {
+            runCatching {
+                val archive = SessionArchive(
+                    id = memoryConversationId,
+                    title = "Mistbell Tavern session",
+                    messages = history.map { line ->
+                        PersistedChatMessage(line.id, line.role, line.content, line.createdAtEpochMillis, line.deliveryState)
+                    },
+                )
+                val raw = SessionArchiveCodec.exportJsonl(archive)
+                withContext(Dispatchers.IO) {
+                    context.contentResolver.openOutputStream(uri)?.use { it.write(raw.toByteArray(Charsets.UTF_8)) }
+                        ?: error("无法写入导出文件")
+                }
+            }.onSuccess { status = "会话 JSONL 导出完成。" }
+                .onFailure { error -> status = "会话导出失败：${error.message ?: error::class.java.simpleName}" }
         }
     }
 
@@ -642,6 +706,23 @@ fun ChatScreen(onBack: () -> Unit) {
                         singleLine = true,
                     )
                     Text(usageSummary, style = MaterialTheme.typography.bodySmall)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Button(
+                            enabled = historyReady && !busy,
+                            onClick = { showImportWarning = true },
+                            modifier = Modifier.weight(1f),
+                        ) { Text("导入 JSON/JSONL") }
+                        Button(
+                            enabled = historyReady && !busy,
+                            onClick = { exportJsonLauncher.launch("mistbell-session.json") },
+                            modifier = Modifier.weight(1f),
+                        ) { Text("导出 JSON") }
+                        Button(
+                            enabled = historyReady && !busy,
+                            onClick = { exportJsonlLauncher.launch("mistbell-session.jsonl") },
+                            modifier = Modifier.weight(1f),
+                        ) { Text("导出 JSONL") }
+                    }
                     OutlinedTextField(
                         value = baseUrl,
                         onValueChange = {
@@ -672,59 +753,6 @@ fun ChatScreen(onBack: () -> Unit) {
                     )
                     Text(
                         "聊天 API Key 仅保存在当前页面内存中，离开页面后需要重新输入；独立记忆 API Key 可选择加密保存到 Android Keystore。Base URL 和模型 ID 会保存在本机设置中。",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(
-                    modifier = Modifier.fillMaxWidth().padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Text("上下文历史预算", style = MaterialTheme.typography.titleMedium)
-                    OutlinedTextField(
-                        value = recentTurnsText,
-                        onValueChange = { value ->
-                            recentTurnsText = value.filter(Char::isDigit).take(3)
-                            recentTurnsText.toIntOrNull()?.takeIf { it in 1..100 }?.let { turns ->
-                                settings.edit().putInt("chat_history_recent_turns", turns).apply()
-                            }
-                        },
-                        label = { Text("最近历史轮数（1–100）") },
-                        supportingText = { Text("按用户消息计轮；同一轮中的多条助手消息会一起保留。") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                    )
-                    OutlinedTextField(
-                        value = summaryCharsText,
-                        onValueChange = { value ->
-                            summaryCharsText = value.filter(Char::isDigit).take(5)
-                            summaryCharsText.toIntOrNull()?.takeIf { it in 0..10_000 }?.let { chars ->
-                                settings.edit().putInt("chat_history_summary_max_chars", chars).apply()
-                            }
-                        },
-                        label = { Text("较早历史摘要上限（0–10000 字符）") },
-                        supportingText = { Text("0 表示不注入较早历史摘要；摘要为本地提取式短句，不会修改原始聊天记录。") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                    )
-                    OutlinedTextField(
-                        value = historyCharsText,
-                        onValueChange = { value ->
-                            historyCharsText = value.filter(Char::isDigit).take(6)
-                            historyCharsText.toIntOrNull()?.takeIf { it in 12_000..100_000 }?.let { chars ->
-                                settings.edit().putInt("chat_history_max_chars", chars).apply()
-                            }
-                        },
-                        label = { Text("最近历史字符预算（12000–100000）") },
-                        supportingText = { Text("默认 70000。保留完整消息，不截断长回复；单条最新消息超限时仍会整条保留。") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                    )
-                    Text(
-                        "修改后从下一条消息生效。历史轮数、摘要和字符预算分别限制不同部分；字符数不等于模型 Token 数。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -987,22 +1015,7 @@ fun ChatScreen(onBack: () -> Unit) {
                                 )
                             }
                         }
-                        // Clamp persisted preferences so a stale or malformed setting cannot create an unbounded prompt.
-                        val contextWindow = ConversationContextWindowBuilder.build(
-                            history = completeHistory,
-                            recentTurns = settings.getInt(
-                                "chat_history_recent_turns",
-                                ConversationContextWindowBuilder.DEFAULT_RECENT_TURNS,
-                            ).coerceIn(1, 100),
-                            summaryMaxChars = settings.getInt(
-                                "chat_history_summary_max_chars",
-                                ConversationContextWindowBuilder.DEFAULT_SUMMARY_MAX_CHARS,
-                            ).coerceIn(0, 10_000),
-                            maxHistoryChars = settings.getInt(
-                                "chat_history_max_chars",
-                                ConversationContextWindowBuilder.DEFAULT_MAX_HISTORY_CHARS,
-                            ).coerceIn(12_000, 100_000),
-                        )
+                        val contextWindow = ConversationContextWindowBuilder.build(completeHistory)
                         // Activate entries from the asynchronously loaded local library against
                         // the current turn plus a bounded tail of recent conversation.
                         val selectedCard = characterCards.firstOrNull { it.id == selectedCharacterId }?.card
