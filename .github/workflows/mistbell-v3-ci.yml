@@ -71,8 +71,10 @@ jobs:
       - name: Run Detekt static analysis
         run: ./gradlew -p mistbell-v3 :app:detekt --no-daemon --no-parallel
       - name: Run KtLint format check
+        if: always()
         run: ./gradlew -p mistbell-v3 :app:ktlintCheck --no-daemon --no-parallel
       - name: Run dependency license guard
+        if: always()
         run: ./gradlew -p mistbell-v3 licenseGuard --no-daemon --no-parallel
       - name: Upload reports on failure
         if: failure()
@@ -168,6 +170,7 @@ jobs:
           retention-days: 14
   instrumented-tests:
     needs: compile-and-test
+    if: always() && needs.compile-and-test.outputs.tested_sha != ''
     name: Android emulator instrumentation tests
     runs-on: ubuntu-latest
     timeout-minutes: 55
