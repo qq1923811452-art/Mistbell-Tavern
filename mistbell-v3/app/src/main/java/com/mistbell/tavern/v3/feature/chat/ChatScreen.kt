@@ -58,6 +58,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -160,6 +161,24 @@ fun ChatScreen(onBack: () -> Unit) {
     var maxTokensText by remember(settings) {
         mutableStateOf(settings.getInt("chat_max_tokens", 4096).coerceIn(1, 200_000).toString())
     }
+    var recentTurnsText by remember(settings) {
+        mutableStateOf(
+            settings.getInt("chat_history_recent_turns", ConversationContextWindowBuilder.DEFAULT_RECENT_TURNS)
+                .coerceIn(1, 100).toString(),
+        )
+    }
+    var summaryCharsText by remember(settings) {
+        mutableStateOf(
+            settings.getInt("chat_history_summary_max_chars", ConversationContextWindowBuilder.DEFAULT_SUMMARY_MAX_CHARS)
+                .coerceIn(0, 10_000).toString(),
+        )
+    }
+    var historyCharsText by remember(settings) {
+        mutableStateOf(
+            settings.getInt("chat_history_max_chars", ConversationContextWindowBuilder.DEFAULT_MAX_HISTORY_CHARS)
+                .coerceIn(12_000, 100_000).toString(),
+        )
+    }
     var usageSummary by remember { mutableStateOf("Token 用量：本轮尚无服务端 usage 数据") }
     var selectedEmbeddingDimensions by remember(context) {
         mutableStateOf(
@@ -173,10 +192,18 @@ fun ChatScreen(onBack: () -> Unit) {
     val listState = rememberLazyListState()
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
     val historyStore = remember(context, memoryScopeId) {
-        ChatHistoryStore(
+        val legacyStore = ChatHistoryStore(
             context.applicationContext,
             MemoryScopeFileNames.forScope(ChatHistoryStore.DEFAULT_FILE_NAME, memoryScopeId),
         )
+        SqliteChatHistoryRepository(
+            context.applicationContext,
+            memoryScopeId,
+            legacyStore,
+        )
+    }
+    DisposableEffect(historyStore) {
+        onDispose { historyStore.close() }
     }
     val memoryCredentialStore = remember(context) { AndroidKeystoreMemoryCredentialStore(context.applicationContext) }
     val coroutineScope = rememberCoroutineScope()
@@ -385,6 +412,7 @@ fun ChatScreen(onBack: () -> Unit) {
                 .onFailure { error -> status = "会话导出失败：${error.message ?: error::class.java.simpleName}" }
         }
     }
+
 
     LaunchedEffect(historyStore) {
         // A role or conversation change must never leave the previous scope's messages on screen.
@@ -764,6 +792,59 @@ fun ChatScreen(onBack: () -> Unit) {
                     modifier = Modifier.fillMaxWidth().padding(12.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
+                    Text("上下文历史预算", style = MaterialTheme.typography.titleMedium)
+                    OutlinedTextField(
+                        value = recentTurnsText,
+                        onValueChange = { value ->
+                            recentTurnsText = value.filter(Char::isDigit).take(3)
+                            recentTurnsText.toIntOrNull()?.takeIf { it in 1..100 }?.let { turns ->
+                                settings.edit().putInt("chat_history_recent_turns", turns).apply()
+                            }
+                        },
+                        label = { Text("最近历史轮数（1–100）") },
+                        supportingText = { Text("按用户消息计轮；同一轮中的多条助手消息会一起保留。") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                    )
+                    OutlinedTextField(
+                        value = summaryCharsText,
+                        onValueChange = { value ->
+                            summaryCharsText = value.filter(Char::isDigit).take(5)
+                            summaryCharsText.toIntOrNull()?.takeIf { it in 0..10_000 }?.let { chars ->
+                                settings.edit().putInt("chat_history_summary_max_chars", chars).apply()
+                            }
+                        },
+                        label = { Text("较早历史摘要上限（0–10000 字符）") },
+                        supportingText = { Text("0 表示不注入较早历史摘要；摘要为本地提取式短句，不会修改原始聊天记录。") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                    )
+                    OutlinedTextField(
+                        value = historyCharsText,
+                        onValueChange = { value ->
+                            historyCharsText = value.filter(Char::isDigit).take(6)
+                            historyCharsText.toIntOrNull()?.takeIf { it in 12_000..100_000 }?.let { chars ->
+                                settings.edit().putInt("chat_history_max_chars", chars).apply()
+                            }
+                        },
+                        label = { Text("最近历史字符预算（12000–100000）") },
+                        supportingText = { Text("默认 70000。保留完整消息，不截断长回复；单条最新消息超限时仍会整条保留。") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                    )
+                    Text(
+                        "修改后从下一条消息生效。历史轮数、摘要和字符预算分别限制不同部分；字符数不等于模型 Token 数。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
                     Text("独立记忆整理 API（可选）", style = MaterialTheme.typography.titleMedium)
                     OutlinedTextField(
                         value = memoryBaseUrl,
@@ -1015,7 +1096,22 @@ fun ChatScreen(onBack: () -> Unit) {
                                 )
                             }
                         }
-                        val contextWindow = ConversationContextWindowBuilder.build(completeHistory)
+                        // Clamp persisted preferences so a stale or malformed setting cannot create an unbounded prompt.
+                        val contextWindow = ConversationContextWindowBuilder.build(
+                            history = completeHistory,
+                            recentTurns = settings.getInt(
+                                "chat_history_recent_turns",
+                                ConversationContextWindowBuilder.DEFAULT_RECENT_TURNS,
+                            ).coerceIn(1, 100),
+                            summaryMaxChars = settings.getInt(
+                                "chat_history_summary_max_chars",
+                                ConversationContextWindowBuilder.DEFAULT_SUMMARY_MAX_CHARS,
+                            ).coerceIn(0, 10_000),
+                            maxHistoryChars = settings.getInt(
+                                "chat_history_max_chars",
+                                ConversationContextWindowBuilder.DEFAULT_MAX_HISTORY_CHARS,
+                            ).coerceIn(12_000, 100_000),
+                        )
                         // Activate entries from the asynchronously loaded local library against
                         // the current turn plus a bounded tail of recent conversation.
                         val selectedCard = characterCards.firstOrNull { it.id == selectedCharacterId }?.card
