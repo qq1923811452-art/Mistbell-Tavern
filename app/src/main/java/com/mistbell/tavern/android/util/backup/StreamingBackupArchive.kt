@@ -74,10 +74,11 @@ object StreamingBackupArchive {
 
     @Throws(IOException::class)
     fun restore(input: InputStream, stagingDirectory: File): RestoreResult {
-        if (stagingDirectory.exists() &&
+        val stagingExisted = stagingDirectory.exists()
+        if (stagingExisted &&
             (!stagingDirectory.isDirectory || stagingDirectory.list()?.isNotEmpty() == true)
         ) throw IOException("Restore staging directory must be empty")
-        if (!stagingDirectory.exists() && !stagingDirectory.mkdirs()) {
+        if (!stagingExisted && !stagingDirectory.mkdirs()) {
             throw IOException("Cannot create restore staging directory")
         }
         val root = stagingDirectory.canonicalFile
@@ -131,7 +132,11 @@ object StreamingBackupArchive {
             }
             return RestoreResult(parsed.first, files.toMap())
         } catch (error: Exception) {
-            stagingDirectory.deleteRecursively()
+            if (stagingExisted) {
+                stagingDirectory.listFiles()?.forEach { it.deleteRecursively() }
+            } else {
+                stagingDirectory.deleteRecursively()
+            }
             if (error is IOException) throw error
             throw IOException("Backup restore validation failed", error)
         }
