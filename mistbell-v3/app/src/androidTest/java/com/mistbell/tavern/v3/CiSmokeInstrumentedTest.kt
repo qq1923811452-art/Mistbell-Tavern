@@ -8,7 +8,6 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
-// PR69 CI gate refresh: 2026-10-20
 class CiSmokeInstrumentedTest {
     @Test
     fun applicationContextStartsOnAndroidRuntime() {
