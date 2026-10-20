@@ -76,7 +76,7 @@ class SqliteChatHistoryRepository(
         val previous = cachedById ?: when (val loaded = load()) {
             is ChatHistoryLoadResult.Loaded -> loaded.messages.associateBy(PersistedChatMessage::id)
             ChatHistoryLoadResult.Missing -> emptyMap()
-            else -> throw IllegalStateException("Chat history is unavailable; refusing to save over it.")
+            else -> error("Chat history is unavailable; refusing to save over it.")
         }
         val currentById = messages.associateBy(PersistedChatMessage::id)
         val changed = messages.filter { previous[it.id] != it }
