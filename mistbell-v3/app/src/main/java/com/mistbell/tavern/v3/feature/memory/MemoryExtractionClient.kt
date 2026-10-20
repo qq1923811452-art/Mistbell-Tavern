@@ -23,6 +23,25 @@ fun interface MemoryCredentialResolver {
     fun resolve(handle: String): String?
 }
 
+/**
+ * Formats a completed chat pair without allowing a very long user message to erase the
+ * assistant boundary. The total is bounded while both sides retain as much text as possible.
+ */
+fun formatMemoryExtractionTurn(userText: String, assistantText: String): String {
+    val userPrefix = "User: "
+    val assistantPrefix = "\nAssistant: "
+    val contentBudget = MemoryExtractionInput.MAX_TURN_TEXT_CHARS -
+        userPrefix.length - assistantPrefix.length
+    require(contentBudget >= 0) { "Turn text limit is too small for role boundaries." }
+
+    var userBudget = minOf(userText.length, contentBudget / 2)
+    var assistantBudget = minOf(assistantText.length, contentBudget - userBudget)
+    userBudget = minOf(userText.length, contentBudget - assistantBudget)
+
+    return userPrefix + userText.take(userBudget) +
+        assistantPrefix + assistantText.take(assistantBudget)
+}
+
 data class MemoryExtractionInput(
     val conversationId: String,
     val turns: List<EligibleConversationTurn>,
@@ -82,10 +101,10 @@ class MemoryExtractionClient(
 
     override fun extract(input: MemoryExtractionInput, observer: MemoryExtractionObserver): Call {
         val profile = providers.profileFor(ProviderKind.MEMORY_EXTRACTION)
-            ?: throw IllegalStateException("No enabled memory-extraction provider is explicitly selected.")
+            ?: error("No enabled memory-extraction provider is explicitly selected.")
         val validation = EndpointPolicy.validateBaseUrl(profile.baseUrl)
         val baseUrl = validation.normalizedBaseUrl
-            ?: throw IllegalStateException(validation.reason ?: "Memory provider base URL is invalid.")
+            ?: error(validation.reason ?: "Memory provider base URL is invalid.")
         require(profile.modelId.isNotBlank()) { "Memory-extraction model ID is required." }
 
         val uri = URI(baseUrl)
@@ -94,10 +113,10 @@ class MemoryExtractionClient(
             host != null && host in LOOPBACK_HOSTS
         val key = profile.credentialHandle?.takeIf(String::isNotBlank)?.let { handle ->
             credentials.resolve(handle)?.trim()?.takeIf(String::isNotEmpty)
-                ?: throw IllegalStateException("The selected memory-extraction credential is unavailable.")
+                ?: error("The selected memory-extraction credential is unavailable.")
         }
         if (key == null && !localHttp) {
-            throw IllegalStateException("A credential is required for a remote memory-extraction provider.")
+            error("A credential is required for a remote memory-extraction provider.")
         }
 
         val turnsJson = JSONArray()

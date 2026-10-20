@@ -33,6 +33,7 @@ class OpenAiCompatibleChatClientTest {
                 .setBody(
                     "data: {\"choices\":[{\"delta\":{\"content\":\"Hello \"}}]}\n\n" +
                         "data: {\"choices\":[{\"delta\":{\"content\":\"there\"}}]}\n\n" +
+                        "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":17,\"completion_tokens\":2,\"total_tokens\":19,\"prompt_tokens_details\":{\"cached_tokens\":9}}}\n\n" +
                         "data: [DONE]\n\n",
                 ),
         )
@@ -40,11 +41,16 @@ class OpenAiCompatibleChatClientTest {
         val observer = RecordingObserver()
         val client = clientFor(server, apiKey = "test-chat-key")
 
-        client.stream(listOf(PromptMessage(PromptRole.USER, "Hi")), observer)
+        client.stream(
+            listOf(PromptMessage(PromptRole.USER, "Hi")),
+            observer,
+            ChatGenerationOptions(temperature = 0.25, maxTokens = 1234),
+        )
 
         assertTrue(observer.finished.await(5, TimeUnit.SECONDS))
         assertNull(observer.failure)
         assertEquals("Hello there", observer.output.toString())
+        assertEquals(ChatTokenUsage(17, 2, 19, 9), observer.usage)
         val request = server.takeRequest(1, TimeUnit.SECONDS)
         assertNotNull(request)
         assertEquals("/v1/chat/completions", request!!.path)
@@ -52,6 +58,9 @@ class OpenAiCompatibleChatClientTest {
         val payload = JSONObject(request.body.readUtf8())
         assertEquals("chat-model", payload.getString("model"))
         assertTrue(payload.getBoolean("stream"))
+        assertEquals(0.25, payload.getDouble("temperature"), 0.0001)
+        assertEquals(1234, payload.getInt("max_tokens"))
+        assertTrue(payload.getJSONObject("stream_options").getBoolean("include_usage"))
         assertEquals("Hi", payload.getJSONArray("messages").getJSONObject(0).getString("content"))
     }
 
@@ -130,6 +139,7 @@ class OpenAiCompatibleChatClientTest {
         val output = StringBuilder()
         val finished = CountDownLatch(1)
         @Volatile var failure: ChatStreamFailure? = null
+        @Volatile var usage: ChatTokenUsage? = null
 
         override fun onDelta(text: String) {
             output.append(text)
@@ -137,6 +147,10 @@ class OpenAiCompatibleChatClientTest {
 
         override fun onComplete() {
             finished.countDown()
+        }
+
+        override fun onUsage(usage: ChatTokenUsage) {
+            this.usage = usage
         }
 
         override fun onFailure(failure: ChatStreamFailure) {

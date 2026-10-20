@@ -1,0 +1,50 @@
+package com.mistbell.tavern.v3.feature.worldbook
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class WorldBookPlacementTest {
+    private fun entry(id: String, position: String = WorldBookPlacement.POSITION_BEFORE_PROMPT,
+                      depth: Int = 0, role: String = "system", disabled: Boolean = false) =
+        WorldBookEntry(id, "book", content = id, insertPosition = position, depth = depth,
+            depthRole = role, disable = disabled)
+
+    @Test fun anchoredEntriesRespectPlacementAndDisabledEntriesAreIgnored() {
+        val plan = WorldBookPlacement.plan(listOf(
+            entry("before"), entry("after", WorldBookPlacement.POSITION_AFTER_PROMPT),
+            entry("disabled", disabled = true),
+        ))
+        assertEquals(listOf("before"), plan.beforePrompt.map { it.id })
+        assertEquals(listOf("after"), plan.afterPrompt.map { it.id })
+    }
+
+    @Test fun explicitDepthPositionIncludesDepthZero() {
+        val plan = WorldBookPlacement.plan(listOf(
+            entry("depth-zero", WorldBookPlacement.POSITION_DEPTH, depth = 0, role = WorldBookPlacement.DEPTH_ROLE_USER),
+        ))
+        assertEquals(listOf("depth-zero"), plan.byDepth[0 to WorldBookPlacement.DEPTH_ROLE_USER]?.map { it.id })
+        assertTrue(plan.beforePrompt.isEmpty())
+    }
+
+    @Test fun depthsAboveTenRemainDistinctGroups() {
+        val plan = WorldBookPlacement.plan(listOf(
+            entry("depth-ten", depth = 10),
+            entry("depth-eleven", depth = 11),
+            entry("depth-twenty", depth = 20),
+        ))
+        assertEquals(listOf("depth-ten"), plan.byDepth[10 to "system"]?.map { it.id })
+        assertEquals(listOf("depth-eleven"), plan.byDepth[11 to "system"]?.map { it.id })
+        assertEquals(listOf("depth-twenty"), plan.byDepth[20 to "system"]?.map { it.id })
+    }
+
+    @Test fun depthEntriesAreGroupedByDepthAndRole() {
+        val plan = WorldBookPlacement.plan(listOf(
+            entry("deep-a", depth = 2), entry("deep-b", depth = 2),
+            entry("user", depth = 1, role = WorldBookPlacement.DEPTH_ROLE_USER),
+        ))
+        assertEquals(listOf("user"), plan.byDepth[1 to "user"]?.map { it.id })
+        assertEquals(listOf("deep-a", "deep-b"), plan.byDepth[2 to "system"]?.map { it.id })
+        assertTrue(plan.beforePrompt.isEmpty())
+    }
+}

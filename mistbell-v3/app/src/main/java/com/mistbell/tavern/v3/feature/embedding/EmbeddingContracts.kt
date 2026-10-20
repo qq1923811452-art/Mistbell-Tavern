@@ -1,5 +1,6 @@
 package com.mistbell.tavern.v3.feature.embedding
 
+import com.mistbell.tavern.v3.core.inference.BackendEvidence
 import com.mistbell.tavern.v3.core.inference.InferenceBackend
 import com.mistbell.tavern.v3.core.inference.InferencePhase
 import com.mistbell.tavern.v3.core.inference.InferenceRuntimeStatus
@@ -69,6 +70,9 @@ object EmbeddingOutputValidator {
             if (vector.any { !it.isFinite() }) {
                 throw EmbeddingOutputException("Vector $index contains a non-finite value.")
             }
+            if (vector.all { it == 0f }) {
+                throw EmbeddingOutputException("Vector $index is a zero vector.")
+            }
         }
         if (output.status.modelId != runtime.model.modelId) {
             throw EmbeddingOutputException("Runtime status model ID does not match the configured model.")
@@ -76,13 +80,15 @@ object EmbeddingOutputValidator {
         if (output.status.runtimeId != runtime.runtimeId) {
             throw EmbeddingOutputException("Runtime status ID does not match the selected adapter.")
         }
-        if (output.status.backend == InferenceBackend.UNKNOWN) {
-            throw EmbeddingOutputException("Runtime did not report a verified execution backend.")
+        if (output.status.backend == InferenceBackend.UNKNOWN ||
+            output.status.backendEvidence == BackendEvidence.NOT_AVAILABLE
+        ) {
+            throw EmbeddingOutputException("Runtime did not report backend evidence for this execution.")
         }
         return ValidatedEmbeddingBatch(
             modelId = runtime.model.modelId,
             dimensions = runtime.model.dimensions,
-            vectors = output.vectors.map { it.toList() },
+            vectors = output.vectors.map { it.toFloatArray().asList() },
             status = output.status,
         )
     }

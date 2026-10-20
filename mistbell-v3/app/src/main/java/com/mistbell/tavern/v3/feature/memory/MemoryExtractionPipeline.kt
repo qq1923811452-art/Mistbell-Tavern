@@ -194,9 +194,9 @@ class MemoryExtractionWorker(
             val currentLedger = when (val loaded = ledgerStore.load()) {
                 is MemoryJobLedgerLoadResult.Loaded -> loaded.ledger
                 MemoryJobLedgerLoadResult.Missing ->
-                    throw IllegalStateException("Memory job ledger disappeared during extraction.")
+                    error("Memory job ledger disappeared during extraction.")
                 is MemoryJobLedgerLoadResult.Corrupt ->
-                    throw IllegalStateException(loaded.safeReason)
+                    error(loaded.safeReason)
             }
             val completed = currentLedger.complete(plan.id, nowEpochMillis())
             ledgerStore.save(completed)

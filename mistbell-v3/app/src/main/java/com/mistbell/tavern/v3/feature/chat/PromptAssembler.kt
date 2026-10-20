@@ -1,22 +1,16 @@
 package com.mistbell.tavern.v3.feature.chat
 
-/**
- * Only the stable system prefix is eligible to remain byte-for-byte identical across turns.
- * Memories and activated worldbook entries are deliberately appended after that prefix so
- * volatile context does not churn the cacheable prefix.
- */
-enum class PromptRole {
-    SYSTEM,
-    USER,
-    ASSISTANT,
-}
+import com.mistbell.tavern.v3.feature.worldbook.WorldBookEntry
+import com.mistbell.tavern.v3.feature.worldbook.WorldBookPlacement
 
-data class PromptMessage(
-    val role: PromptRole,
-    val content: String,
-) {
+/** A deterministic prompt layout with exactly one system message. */
+enum class PromptRole { SYSTEM, USER, ASSISTANT }
+
+data class PromptMessage(val role: PromptRole, val content: String) {
     init {
-        require(content.isNotBlank()) { "Prompt message content must not be blank." }
+        require(role == PromptRole.SYSTEM || content.isNotBlank()) {
+            "User and assistant prompt message content must not be blank."
+        }
     }
 }
 
@@ -24,51 +18,79 @@ data class PromptAssemblyInput(
     val stableSystemPrefix: String,
     val stableCharacterDefinition: String? = null,
     val activeMemoryFacts: List<String> = emptyList(),
-    val activatedWorldbookEntries: List<String> = emptyList(),
+    val earlierConversationSummary: String? = null,
+    val worldbookEntries: List<WorldBookEntry> = emptyList(),
     val conversationHistory: List<PromptMessage> = emptyList(),
     val latestUserMessage: String,
 )
 
-/**
- * Deterministic prompt ordering policy. Selection and token budgeting happen upstream; this
- * class never silently truncates content or changes the meaning of selected facts.
- */
+/** Stable prefix first; variable worldbook/memory follows it. */
 object PromptAssembler {
     fun assemble(input: PromptAssemblyInput): List<PromptMessage> {
-        require(input.stableSystemPrefix.isNotBlank()) {
-            "A stable system prefix is required."
-        }
-        require(input.latestUserMessage.isNotBlank()) {
-            "The latest user message is required."
-        }
+        require(input.stableSystemPrefix.isNotBlank()) { "A stable system prefix is required." }
+        require(input.latestUserMessage.isNotBlank()) { "The latest user message is required." }
         require(input.conversationHistory.all {
             it.role == PromptRole.USER || it.role == PromptRole.ASSISTANT
-        }) {
-            "Conversation history may contain only user and assistant messages."
-        }
+        }) { "Conversation history may contain only user and assistant messages." }
 
-        val stableParts = listOfNotNull(
-            input.stableSystemPrefix.trimEnd(),
-            input.stableCharacterDefinition?.trim()?.takeIf(String::isNotEmpty),
-        )
-        val result = mutableListOf(PromptMessage(PromptRole.SYSTEM, stableParts.joinToString("\n\n")))
-
-        val memoryFacts = input.activeMemoryFacts.map(String::trim).filter(String::isNotEmpty)
-        val worldbookEntries = input.activatedWorldbookEntries.map(String::trim).filter(String::isNotEmpty)
-        val dynamicSections = buildList {
-            if (memoryFacts.isNotEmpty()) {
-                add("Relevant memory facts:\n" + memoryFacts.joinToString("\n") { "- $it" })
+        val plan = WorldBookPlacement.plan(input.worldbookEntries)
+        val systemSections = buildList {
+            add(input.stableSystemPrefix.trimEnd())
+            appendEntries("Worldbook before character", plan.beforePrompt)
+            input.stableCharacterDefinition?.trim()?.takeIf(String::isNotEmpty)?.let(::add)
+            input.earlierConversationSummary?.trim()?.takeIf(String::isNotEmpty)?.let {
+                add("Earlier conversation notes (extractive, not a full transcript):\n$it")
             }
-            if (worldbookEntries.isNotEmpty()) {
-                add("Activated worldbook entries:\n" + worldbookEntries.joinToString("\n\n"))
+            appendEntries("Worldbook after character", plan.afterPrompt)
+            val memoryFacts = input.activeMemoryFacts.map(String::trim).filter(String::isNotEmpty)
+            if (memoryFacts.isNotEmpty()) add("Relevant memory facts:\n" + memoryFacts.joinToString("\n") { "- $it" })
+            appendEntries("Author note before", plan.anBefore)
+            appendEntries("Author note after", plan.anAfter)
+            appendEntries("Example block before", plan.emBefore)
+            appendEntries("Example block after", plan.emAfter)
+            val systemDepthSections = plan.byDepth.entries
+                .filter { it.key.second == WorldBookPlacement.DEPTH_ROLE_SYSTEM }
+                .sortedBy { it.key.first }
+                .flatMap { (key, entries) ->
+                    entries.mapNotNull { entry ->
+                        entry.content.trim().takeIf(String::isNotEmpty)?.let { "[depth ${key.first}] $it" }
+                    }
+                }
+            if (systemDepthSections.isNotEmpty()) {
+                add(
+                    "Worldbook depth entries (system role; kept in the system prefix for API compatibility):\n" +
+                        systemDepthSections.joinToString("\n\n"),
+                )
             }
         }
-        if (dynamicSections.isNotEmpty()) {
-            result += PromptMessage(PromptRole.SYSTEM, dynamicSections.joinToString("\n\n"))
+        val result = mutableListOf(PromptMessage(PromptRole.SYSTEM, systemSections.joinToString("\n\n")))
+        val history = input.conversationHistory
+        val insertionsByIndex = plan.byDepth.entries
+            .filter { it.key.second != WorldBookPlacement.DEPTH_ROLE_SYSTEM }
+            .mapNotNull { (key, entries) ->
+                val content = entries.map { it.content.trim() }.filter(String::isNotEmpty).joinToString("\n\n")
+                if (content.isEmpty()) return@mapNotNull null
+                val role = when (key.second) {
+                    WorldBookPlacement.DEPTH_ROLE_USER -> PromptRole.USER
+                    WorldBookPlacement.DEPTH_ROLE_ASSISTANT -> PromptRole.ASSISTANT
+                    else -> PromptRole.SYSTEM
+                }
+                (history.size - key.first).coerceIn(0, history.size) to
+                    (key.first to PromptMessage(role, content))
+            }.groupBy({ it.first }, { it.second })
+            .mapValues { (_, values) ->
+                values.sortedWith(compareBy({ it.first }, { it.second.role.name })).map { it.second }
+            }
+        for (index in 0..history.size) {
+            result += insertionsByIndex[index].orEmpty()
+            if (index < history.size) result += history[index]
         }
-
-        result += input.conversationHistory
         result += PromptMessage(PromptRole.USER, input.latestUserMessage.trim())
         return result.toList()
+    }
+
+    private fun MutableList<String>.appendEntries(title: String, entries: List<WorldBookEntry>) {
+        val content = entries.map { it.content.trim() }.filter(String::isNotEmpty)
+        if (content.isNotEmpty()) add("$title:\n" + content.joinToString("\n\n"))
     }
 }

@@ -1,0 +1,244 @@
+package com.mistbell.tavern.v3.feature.memory
+
+import java.util.concurrent.CancellationException
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class MemoryExtractionQueueRunnerTest {
+    @Test fun successfulExecutionCompletesClaimedJob() {
+        val repository = repository()
+        repository.enqueue(job("success"))
+        val runner = MemoryExtractionQueueRunner(repository) { 1_000L }
+
+        val dispatch = runner.runNext(
+            buildInput = { it.turnIds },
+            execute = { _, _, complete -> complete(MemoryExtractionQueueRunner.ExecutionResult.Success) },
+        )
+
+        assertEquals(
+            MemoryExtractionQueueRunner.Result.Finished("success", MemoryExtractionJob.State.COMPLETED),
+            dispatch,
+        )
+        assertEquals(MemoryExtractionJob.State.COMPLETED, repository.list().single().state)
+    }
+
+    @Test fun executionFailureSchedulesRetryWithoutPersistingRawError() {
+        val repository = repository()
+        repository.enqueue(job("failure"))
+        val runner = MemoryExtractionQueueRunner(repository) { 10_000L }
+
+        runner.runNext(
+            buildInput = { it.turnIds },
+            execute = { _, _, complete ->
+                complete(MemoryExtractionQueueRunner.ExecutionResult.Failure("network"))
+            },
+        )
+
+        val failed = repository.list().single()
+        assertEquals(MemoryExtractionJob.State.RETRY_WAIT, failed.state)
+        assertEquals("Network request failed.", failed.lastSafeError)
+        assertEquals(40_000L, failed.nextAttemptAtEpochMillis)
+    }
+
+    @Test fun sourceReconstructionFailureIsPermanentAndDoesNotDispatchApi() {
+        val repository = repository()
+        repository.enqueue(job("missing-source"))
+        val runner = MemoryExtractionQueueRunner(repository) { 10_000L }
+        var dispatched = false
+
+        runner.runNext(
+            buildInput = { throw IllegalStateException("private message or credential") },
+            execute = { _, _, _ -> dispatched = true },
+        )
+
+        assertTrue(!dispatched)
+        val failed = repository.list().single()
+        assertEquals(MemoryExtractionJob.State.PERMANENT_FAILURE, failed.state)
+        assertEquals("Extraction attempt failed.", failed.lastSafeError)
+    }
+
+    @Test fun transientInputReadFailureSchedulesRetryInsteadOfPermanentFailure() {
+        val repository = repository()
+        repository.enqueue(job("temporary-source-read"))
+        val runner = MemoryExtractionQueueRunner(repository) { 10_000L }
+        var dispatched = false
+
+        runner.runNext(
+            buildInput = { throw MemoryExtractionQueueRunner.RetryableInputException() },
+            execute = { _, _, _ -> dispatched = true },
+        )
+
+        assertTrue(!dispatched)
+        val failed = repository.list().single()
+        assertEquals(MemoryExtractionJob.State.RETRY_WAIT, failed.state)
+        assertEquals("Extraction attempt failed.", failed.lastSafeError)
+        assertEquals(40_000L, failed.nextAttemptAtEpochMillis)
+    }
+
+    @Test fun cancellationDuringInputBuildIsRetriedAndPropagated() {
+        val repository = repository()
+        repository.enqueue(job("cancel-input"))
+        val runner = MemoryExtractionQueueRunner(repository) { 10_000L }
+
+        assertThrows(CancellationException::class.java) {
+            runner.runNext(
+                buildInput = { throw CancellationException("worker stopped") },
+                execute = { _, _, _ -> error("Cancelled input must not be dispatched.") },
+            )
+        }
+
+        val cancelled = repository.list().single()
+        assertEquals(MemoryExtractionJob.State.RETRY_WAIT, cancelled.state)
+        assertEquals("Extraction attempt failed.", cancelled.lastSafeError)
+        assertEquals(40_000L, cancelled.nextAttemptAtEpochMillis)
+    }
+
+    @Test fun cancellationDuringExecutionIsRetriedAndPropagated() {
+        val repository = repository()
+        repository.enqueue(job("cancel-execute"))
+        val runner = MemoryExtractionQueueRunner(repository) { 10_000L }
+
+        assertThrows(CancellationException::class.java) {
+            runner.runNext(
+                buildInput = { it.id },
+                execute = { _, _, _ -> throw CancellationException("worker stopped") },
+            )
+        }
+
+        val cancelled = repository.list().single()
+        assertEquals(MemoryExtractionJob.State.RETRY_WAIT, cancelled.state)
+        assertEquals("Extraction attempt failed.", cancelled.lastSafeError)
+        assertEquals(40_000L, cancelled.nextAttemptAtEpochMillis)
+    }
+
+    @Test fun duplicateCompletionCallbackCannotCompleteOrFailTwice() {
+        val repository = repository()
+        repository.enqueue(job("double-callback"))
+        val runner = MemoryExtractionQueueRunner(repository) { 10_000L }
+
+        runner.runNext(
+            buildInput = { it.id },
+            execute = { _, _, complete ->
+                complete(MemoryExtractionQueueRunner.ExecutionResult.Success)
+                complete(MemoryExtractionQueueRunner.ExecutionResult.Failure("network"))
+            },
+        )
+
+        assertEquals(MemoryExtractionJob.State.COMPLETED, repository.list().single().state)
+    }
+
+    @Test fun noDueJobReturnsIdle() {
+        val repository = repository()
+        repository.enqueue(job("future").copy(nextAttemptAtEpochMillis = 50_000L))
+        val result = MemoryExtractionQueueRunner(repository) { 10_000L }.runNext(
+            buildInput = { it.id },
+            execute = { _, _, _ -> error("Must not dispatch a future job.") },
+        )
+        assertEquals(MemoryExtractionQueueRunner.Result.Idle, result)
+    }
+
+    @Test fun completionPersistenceFailureIsReportedInsteadOfLeavingWorkerWaiting() {
+        val store = FailingCompletionStore()
+        val repository = MemoryExtractionJobRepository(store)
+        repository.enqueue(job("persistence-failure"))
+        val runner = MemoryExtractionQueueRunner(repository) { 10_000L }
+        var observed: MemoryExtractionQueueRunner.Result? = null
+
+        val result = runner.runNext(
+            buildInput = { it.id },
+            execute = { _, _, complete -> complete(MemoryExtractionQueueRunner.ExecutionResult.Success) },
+            observer = { observed = it },
+        )
+
+        assertTrue(result is MemoryExtractionQueueRunner.Result.PersistenceFailure)
+        assertTrue(observed is MemoryExtractionQueueRunner.Result.PersistenceFailure)
+    }
+
+    @Test fun unauthorizedProviderResponseIsPermanentClientFailure() {
+        val failure = MemoryExtractionFailurePolicy.classify(
+            safeMessage = "Memory-extraction provider returned HTTP 401.",
+            httpStatus = 401,
+        )
+
+        assertEquals("client", failure.safeCategory)
+        assertTrue(failure.permanent)
+    }
+
+    @Test fun rateLimitAndServerErrorsRemainRetryable() {
+        val rateLimit = MemoryExtractionFailurePolicy.classify("HTTP 429", 429)
+        val server = MemoryExtractionFailurePolicy.classify("HTTP 503", 503)
+
+        assertEquals("rate_limit", rateLimit.safeCategory)
+        assertTrue(!rateLimit.permanent)
+        assertEquals("server", server.safeCategory)
+        assertTrue(!server.permanent)
+    }
+
+    @Test fun selectedTransientClientStatusesRemainRetryable() {
+        listOf(408, 409, 425).forEach { status ->
+            val failure = MemoryExtractionFailurePolicy.classify("HTTP $status", status)
+            assertEquals("client", failure.safeCategory)
+            assertTrue("HTTP $status must be retryable", !failure.permanent)
+        }
+    }
+
+    @Test fun otherClientErrorsArePermanent() {
+        listOf(400, 401, 403, 404).forEach { status ->
+            val failure = MemoryExtractionFailurePolicy.classify("HTTP $status", status)
+            assertEquals("client", failure.safeCategory)
+            assertTrue("HTTP $status must be permanent", failure.permanent)
+        }
+    }
+
+    @Test fun missingHttpStatusFallsBackToTimeoutOrNetworkClassification() {
+        val timeout = MemoryExtractionFailurePolicy.classify("Request timed out.", null)
+        val network = MemoryExtractionFailurePolicy.classify("Connection failed.", null)
+
+        assertEquals("timeout", timeout.safeCategory)
+        assertTrue(!timeout.permanent)
+        assertEquals("network", network.safeCategory)
+        assertTrue(!network.permanent)
+    }
+
+    private class FailingCompletionStore : MemoryExtractionJobPersistence {
+        private var savedJobs: List<MemoryExtractionJob>? = null
+        private var saveCount = 0
+
+        override fun save(jobs: List<MemoryExtractionJob>) {
+            saveCount += 1
+            // enqueue=1, claim RUNNING=2, completion=3. Simulate disk failure at completion.
+            if (saveCount == 3) error("simulated storage failure")
+            savedJobs = jobs.toList()
+        }
+
+        override fun load(): MemoryExtractionJobLoadResult =
+            savedJobs?.let(MemoryExtractionJobLoadResult::Loaded)
+                ?: MemoryExtractionJobLoadResult.Missing
+    }
+
+    private fun repository(): MemoryExtractionJobRepository =
+        MemoryExtractionJobRepository(InMemoryJobStore())
+
+    private class InMemoryJobStore : MemoryExtractionJobPersistence {
+        private var savedJobs: List<MemoryExtractionJob>? = null
+
+        override fun save(jobs: List<MemoryExtractionJob>) {
+            savedJobs = jobs.toList()
+        }
+
+        override fun load(): MemoryExtractionJobLoadResult =
+            savedJobs?.let(MemoryExtractionJobLoadResult::Loaded)
+                ?: MemoryExtractionJobLoadResult.Missing
+    }
+
+    private fun job(id: String) = MemoryExtractionJob(
+        id = id,
+        conversationId = "conversation-1",
+        turnIds = listOf("turn-1"),
+        providerProfileId = "memory",
+        credentialHandle = "saved-opaque-handle",
+        createdAtEpochMillis = 1_000L,
+    )
+}
