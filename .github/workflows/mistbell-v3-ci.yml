@@ -85,6 +85,92 @@ jobs:
           if-no-files-found: ignore
 
   # Optional packaging is manual-only. Routine PR CI stays compile + JVM tests.
+
+  # Build the actual APK on every run, independently from the quality gate.
+  # A green Kotlin/static check must not hide a broken Android package.
+  apk-build:
+    name: Build and audit 3.0 debug APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout exact source commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+      - name: Confirm exact source commit
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Ensure root Gradle wrapper is executable
+        run: chmod +x ./gradlew
+      - name: Package pinned LiteRT-LM GPU runtime
+        shell: bash
+        run: bash .github/scripts/package-litertlm-gpu-runtime.sh
+      - name: Assemble debug APK
+        run: ./gradlew -p mistbell-v3 :app:assembleDebug --no-daemon --no-parallel
+      - name: Audit native libraries in the APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="$(find mistbell-v3/app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          test -n "$apk"
+          audit_dir="$RUNNER_TEMP/apk-native-audit"
+          mkdir -p "$audit_dir"
+          unzip -q "$apk" 'lib/arm64-v8a/*.so' -d "$audit_dir"
+          bash .github/scripts/audit-native-libraries.sh "$audit_dir/lib/arm64-v8a"
+      - name: Verify packaged LiteRT-LM GPU library hashes
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="$(find mistbell-v3/app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          test -n "$apk"
+          checksums="$RUNNER_TEMP/litertlm-gpu.sha256"
+          unzip -p "$apk" assets/native-runtime/litertlm-gpu.sha256 > "$checksums"
+          test -s "$checksums"
+          mapfile -t checksum_lines < "$checksums"
+          [[ "${#checksum_lines[@]}" -eq 7 ]] || { echo "Expected 7 GPU checksum rows; found ${#checksum_lines[@]}." >&2; exit 1; }
+          declare -A seen=()
+          for line in "${checksum_lines[@]}"; do
+            read -r expected name extra <<< "$line"
+            [[ -n "${expected:-}" && -n "${name:-}" && -z "${extra:-}" ]]
+            [[ "$expected" =~ ^[0-9a-fA-F]{64}$ ]]
+            [[ "$name" =~ ^[A-Za-z0-9._+-]+\.so$ ]]
+            [[ -z "${seen[$name]+x}" ]]
+            seen["$name"]=1
+            actual="$(unzip -p "$apk" "lib/arm64-v8a/$name" | sha256sum | awk '{print $1}')"
+            [[ "$actual" == "$expected" ]] || { echo "GPU library hash mismatch: $name" >&2; exit 1; }
+          done
+          echo "Verified all 7 packaged GPU library hashes."
+      - name: Prepare APK checksum and provenance
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          mkdir -p build-artifacts
+          find mistbell-v3/app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' -exec cp {} build-artifacts/ \\;
+          test -n "$(find build-artifacts -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          cd build-artifacts
+          sha256sum *.apk | tee SHA256SUMS.txt
+          printf 'source_sha=%s\\nworkflow_run_id=%s\\nartifact_role=build-only-not-quality-gate-verified\\n' "$SOURCE_SHA" "$GITHUB_RUN_ID" > SOURCE.txt
+      - name: Upload build-only APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: mistbell-v3-debug-apk-build-${{ github.run_number }}
+          path: build-artifacts/*
+          if-no-files-found: error
+          retention-days: 14
+
   device-test-apk:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_device_test_apk == true && needs.compile-and-test.result == 'success' }}
     needs: compile-and-test
@@ -170,7 +256,7 @@ jobs:
           retention-days: 14
   instrumented-tests:
     needs: compile-and-test
-    if: always() && needs.compile-and-test.outputs.tested_sha != ''
+    if: needs.compile-and-test.result == 'success' && needs.compile-and-test.outputs.tested_sha != ''
     name: Android emulator instrumentation tests
     runs-on: ubuntu-latest
     timeout-minutes: 55
