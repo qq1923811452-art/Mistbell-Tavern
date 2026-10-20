@@ -68,8 +68,7 @@ jobs:
         run: ./gradlew -p mistbell-v3 :app:compileDebugKotlin --no-daemon --no-parallel
       - name: Run clean-room 3.0 unit tests
         run: ./gradlew -p mistbell-v3 :app:testDebugUnitTest --no-daemon --no-parallel
-      - name: Run Detekt static analysis (deferred until after merge)
-        if: ${{ false }}
+      - name: Run Detekt static analysis
         run: ./gradlew -p mistbell-v3 :app:detekt --no-daemon --no-parallel
       - name: Run KtLint format check
         if: always()
