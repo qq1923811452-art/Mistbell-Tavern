@@ -27,6 +27,14 @@ class WorldBookPlacementTest {
         assertTrue(plan.beforePrompt.isEmpty())
     }
 
+    @Test fun capsDepthGroupingAtTen() {
+        val plan = WorldBookPlacement.plan(listOf(
+            entry("too-deep", position = WorldBookPlacement.POSITION_DEPTH, depth = 1_000),
+        ))
+        assertEquals(listOf("too-deep"), plan.byDepth[10 to "system"]?.map { it.id })
+        assertTrue(plan.byDepth[1_000 to "system"].isNullOrEmpty())
+    }
+
     @Test fun depthEntriesAreGroupedByDepthAndRole() {
         val plan = WorldBookPlacement.plan(listOf(
             entry("deep-a", depth = 2), entry("deep-b", depth = 2),
