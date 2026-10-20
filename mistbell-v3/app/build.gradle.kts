@@ -8,7 +8,24 @@ plugins {
 detekt {
     config.setFrom(files(rootProject.file("config/detekt/detekt.yml")))
     buildUponDefaultConfig = true
+    allRules = false
     autoCorrect = false
+    // Match PR #29: existing findings are tracked in the checked-in baseline.
+    baseline = file("$rootDir/config/detekt/baseline.xml")
+    reports {
+        html { required.set(true) }
+        xml { required.set(false) }
+        txt { required.set(false) }
+        sarif { required.set(false) }
+    }
+}
+
+ktlint {
+    android.set(true)
+    verbose.set(true)
+    outputToConsole.set(true)
+    // Match PR #29: pre-existing formatting findings stay in the checked-in baseline.
+    baseline = file("$projectDir/config/ktlint/baseline.xml")
 }
 
 val enableQualcommNpuRuntime = providers.gradleProperty("enableQualcommNpuRuntime").orNull == "true"
