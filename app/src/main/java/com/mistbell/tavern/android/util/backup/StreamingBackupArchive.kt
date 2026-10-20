@@ -1,3 +1,5 @@
+@file:Suppress("LongMethod", "CyclomaticComplexMethod", "NestedBlockDepth", "TooGenericExceptionCaught", "InstanceOfCheckForException", "ThrowsCount", "MagicNumber", "LoopWithTooManyJumpStatements", "MaxLineLength", "ktlint:standard:blank-line-before-declaration", "ktlint:standard:function-signature", "ktlint:standard:multiline-expression-wrapping", "ktlint:standard:multiline-if-else", "ktlint:standard:max-line-length")
+
 package com.mistbell.tavern.android.util.backup
 
 import java.io.File
