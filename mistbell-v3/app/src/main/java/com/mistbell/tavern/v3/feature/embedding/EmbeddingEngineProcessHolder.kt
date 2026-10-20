@@ -71,7 +71,7 @@ object EmbeddingEngineProcessHolder : ComponentCallbacks2 {
             }
             if (!retained) {
                 runCatching { engine.close() }
-                throw IllegalStateException("Embedding engine was released during initialization; retry after memory pressure.")
+                error("Embedding engine was released during initialization; retry after memory pressure.")
             }
             return engine
         } finally {
