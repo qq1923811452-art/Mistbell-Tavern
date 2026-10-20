@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - codex/mistbell-development-3.0
+      - codex/v3-session-import-export-rebased
     paths:
       - "mistbell-v3/**"
       - "gradle/**"
