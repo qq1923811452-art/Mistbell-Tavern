@@ -151,6 +151,50 @@ class VectorSnapshotCodecTest {
     }
 
     @Test
+    fun acceptsMinimumLengthIdInLegacyV1SnapshotAtPayloadBudgetBoundary() {
+        val payloadBuffer = java.io.ByteArrayOutputStream()
+        java.io.DataOutputStream(payloadBuffer).use { out ->
+            out.writeInt(0x4D425633)
+            out.writeInt(1)
+            out.writeUTF("m")
+            out.writeInt(1)
+            out.writeInt(1)
+            out.writeUTF("x")
+            out.writeUTF(HASH)
+            out.writeLong(1L)
+            out.writeFloat(0.5f)
+        }
+        val payload = payloadBuffer.toByteArray()
+        val checksum = java.security.MessageDigest.getInstance("SHA-256").digest(payload)
+        val envelope = java.io.ByteArrayOutputStream()
+        java.io.DataOutputStream(envelope).use { out ->
+            out.writeInt(payload.size)
+            out.write(payload)
+            out.write(checksum)
+        }
+
+        val decoded = VectorSnapshotCodec.decode(envelope.toByteArray())
+
+        assertEquals("x", decoded.records.single().id)
+        assertEquals(listOf(0.5f), decoded.records.single().values)
+    }
+
+    @Test
+    fun quantizationScaleDoesNotUnderflowForSubnormalVectorValues() {
+        val snapshot = VectorSnapshot(
+            modelId = "model-subnormal",
+            dimensions = 1,
+            records = listOf(StoredVector("tiny", HASH, 1L, listOf(Float.MIN_VALUE))),
+        )
+
+        val encoded = VectorSnapshotCodec.encode(snapshot)
+        val decoded = VectorSnapshotCodec.decode(encoded)
+
+        assertEquals(1, decoded.records.single().values.size)
+        assertTrue(decoded.records.single().values.single().isFinite())
+    }
+
+    @Test
     fun decodesLegacyFloat32SnapshotAfterInt8FormatUpgrade() {
         val payloadBuffer = java.io.ByteArrayOutputStream()
         java.io.DataOutputStream(payloadBuffer).use { out ->
