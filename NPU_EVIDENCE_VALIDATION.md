@@ -33,6 +33,10 @@ Expected success log:
 embedding.npu.input_length_matrix.completed - cases=7; successes=7; failures=0; status=verified; evidence=npu-evidence-<timestamp>.json; apkSha256MatchesCurrent=true
 ```
 
+A `verified` status means the model/APK hash checks, seven input-length cases, 768-dimensional outputs, required runtime-library mappings, and evidence sidecar checks passed. It does **not** prove that inference executed on NPU hardware: `hardwareExecutionVerified` intentionally remains `false` until backend-specific execution evidence is available. `evidenceLevel="runtime_loaded"` means runtime-load evidence only.
+
+Each NPU matrix case records `payloadChars` (source text length) and `formattedChars` (the actual string passed to LiteRT-LM after prompt formatting). The legacy `inputChars` field continues to represent the seven payload lengths.
+
 The file can only be marked `verified` when the installed APK SHA-256 remains stable during the
 matrix, the model SHA-256 equals the pinned SM8650 model hash, the seven input lengths are exactly
 1/32/74/128/256/512/1024, every case succeeds with a 768-dimensional vector, all three required
