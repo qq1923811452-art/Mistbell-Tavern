@@ -13,10 +13,10 @@ data class ConversationContextWindow(
 )
 
 object ConversationContextWindowBuilder {
-    // Keep enough complete turns for long-form roleplay while remaining bounded.
+    // Character counts are not token counts; keep the default conservative for smaller contexts.
     const val DEFAULT_RECENT_TURNS = 40
     const val DEFAULT_SUMMARY_MAX_CHARS = 4_000
-    const val DEFAULT_MAX_HISTORY_CHARS = 70_000
+    const val DEFAULT_MAX_HISTORY_CHARS = 24_000
 
     fun build(
         history: List<PromptMessage>,
@@ -71,23 +71,65 @@ object ConversationContextWindowBuilder {
         return boundary
     }
 
+    /**
+     * Reserve about one third of the budget for the oldest messages (initial character/context
+     * facts) and the remaining two thirds for the most recent older messages. This is extractive,
+     * not semantic, but prevents the opening of a long roleplay from disappearing entirely.
+     */
     private fun buildExtractiveSummary(history: List<PromptMessage>, maxChars: Int): String {
         if (history.isEmpty() || maxChars == 0) return ""
+        val normalized = history.mapNotNull { message ->
+            val content = message.content.replace(Regex("\\s+"), " ").trim()
+            if (content.isEmpty()) null else message to content
+        }
+        if (normalized.isEmpty()) return ""
+
+        val oldestCount = (normalized.size + 1) / 2
+        val oldest = normalized.take(oldestCount)
+        val newest = normalized.drop(oldestCount)
+        val oldestBudget = maxChars / 3
+        val newestBudget = maxChars - oldestBudget
+        val oldestSnippets = collectSnippets(oldest, oldestBudget, newestFirst = false)
+        val newestSnippets = collectSnippets(newest, newestBudget, newestFirst = true)
+        val sections = buildList {
+            addAll(oldestSnippets)
+            addAll(newestSnippets)
+        }
+        return sections.joinToString("；").takeWithoutSplittingSurrogatePair(maxChars)
+    }
+
+    private fun collectSnippets(
+        messages: List<Pair<PromptMessage, String>>,
+        maxChars: Int,
+        newestFirst: Boolean,
+    ): List<String> {
+        if (messages.isEmpty() || maxChars <= 0) return emptyList()
         val snippets = mutableListOf<String>()
         var remaining = maxChars
-        for (message in history.asReversed()) {
+        val ordered = if (newestFirst) messages.asReversed() else messages
+        for ((message, normalized) in ordered) {
             if (remaining <= 0) break
-            val normalized = message.content.replace(Regex("\\s+"), " ").trim()
-            if (normalized.isEmpty()) continue
             val label = if (message.role == PromptRole.USER) "用户：" else "助手："
-            val separator = if (snippets.isEmpty()) "" else "；"
-            val available = remaining - separator.length - label.length
+            val separatorCost = if (snippets.isEmpty()) 0 else 1
+            val available = remaining - separatorCost - label.length
             if (available <= 0) break
-            val snippet = normalized.take(available)
+            val snippet = normalized.takeWithoutSplittingSurrogatePair(available)
+            if (snippet.isEmpty()) continue
             snippets += "$label$snippet"
-            remaining -= separator.length + label.length + snippet.length
+            remaining -= separatorCost + label.length + snippet.length
             if (snippet.length < normalized.length) break
         }
-        return snippets.asReversed().joinToString("；")
+        return if (newestFirst) snippets.asReversed() else snippets
+    }
+
+    private fun String.takeWithoutSplittingSurrogatePair(maxChars: Int): String {
+        val end = length.coerceAtMost(maxChars.coerceAtLeast(0)).let { limit ->
+            if (limit > 0 && limit < length && this[limit - 1].isHighSurrogate() && this[limit].isLowSurrogate()) {
+                limit - 1
+            } else {
+                limit
+            }
+        }
+        return take(end)
     }
 }
