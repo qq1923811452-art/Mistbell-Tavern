@@ -344,14 +344,26 @@ fun ChatScreen(onBack: () -> Unit) {
                 }
                 SessionArchiveCodec.importAnyDetailed(raw).let { result -> result.archive ?: error(result.error ?: "会话文件无效。") }
             }.onSuccess { archive ->
-                history.clear()
-                history.addAll(archive.messages.map { message ->
+                val importedLines = archive.messages.map { message ->
                     ChatLine(message.id, message.role, message.content, message.createdAtEpochMillis, message.deliveryState)
-                })
-                persistHistory()
-                status = "已导入会话「${archive.title}」：${archive.messages.size} 条消息（写入当前会话；原文件不会修改）。"
+                }
+                try {
+                    historySaveMutex.withLock {
+                        // Invalidate queued snapshots before waiting for the writer lock. The
+                        // existing UI history remains untouched until SQLite replacement commits.
+                        historySaveRevision.incrementAndGet()
+                        withContext(Dispatchers.IO) {
+                            historyStore.replaceAll(archive.messages)
+                        }
+                        history.clear()
+                        history.addAll(importedLines)
+                    }
+                    status = "已导入会话「${archive.title}」：${archive.messages.size} 条消息（已保存到本地数据库；原文件不会修改）。"
+                } catch (error: Exception) {
+                    status = "会话导入失败，原聊天记录已保留：${error.message ?: error::class.java.simpleName}"
+                }
             }.onFailure { error ->
-                status = "会话导入失败：${error.message ?: error::class.java.simpleName}"
+                status = "会话导入失败，原聊天记录已保留：${error.message ?: error::class.java.simpleName}"
             }
         }
     }
