@@ -27,20 +27,15 @@ class WorldBookPlacementTest {
         assertTrue(plan.beforePrompt.isEmpty())
     }
 
-    @Test fun capsAllDepthsAboveTenAtTen() {
+    @Test fun depthsAboveTenRemainDistinctGroups() {
         val plan = WorldBookPlacement.plan(listOf(
-            entry("depth-ten", position = WorldBookPlacement.POSITION_DEPTH, depth = 10),
-            entry("depth-eleven", position = WorldBookPlacement.POSITION_DEPTH, depth = 11),
-            entry("depth-twenty", position = WorldBookPlacement.POSITION_DEPTH, depth = 20),
-            entry("too-deep", position = WorldBookPlacement.POSITION_DEPTH, depth = 1_000),
+            entry("depth-ten", depth = 10),
+            entry("depth-eleven", depth = 11),
+            entry("depth-twenty", depth = 20),
         ))
-        assertEquals(
-            listOf("depth-ten", "depth-eleven", "depth-twenty", "too-deep"),
-            plan.byDepth[10 to "system"]?.map { it.id },
-        )
-        assertTrue(plan.byDepth[11 to "system"].isNullOrEmpty())
-        assertTrue(plan.byDepth[20 to "system"].isNullOrEmpty())
-        assertTrue(plan.byDepth[1_000 to "system"].isNullOrEmpty())
+        assertEquals(listOf("depth-ten"), plan.byDepth[10 to "system"]?.map { it.id })
+        assertEquals(listOf("depth-eleven"), plan.byDepth[11 to "system"]?.map { it.id })
+        assertEquals(listOf("depth-twenty"), plan.byDepth[20 to "system"]?.map { it.id })
     }
 
     @Test fun depthEntriesAreGroupedByDepthAndRole() {
