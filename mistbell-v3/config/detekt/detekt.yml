@@ -1,0 +1,6 @@
+# Mistbell Tavern 3.0 Detekt configuration.
+# Keep upstream defaults and fail on any issue not covered by the committed baseline.
+build:
+  maxIssues: 0
+  excludeCorrectable: false
+  weights: {}
