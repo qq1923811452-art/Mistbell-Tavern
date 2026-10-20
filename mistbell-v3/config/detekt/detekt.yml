@@ -1,0 +1,16 @@
+build:
+  maxIssues: 0
+  excludeCorrectable: false
+
+config:
+  validation: true
+  warningsAsErrors: false
+
+style:
+  WildcardImport:
+    active: false
+  FunctionNaming:
+    active: false
+  MaxLineLength:
+    active: true
+    maxLineLength: 140
