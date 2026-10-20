@@ -14,7 +14,7 @@ import kotlin.io.path.createTempDirectory
 class StreamingBackupArchiveTest {
     @Test
     fun streamsFilesAndRestoresVerifiedPayloads() {
-        val root = createTempDirectory(prefix = "mistbell-stream-src")
+        val root = createTempDirectory(prefix = "mistbell-stream-src").toFile()
         val stage = File(root, "stage")
         try {
             val database = File(root, "database.db").apply { writeBytes(ByteArray(256 * 1024) { (it % 251).toByte() }) }
@@ -35,7 +35,7 @@ class StreamingBackupArchiveTest {
 
     @Test
     fun failedValidationDeletesStagingTree() {
-        val root = createTempDirectory(prefix = "mistbell-stream-fail")
+        val root = createTempDirectory(prefix = "mistbell-stream-fail").toFile()
         val source = File(root, "source.bin").apply { writeBytes(byteArrayOf(1, 2, 3)) }
         val archive = ByteArrayOutputStream()
         StreamingBackupArchive.write(archive, mapOf("data.bin" to source), 1L)
@@ -55,7 +55,7 @@ class StreamingBackupArchiveTest {
 
     @Test
     fun rejectsTraversalPathsWhenWriting() {
-        val root = createTempDirectory(prefix = "mistbell-stream-path")
+        val root = createTempDirectory(prefix = "mistbell-stream-path").toFile()
         val source = File(root, "source.bin").apply { writeBytes(byteArrayOf(1)) }
         try {
             try {
