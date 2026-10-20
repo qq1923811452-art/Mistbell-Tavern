@@ -17,17 +17,30 @@ class StreamingBackupArchiveTest {
         val root = createTempDirectory(prefix = "mistbell-stream-src").toFile()
         val stage = File(root, "stage")
         try {
-            val database = File(root, "database.db").apply { writeBytes(ByteArray(256 * 1024) { (it % 251).toByte() }) }
+            val database =
+                File(root, "database.db").apply {
+                    writeBytes(ByteArray(256 * 1024) { (it % 251).toByte() })
+                }
             val card = File(root, "card.json").apply { writeText("""{"name":"Ariya"}""", StandardCharsets.UTF_8) }
             val archive = ByteArrayOutputStream()
-            StreamingBackupArchive.write(archive, mapOf("db/database.db" to database, "cards/card.json" to card), 1234L)
+            StreamingBackupArchive.write(
+                archive,
+                mapOf("db/database.db" to database, "cards/card.json" to card),
+                1234L,
+            )
 
             val restored = StreamingBackupArchive.restore(ByteArrayInputStream(archive.toByteArray()), stage)
 
             assertEquals(1234L, restored.createdAtEpochMs)
             assertEquals(setOf("db/database.db", "cards/card.json"), restored.stagedFiles.keys)
-            assertTrue(restored.stagedFiles.getValue("db/database.db").readBytes().contentEquals(database.readBytes()))
-            assertEquals(card.readText(StandardCharsets.UTF_8), restored.stagedFiles.getValue("cards/card.json").readText(StandardCharsets.UTF_8))
+            assertTrue(
+                restored.stagedFiles.getValue("db/database.db").readBytes()
+                    .contentEquals(database.readBytes()),
+            )
+            assertEquals(
+                card.readText(StandardCharsets.UTF_8),
+                restored.stagedFiles.getValue("cards/card.json").readText(StandardCharsets.UTF_8),
+            )
         } finally {
             root.deleteRecursively()
         }
@@ -41,7 +54,10 @@ class StreamingBackupArchiveTest {
         StreamingBackupArchive.write(archive, mapOf("data.bin" to source), 1L)
         val stage = File(root, "stage")
         try {
-            val damaged = archive.toByteArray().also { it[it.lastIndex / 2] = (it[it.lastIndex / 2].toInt() xor 0x40).toByte() }
+            val damaged =
+                archive.toByteArray().also {
+                    it[it.lastIndex / 2] = (it[it.lastIndex / 2].toInt() xor 0x40).toByte()
+                }
             try {
                 StreamingBackupArchive.restore(ByteArrayInputStream(damaged), stage)
             } catch (_: IOException) {
