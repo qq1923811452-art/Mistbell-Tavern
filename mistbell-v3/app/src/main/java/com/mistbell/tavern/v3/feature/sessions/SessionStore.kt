@@ -17,6 +17,15 @@ class SessionStore(
     databaseName: String = DEFAULT_DATABASE_NAME,
 ) : SQLiteOpenHelper(context.applicationContext, databaseName, null, DATABASE_VERSION) {
 
+    init {
+        openStores.add(this)
+    }
+
+    override fun close() {
+        openStores.remove(this)
+        super.close()
+    }
+
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL(CREATE_TABLE)
         db.execSQL(CREATE_ORDER_INDEX)
@@ -38,17 +47,6 @@ class SessionStore(
                 while (cursor.moveToNext()) add(cursor.toSession())
             }
         }
-
-    fun get(id: String): ChatSession? =
-        readableDatabase.query(
-            TABLE,
-            COLUMNS,
-            "$COLUMN_ID = ?",
-            arrayOf(id),
-            null,
-            null,
-            null,
-        ).use { cursor -> if (cursor.moveToFirst()) cursor.toSession() else null }
 
     fun create(
         roleId: String,
@@ -122,6 +120,16 @@ class SessionStore(
     )
 
     companion object {
+        private val openStores: MutableSet<SessionStore> =
+            java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap())
+
+        /** Closes every live handle so a restore can safely replace the database file. */
+        fun closeAllOpen(): Int {
+            val handles = openStores.toList()
+            handles.forEach { runCatching { it.close() } }
+            return handles.size
+        }
+
         const val DEFAULT_DATABASE_NAME = "mistbell-v3-sessions.db"
         const val DEFAULT_TITLE = "新对话"
         const val MAX_TITLE_CHARS = 120

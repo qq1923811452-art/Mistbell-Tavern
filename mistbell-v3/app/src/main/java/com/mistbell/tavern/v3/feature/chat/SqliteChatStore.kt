@@ -17,6 +17,7 @@ class SqliteChatStore(
     ChatStore {
 
     init {
+        openStores.add(this)
         setWriteAheadLoggingEnabled(true)
     }
 
@@ -216,7 +217,22 @@ class SqliteChatStore(
         }
     }
 
+    override fun close() {
+        openStores.remove(this)
+        super.close()
+    }
+
     companion object {
+        private val openStores: MutableSet<SqliteChatStore> =
+            java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap())
+
+        /** Closes every live handle so a restore can safely replace the database file. */
+        fun closeAllOpen(): Int {
+            val handles = openStores.toList()
+            handles.forEach { runCatching { it.close() } }
+            return handles.size
+        }
+
         const val DEFAULT_DATABASE_NAME = "mistbell-v3-chat.db"
         const val DATABASE_VERSION = 1
         const val MAX_PAGE_SIZE = 500
