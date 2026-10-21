@@ -476,19 +476,16 @@ fun ChatScreen(onBack: () -> Unit) {
                             characterMenuExpanded = false
                         },
                     )
-                    OutlinedTextField(
+                    ChatGenerationLimitCard(
                         value = maxTokensText,
+                        usageSummary = usageSummary,
                         onValueChange = { value ->
                             maxTokensText = value.filter(Char::isDigit).take(6)
                             maxTokensText.toIntOrNull()?.takeIf { it in 1..200_000 }?.let { limit ->
                                 settings.edit().putInt("chat_max_tokens", limit).apply()
                             }
                         },
-                        label = { Text("最大生成 Token（max_tokens，1–200000）") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
                     )
-                    Text(usageSummary, style = MaterialTheme.typography.bodySmall)
                     ChatSessionTransferActions(
                         enabled = historyReady && !busy,
                         onImport = { showImportWarning = true },
