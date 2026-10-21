@@ -36,8 +36,12 @@ object BackupValidator {
                 val name = relative.removePrefix("memory/")
                 '/' !in name && BackupSource.isMemoryFileName(name)
             }
-            relative.startsWith("worldbooks/") -> relative.removePrefix("worldbooks/").endsWith(".json", ignoreCase = true)
-            relative.startsWith("characters/") -> relative.removePrefix("characters/").endsWith(".json", ignoreCase = true)
+            relative.startsWith("worldbooks/") -> relative
+                .removePrefix("worldbooks/")
+                .endsWith(".json", ignoreCase = true)
+            relative.startsWith("characters/") -> relative
+                .removePrefix("characters/")
+                .endsWith(".json", ignoreCase = true)
             relative.startsWith("generated-images/") -> relative.removePrefix("generated-images/").isNotEmpty()
             else -> false
         }
