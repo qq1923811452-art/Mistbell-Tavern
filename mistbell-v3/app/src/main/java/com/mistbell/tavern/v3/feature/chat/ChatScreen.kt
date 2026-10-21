@@ -442,12 +442,7 @@ fun ChatScreen(onBack: () -> Unit) {
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Mistbell Tavern · 聊天测试") },
-                navigationIcon = {
-                    Button(onClick = onBack) { Text("返回首页") }
-                },
-            )
+            ChatScreenTopBar(onBack = onBack)
         },
     ) { padding ->
         Column(
@@ -771,12 +766,10 @@ fun ChatScreen(onBack: () -> Unit) {
                     enabled = !busy && historyReady && (history.isNotEmpty() || historyLoadFailed),
                     label = if (historyLoadFailed) "放弃旧记录并新建会话" else "清空会话",
                 )
-                Button(
-                    onClick = {
-                        exportLogLauncher.launch("mistbell-diagnostics.txt")
-                    },
+                ChatDiagnosticExportButton(
                     enabled = !busy && historyReady,
-                ) { Text("导出诊断日志") }
+                    onClick = { exportLogLauncher.launch("mistbell-diagnostics.txt") },
+                )
             }
         }
     }
