@@ -4,7 +4,6 @@ import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import org.json.JSONObject
 import java.io.File
-import java.io.IOException
 
 /** Resolves the explicitly supported Mistbell 3.0 data sources without including model assets. */
 class BackupSource(private val context: Context) {
@@ -81,6 +80,9 @@ class BackupSource(private val context: Context) {
     }
 
     companion object {
+        fun isMemoryFileName(name: String): Boolean =
+            name in MEMORY_FILE_NAMES || MEMORY_FILE_PATTERNS.any { it.matches(name) }
+
         const val CHAT_DATABASE_NAME = "mistbell-v3-chat.db"
         const val SETTINGS_PREFERENCES = "mistbell-v3-settings"
         const val SETTINGS_BACKUP_FILE = "settings.json"
