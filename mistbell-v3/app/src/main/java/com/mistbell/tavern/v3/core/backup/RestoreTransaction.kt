@@ -59,7 +59,7 @@ class RestoreTransaction(
             beforeCommit()
         } catch (failure: Throwable) {
             runCatching(beforeRollback).onFailure(failure::addSuppressed)
-            installed.asReversed().forEach { destination ->
+            (installed + removeDestinations).distinctBy { it.canonicalPath }.asReversed().forEach { destination ->
                 if (destination.exists() && !destination.deleteRecursively()) {
                     failure.addSuppressed(IOException("Failed to remove partially restored data."))
                 }
