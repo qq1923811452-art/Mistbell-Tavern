@@ -683,12 +683,10 @@ fun ChatScreen(onBack: () -> Unit) {
                     },
                     enabled = !busy && historyReady && (history.isNotEmpty() || historyLoadFailed),
                 ) { Text(if (historyLoadFailed) "放弃旧记录并新建会话" else "清空会话") }
-                Button(
-                    onClick = {
-                        exportLogLauncher.launch("mistbell-diagnostics.txt")
-                    },
+                ChatDiagnosticExportAction(
                     enabled = !busy && historyReady,
-                ) { Text("导出诊断日志") }
+                    onClick = { exportLogLauncher.launch("mistbell-diagnostics.txt") },
+                )
             }
         }
     }
