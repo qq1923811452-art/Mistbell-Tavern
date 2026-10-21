@@ -16,8 +16,11 @@ class RestoreTransaction(
         stagedToDestination: Map<File, File>,
         beforeCommit: () -> Unit = {},
     ) {
-        require(stagedToDestination.isNotEmpty()) { "No files were selected for restore." }
         val pairs = stagedToDestination.entries.toList()
+        if (pairs.isEmpty()) {
+            beforeCommit()
+            return
+        }
         require(pairs.map { it.value.canonicalPath }.distinct().size == pairs.size) {
             "Restore contains duplicate destination files."
         }
