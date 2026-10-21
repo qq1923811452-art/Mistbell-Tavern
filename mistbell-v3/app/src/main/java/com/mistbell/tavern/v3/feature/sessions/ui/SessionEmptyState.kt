@@ -12,6 +12,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
+@Suppress("FunctionNaming")
 @Composable
 fun SessionEmptyState(
     onCreateSession: () -> Unit,
@@ -22,7 +23,11 @@ fun SessionEmptyState(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Text("☰", style = MaterialTheme.typography.displaySmall, color = MaterialTheme.colorScheme.primary)
+        Text(
+            "☰",
+            style = MaterialTheme.typography.displaySmall,
+            color = MaterialTheme.colorScheme.primary,
+        )
         Text(
             text = "还没有对话",
             modifier = Modifier.padding(top = 12.dp, bottom = 16.dp),
