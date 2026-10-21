@@ -23,6 +23,7 @@ class ChatBackupCoordinator(
     private val mainHandler = Handler(Looper.getMainLooper())
     private val service by lazy { BackupService(context, databaseLifecycle = AppBackupDatabaseLifecycle()) }
 
+    @Suppress("TooGenericExceptionCaught")
     fun export(target: Uri) {
         scope.launch(Dispatchers.IO) {
             val temporary = File(context.cacheDir, "mistbell-backup-${System.currentTimeMillis()}.zip")
@@ -33,7 +34,7 @@ class ChatBackupCoordinator(
                 output.use { sink ->
                     temporary.inputStream().use { source -> source.copyTo(sink) }
                 }
-                publish("已导出 ${result.manifest.entryCount} 项，${result.manifest.totalBytes / 1024} KB")
+                publish("已导出 ${result.manifest.entryCount} 项，${result.manifest.totalBytes / BYTES_PER_KILOBYTE} KB")
             } catch (error: Exception) {
                 publish("导出失败：${error.message ?: error.javaClass.simpleName}")
             } finally {
@@ -42,6 +43,7 @@ class ChatBackupCoordinator(
         }
     }
 
+    @Suppress("TooGenericExceptionCaught")
     fun restore(source: Uri) {
         scope.launch(Dispatchers.IO) {
             val temporary = File(context.cacheDir, "mistbell-restore-${System.currentTimeMillis()}.zip")
@@ -61,5 +63,9 @@ class ChatBackupCoordinator(
 
     private fun publish(message: String) {
         mainHandler.post { onStatus(message) }
+    }
+
+    companion object {
+        private const val BYTES_PER_KILOBYTE = 1024L
     }
 }
