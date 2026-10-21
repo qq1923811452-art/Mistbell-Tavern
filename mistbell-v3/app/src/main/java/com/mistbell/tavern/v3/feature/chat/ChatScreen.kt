@@ -1101,46 +1101,23 @@ fun ChatScreen(onBack: () -> Unit) {
                         // the current turn plus a bounded tail of recent conversation.
                         val selectedCard = characterCards.firstOrNull { it.id == selectedCharacterId }?.card
                         val characterDefinition = selectedCard?.let(::formatCharacterCardForPrompt)
-                        val embeddedBookEntries = selectedCard?.characterBookJson?.let { raw ->
-                            runCatching {
-                                WorldBookParser.parse(raw, "角色卡：${selectedCard.name}")?.entries.orEmpty().map { entry ->
-                                    entry.copy(
-                                        id = "character-book:${selectedCard.name}:${entry.id}",
-                                        bookId = "character-book:${selectedCard.name}:${entry.bookId}",
-                                    )
-                                }
-                            }.getOrDefault(emptyList())
-                        }.orEmpty()
-                        val activationReport = LocalWorldBookService().activateEntriesWithReport(
-                            entries = localWorldbookEntries + embeddedBookEntries,
+                        val activationReport = ChatWorldBookActivationCoordinator(
+                            settings = settings,
+                            diagnosticStore = diagnosticStore,
+                        ).activate(
+                            localEntries = localWorldbookEntries,
+                            selectedCard = selectedCard,
                             scanText = userText,
                             recentTexts = completeHistory.takeLast(6).map { it.content },
-                            maxBudget = LocalWorldBookService.DEFAULT_MAX_BUDGET,
                             state = worldbookActivationState,
+                            stateKey = worldbookStateKey,
+                            onBudgetExceeded = { droppedCount ->
+                                mainHandler.post {
+                                    status = "世界书预算超限：本轮有 ${droppedCount} 个条目未注入"
+                                }
+                            },
                         )
                         val activatedWorldbook = activationReport.activatedEntries
-                        if (activationReport.droppedByBudget > 0) {
-                            diagnosticStore.warn(
-                                "worldbook.budget_dropped",
-                                "count=${activationReport.droppedByBudget}; budget=${LocalWorldBookService.DEFAULT_MAX_BUDGET}",
-                            )
-                            mainHandler.post {
-                                status = "世界书预算超限：本轮有 ${activationReport.droppedByBudget} 个条目未注入"
-                            }
-                        }
-                        runCatching {
-                            val stateJson = org.json.JSONObject()
-                                .put("turn", worldbookActivationState.turn)
-                                .put("lastActivatedTurn", org.json.JSONObject(worldbookActivationState.lastActivatedTurn.mapValues { it.value as Any }))
-                                .put("stickyUntilTurn", org.json.JSONObject(worldbookActivationState.stickyUntilTurn.mapValues { it.value as Any }))
-                                .put("delayedUntilTurn", org.json.JSONObject(worldbookActivationState.delayedUntilTurn.mapValues { it.value as Any }))
-                            settings.edit().putString(worldbookStateKey, stateJson.toString()).apply()
-                        }.onFailure { error ->
-                            diagnosticStore.warn(
-                                "worldbook.state_persist_failed",
-                                "reason=${error::class.java.simpleName}",
-                            )
-                        }
                         val messages = PromptAssembler.assemble(
                             PromptAssemblyInput(
                                 stableSystemPrefix = "你是 Mistbell Tavern 的聊天助手。请直接、清晰地回答用户。",
