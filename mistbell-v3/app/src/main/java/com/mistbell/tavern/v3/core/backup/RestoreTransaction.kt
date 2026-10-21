@@ -42,6 +42,7 @@ class RestoreTransaction(
             return
         }
 
+        val originallyExisted = destinations.filter { it.exists() }.toSet()
         val backups = linkedMapOf<File, File>()
         val installed = mutableListOf<File>()
         try {
@@ -59,7 +60,10 @@ class RestoreTransaction(
             beforeCommit()
         } catch (failure: Throwable) {
             runCatching(beforeRollback).onFailure(failure::addSuppressed)
-            (installed + removeDestinations).distinctBy { it.canonicalPath }.asReversed().forEach { destination ->
+            val callbackCreatedRemovals = removeDestinations.filter { destination ->
+                destination !in originallyExisted || destination in backups
+            }
+            (installed + callbackCreatedRemovals).distinctBy { it.canonicalPath }.asReversed().forEach { destination ->
                 if (destination.exists() && !destination.deleteRecursively()) {
                     failure.addSuppressed(IOException("Failed to remove partially restored data."))
                 }
