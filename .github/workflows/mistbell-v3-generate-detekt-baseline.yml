@@ -44,6 +44,9 @@ jobs:
       - name: Generate independent 3.0 Detekt baseline
         run: ./gradlew -p mistbell-v3 :app:detektBaseline --no-daemon --no-parallel
 
+      - name: Verify checked-in baseline matches generated baseline
+        run: git diff --exit-code -- mistbell-v3/config/detekt/baseline.xml
+
       - name: Verify Detekt against generated 3.0 baseline
         run: ./gradlew -p mistbell-v3 :app:detekt --no-daemon --no-parallel
 
