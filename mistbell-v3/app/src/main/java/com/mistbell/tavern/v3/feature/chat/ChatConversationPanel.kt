@@ -1,10 +1,11 @@
 package com.mistbell.tavern.v3.feature.chat
 
-import androidx.compose.runtime.Composable
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.runtime.Composable
 
 @Composable
-internal fun ChatConversationPanel(
+internal fun ColumnScope.ChatConversationPanel(
     status: String,
     messages: List<ChatLine>,
     generating: Boolean,
