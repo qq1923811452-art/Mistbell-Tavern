@@ -230,9 +230,7 @@ fun ChatScreen(onBack: () -> Unit) {
 
     LaunchedEffect(context) {
         characterCards = withContext(Dispatchers.IO) {
-            runCatching {
-                CharacterCardLibraryStore(File(context.filesDir, "characters")).list()
-            }.getOrDefault(emptyList())
+            ChatCharacterCardLibraryLoader(context.applicationContext).load()
         }
         if (selectedCharacterId.isNotBlank() && characterCards.none { it.id == selectedCharacterId }) {
             selectedCharacterId = ""
