@@ -155,6 +155,11 @@ class BackupService(
         val preferences = appContext.getSharedPreferences(BackupSource.SETTINGS_PREFERENCES, Context.MODE_PRIVATE)
         val previous = preferences.all
         val editor = preferences.edit().clear()
+        // Credentials are deliberately absent from the archive; preserve the device's current
+        // credentials instead of clearing them as a side effect of restoring ordinary settings.
+        previous.filterKeys(::isCredentialKey).forEach { (key, value) ->
+            putPreferenceValue(editor, key, value)
+        }
         val iterator = json.keys()
         while (iterator.hasNext()) {
             val key = iterator.next()
@@ -178,6 +183,21 @@ class BackupService(
             throw commitFailure
         }
         return { restorePreferences(preferences, previous) }
+    }
+
+    private fun putPreferenceValue(
+        editor: android.content.SharedPreferences.Editor,
+        key: String,
+        value: Any?,
+    ) {
+        when (value) {
+            is String -> editor.putString(key, value)
+            is Boolean -> editor.putBoolean(key, value)
+            is Int -> editor.putInt(key, value)
+            is Long -> editor.putLong(key, value)
+            is Float -> editor.putFloat(key, value)
+            is Set<*> -> editor.putStringSet(key, value.filterIsInstance<String>().toSet())
+        }
     }
 
     private fun isCredentialKey(key: String): Boolean {
