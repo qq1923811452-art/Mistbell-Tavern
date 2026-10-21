@@ -1,21 +1,32 @@
 package com.mistbell.tavern.v3.feature.worldbook
 
-/** Pure domain models; deliberately independent from Room and the legacy app package. */
+/**
+ * Worldbook document as stored by Mistbell 3.0.
+ *
+ * The type is persistence-neutral: the JSON codec, the ST importer and the activation planner
+ * all use it directly, so no mapping layer is required between them.
+ */
 data class WorldBook(
     val id: String,
     val name: String,
     val entries: List<WorldBookEntry>,
 )
 
+/**
+ * A single lore entry.
+ *
+ * [keys] and [secondaryKeys] are matched case-insensitively; [requireSecondaryMatch] turns the
+ * secondary list into a gate. [recursive] allows the entry to feed later matching passes, and
+ * [insertPosition]/[depth]/[depthRole] decide where the content lands in the prompt.
+ * [sticky], [cooldown] and [delay] schedule reactivation across turns.
+ */
 data class WorldBookEntry(
     val id: String,
     val bookId: String,
     val comment: String = "",
     val keys: List<String> = emptyList(),
     val secondaryKeys: List<String> = emptyList(),
-    /** Require at least one secondary keyword when primary keys match (SillyTavern selective). */
     val requireSecondaryMatch: Boolean = false,
-    /** Allow this entry's content to participate in bounded recursive activation. */
     val recursive: Boolean = false,
     val content: String = "",
     val constant: Boolean = false,
@@ -31,6 +42,7 @@ data class WorldBookEntry(
     val groupName: String = "",
 )
 
+/** An activated entry together with the keyword hits that selected it. */
 data class ActivatedWorldBookEntry(
     val entry: WorldBookEntry,
     val matchedKeys: List<String>,
