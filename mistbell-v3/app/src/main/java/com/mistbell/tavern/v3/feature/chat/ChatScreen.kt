@@ -452,7 +452,6 @@ fun ChatScreen(onBack: () -> Unit) {
                         selectedCharacterName = selectedCharacter?.card?.name,
                         hasSelectedCharacter = selectedCharacter != null,
                         characterCards = characterCards,
-                        selectedCharacterId = selectedCharacterId,
                         menuExpanded = characterMenuExpanded,
                         onMenuExpandedChange = { characterMenuExpanded = it },
                         onCharacterSelected = { characterId ->
