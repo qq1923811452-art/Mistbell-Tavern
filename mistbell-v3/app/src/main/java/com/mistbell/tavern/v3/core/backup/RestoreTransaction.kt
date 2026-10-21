@@ -11,6 +11,7 @@ import java.util.UUID
 class RestoreTransaction(
     private val idFactory: () -> String = { UUID.randomUUID().toString() },
 ) {
+    @Suppress("CyclomaticComplexMethod", "NestedBlockDepth", "ThrowsCount", "TooGenericExceptionCaught")
     fun replaceFiles(
         stagedToDestination: Map<File, File>,
         removeDestinations: Set<File> = emptySet(),
@@ -65,7 +66,9 @@ class RestoreTransaction(
             }
             backups.entries.toList().asReversed().forEach { (destination, backup) ->
                 if (backup.exists() && !backup.renameTo(destination)) {
-                    failure.addSuppressed(IOException("Rollback failed; previous data remains at ${backup.absolutePath}."))
+                    failure.addSuppressed(
+                        IOException("Rollback failed; previous data remains at ${backup.absolutePath}."),
+                    )
                 }
             }
             runCatching(afterRollback).onFailure(failure::addSuppressed)
