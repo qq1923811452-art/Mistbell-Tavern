@@ -57,6 +57,8 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -111,6 +113,16 @@ fun ChatScreen(onBack: () -> Unit) {
     val chatGenerationPreferences = remember(context) {
         ChatGenerationPreferences(context.getSharedPreferences("mistbell-v3-settings", Context.MODE_PRIVATE))
     }
+    var backupStatus by remember { mutableStateOf("") }
+    val backupCoordinator = remember(context, coroutineScope) {
+        ChatBackupCoordinator(context, coroutineScope) { backupStatus = it }
+    }
+    val exportBackupLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/zip"),
+    ) { uri -> if (uri != null) backupCoordinator.export(uri) }
+    val restoreBackupLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri -> if (uri != null) backupCoordinator.restore(uri) }
     var memoryBaseUrl by remember(settings) {
         mutableStateOf(settings.getString("memory_api_base_url", "https://api.odys.work/v1") ?: "https://api.odys.work/v1")
     }
@@ -364,6 +376,12 @@ fun ChatScreen(onBack: () -> Unit) {
                     onSummaryCharsTextChange = { summaryCharsText = it },
                     onHistoryCharsTextChange = { historyCharsText = it },
                 ),
+            )
+
+            ChatBackupSettingsSection(
+                onExport = { exportBackupLauncher.launch("mistbell-backup.zip") },
+                onRestore = { restoreBackupLauncher.launch(arrayOf("application/zip", "application/octet-stream")) },
+                statusMessage = backupStatus,
             )
 
             ChatMemorySettingsPanel(
