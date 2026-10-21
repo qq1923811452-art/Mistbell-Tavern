@@ -228,9 +228,13 @@ fun ChatScreen(onBack: () -> Unit) {
     var characterMenuExpanded by remember { mutableStateOf(false) }
     val selectedCharacter = characterCards.firstOrNull { it.id == selectedCharacterId }
 
+    val libraryLoadingCoordinator = remember(context, diagnosticStore) {
+        ChatLibraryLoadingCoordinator(context.applicationContext, diagnosticStore)
+    }
+
     LaunchedEffect(context) {
         characterCards = withContext(Dispatchers.IO) {
-            ChatCharacterCardLibraryLoader(context.applicationContext).load()
+            libraryLoadingCoordinator.loadCharacterCards()
         }
         if (selectedCharacterId.isNotBlank() && characterCards.none { it.id == selectedCharacterId }) {
             selectedCharacterId = ""
@@ -239,15 +243,8 @@ fun ChatScreen(onBack: () -> Unit) {
 
     LaunchedEffect(context, activeWorldbookId) {
         worldbooksReady = false
-        val loadedWorldbookEntries = withContext(Dispatchers.IO) {
-            ChatWorldBookLibraryLoader(context.applicationContext, diagnosticStore).load(activeWorldbookId)
-        }
-        localWorldbookEntries = loadedWorldbookEntries.getOrElse { error ->
-            diagnosticStore.warn(
-                "worldbook.load_failed",
-                "book_id=$activeWorldbookId reason=${error::class.java.simpleName}",
-            )
-            emptyList()
+        localWorldbookEntries = withContext(Dispatchers.IO) {
+            libraryLoadingCoordinator.loadWorldbookEntries(activeWorldbookId)
         }
         worldbooksReady = true
     }
