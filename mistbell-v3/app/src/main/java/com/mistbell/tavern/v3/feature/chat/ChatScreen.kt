@@ -460,37 +460,22 @@ fun ChatScreen(onBack: () -> Unit) {
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Text("聊天 API 配置", style = MaterialTheme.typography.titleMedium)
-                    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("当前角色：${selectedCharacter?.card?.name ?: "默认助手"}", style = MaterialTheme.typography.bodyMedium)
-                            Text(
-                                if (selectedCharacter == null) "尚未绑定角色卡；本轮使用默认系统提示。" else "角色卡会注入描述、性格、场景、开场白、示例对话及系统指令。",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        Button(onClick = { characterMenuExpanded = true }) { Text("选择角色") }
-                        DropdownMenu(expanded = characterMenuExpanded, onDismissRequest = { characterMenuExpanded = false }) {
-                            DropdownMenuItem(
-                                text = { Text("默认助手") },
-                                onClick = {
-                                    selectedCharacterId = ""
-                                    settings.edit().remove("active_character_id").apply()
-                                    characterMenuExpanded = false
-                                },
-                            )
-                            characterCards.forEach { stored ->
-                                DropdownMenuItem(
-                                    text = { Text(stored.card.name) },
-                                    onClick = {
-                                        selectedCharacterId = stored.id
-                                        settings.edit().putString("active_character_id", stored.id).apply()
-                                        characterMenuExpanded = false
-                                    },
-                                )
-                            }
-                        }
-                    }
+                    ChatCharacterSelector(
+                        selectedCharacterName = selectedCharacter?.card?.name,
+                        characterOptions = characterCards.map { stored -> stored.id to stored.card.name },
+                        menuExpanded = characterMenuExpanded,
+                        onMenuExpandedChange = { characterMenuExpanded = it },
+                        onSelectDefault = {
+                            selectedCharacterId = ""
+                            settings.edit().remove("active_character_id").apply()
+                            characterMenuExpanded = false
+                        },
+                        onSelectCharacter = { id ->
+                            selectedCharacterId = id
+                            settings.edit().putString("active_character_id", id).apply()
+                            characterMenuExpanded = false
+                        },
+                    )
                     OutlinedTextField(
                         value = maxTokensText,
                         onValueChange = { value ->
