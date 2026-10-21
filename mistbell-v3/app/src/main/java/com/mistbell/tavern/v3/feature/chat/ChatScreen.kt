@@ -586,7 +586,7 @@ fun ChatScreen(onBack: () -> Unit) {
                 onInputTextChange = chatViewModel::updateDraft,
                 inputEnabled = !busy && !historyLoadFailed,
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            ChatMessageActionsRow {
                 ChatMessageSendButton(
                     onClick = {
                         val userText = chatViewModel.uiState.value.draft.trim()
