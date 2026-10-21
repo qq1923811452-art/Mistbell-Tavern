@@ -299,55 +299,16 @@ fun ChatScreen(onBack: () -> Unit) {
         ChatHistoryLoadCoordinator(historyStore, diagnosticStore)
     }
 
-    LaunchedEffect(historyStore) {
-        // A role or conversation change must never leave the previous scope's messages on screen.
-        historyReady = false
-        historyLoadFailed = false
-        history.clear()
-        when (
-            historyLoadCoordinator.load(
-                onLoaded = { messages, recoveredInterruptedReply ->
-                    history.clear()
-                    history.addAll(ChatHistorySnapshotFactory.restore(messages))
-                    if (recoveredInterruptedReply) {
-                        status = "已恢复聊天记录；上次未完成的回复已标记为失败，可继续发送新消息。"
-                    }
-                },
-                onRecoverySaveFailed = {
-                    status = "已恢复未完成回复，但恢复状态暂未保存；请导出诊断日志并稍后重试。"
-                },
-            )
-        ) {
-            ChatHistoryLoadResult.Missing -> Unit
-            is ChatHistoryLoadResult.Loaded -> Unit
-            ChatHistoryLoadResult.Corrupt -> {
-                historyLoadFailed = true
-                diagnosticStore.warn("chat.history.load_failed", "reason=corrupt_or_unsupported_format")
-                status = "聊天记录文件损坏或版本不兼容；为避免覆盖原文件，未自动清空记录。"
-            }
-            ChatHistoryLoadResult.Unavailable -> {
-                historyLoadFailed = true
-                diagnosticStore.warn("chat.history.load_failed", "reason=temporarily_unavailable")
-                status = "聊天记录暂时无法读取；原文件未修改，请稍后重试。"
-            }
-        }
-        historyReady = true
-        val pendingQueue = withContext(Dispatchers.IO) {
-            runCatching {
-                MemoryExtractionJobRepository(
-                    MemoryExtractionJobStore(context.applicationContext),
-                ).list().any { job ->
-                    job.state == MemoryExtractionJob.State.PENDING ||
-                        job.state == MemoryExtractionJob.State.RUNNING ||
-                        job.state == MemoryExtractionJob.State.RETRY_WAIT
-                }
-            }.getOrElse {
-                diagnosticStore.warn("memory.extraction.queue_load_failed", "reason=queue_unavailable")
-                false
-            }
-        }
-        if (pendingQueue) MemoryExtractionQueueWorker.enqueue(context.applicationContext)
-    }
+    ChatHistoryLoadLifecycle(
+        context = context,
+        historyStore = historyStore,
+        historyLoadCoordinator = historyLoadCoordinator,
+        diagnosticStore = diagnosticStore,
+        history = history,
+        setHistoryReady = { historyReady = it },
+        setHistoryLoadFailed = { historyLoadFailed = it },
+        setStatus = { status = it },
+    )
 
     val exportLogLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("text/plain"),
