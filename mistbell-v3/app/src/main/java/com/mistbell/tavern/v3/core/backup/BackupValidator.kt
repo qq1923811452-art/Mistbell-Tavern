@@ -32,7 +32,9 @@ object BackupValidator {
         }
         require(manifest.entryCount == manifest.entries.size) { "Backup manifest entry count does not match." }
         require(manifest.entryCount in 1..MAX_ENTRIES) { "Backup entry count exceeds the limit." }
-        require(manifest.totalBytes in 0..MAX_TOTAL_UNCOMPRESSED_BYTES) { "Backup uncompressed size exceeds the limit." }
+        require(manifest.totalBytes in 0..MAX_TOTAL_UNCOMPRESSED_BYTES) {
+            "Backup uncompressed size exceeds the limit."
+        }
         val paths = HashSet<String>()
         var sum = 0L
         manifest.entries.forEach { entry ->
