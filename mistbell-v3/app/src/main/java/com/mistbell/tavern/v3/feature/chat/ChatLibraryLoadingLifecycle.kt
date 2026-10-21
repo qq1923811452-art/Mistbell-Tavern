@@ -6,7 +6,6 @@ import androidx.compose.runtime.LaunchedEffect
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.mistbell.tavern.v3.feature.character.StoredCharacterCard
-import com.mistbell.tavern.v3.feature.worldbook.WorldBookEntry
 
 @Composable
 internal fun ChatLibraryLoadingLifecycle(
@@ -14,10 +13,7 @@ internal fun ChatLibraryLoadingLifecycle(
     coordinator: ChatLibraryLoadingCoordinator,
     selectedCharacterId: String,
     setSelectedCharacterId: (String) -> Unit,
-    activeWorldbookId: String,
     setCharacterCards: (List<StoredCharacterCard>) -> Unit,
-    setWorldbookEntries: (List<WorldBookEntry>) -> Unit,
-    setWorldbooksReady: (Boolean) -> Unit,
 ) {
     LaunchedEffect(context) {
         val cards = withContext(Dispatchers.IO) {
@@ -29,12 +25,4 @@ internal fun ChatLibraryLoadingLifecycle(
         }
     }
 
-    LaunchedEffect(context, activeWorldbookId) {
-        setWorldbooksReady(false)
-        val entries = withContext(Dispatchers.IO) {
-            coordinator.loadWorldbookEntries(activeWorldbookId)
-        }
-        setWorldbookEntries(entries)
-        setWorldbooksReady(true)
-    }
 }
