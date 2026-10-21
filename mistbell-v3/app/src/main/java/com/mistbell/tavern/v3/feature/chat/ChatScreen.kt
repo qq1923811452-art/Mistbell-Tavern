@@ -93,14 +93,6 @@ import com.mistbell.tavern.v3.feature.worldbook.WorldBookParser
 
 internal val CHAT_EMBEDDING_DIMENSION_OPTIONS = listOf(128, 256, 512, 768, 1024, 1536, 2048)
 
-internal data class ChatLine(
-    val id: String,
-    val role: String,
-    val content: String,
-    val createdAtEpochMillis: Long,
-    val deliveryState: PersistedChatMessage.DeliveryState,
-)
-
 /**
  * Minimal end-to-end chat screen for 3.0 development.
  * Provider settings and the API key remain in screen memory only; they are not persisted.
