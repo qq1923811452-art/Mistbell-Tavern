@@ -15,6 +15,7 @@ data class BackupArchiveResult(
 
 /** Streaming ZIP writer. Input files are hashed before writing so the manifest can be first. */
 class BackupArchiveWriter {
+    @Suppress("CyclomaticComplexMethod", "NestedBlockDepth", "ThrowsCount")
     fun write(
         destination: File,
         files: Map<String, File>,
@@ -43,7 +44,9 @@ class BackupArchiveWriter {
         )
         BackupValidator.validateManifest(manifest)
         destination.parentFile?.let { parent ->
-            if (!parent.isDirectory && !parent.mkdirs()) throw IOException("Backup destination directory could not be created.")
+            if (!parent.isDirectory && !parent.mkdirs()) {
+                throw IOException("Backup destination directory could not be created.")
+            }
         }
         val partial = File(destination.parentFile ?: File("."), destination.name + ".partial")
         try {
@@ -71,10 +74,12 @@ class BackupArchiveWriter {
                 }
             }
             require(partial.length() <= BackupValidator.MAX_ARCHIVE_BYTES) { "Backup archive exceeds 512 MiB." }
-            if (destination.exists() && !destination.delete()) throw IOException("Existing backup could not be replaced.")
+            if (destination.exists() && !destination.delete()) {
+                throw IOException("Existing backup could not be replaced.")
+            }
             if (!partial.renameTo(destination)) throw IOException("Backup archive could not be finalized.")
             return BackupArchiveResult(destination, manifest, BackupValidator.sha256(destination))
-        } catch (failure: Throwable) {
+        } catch (failure: Exception) {
             partial.delete()
             throw failure
         }
