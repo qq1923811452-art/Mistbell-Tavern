@@ -283,46 +283,16 @@ fun ChatScreen(onBack: () -> Unit) {
     }
 
     val importSessionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) coroutineScope.launch {
-            runCatching {
-                val raw = withContext(Dispatchers.IO) {
-                    context.contentResolver.openInputStream(uri)?.use { input ->
-                        val output = java.io.ByteArrayOutputStream()
-                        val buffer = ByteArray(8192)
-                        while (true) {
-                            val count = input.read(buffer)
-                            if (count < 0) break
-                            require(output.size() + count <= SessionArchiveCodec.MAX_IMPORT_BYTES) {
-                                "会话文件超过 32 MiB 导入上限。"
-                            }
-                            output.write(buffer, 0, count)
-                        }
-                        output.toByteArray().toString(Charsets.UTF_8)
-                    } ?: error("无法读取会话文件")
-                }
-                SessionArchiveCodec.importAnyDetailed(raw).let { result -> result.archive ?: error(result.error ?: "会话文件无效。") }
-            }.onSuccess { archive ->
-                val importedLines = archive.messages.map { message ->
-                    ChatLine(message.id, message.role, message.content, message.createdAtEpochMillis, message.deliveryState)
-                }
-                try {
-                    historySaveMutex.withLock {
-                        // Keep visible history and save revision unchanged until SQLite commits.
-                        withContext(Dispatchers.IO) {
-                            historyStore.replaceAll(archive.messages)
-                        }
-                        // Queued snapshots are stale only after the imported database snapshot is durable.
-                        historySaveRevision.incrementAndGet()
-                        history.clear()
-                        history.addAll(importedLines)
-                    }
-                    status = "已导入会话「${archive.title}」：${archive.messages.size} 条消息（已保存到本地数据库；原文件不会修改）。"
-                } catch (error: Exception) {
-                    status = "会话导入失败，原聊天记录已保留：${error.message ?: error::class.java.simpleName}"
-                }
-            }.onFailure { error ->
-                status = "会话导入失败，原聊天记录已保留：${error.message ?: error::class.java.simpleName}"
-            }
+        if (uri != null) {
+            ChatSessionImportCoordinator(
+                context = context,
+                coroutineScope = coroutineScope,
+                historyStore = historyStore,
+                historySaveMutex = historySaveMutex,
+                historySaveRevision = historySaveRevision,
+                history = history,
+                setStatus = { status = it },
+            ).import(uri)
         }
     }
     if (showImportWarning) {
