@@ -45,6 +45,32 @@ class RestoreTransactionTest {
     }
 
     @Test
+    fun rollsBackDatabaseSidecarCreatedDuringFailedReopen() {
+        val root = Files.createTempDirectory("restore-transaction-test").toFile()
+        try {
+            val database = File(root, "chat.db").apply { writeText("old-db") }
+            val stagedDatabase = File(root, "staged.db").apply { writeText("new-db") }
+            val wal = File(root, "chat.db-wal").apply { writeText("old-wal") }
+
+            assertThrows(IllegalStateException::class.java) {
+                RestoreTransaction().replaceFiles(
+                    stagedToDestination = mapOf(stagedDatabase to database),
+                    removeDestinations = setOf(wal),
+                    beforeCommit = {
+                        wal.writeText("new-wal")
+                        throw IllegalStateException("simulated reopen failure")
+                    },
+                )
+            }
+
+            assertEquals("old-db", database.readText())
+            assertEquals("old-wal", wal.readText())
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
     fun rejectsDuplicateDestinationsBeforeMutation() {
         val root = Files.createTempDirectory("restore-transaction-test").toFile()
         try {
