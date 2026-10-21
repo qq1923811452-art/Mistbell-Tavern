@@ -5,7 +5,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import com.mistbell.tavern.v3.core.diagnostics.DiagnosticLogStore
 import com.mistbell.tavern.v3.feature.character.StoredCharacterCard
 import com.mistbell.tavern.v3.feature.worldbook.WorldBookEntry
 
