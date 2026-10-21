@@ -559,12 +559,16 @@ fun ChatScreen(onBack: () -> Unit) {
 
             ChatHistoryBudgetSettingsSection(
                 settings = settings,
-                recentTurnsText = recentTurnsText,
-                onRecentTurnsTextChange = { recentTurnsText = it },
-                summaryCharsText = summaryCharsText,
-                onSummaryCharsTextChange = { summaryCharsText = it },
-                historyCharsText = historyCharsText,
-                onHistoryCharsTextChange = { historyCharsText = it },
+                values = ChatHistoryBudgetSettingsValues(
+                    recentTurnsText = recentTurnsText,
+                    summaryCharsText = summaryCharsText,
+                    historyCharsText = historyCharsText,
+                ),
+                callbacks = ChatHistoryBudgetSettingsCallbacks(
+                    onRecentTurnsTextChange = { recentTurnsText = it },
+                    onSummaryCharsTextChange = { summaryCharsText = it },
+                    onHistoryCharsTextChange = { historyCharsText = it },
+                ),
             )
 
             Card(modifier = Modifier.fillMaxWidth()) {
