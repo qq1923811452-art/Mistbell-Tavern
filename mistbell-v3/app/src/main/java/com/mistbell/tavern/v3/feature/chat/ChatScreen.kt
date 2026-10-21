@@ -431,52 +431,62 @@ fun ChatScreen(onBack: () -> Unit) {
         topBar = { ChatScreenTopBar(onBack = onBack) },
     ) {
             ChatApiSettingsPanel {
-                    ChatCharacterSelector(
-                        selectedCharacterName = selectedCharacter?.card?.name,
-                        characterOptions = characterCards.map { stored -> stored.id to stored.card.name },
-                        menuExpanded = characterMenuExpanded,
-                        onMenuExpandedChange = { characterMenuExpanded = it },
-                        onSelectDefault = {
-                            selectedCharacterId = ""
-                            settings.edit().remove("active_character_id").apply()
-                            characterMenuExpanded = false
-                        },
-                        onSelectCharacter = { id ->
-                            selectedCharacterId = id
-                            settings.edit().putString("active_character_id", id).apply()
-                            characterMenuExpanded = false
-                        },
-                    )
-                    ChatGenerationLimitCard(
-                        value = maxTokensText,
-                        usageSummary = usageSummary,
-                        onValueChange = { value ->
-                            maxTokensText = value.filter(Char::isDigit).take(6)
-                            maxTokensText.toIntOrNull()?.takeIf { it in 1..200_000 }?.let { limit ->
-                                settings.edit().putInt("chat_max_tokens", limit).apply()
-                            }
-                        },
-                    )
-                    ChatSessionTransferActions(
-                        enabled = historyReady && !busy,
-                        onImport = { showImportWarning = true },
-                        onExportJson = { exportJsonLauncher.launch("mistbell-session.json") },
-                        onExportJsonl = { exportJsonlLauncher.launch("mistbell-session.jsonl") },
-                    )
-                    ChatApiEndpointFields(
-                        baseUrl = baseUrl,
-                        onBaseUrlChange = {
-                            baseUrl = it
-                            settings.edit().putString("chat_api_base_url", it).apply()
-                        },
-                        modelId = modelId,
-                        onModelIdChange = {
-                            modelId = it
-                            settings.edit().putString("chat_model_id", it).apply()
-                        },
-                        apiKey = apiKey,
-                        onApiKeyChange = { apiKey = it },
-                    )
+                ChatPrimarySettingsContent(
+                    characterSelector = {
+                        ChatCharacterSelector(
+                            selectedCharacterName = selectedCharacter?.card?.name,
+                            characterOptions = characterCards.map { stored -> stored.id to stored.card.name },
+                            menuExpanded = characterMenuExpanded,
+                            onMenuExpandedChange = { characterMenuExpanded = it },
+                            onSelectDefault = {
+                                selectedCharacterId = ""
+                                settings.edit().remove("active_character_id").apply()
+                                characterMenuExpanded = false
+                            },
+                            onSelectCharacter = { id ->
+                                selectedCharacterId = id
+                                settings.edit().putString("active_character_id", id).apply()
+                                characterMenuExpanded = false
+                            },
+                        )
+                    },
+                    generationLimit = {
+                        ChatGenerationLimitCard(
+                            value = maxTokensText,
+                            usageSummary = usageSummary,
+                            onValueChange = { value ->
+                                maxTokensText = value.filter(Char::isDigit).take(6)
+                                maxTokensText.toIntOrNull()?.takeIf { it in 1..200_000 }?.let { limit ->
+                                    settings.edit().putInt("chat_max_tokens", limit).apply()
+                                }
+                            },
+                        )
+                    },
+                    sessionTransfer = {
+                        ChatSessionTransferActions(
+                            enabled = historyReady && !busy,
+                            onImport = { showImportWarning = true },
+                            onExportJson = { exportJsonLauncher.launch("mistbell-session.json") },
+                            onExportJsonl = { exportJsonlLauncher.launch("mistbell-session.jsonl") },
+                        )
+                    },
+                    apiEndpoint = {
+                        ChatApiEndpointFields(
+                            baseUrl = baseUrl,
+                            onBaseUrlChange = {
+                                baseUrl = it
+                                settings.edit().putString("chat_api_base_url", it).apply()
+                            },
+                            modelId = modelId,
+                            onModelIdChange = {
+                                modelId = it
+                                settings.edit().putString("chat_model_id", it).apply()
+                            },
+                            apiKey = apiKey,
+                            onApiKeyChange = { apiKey = it },
+                        )
+                    },
+                )
             }
 
             ChatMemoryAndContextSettingsPanel(
