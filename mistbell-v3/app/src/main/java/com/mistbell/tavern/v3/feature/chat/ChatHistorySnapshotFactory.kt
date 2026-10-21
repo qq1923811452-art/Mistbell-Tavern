@@ -11,4 +11,15 @@ internal object ChatHistorySnapshotFactory {
                 deliveryState = line.deliveryState,
             )
         }
+
+    fun restore(messages: List<PersistedChatMessage>): List<ChatLine> =
+        messages.map { message ->
+            ChatLine(
+                id = message.id,
+                role = message.role,
+                content = message.content,
+                createdAtEpochMillis = message.createdAtEpochMillis,
+                deliveryState = message.deliveryState,
+            )
+        }
 }
