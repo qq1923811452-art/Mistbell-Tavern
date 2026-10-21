@@ -34,9 +34,10 @@ class RestoreTransactionTest {
             val live = File(root, "live.txt").apply { writeText("old") }
             val staged = File(root, "staged.txt").apply { writeText("new") }
             assertThrows(IllegalStateException::class.java) {
-                RestoreTransaction().replaceFiles(mapOf(staged to live)) {
-                    throw IllegalStateException("simulated commit failure")
-                }
+                RestoreTransaction().replaceFiles(
+                    stagedToDestination = mapOf(staged to live),
+                    beforeCommit = { error("simulated commit failure") },
+                )
             }
             assertEquals("old", live.readText())
         } finally {
