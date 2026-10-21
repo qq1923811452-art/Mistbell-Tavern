@@ -961,15 +961,11 @@ fun ChatScreen(onBack: () -> Unit) {
                             },
                         )
                         val activatedWorldbook = activationReport.activatedEntries
-                        val messages = PromptAssembler.assemble(
-                            PromptAssemblyInput(
-                                stableSystemPrefix = "你是 Mistbell Tavern 的聊天助手。请直接、清晰地回答用户。",
-                                stableCharacterDefinition = characterDefinition,
-                                earlierConversationSummary = contextWindow.earlierSummary,
-                                worldbookEntries = activatedWorldbook.map { it.entry },
-                                conversationHistory = contextWindow.recentMessages,
-                                latestUserMessage = userText,
-                            ),
+                        val messages = ChatPromptAssemblyCoordinator().assemble(
+                            characterDefinition = characterDefinition,
+                            contextWindow = contextWindow,
+                            activatedWorldbook = activatedWorldbook.map { it.entry },
+                            latestUserMessage = userText,
                         )
                         val observer = ChatStreamObserverCoordinator(
                             mainHandler = mainHandler,
