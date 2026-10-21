@@ -1,6 +1,5 @@
 package com.mistbell.tavern.v3.feature.chat
 
-import android.content.SharedPreferences
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -15,7 +14,6 @@ import androidx.compose.ui.unit.dp
 
 @Composable
 internal fun ChatContextBudgetCard(
-    settings: SharedPreferences,
     recentTurnsText: String,
     onRecentTurnsChange: (String) -> Unit,
     summaryCharsText: String,
