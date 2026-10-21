@@ -204,10 +204,13 @@ fun ChatScreen(onBack: () -> Unit) {
         mutableStateOf<List<com.mistbell.tavern.v3.feature.worldbook.WorldBookEntry>>(emptyList())
     }
     var worldbooksReady by remember { mutableStateOf(false) }
-    val worldbookStateKey = "worldbook_activation_state_${activeMemoryRoleId}_${memoryConversationId}_${activeWorldbookId.ifBlank { "none" }}"
-    val worldbookActivationState = remember(memoryScopeId, activeMemoryRoleId, activeWorldbookId) {
-        ChatWorldBookStateStore(settings, diagnosticStore).restore(worldbookStateKey)
-    }
+    val worldbookActivationSession = rememberChatWorldBookActivationSession(
+        settings = settings,
+        diagnosticStore = diagnosticStore,
+        roleId = activeMemoryRoleId,
+        conversationId = memoryConversationId,
+        worldbookId = activeWorldbookId,
+    )
     var characterCards by remember(context) { mutableStateOf(emptyList<com.mistbell.tavern.v3.feature.character.StoredCharacterCard>()) }
     var characterMenuExpanded by remember { mutableStateOf(false) }
     val selectedCharacter = characterCards.firstOrNull { it.id == selectedCharacterId }
@@ -444,8 +447,8 @@ fun ChatScreen(onBack: () -> Unit) {
                             characterCards = characterCards,
                             selectedCharacterId = selectedCharacterId,
                             localWorldbookEntries = localWorldbookEntries,
-                            worldbookState = worldbookActivationState,
-                            worldbookStateKey = worldbookStateKey,
+                            worldbookState = worldbookActivationSession.activationState,
+                            worldbookStateKey = worldbookActivationSession.stateKey,
                         )
                         val observer = ChatStreamObserverCoordinator(
                             mainHandler = mainHandler,
