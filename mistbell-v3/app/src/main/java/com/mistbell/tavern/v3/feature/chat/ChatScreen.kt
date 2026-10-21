@@ -533,91 +533,53 @@ fun ChatScreen(onBack: () -> Unit) {
                 },
             )
 
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(
-                    modifier = Modifier.fillMaxWidth().padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Text("独立记忆整理 API（可选）", style = MaterialTheme.typography.titleMedium)
-                    OutlinedTextField(
-                        value = memoryBaseUrl,
-                        onValueChange = {
-                            memoryBaseUrl = it
-                            settings.edit().putString("memory_api_base_url", it).apply()
-                        },
-                        label = { Text("记忆整理 API Base URL") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                    )
-                    OutlinedTextField(
-                        value = memoryModelId,
-                        onValueChange = {
-                            memoryModelId = it
-                            settings.edit().putString("memory_model_id", it).apply()
-                        },
-                        label = { Text("记忆整理模型 ID（留空则关闭）") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                    )
-                    OutlinedTextField(
-                        value = memoryApiKey,
-                        onValueChange = { memoryApiKey = it },
-                        label = { Text("独立记忆 API Key") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        visualTransformation = PasswordVisualTransformation(),
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(
-                            onClick = {
-                                if (memoryApiKey.isBlank()) {
-                                    status = "请先输入记忆整理 API Key，再保存到 Android Keystore。"
-                                } else {
-                                    runCatching {
-                                        val newHandle = memoryCredentialStore.put(memoryApiKey)
-                                        val oldHandle = settings.getString("memory_api_credential_handle", null)
-                                        if (!settings.edit().putString("memory_api_credential_handle", newHandle).commit()) {
-                                            memoryCredentialStore.delete(newHandle)
-                                            error("Credential handle could not be saved.")
-                                        }
-                                        if (!oldHandle.isNullOrBlank() && oldHandle != newHandle) {
-                                            memoryCredentialStore.delete(oldHandle)
-                                        }
-                                        memoryApiKey = ""
-                                        hasSavedMemoryCredential = true
-                                        status = "记忆整理 API Key 已加密保存；设置中只保存凭据句柄。"
-                                        diagnosticStore.info("memory.credential.saved")
-                                    }.onFailure { error ->
-                                        status = "记忆 API Key 保存失败：${error::class.java.simpleName}"
-                                        diagnosticStore.warn("memory.credential.save_failed", "reason=${error::class.java.simpleName}")
-                                    }
-                                }
-                            },
-                        ) { Text("安全保存密钥") }
-                        Button(
-                            onClick = {
-                                val handle = settings.getString("memory_api_credential_handle", null)
-                                if (!handle.isNullOrBlank()) memoryCredentialStore.delete(handle)
-                                settings.edit().remove("memory_api_credential_handle").commit()
-                                hasSavedMemoryCredential = false
-                                status = "已删除保存的记忆 API 密钥。"
-                                diagnosticStore.info("memory.credential.deleted")
-                            },
-                            enabled = hasSavedMemoryCredential,
-                        ) { Text("删除已保存密钥") }
+            ChatMemoryApiSettingsCard(
+                baseUrl = memoryBaseUrl,
+                onBaseUrlChange = {
+                    memoryBaseUrl = it
+                    settings.edit().putString("memory_api_base_url", it).apply()
+                },
+                modelId = memoryModelId,
+                onModelIdChange = {
+                    memoryModelId = it
+                    settings.edit().putString("memory_model_id", it).apply()
+                },
+                apiKey = memoryApiKey,
+                onApiKeyChange = { memoryApiKey = it },
+                hasSavedCredential = hasSavedMemoryCredential,
+                onSaveCredential = {
+                    if (memoryApiKey.isBlank()) {
+                        status = "请先输入记忆整理 API Key，再保存到 Android Keystore。"
+                    } else {
+                        runCatching {
+                            val newHandle = memoryCredentialStore.put(memoryApiKey)
+                            val oldHandle = settings.getString("memory_api_credential_handle", null)
+                            if (!settings.edit().putString("memory_api_credential_handle", newHandle).commit()) {
+                                memoryCredentialStore.delete(newHandle)
+                                error("Credential handle could not be saved.")
+                            }
+                            if (!oldHandle.isNullOrBlank() && oldHandle != newHandle) {
+                                memoryCredentialStore.delete(oldHandle)
+                            }
+                            memoryApiKey = ""
+                            hasSavedMemoryCredential = true
+                            status = "记忆整理 API Key 已加密保存；设置中只保存凭据句柄。"
+                            diagnosticStore.info("memory.credential.saved")
+                        }.onFailure { error ->
+                            status = "记忆 API Key 保存失败：${error::class.java.simpleName}"
+                            diagnosticStore.warn("memory.credential.save_failed", "reason=${error::class.java.simpleName}")
+                        }
                     }
-                    Text(
-                        "与聊天 API 分开配置。Base URL 和模型 ID 保存在本机；密钥可仅本次使用，或通过 Android Keystore 加密保存。每累计 3 轮已完成对话后异步整理，失败不会撤销聊天回复。",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Text(
-                        if (hasSavedMemoryCredential) "已保存加密密钥；不会显示或回填明文。" else "尚未保存记忆 API 密钥。",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
+                },
+                onDeleteCredential = {
+                    val handle = settings.getString("memory_api_credential_handle", null)
+                    if (!handle.isNullOrBlank()) memoryCredentialStore.delete(handle)
+                    settings.edit().remove("memory_api_credential_handle").commit()
+                    hasSavedMemoryCredential = false
+                    status = "已删除保存的记忆 API 密钥。"
+                    diagnosticStore.info("memory.credential.deleted")
+                },
+            )
 
             ChatEmbeddingDimensionSelector(
                 selectedDimensions = selectedEmbeddingDimensions,
