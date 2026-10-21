@@ -37,7 +37,11 @@ fun SessionRenameDialog(
         },
         confirmButton = {
             TextButton(
-                onClick = { onConfirm(normalizedTitle) },
+                onClick = {
+                    if (normalizedTitle.isNotEmpty()) {
+                        onConfirm(normalizedTitle)
+                    }
+                },
                 enabled = normalizedTitle.isNotEmpty(),
             ) { Text("确认") }
         },
