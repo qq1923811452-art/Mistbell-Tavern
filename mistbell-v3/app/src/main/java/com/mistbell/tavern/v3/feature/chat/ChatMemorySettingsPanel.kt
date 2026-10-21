@@ -3,6 +3,7 @@ package com.mistbell.tavern.v3.feature.chat
 import android.content.SharedPreferences
 import androidx.compose.runtime.Composable
 import com.mistbell.tavern.v3.core.diagnostics.DiagnosticLogStore
+import com.mistbell.tavern.v3.core.security.AndroidKeystoreMemoryCredentialStore
 
 @Composable
 internal fun ChatMemorySettingsPanel(
