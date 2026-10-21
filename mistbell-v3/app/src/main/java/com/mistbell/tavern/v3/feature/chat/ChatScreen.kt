@@ -511,38 +511,14 @@ fun ChatScreen(onBack: () -> Unit) {
                             modifier = Modifier.weight(1f),
                         ) { Text("导出 JSONL") }
                     }
-                    OutlinedTextField(
-                        value = baseUrl,
-                        onValueChange = {
-                            baseUrl = it
-                            settings.edit().putString("chat_api_base_url", it).apply()
-                        },
-                        label = { Text("API Base URL") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                    )
-                    OutlinedTextField(
-                        value = modelId,
-                        onValueChange = {
-                            modelId = it
-                            settings.edit().putString("chat_model_id", it).apply()
-                        },
-                        label = { Text("模型 ID（必填）") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                    )
-                    OutlinedTextField(
-                        value = apiKey,
-                        onValueChange = { apiKey = it },
-                        label = { Text("API Key（远程接口必填）") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        visualTransformation = PasswordVisualTransformation(),
-                    )
-                    Text(
-                        "聊天 API Key 仅保存在当前页面内存中，离开页面后需要重新输入；独立记忆 API Key 可选择加密保存到 Android Keystore。Base URL 和模型 ID 会保存在本机设置中。",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    ChatPrimaryApiSettingsSection(
+                        settings = settings,
+                        baseUrl = baseUrl,
+                        modelId = modelId,
+                        apiKey = apiKey,
+                        onBaseUrlChange = { baseUrl = it },
+                        onModelIdChange = { modelId = it },
+                        onApiKeyChange = { apiKey = it },
                     )
                 }
             }
@@ -561,80 +537,20 @@ fun ChatScreen(onBack: () -> Unit) {
                 ),
             )
 
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(
-                    modifier = Modifier.fillMaxWidth().padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Text("独立记忆整理 API（可选）", style = MaterialTheme.typography.titleMedium)
-                    OutlinedTextField(
-                        value = memoryBaseUrl,
-                        onValueChange = {
-                            memoryBaseUrl = it
-                            settings.edit().putString("memory_api_base_url", it).apply()
-                        },
-                        label = { Text("记忆整理 API Base URL") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                    )
-                    OutlinedTextField(
-                        value = memoryModelId,
-                        onValueChange = {
-                            memoryModelId = it
-                            settings.edit().putString("memory_model_id", it).apply()
-                        },
-                        label = { Text("记忆整理模型 ID（留空则关闭）") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                    )
-                    OutlinedTextField(
-                        value = memoryApiKey,
-                        onValueChange = { memoryApiKey = it },
-                        label = { Text("独立记忆 API Key") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        visualTransformation = PasswordVisualTransformation(),
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(
-                            onClick = {
-                                val result = ChatMemoryCredentialCoordinator(
-                                    settings = settings,
-                                    credentialStore = memoryCredentialStore,
-                                    diagnosticStore = diagnosticStore,
-                                ).save(memoryApiKey)
-                                status = result.statusMessage
-                                if (result.success) {
-                                    memoryApiKey = ""
-                                    hasSavedMemoryCredential = true
-                                }
-                            },
-                        ) { Text("安全保存密钥") }
-                        Button(
-                            onClick = {
-                                val result = ChatMemoryCredentialCoordinator(
-                                    settings = settings,
-                                    credentialStore = memoryCredentialStore,
-                                    diagnosticStore = diagnosticStore,
-                                ).deleteSaved()
-                                hasSavedMemoryCredential = false
-                                status = result.statusMessage
-                            },
-                            enabled = hasSavedMemoryCredential,
-                        ) { Text("删除已保存密钥") }
-                    }
-                    Text(
-                        "与聊天 API 分开配置。Base URL 和模型 ID 保存在本机；密钥可仅本次使用，或通过 Android Keystore 加密保存。每累计 3 轮已完成对话后异步整理，失败不会撤销聊天回复。",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Text(
-                        if (hasSavedMemoryCredential) "已保存加密密钥；不会显示或回填明文。" else "尚未保存记忆 API 密钥。",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
+            ChatMemoryApiSettingsSection(
+                settings = settings,
+                baseUrl = memoryBaseUrl,
+                modelId = memoryModelId,
+                apiKey = memoryApiKey,
+                hasSavedCredential = hasSavedMemoryCredential,
+                credentialStore = memoryCredentialStore,
+                diagnosticStore = diagnosticStore,
+                onBaseUrlChange = { memoryBaseUrl = it },
+                onModelIdChange = { memoryModelId = it },
+                onApiKeyChange = { memoryApiKey = it },
+                onSavedCredentialChange = { hasSavedMemoryCredential = it },
+                onStatusChange = { status = it },
+            )
 
             ChatEmbeddingDimensionsSettingsSection(
                 selectedDimensions = selectedEmbeddingDimensions,
