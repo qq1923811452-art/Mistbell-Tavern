@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
@@ -35,6 +34,7 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
+@Suppress("FunctionNaming", "LongMethod", "LongParameterList")
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun SessionRow(
@@ -46,7 +46,6 @@ fun SessionRow(
     onTogglePin: (Boolean) -> Unit,
 ) {
     var menuExpanded by remember(session.id) { mutableStateOf(false) }
-    val now = System.currentTimeMillis()
     val currentYear = Calendar.getInstance().get(Calendar.YEAR)
     val sessionYear = Calendar.getInstance().apply { timeInMillis = session.updatedAt }.get(Calendar.YEAR)
     val dateFormat = when {
@@ -55,8 +54,12 @@ fun SessionRow(
         currentYear == sessionYear -> "MM/dd"
         else -> "yyyy/MM/dd"
     }
-    val time = remember(session.updatedAt, dateFormat, now) {
-        if (dateFormat.isEmpty()) "" else SimpleDateFormat(dateFormat, Locale.getDefault()).format(Date(session.updatedAt))
+    val time = remember(session.updatedAt, dateFormat) {
+        if (dateFormat.isEmpty()) {
+            ""
+        } else {
+            SimpleDateFormat(dateFormat, Locale.getDefault()).format(Date(session.updatedAt))
+        }
     }
     val colors = MaterialTheme.colorScheme
 
