@@ -36,13 +36,15 @@ class RestoreTransaction(
             beforeCommit()
         } catch (failure: Throwable) {
             rollback(
-                failure = failure,
-                installed = installed,
-                removeDestinations = removeDestinations,
-                originallyExisted = originallyExisted,
-                backups = backups,
-                beforeRollback = beforeRollback,
-                afterRollback = afterRollback,
+                RollbackState(
+                    failure = failure,
+                    installed = installed,
+                    removeDestinations = removeDestinations,
+                    originallyExisted = originallyExisted,
+                    backups = backups,
+                    beforeRollback = beforeRollback,
+                    afterRollback = afterRollback,
+                ),
             )
             throw failure
         }
@@ -95,32 +97,35 @@ class RestoreTransaction(
         }
     }
 
-    private fun rollback(
-        failure: Throwable,
-        installed: List<File>,
-        removeDestinations: Set<File>,
-        originallyExisted: Set<File>,
-        backups: Map<File, File>,
-        beforeRollback: () -> Unit,
-        afterRollback: () -> Unit,
-    ) {
-        runCatching(beforeRollback).onFailure(failure::addSuppressed)
-        val callbackCreatedRemovals = removeDestinations.filter { destination ->
-            destination !in originallyExisted || destination in backups
+    private data class RollbackState(
+        val failure: Throwable,
+        val installed: List<File>,
+        val removeDestinations: Set<File>,
+        val originallyExisted: Set<File>,
+        val backups: Map<File, File>,
+        val beforeRollback: () -> Unit,
+        val afterRollback: () -> Unit,
+    )
+
+    private fun rollback(state: RollbackState) {
+        val failure = state.failure
+        runCatching(state.beforeRollback).onFailure(failure::addSuppressed)
+        val callbackCreatedRemovals = state.removeDestinations.filter { destination ->
+            destination !in state.originallyExisted || destination in state.backups
         }
-        (installed + callbackCreatedRemovals).distinctBy { it.canonicalPath }.asReversed().forEach { destination ->
+        (state.installed + callbackCreatedRemovals).distinctBy { it.canonicalPath }.asReversed().forEach { destination ->
             if (destination.exists() && !destination.deleteRecursively()) {
                 failure.addSuppressed(IOException("Failed to remove partially restored data."))
             }
         }
-        backups.entries.toList().asReversed().forEach { (destination, backup) ->
+        state.backups.entries.toList().asReversed().forEach { (destination, backup) ->
             if (backup.exists() && !backup.renameTo(destination)) {
                 failure.addSuppressed(
                     IOException("Rollback failed; previous data remains at ${backup.absolutePath}."),
                 )
             }
         }
-        runCatching(afterRollback).onFailure(failure::addSuppressed)
+        runCatching(state.afterRollback).onFailure(failure::addSuppressed)
     }
 
     private fun deleteBackups(backups: Collection<File>) {
