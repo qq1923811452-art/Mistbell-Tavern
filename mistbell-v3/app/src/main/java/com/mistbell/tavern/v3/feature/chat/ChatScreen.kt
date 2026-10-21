@@ -299,7 +299,13 @@ fun ChatScreen(onBack: () -> Unit) {
     }
     val memoryExtractionInFlight = remember { mutableSetOf<String>() }
 
-    val historySaveCoordinator = remember(historyStore, coroutineScope, historySaveMutex, historySaveRevision, diagnosticStore) {
+    val historySaveCoordinator = remember(
+        historyStore,
+        coroutineScope,
+        historySaveMutex,
+        historySaveRevision,
+        diagnosticStore,
+    ) {
         ChatHistorySaveCoordinator(
             historyStore = historyStore,
             coroutineScope = coroutineScope,
