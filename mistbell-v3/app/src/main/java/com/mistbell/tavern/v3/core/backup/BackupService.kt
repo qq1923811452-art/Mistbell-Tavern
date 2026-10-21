@@ -22,6 +22,7 @@ interface BackupDatabaseLifecycle {
 }
 
 /** Export, preview and restore orchestration. No UI entry points are added in this change. */
+@Suppress("LongParameterList")
 class BackupService(
     context: Context,
     private val appVersion: String = "3.0.0-dev",
@@ -48,6 +49,7 @@ class BackupService(
 
     fun preview(archive: File): BackupPreview = reader.preview(archive)
 
+    @Suppress("TooGenericExceptionCaught")
     suspend fun restore(archive: File): BackupPreview = operationMutex.withLock {
         val started = clock()
         val staging = File(appContext.filesDir, "restore-tmp-${UUID.randomUUID()}")
@@ -141,17 +143,17 @@ class BackupService(
         val iterator = json.keys()
         while (iterator.hasNext()) {
             val key = iterator.next()
-            if (key.contains("credential", true) || key.contains("secret", true) ||
-                key.contains("apikey", true) || key.contains("api_key", true) ||
-                key.contains("token", true) || key.contains("keystore", true)
-            ) continue
+            if (isCredentialKey(key)) continue
             when (val value = json.get(key)) {
                 is String -> editor.putString(key, value)
                 is Boolean -> editor.putBoolean(key, value)
                 is Int -> editor.putInt(key, value)
                 is Long -> editor.putLong(key, value)
                 is Double -> editor.putFloat(key, value.toFloat())
-                is org.json.JSONArray -> editor.putStringSet(key, (0 until value.length()).map { value.getString(it) }.toSet())
+                is org.json.JSONArray -> {
+                    val values = (0 until value.length()).map { value.getString(it) }.toSet()
+                    editor.putStringSet(key, values)
+                }
             }
         }
         if (!editor.commit()) {
@@ -159,6 +161,11 @@ class BackupService(
             throw IOException("Settings restore could not be committed.")
         }
         return { restorePreferences(preferences, previous) }
+    }
+
+    private fun isCredentialKey(key: String): Boolean {
+        val sensitiveParts = listOf("credential", "secret", "apikey", "api_key", "token", "keystore")
+        return sensitiveParts.any { part -> key.contains(part, ignoreCase = true) }
     }
 
     private fun restorePreferences(
