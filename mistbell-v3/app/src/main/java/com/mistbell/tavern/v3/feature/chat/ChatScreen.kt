@@ -366,11 +366,7 @@ fun ChatScreen(onBack: () -> Unit) {
                 onCharacterMenuExpandedChange = { characterMenuExpanded = it },
                 onCharacterSelected = { characterId ->
                     selectedCharacterId = characterId
-                    if (characterId.isBlank()) {
-                        settings.edit().remove("active_character_id").apply()
-                    } else {
-                        settings.edit().putString("active_character_id", characterId).apply()
-                    }
+                    ChatCharacterSelectionCoordinator(settings).select(characterId)
                     characterMenuExpanded = false
                 },
                 maxTokensText = maxTokensText,
@@ -420,15 +416,11 @@ fun ChatScreen(onBack: () -> Unit) {
                 onDimensionsMenuExpandedChange = { dimensionMenuExpanded = it },
                 onDimensionsSelected = { dimensions ->
                     selectedEmbeddingDimensions = dimensions
-                    context.getSharedPreferences("mistbell-v3-settings", Context.MODE_PRIVATE)
-                        .edit().putInt("embedding_output_dimensions", dimensions).apply()
                     dimensionMenuExpanded = false
-                    status = if (dimensions <= 768) {
-                        "已选择 $dimensions 维输出。切换档位后，已有向量需要按新维度重建。"
-                    } else {
-                        "已保留 $dimensions 维档位供更高维模型使用；当前 EmbeddingGemma 2 原生最高为 768 维，超出时会跳过本地记忆并继续普通聊天。"
-                    }
-                    diagnosticStore.info("embedding.dimensions.changed", "dimensions=$dimensions")
+                    status = ChatEmbeddingDimensionsSelectionCoordinator(
+                        settings = settings,
+                        diagnosticStore = diagnosticStore,
+                    ).select(dimensions)
                 },
             )
             Text(status, style = MaterialTheme.typography.bodySmall)
