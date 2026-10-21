@@ -22,10 +22,22 @@ class BackupValidatorTest {
     fun rejectsManifestWithoutRequiredSettingsPayload() {
         val manifest = BackupManifest(
             1, "now", "test", 1, 0,
-            listOf(BackupEntry("data/memory/notes.bin", 0, "0".repeat(64))),
+            listOf(BackupEntry("data/memory/mistbell-v3-vectors.bin", 0, "0".repeat(64))),
         )
         assertThrows(IllegalArgumentException::class.java) {
             BackupValidator.validateManifest(manifest)
+        }
+    }
+
+    @Test
+    fun rejectsMemoryPathsThatCouldEscapeTheSupportedMemoryStore() {
+        val hash = "0".repeat(64)
+        val entries = listOf(
+            BackupEntry("data/settings.json", 0, hash),
+            BackupEntry("data/memory/worldbooks/role.json", 0, hash),
+        )
+        assertThrows(IllegalArgumentException::class.java) {
+            BackupValidator.validateManifest(BackupManifest(1, "now", "test", 2, 0, entries))
         }
     }
 
