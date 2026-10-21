@@ -408,7 +408,7 @@ fun ChatScreen(onBack: () -> Unit) {
                 ),
             )
 
-            ChatMemoryApiSettingsSection(
+            ChatMemorySettingsPanel(
                 settings = settings,
                 baseUrl = memoryBaseUrl,
                 modelId = memoryModelId,
@@ -416,17 +416,14 @@ fun ChatScreen(onBack: () -> Unit) {
                 hasSavedCredential = hasSavedMemoryCredential,
                 credentialStore = memoryCredentialStore,
                 diagnosticStore = diagnosticStore,
+                selectedDimensions = selectedEmbeddingDimensions,
+                dimensionMenuExpanded = dimensionMenuExpanded,
                 onBaseUrlChange = { memoryBaseUrl = it },
                 onModelIdChange = { memoryModelId = it },
                 onApiKeyChange = { memoryApiKey = it },
                 onSavedCredentialChange = { hasSavedMemoryCredential = it },
                 onStatusChange = { status = it },
-            )
-
-            ChatEmbeddingDimensionsSettingsSection(
-                selectedDimensions = selectedEmbeddingDimensions,
-                menuExpanded = dimensionMenuExpanded,
-                onMenuExpandedChange = { dimensionMenuExpanded = it },
+                onDimensionsMenuExpandedChange = { dimensionMenuExpanded = it },
                 onDimensionsSelected = { dimensions ->
                     selectedEmbeddingDimensions = dimensions
                     context.getSharedPreferences("mistbell-v3-settings", Context.MODE_PRIVATE)
