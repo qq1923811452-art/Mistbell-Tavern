@@ -598,14 +598,14 @@ fun ChatScreen(onBack: () -> Unit) {
                 ChatMessageSendButton(
                     onClick = {
                         val userText = chatViewModel.uiState.value.draft.trim()
-                        if (userText.isEmpty() || busy) return@Button
+                        if (userText.isEmpty() || busy) return@ChatMessageSendButton
                         if (!worldbooksReady) {
                             status = "世界书加载中，请稍后再发送。"
-                            return@Button
+                            return@ChatMessageSendButton
                         }
                         if (modelId.isBlank()) {
                             status = "请先填写模型 ID。"
-                            return@Button
+                            return@ChatMessageSendButton
                         }
                         val requestClient = ChatRequestClientCoordinator(
                             memoryCredentialStore = memoryCredentialStore,
@@ -618,7 +618,7 @@ fun ChatScreen(onBack: () -> Unit) {
                             memoryBaseUrl = memoryBaseUrl,
                             memoryModelId = memoryModelId,
                             memoryApiKey = memoryApiKey,
-                        ) ?: return@Button
+                        ) ?: return@ChatMessageSendButton
                         val providersForRequest = requestClient.providers
                         val client = requestClient.client
                         val openingMessage = characterCards.firstOrNull { it.id == selectedCharacterId }
