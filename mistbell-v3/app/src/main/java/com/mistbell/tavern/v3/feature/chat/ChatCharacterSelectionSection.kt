@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenu
@@ -20,7 +21,6 @@ internal fun ChatCharacterSelectionSection(
     selectedCharacterName: String?,
     hasSelectedCharacter: Boolean,
     characterCards: List<StoredCharacterCard>,
-    selectedCharacterId: String,
     menuExpanded: Boolean,
     onMenuExpandedChange: (Boolean) -> Unit,
     onCharacterSelected: (String) -> Unit,
