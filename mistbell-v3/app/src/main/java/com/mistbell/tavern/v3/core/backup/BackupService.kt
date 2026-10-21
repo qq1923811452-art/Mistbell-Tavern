@@ -38,12 +38,14 @@ class BackupService(
     suspend fun export(destination: File): BackupArchiveResult = operationMutex.withLock {
         val started = clock()
         val staging = File(appContext.cacheDir, "backup-export-${UUID.randomUUID()}")
+        var result: BackupArchiveResult? = null
         try {
             require(staging.mkdirs()) { "Backup temporary directory could not be created." }
             writer.write(destination, source.collect(staging), appVersion, clock().toString())
+                .also { result = it }
         } finally {
             staging.deleteRecursively()
-            log("backup.export", started, 0, "")
+            result?.let { log("backup.export", started, it.manifest.entryCount, it.archiveSha256) }
         }
     }
 
@@ -179,7 +181,10 @@ class BackupService(
     }
 
     private fun isCredentialKey(key: String): Boolean {
-        val sensitiveParts = listOf("credential", "secret", "apikey", "api_key", "token", "keystore")
+        val sensitiveParts = listOf(
+            "credential", "secret", "apikey", "api_key", "api-key", "password",
+            "token", "keystore", "privatekey", "private_key",
+        )
         return sensitiveParts.any { part -> key.contains(part, ignoreCase = true) }
     }
 
