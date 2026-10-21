@@ -5,6 +5,8 @@ import android.util.AtomicFile
 import android.os.Looper
 import android.content.Context
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.rememberCoroutineScope
@@ -109,6 +111,8 @@ private data class ChatLine(
 @Composable
 fun ChatScreen(onBack: () -> Unit) {
     val context = LocalContext.current
+    val chatViewModel: ChatViewModel = viewModel()
+    val chatUiState by chatViewModel.uiState.collectAsStateWithLifecycle()
     val settings = remember(context) {
         context.getSharedPreferences("mistbell-v3-settings", Context.MODE_PRIVATE)
     }
@@ -134,7 +138,6 @@ fun ChatScreen(onBack: () -> Unit) {
             } ?: false,
         )
     }
-    var draft by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var historyReady by remember { mutableStateOf(false) }
     var historyLoadFailed by remember { mutableStateOf(false) }
@@ -1002,8 +1005,8 @@ fun ChatScreen(onBack: () -> Unit) {
                 }
             }
             OutlinedTextField(
-                value = draft,
-                onValueChange = { draft = it },
+                value = chatUiState.draft,
+                onValueChange = chatViewModel::updateDraft,
                 label = { Text("输入消息") },
                 modifier = Modifier.fillMaxWidth(),
                 enabled = !busy && !historyLoadFailed,
@@ -1013,7 +1016,7 @@ fun ChatScreen(onBack: () -> Unit) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(
                     onClick = {
-                        val userText = draft.trim()
+                        val userText = chatViewModel.uiState.value.draft.trim()
                         if (userText.isEmpty() || busy) return@Button
                         if (!worldbooksReady) {
                             status = "世界书加载中，请稍后再发送。"
@@ -1094,7 +1097,7 @@ fun ChatScreen(onBack: () -> Unit) {
                             deliveryState = PersistedChatMessage.DeliveryState.PENDING,
                         )
                         persistHistory()
-                        draft = ""
+                        chatViewModel.clearDraft()
                         busy = true
                         memoryStatusNotice = ""
                         status = "正在连接聊天 API……"
