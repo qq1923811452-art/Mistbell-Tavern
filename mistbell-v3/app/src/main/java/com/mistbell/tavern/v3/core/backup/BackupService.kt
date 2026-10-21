@@ -88,7 +88,7 @@ class BackupService(
                 throw failure
             }
             log("backup.restore", started, entryCount, archiveHash)
-            preview(archive)
+            BackupPreview(extracted.manifest, extracted.archiveBytes, archiveHash)
         } finally {
             staging.deleteRecursively()
         }
