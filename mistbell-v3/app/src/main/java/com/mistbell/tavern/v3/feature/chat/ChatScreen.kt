@@ -200,11 +200,8 @@ fun ChatScreen(onBack: () -> Unit) {
     val activeWorldbookId = remember(settings) {
         settings.getString("active_worldbook_id", "") ?: ""
     }
-    var localWorldbookEntries by remember(context) {
-        mutableStateOf<List<com.mistbell.tavern.v3.feature.worldbook.WorldBookEntry>>(emptyList())
-    }
-    var worldbooksReady by remember { mutableStateOf(false) }
-    val worldbookActivationSession = rememberChatWorldBookActivationSession(
+    val worldbookSession = rememberChatWorldBookSessionState(
+        context = context,
         settings = settings,
         diagnosticStore = diagnosticStore,
         roleId = activeMemoryRoleId,
@@ -226,8 +223,6 @@ fun ChatScreen(onBack: () -> Unit) {
         setSelectedCharacterId = { selectedCharacterId = it },
         activeWorldbookId = activeWorldbookId,
         setCharacterCards = { characterCards = it },
-        setWorldbookEntries = { localWorldbookEntries = it },
-        setWorldbooksReady = { worldbooksReady = it },
     )
     val memoryExtractionInFlight = remember { mutableSetOf<String>() }
 
@@ -415,7 +410,7 @@ fun ChatScreen(onBack: () -> Unit) {
                         ).prepare(
                             userText = chatViewModel.uiState.value.draft,
                             busy = busy,
-                            worldbooksReady = worldbooksReady,
+                            worldbooksReady = worldbookSession.ready,
                             baseUrl = baseUrl,
                             modelId = modelId,
                             apiKey = apiKey,
@@ -446,9 +441,9 @@ fun ChatScreen(onBack: () -> Unit) {
                             userText = userText,
                             characterCards = characterCards,
                             selectedCharacterId = selectedCharacterId,
-                            localWorldbookEntries = localWorldbookEntries,
-                            worldbookState = worldbookActivationSession.activationState,
-                            worldbookStateKey = worldbookActivationSession.stateKey,
+                            localWorldbookEntries = worldbookSession.entries,
+                            worldbookState = worldbookSession.activation.activationState,
+                            worldbookStateKey = worldbookSession.activation.stateKey,
                         )
                         val observer = ChatStreamObserverCoordinator(
                             mainHandler = mainHandler,
@@ -495,7 +490,7 @@ fun ChatScreen(onBack: () -> Unit) {
                             },
                         )
                     },
-                    enabled = !busy && historyReady && !historyLoadFailed && worldbooksReady,
+                    enabled = !busy && historyReady && !historyLoadFailed && worldbookSession.ready,
                 ) {
                     ChatSendActionLabel(
                         historyReady = historyReady,
