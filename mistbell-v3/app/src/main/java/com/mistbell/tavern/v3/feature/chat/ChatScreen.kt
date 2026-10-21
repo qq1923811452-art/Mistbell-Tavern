@@ -749,7 +749,7 @@ fun ChatScreen(onBack: () -> Unit) {
                         else -> "发送消息"
                     },
                 )
-                Button(
+                ChatClearSessionButton(
                     onClick = {
                         val replacingUnreadableHistory = historyLoadFailed
                         history.clear()
@@ -769,7 +769,8 @@ fun ChatScreen(onBack: () -> Unit) {
                         }
                     },
                     enabled = !busy && historyReady && (history.isNotEmpty() || historyLoadFailed),
-                ) { Text(if (historyLoadFailed) "放弃旧记录并新建会话" else "清空会话") }
+                    label = if (historyLoadFailed) "放弃旧记录并新建会话" else "清空会话",
+                )
                 Button(
                     onClick = {
                         exportLogLauncher.launch("mistbell-diagnostics.txt")
