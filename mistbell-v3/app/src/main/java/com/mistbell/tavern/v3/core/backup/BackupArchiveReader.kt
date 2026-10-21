@@ -44,7 +44,7 @@ class BackupArchiveReader {
         }
     }
 
-    @Suppress("NestedBlockDepth")
+    @Suppress("NestedBlockDepth", "TooGenericExceptionCaught")
     fun extract(archive: File, stagingDirectory: File): ExtractedBackup {
         val preview = preview(archive)
         require(!stagingDirectory.exists() || stagingDirectory.deleteRecursively()) {
@@ -99,7 +99,7 @@ class BackupArchiveReader {
                 require(total == preview.manifest.totalBytes) { "Backup total size does not match." }
             }
             return ExtractedBackup(preview.manifest, stagingDirectory, preview.archiveSha256)
-        } catch (failure: Throwable) {
+        } catch (failure: Exception) {
             stagingDirectory.deleteRecursively()
             throw failure
         }
