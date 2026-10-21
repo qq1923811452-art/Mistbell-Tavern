@@ -657,22 +657,16 @@ fun ChatScreen(onBack: () -> Unit) {
                 }
                 Button(
                     onClick = {
-                        val replacingUnreadableHistory = historyLoadFailed
-                        history.clear()
-                        historyLoadFailed = false
-                        val previousMemoryScopeId = memoryScopeId
-                        val newConversationId = UUID.randomUUID().toString()
-                        memoryConversationId = newConversationId
-                        ChatScopeSwitchCoordinator(
-                            context.getSharedPreferences("mistbell-v3-settings", Context.MODE_PRIVATE),
-                        ).persist(previousMemoryScopeId, newConversationId)
-                        // The new scope gets its own history file. Do not overwrite the
-                        // previous scope's persisted conversation with an empty list.
-                        status = if (replacingUnreadableHistory) {
-                            "已放弃无法读取的旧聊天记录并新建会话；新会话使用独立记忆索引，旧会话记忆文件保留但不会自动注入。"
-                        } else {
-                            "会话已清空并切换到独立记忆范围；旧会话记忆文件仍保留，但不会注入新会话。"
-                        }
+                        ChatSessionResetCoordinator(
+                            settings = context.getSharedPreferences("mistbell-v3-settings", Context.MODE_PRIVATE),
+                            clearHistory = { history.clear() },
+                            setHistoryLoadFailed = { historyLoadFailed = it },
+                            setConversationId = { memoryConversationId = it },
+                            setStatus = { status = it },
+                        ).reset(
+                            historyLoadFailed = historyLoadFailed,
+                            previousMemoryScopeId = memoryScopeId,
+                        )
                     },
                     enabled = !busy && historyReady && (history.isNotEmpty() || historyLoadFailed),
                 ) { Text(if (historyLoadFailed) "放弃旧记录并新建会话" else "清空会话") }
