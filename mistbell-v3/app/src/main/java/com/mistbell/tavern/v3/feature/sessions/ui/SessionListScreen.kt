@@ -6,13 +6,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -49,8 +48,8 @@ fun SessionListScreen(
         floatingActionButton = {
             ExtendedFloatingActionButton(
                 onClick = onCreateSession,
-                text = { Text("+ 新建对话") },
-                icon = {},
+                text = { Text("新建对话") },
+                icon = { Text("+") },
             )
         },
     ) { innerPadding ->
