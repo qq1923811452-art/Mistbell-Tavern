@@ -364,50 +364,36 @@ fun ChatScreen(onBack: () -> Unit) {
             modifier = Modifier.fillMaxSize().padding(padding).padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(
-                    modifier = Modifier.fillMaxWidth().padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    ChatCharacterSelectionSection(
-                        selectedCharacterName = selectedCharacter?.card?.name,
-                        hasSelectedCharacter = selectedCharacter != null,
-                        characterCards = characterCards,
-                        menuExpanded = characterMenuExpanded,
-                        onMenuExpandedChange = { characterMenuExpanded = it },
-                        onCharacterSelected = { characterId ->
-                            selectedCharacterId = characterId
-                            if (characterId.isBlank()) {
-                                settings.edit().remove("active_character_id").apply()
-                            } else {
-                                settings.edit().putString("active_character_id", characterId).apply()
-                            }
-                            characterMenuExpanded = false
-                        },
-                    )
-                    ChatGenerationSettingsSection(
-                        settings = settings,
-                        maxTokensText = maxTokensText,
-                        usageSummary = usageSummary,
-                        onMaxTokensTextChange = { maxTokensText = it },
-                    )
-                    ChatSessionTransferActions(
-                        enabled = historyReady && !busy,
-                        onImport = { showImportWarning = true },
-                        onExportJson = { exportJsonLauncher.launch("mistbell-session.json") },
-                        onExportJsonl = { exportJsonlLauncher.launch("mistbell-session.jsonl") },
-                    )
-                    ChatPrimaryApiSettingsSection(
-                        settings = settings,
-                        baseUrl = baseUrl,
-                        modelId = modelId,
-                        apiKey = apiKey,
-                        onBaseUrlChange = { baseUrl = it },
-                        onModelIdChange = { modelId = it },
-                        onApiKeyChange = { apiKey = it },
-                    )
-                }
-            }
+            ChatConfigurationPanel(
+                settings = settings,
+                selectedCharacterName = selectedCharacter?.card?.name,
+                hasSelectedCharacter = selectedCharacter != null,
+                characterCards = characterCards,
+                characterMenuExpanded = characterMenuExpanded,
+                onCharacterMenuExpandedChange = { characterMenuExpanded = it },
+                onCharacterSelected = { characterId ->
+                    selectedCharacterId = characterId
+                    if (characterId.isBlank()) {
+                        settings.edit().remove("active_character_id").apply()
+                    } else {
+                        settings.edit().putString("active_character_id", characterId).apply()
+                    }
+                    characterMenuExpanded = false
+                },
+                maxTokensText = maxTokensText,
+                usageSummary = usageSummary,
+                onMaxTokensTextChange = { maxTokensText = it },
+                transferEnabled = historyReady && !busy,
+                onImportSession = { showImportWarning = true },
+                onExportJson = { exportJsonLauncher.launch("mistbell-session.json") },
+                onExportJsonl = { exportJsonlLauncher.launch("mistbell-session.jsonl") },
+                baseUrl = baseUrl,
+                modelId = modelId,
+                apiKey = apiKey,
+                onBaseUrlChange = { baseUrl = it },
+                onModelIdChange = { modelId = it },
+                onApiKeyChange = { apiKey = it },
+            )
 
             ChatHistoryBudgetSettingsSection(
                 settings = settings,
