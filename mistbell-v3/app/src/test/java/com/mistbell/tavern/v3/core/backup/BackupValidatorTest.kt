@@ -20,7 +20,10 @@ class BackupValidatorTest {
 
     @Test
     fun rejectsManifestWithoutRequiredSettingsPayload() {
-        val manifest = BackupManifest(1, "now", "test", 1, 0, emptyList())
+        val manifest = BackupManifest(
+            1, "now", "test", 1, 0,
+            listOf(BackupEntry("data/memory/notes.bin", 0, "0".repeat(64))),
+        )
         assertThrows(IllegalArgumentException::class.java) {
             BackupValidator.validateManifest(manifest)
         }
