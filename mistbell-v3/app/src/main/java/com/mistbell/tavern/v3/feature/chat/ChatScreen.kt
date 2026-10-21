@@ -217,22 +217,16 @@ fun ChatScreen(onBack: () -> Unit) {
         ChatLibraryLoadingCoordinator(context.applicationContext, diagnosticStore)
     }
 
-    LaunchedEffect(context) {
-        characterCards = withContext(Dispatchers.IO) {
-            libraryLoadingCoordinator.loadCharacterCards()
-        }
-        if (selectedCharacterId.isNotBlank() && characterCards.none { it.id == selectedCharacterId }) {
-            selectedCharacterId = ""
-        }
-    }
-
-    LaunchedEffect(context, activeWorldbookId) {
-        worldbooksReady = false
-        localWorldbookEntries = withContext(Dispatchers.IO) {
-            libraryLoadingCoordinator.loadWorldbookEntries(activeWorldbookId)
-        }
-        worldbooksReady = true
-    }
+    ChatLibraryLoadingLifecycle(
+        context = context,
+        coordinator = libraryLoadingCoordinator,
+        selectedCharacterId = selectedCharacterId,
+        setSelectedCharacterId = { selectedCharacterId = it },
+        activeWorldbookId = activeWorldbookId,
+        setCharacterCards = { characterCards = it },
+        setWorldbookEntries = { localWorldbookEntries = it },
+        setWorldbooksReady = { worldbooksReady = it },
+    )
     val memoryExtractionInFlight = remember { mutableSetOf<String>() }
 
     val historySaveCoordinator = remember(
