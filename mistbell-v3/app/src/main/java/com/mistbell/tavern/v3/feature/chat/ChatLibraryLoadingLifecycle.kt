@@ -1,0 +1,41 @@
+package com.mistbell.tavern.v3.feature.chat
+
+import android.content.Context
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import com.mistbell.tavern.v3.core.diagnostics.DiagnosticLogStore
+import com.mistbell.tavern.v3.feature.character.StoredCharacterCard
+import com.mistbell.tavern.v3.feature.worldbook.WorldBookEntry
+
+@Composable
+internal fun ChatLibraryLoadingLifecycle(
+    context: Context,
+    coordinator: ChatLibraryLoadingCoordinator,
+    selectedCharacterId: String,
+    setSelectedCharacterId: (String) -> Unit,
+    activeWorldbookId: String,
+    setCharacterCards: (List<StoredCharacterCard>) -> Unit,
+    setWorldbookEntries: (List<WorldBookEntry>) -> Unit,
+    setWorldbooksReady: (Boolean) -> Unit,
+) {
+    LaunchedEffect(context) {
+        val cards = withContext(Dispatchers.IO) {
+            coordinator.loadCharacterCards()
+        }
+        setCharacterCards(cards)
+        if (selectedCharacterId.isNotBlank() && cards.none { it.id == selectedCharacterId }) {
+            setSelectedCharacterId("")
+        }
+    }
+
+    LaunchedEffect(context, activeWorldbookId) {
+        setWorldbooksReady(false)
+        val entries = withContext(Dispatchers.IO) {
+            coordinator.loadWorldbookEntries(activeWorldbookId)
+        }
+        setWorldbookEntries(entries)
+        setWorldbooksReady(true)
+    }
+}
