@@ -27,4 +27,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "MistbellTavernAndroid"
-include ":app"
+// The 2.x app module was archived at tag 2.x-final; only mistbell-v3 remains.
