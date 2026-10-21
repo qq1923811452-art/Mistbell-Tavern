@@ -11,6 +11,8 @@ object BackupValidator {
     const val MAX_ENTRIES = 10_000
     const val MAX_PATH_CHARS = 1024
     const val MAX_SEGMENT_CHARS = 255
+    private const val SETTINGS_PATH = "settings.json"
+    private const val SETTINGS_PATH_FULL = "data/settings.json"
 
     fun validatePath(path: String) {
         require(path.isNotEmpty() && path.length <= MAX_PATH_CHARS) { "Backup path is empty or too long." }
@@ -23,6 +25,23 @@ object BackupValidator {
             "Backup path contains an invalid segment."
         }
         require(path.startsWith("data/")) { "Backup entry is outside the data directory." }
+    }
+
+    private fun validateSupportedDataPath(path: String) {
+        val relative = path.removePrefix("data/")
+        val supported = when {
+            relative == SETTINGS_PATH -> true
+            relative == BackupSource.CHAT_DATABASE_NAME -> true
+            relative.startsWith("memory/") -> {
+                val name = relative.removePrefix("memory/")
+                '/' !in name && BackupSource.isMemoryFileName(name)
+            }
+            relative.startsWith("worldbooks/") -> relative.removePrefix("worldbooks/").endsWith(".json", ignoreCase = true)
+            relative.startsWith("characters/") -> relative.removePrefix("characters/").endsWith(".json", ignoreCase = true)
+            relative.startsWith("generated-images/") -> relative.removePrefix("generated-images/").isNotEmpty()
+            else -> false
+        }
+        require(supported) { "Backup path is not a supported user-data file: $path" }
     }
 
     fun validateManifest(manifest: BackupManifest) {
@@ -39,6 +58,7 @@ object BackupValidator {
         var sum = 0L
         manifest.entries.forEach { entry ->
             validatePath(entry.path)
+            validateSupportedDataPath(entry.path)
             require(paths.add(entry.path)) { "Backup manifest contains duplicate paths." }
             require(entry.size in 0..MAX_ENTRY_BYTES) { "Backup entry exceeds the size limit." }
             require(entry.sha256.matches(Regex("[a-f0-9]{64}"))) { "Backup entry SHA-256 is invalid." }
@@ -46,7 +66,7 @@ object BackupValidator {
             require(sum <= MAX_TOTAL_UNCOMPRESSED_BYTES) { "Backup uncompressed size exceeds the limit." }
         }
         require(sum == manifest.totalBytes) { "Backup manifest total size does not match." }
-        require("data/settings.json" in paths) { "Backup settings entry is missing." }
+        require(SETTINGS_PATH_FULL in paths) { "Backup settings entry is missing." }
     }
 
     fun sha256(file: File): String {
