@@ -222,29 +222,7 @@ fun ChatScreen(onBack: () -> Unit) {
     var worldbooksReady by remember { mutableStateOf(false) }
     val worldbookStateKey = "worldbook_activation_state_${activeMemoryRoleId}_${memoryConversationId}_${activeWorldbookId.ifBlank { "none" }}"
     val worldbookActivationState = remember(memoryScopeId, activeMemoryRoleId, activeWorldbookId) {
-        WorldBookActivationState().also { state ->
-            runCatching {
-                val saved = settings.getString(worldbookStateKey, null) ?: return@runCatching
-                val json = org.json.JSONObject(saved)
-                state.turn = json.optInt("turn", 0)
-                fun restoreMap(name: String, target: MutableMap<String, Int>) {
-                    val values = json.optJSONObject(name) ?: return
-                    val keys = values.keys()
-                    while (keys.hasNext()) {
-                        val key = keys.next()
-                        if (values.has(key) && !values.isNull(key)) target[key] = values.optInt(key)
-                    }
-                }
-                restoreMap("lastActivatedTurn", state.lastActivatedTurn)
-                restoreMap("stickyUntilTurn", state.stickyUntilTurn)
-                restoreMap("delayedUntilTurn", state.delayedUntilTurn)
-            }.onFailure { error ->
-                diagnosticStore.warn(
-                    "worldbook.state_restore_failed",
-                    "reason=${error::class.java.simpleName}",
-                )
-            }
-        }
+        ChatWorldBookStateStore(settings, diagnosticStore).restore(worldbookStateKey)
     }
     var characterCards by remember(context) { mutableStateOf(emptyList<com.mistbell.tavern.v3.feature.character.StoredCharacterCard>()) }
     var characterMenuExpanded by remember { mutableStateOf(false) }
