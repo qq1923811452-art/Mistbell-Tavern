@@ -13,6 +13,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import com.mistbell.tavern.v3.feature.sessions.SessionStore
 
+@Suppress("FunctionNaming")
 @Composable
 fun SessionRenameDialog(
     initialTitle: String,
