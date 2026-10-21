@@ -299,8 +299,17 @@ fun ChatScreen(onBack: () -> Unit) {
     }
     val memoryExtractionInFlight = remember { mutableSetOf<String>() }
 
+    val historySaveCoordinator = remember(historyStore, coroutineScope, historySaveMutex, historySaveRevision, diagnosticStore) {
+        ChatHistorySaveCoordinator(
+            historyStore = historyStore,
+            coroutineScope = coroutineScope,
+            saveMutex = historySaveMutex,
+            saveRevision = historySaveRevision,
+            diagnosticStore = diagnosticStore,
+        )
+    }
+
     fun persistHistory() {
-        val revision = historySaveRevision.incrementAndGet()
         val snapshot = history.map { line ->
             PersistedChatMessage(
                 id = line.id,
@@ -310,21 +319,7 @@ fun ChatScreen(onBack: () -> Unit) {
                 deliveryState = line.deliveryState,
             )
         }
-        coroutineScope.launch {
-            historySaveMutex.withLock {
-                // A later UI mutation supersedes an older queued snapshot. Serialize writes and
-                // never let a delayed save replace the latest conversation state.
-                if (revision != historySaveRevision.get()) return@withLock
-                runCatching {
-                    withContext(Dispatchers.IO) { historyStore.save(snapshot) }
-                }.onFailure { error ->
-                    diagnosticStore.warn(
-                        "chat.history.save_failed",
-                        "reason=${error::class.java.simpleName}",
-                    )
-                }
-            }
-        }
+        historySaveCoordinator.save(snapshot)
     }
 
     val importSessionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
