@@ -465,12 +465,14 @@ fun ChatScreen(onBack: () -> Unit) {
                         val client = preparedRequest.client
                         val openingMessage = characterCards.firstOrNull { it.id == selectedCharacterId }
                             ?.card?.firstMessage?.trim().orEmpty()
-                        ChatTurnHistoryCoordinator().appendPendingTurn(history, openingMessage, userText)
-                        persistHistory()
-                        chatViewModel.clearDraft()
-                        busy = true
-                        memoryStatusNotice = ""
-                        status = "正在连接聊天 API……"
+                        ChatSendTurnStartCoordinator(
+                            history = history,
+                            persistHistory = ::persistHistory,
+                            clearDraft = chatViewModel::clearDraft,
+                            setBusy = { busy = it },
+                            setMemoryStatusNotice = { memoryStatusNotice = it },
+                            setStatus = { status = it },
+                        ).start(openingMessage, userText)
                         val messages = ChatTurnPromptPreparationCoordinator(
                             settings = settings,
                             diagnosticStore = diagnosticStore,
