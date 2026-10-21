@@ -73,10 +73,6 @@ import com.mistbell.tavern.v3.core.model.ProviderProfile
 import com.mistbell.tavern.v3.core.model.ProviderProfileSet
 import com.mistbell.tavern.v3.feature.memory.MemoryCredentialResolver
 import com.mistbell.tavern.v3.feature.memory.MemoryExtractionClient
-import com.mistbell.tavern.v3.feature.memory.MemoryExtractionJob
-import com.mistbell.tavern.v3.feature.memory.MemoryExtractionJobRepository
-import com.mistbell.tavern.v3.feature.memory.MemoryExtractionJobStore
-import com.mistbell.tavern.v3.feature.memory.MemoryExtractionQueueWorker
 import com.mistbell.tavern.v3.feature.memory.MemoryExtractionInput
 import com.mistbell.tavern.v3.feature.memory.formatMemoryExtractionTurn
 import com.mistbell.tavern.v3.feature.memory.TemporalFactTextSynchronizer
