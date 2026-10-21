@@ -75,8 +75,11 @@ class BackupSource(private val context: Context) {
 
     private fun isCredentialKey(key: String): Boolean {
         val normalized = key.lowercase()
-        return listOf("credential", "secret", "apikey", "api_key", "api-key", "password", "token", "keystore", "privatekey", "private_key")
-            .any(normalized::contains)
+        val sensitiveMarkers = listOf(
+            "credential", "secret", "apikey", "api_key", "api-key", "password",
+            "token", "keystore", "privatekey", "private_key",
+        )
+        return sensitiveMarkers.any(normalized::contains)
     }
 
     companion object {
