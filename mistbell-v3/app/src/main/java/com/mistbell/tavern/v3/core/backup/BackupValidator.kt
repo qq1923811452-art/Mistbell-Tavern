@@ -32,6 +32,7 @@ object BackupValidator {
         val supported = when {
             relative == SETTINGS_PATH -> true
             relative == BackupSource.CHAT_DATABASE_NAME -> true
+            relative == BackupSource.SESSION_DATABASE_NAME -> true
             relative.startsWith("memory/") -> {
                 val name = relative.removePrefix("memory/")
                 '/' !in name && BackupSource.isMemoryFileName(name)

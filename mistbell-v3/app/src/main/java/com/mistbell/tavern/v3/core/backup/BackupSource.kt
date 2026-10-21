@@ -12,18 +12,8 @@ class BackupSource(private val context: Context) {
             "Backup snapshot directory could not be created."
         }
         val result = linkedMapOf<String, File>()
-        val db = context.getDatabasePath(CHAT_DATABASE_NAME)
-        if (db.isFile) {
-            val snapshot = File(snapshotDirectory, CHAT_DATABASE_NAME)
-            val source = SQLiteDatabase.openDatabase(db.absolutePath, null, SQLiteDatabase.OPEN_READWRITE)
-            try {
-                val escaped = snapshot.absolutePath.replace("'", "''")
-                source.execSQL("VACUUM INTO '$escaped'")
-            } finally {
-                source.close()
-            }
-            result["data/$CHAT_DATABASE_NAME"] = snapshot
-        }
+        includeDatabase(CHAT_DATABASE_NAME, snapshotDirectory, result)
+        includeDatabase(SESSION_DATABASE_NAME, snapshotDirectory, result)
 
         MEMORY_FILE_NAMES.forEach { name ->
             context.filesDir.listFiles().orEmpty().filter { it.isFile && it.name == name }.forEach { file ->
@@ -57,6 +47,20 @@ class BackupSource(private val context: Context) {
         return result
     }
 
+    private fun includeDatabase(name: String, snapshotDirectory: File, result: MutableMap<String, File>) {
+        val database = context.getDatabasePath(name)
+        if (!database.isFile) return
+        val snapshot = File(snapshotDirectory, name)
+        val source = SQLiteDatabase.openDatabase(database.absolutePath, null, SQLiteDatabase.OPEN_READWRITE)
+        try {
+            val escaped = snapshot.absolutePath.replace("'", "''")
+            source.execSQL("VACUUM INTO '$escaped'")
+        } finally {
+            source.close()
+        }
+        result["data/$name"] = snapshot
+    }
+
     private fun addDirectory(
         result: MutableMap<String, File>,
         directory: File,
@@ -88,6 +92,7 @@ class BackupSource(private val context: Context) {
         }
 
         const val CHAT_DATABASE_NAME = "mistbell-v3-chat.db"
+        const val SESSION_DATABASE_NAME = "mistbell-v3-sessions.db"
         const val SETTINGS_PREFERENCES = "mistbell-v3-settings"
         const val SETTINGS_BACKUP_FILE = "settings.json"
         private val MEMORY_FILE_NAMES = setOf(

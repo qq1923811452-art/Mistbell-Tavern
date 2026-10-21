@@ -62,6 +62,7 @@ class BackupService(
             entryCount = extracted.manifest.entryCount
             archiveHash = extracted.archiveSha256
             validateStagedDatabase(File(staging, BackupSource.CHAT_DATABASE_NAME))
+            validateStagedDatabase(File(staging, BackupSource.SESSION_DATABASE_NAME))
             val plan = mapRestoreTargets(extracted)
             var rollbackSettings: (() -> Unit)? = null
             var rollbackLifecycleHandled = false
@@ -143,16 +144,18 @@ class BackupService(
             }
         }
 
-        val databaseFile = appContext.getDatabasePath(BackupSource.CHAT_DATABASE_NAME)
-        val stagedDatabase = File(extracted.stagingDirectory, BackupSource.CHAT_DATABASE_NAME)
-        if (archivePaths.contains(BackupSource.CHAT_DATABASE_NAME)) {
-            replacements[stagedDatabase] = databaseFile
-        } else {
-            removals += databaseFile
+        listOf(BackupSource.CHAT_DATABASE_NAME, BackupSource.SESSION_DATABASE_NAME).forEach { name ->
+            val databaseFile = appContext.getDatabasePath(name)
+            val stagedDatabase = File(extracted.stagingDirectory, name)
+            if (archivePaths.contains(name)) {
+                replacements[stagedDatabase] = databaseFile
+            } else {
+                removals += databaseFile
+            }
+            // A WAL or SHM from the previous database must never be replayed against the restored DB.
+            removals += File(databaseFile.path + "-wal")
+            removals += File(databaseFile.path + "-shm")
         }
-        // A WAL or SHM from the previous database must never be replayed against the restored DB.
-        removals += File(databaseFile.path + "-wal")
-        removals += File(databaseFile.path + "-shm")
 
         return RestorePlan(replacements, removals)
     }
