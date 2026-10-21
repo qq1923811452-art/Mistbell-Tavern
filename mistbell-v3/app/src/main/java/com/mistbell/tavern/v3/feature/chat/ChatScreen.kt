@@ -265,16 +265,7 @@ fun ChatScreen(onBack: () -> Unit) {
     }
 
     fun persistHistory() {
-        val snapshot = history.map { line ->
-            PersistedChatMessage(
-                id = line.id,
-                role = line.role,
-                content = line.content,
-                createdAtEpochMillis = line.createdAtEpochMillis,
-                deliveryState = line.deliveryState,
-            )
-        }
-        historySaveCoordinator.save(snapshot)
+        historySaveCoordinator.save(ChatHistorySnapshotFactory.create(history))
     }
 
     val importSessionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
