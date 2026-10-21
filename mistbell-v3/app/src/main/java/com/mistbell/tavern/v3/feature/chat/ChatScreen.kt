@@ -884,50 +884,20 @@ fun ChatScreen(onBack: () -> Unit) {
                             status = "请先填写模型 ID。"
                             return@Button
                         }
-                        val profile = ProviderProfile(
-                            id = "session-chat",
-                            kind = ProviderKind.CHAT,
-                            baseUrl = baseUrl.trim(),
-                            modelId = modelId.trim(),
-                            credentialHandle = if (apiKey.isBlank()) null else "session-chat-key",
-                        )
-                        val secretForThisRequest = apiKey
-                        val memorySecretForThisRequest = memoryApiKey
-                        val memoryProfile = memoryModelId.trim().takeIf(String::isNotBlank)?.let { configuredMemoryModel ->
-                            ProviderProfile(
-                                id = "session-memory-extraction",
-                                kind = ProviderKind.MEMORY_EXTRACTION,
-                                baseUrl = memoryBaseUrl.trim(),
-                                modelId = configuredMemoryModel,
-                                credentialHandle = when {
-                                    memoryApiKey.isNotBlank() -> "session-memory-key"
-                                    else -> settings.getString("memory_api_credential_handle", null)
-                                        ?.takeIf(memoryCredentialStore::contains)
-                                },
-                            )
-                        }
-                        val providersForRequest = try {
-                            ProviderProfileSet(
-                                profiles = listOfNotNull(profile, memoryProfile),
-                                selectedProfileIds = buildMap {
-                                    put(ProviderKind.CHAT, profile.id)
-                                    if (memoryProfile != null) put(ProviderKind.MEMORY_EXTRACTION, memoryProfile.id)
-                                },
-                            )
-                        } catch (_: IllegalArgumentException) {
-                            status = "聊天或记忆 API 配置无效，请检查 Base URL 和模型 ID。"
-                            return@Button
-                        }
-                        val client = OpenAiCompatibleChatClient(
-                            providers = providersForRequest,
-                            credentials = CredentialResolver { handle ->
-                                when (handle) {
-                                    "session-chat-key" -> secretForThisRequest
-                                    "session-memory-key" -> memorySecretForThisRequest
-                                    else -> null
-                                }
-                            },
-                        )
+                        val requestClient = ChatRequestClientCoordinator(
+                            memoryCredentialStore = memoryCredentialStore,
+                            settings = settings,
+                            setStatus = { status = it },
+                        ).create(
+                            baseUrl = baseUrl,
+                            modelId = modelId,
+                            apiKey = apiKey,
+                            memoryBaseUrl = memoryBaseUrl,
+                            memoryModelId = memoryModelId,
+                            memoryApiKey = memoryApiKey,
+                        ) ?: return@Button
+                        val providersForRequest = requestClient.providers
+                        val client = requestClient.client
                         val openingMessage = characterCards.firstOrNull { it.id == selectedCharacterId }
                             ?.card?.firstMessage?.trim().orEmpty()
                         if (history.isEmpty() && openingMessage.isNotBlank()) {
