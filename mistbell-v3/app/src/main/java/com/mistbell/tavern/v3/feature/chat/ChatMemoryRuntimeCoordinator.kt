@@ -1,8 +1,27 @@
 package com.mistbell.tavern.v3.feature.chat
 
-
-import android.content.Context
 import android.os.Handler
+import android.content.Context
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import com.mistbell.tavern.v3.core.memory.VectorMemoryContextService
+import com.mistbell.tavern.v3.core.storage.AtomicMemoryTextStore
+import com.mistbell.tavern.v3.core.storage.AtomicTemporalFactStore
+import com.mistbell.tavern.v3.core.storage.MemoryTextLoadResult
+import com.mistbell.tavern.v3.core.storage.MemoryScopeFileNames
+import com.mistbell.tavern.v3.core.storage.AtomicVectorSnapshotStore
+import com.mistbell.tavern.v3.core.storage.PersistedVectorSnapshotProvider
+import com.mistbell.tavern.v3.core.storage.VectorSnapshotLoadResult
+import com.mistbell.tavern.v3.feature.embedding.EmbeddingGemma2MemoryRuntime
+import com.mistbell.tavern.v3.feature.embedding.EmbeddingGemma2ModelAssetManager
+import com.mistbell.tavern.v3.feature.embedding.EmbeddingGemma2RuntimeAdapter
+import com.mistbell.tavern.v3.feature.embedding.EmbeddingEngineProcessHolder
+import com.mistbell.tavern.v3.feature.embedding.EmbeddingGemma2TextPolicy
+import java.io.File
+import androidx.compose.material3.Text
+import com.mistbell.tavern.v3.feature.memory.TemporalFactTextSynchronizer
+import com.mistbell.tavern.v3.feature.memory.TemporalFactTextSyncResult
+import com.mistbell.tavern.v3.feature.memory.TemporalFactExtractionPipeline
 import com.mistbell.tavern.v3.core.diagnostics.DiagnosticLogStore
 
 /**
