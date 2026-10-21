@@ -12,16 +12,27 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 
+internal data class ChatHistoryBudgetSettingsValues(
+    val recentTurnsText: String,
+    val summaryCharsText: String,
+    val historyCharsText: String,
+)
+
+internal data class ChatHistoryBudgetSettingsCallbacks(
+    val onRecentTurnsTextChange: (String) -> Unit,
+    val onSummaryCharsTextChange: (String) -> Unit,
+    val onHistoryCharsTextChange: (String) -> Unit,
+)
+
 @Composable
 internal fun ChatHistoryBudgetSettingsSection(
     settings: SharedPreferences,
-    recentTurnsText: String,
-    onRecentTurnsTextChange: (String) -> Unit,
-    summaryCharsText: String,
-    onSummaryCharsTextChange: (String) -> Unit,
-    historyCharsText: String,
-    onHistoryCharsTextChange: (String) -> Unit,
+    values: ChatHistoryBudgetSettingsValues,
+    callbacks: ChatHistoryBudgetSettingsCallbacks,
 ) {
+    val recentTurnsText = values.recentTurnsText
+    val summaryCharsText = values.summaryCharsText
+    val historyCharsText = values.historyCharsText
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.fillMaxWidth().padding(12.dp),
@@ -32,7 +43,7 @@ internal fun ChatHistoryBudgetSettingsSection(
                 value = recentTurnsText,
                 onValueChange = { value ->
                     val sanitized = value.filter(Char::isDigit).take(3)
-                    onRecentTurnsTextChange(sanitized)
+                    callbacks.onRecentTurnsTextChange(sanitized)
                     sanitized.toIntOrNull()?.takeIf { it in 1..100 }?.let { turns ->
                         settings.edit().putInt("chat_history_recent_turns", turns).apply()
                     }
@@ -46,7 +57,7 @@ internal fun ChatHistoryBudgetSettingsSection(
                 value = summaryCharsText,
                 onValueChange = { value ->
                     val sanitized = value.filter(Char::isDigit).take(5)
-                    onSummaryCharsTextChange(sanitized)
+                    callbacks.onSummaryCharsTextChange(sanitized)
                     sanitized.toIntOrNull()?.takeIf { it in 0..10_000 }?.let { chars ->
                         settings.edit().putInt("chat_history_summary_max_chars", chars).apply()
                     }
@@ -60,7 +71,7 @@ internal fun ChatHistoryBudgetSettingsSection(
                 value = historyCharsText,
                 onValueChange = { value ->
                     val sanitized = value.filter(Char::isDigit).take(6)
-                    onHistoryCharsTextChange(sanitized)
+                    callbacks.onHistoryCharsTextChange(sanitized)
                     sanitized.toIntOrNull()?.takeIf { it in 12_000..100_000 }?.let { chars ->
                         settings.edit().putInt("chat_history_max_chars", chars).apply()
                     }
