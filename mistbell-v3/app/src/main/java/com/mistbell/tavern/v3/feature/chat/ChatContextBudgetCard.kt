@@ -46,7 +46,7 @@ internal fun ChatContextBudgetCard(
             OutlinedTextField(
                 value = historyCharsText,
                 onValueChange = onHistoryCharsChange,
-                label = { Text("最近历史字符预算（4000–100000）") },
+                label = { Text("最近历史字符预算（12000–100000）") },
                 supportingText = { Text("默认 24000 字符。字符数不等于 Token 数；保留完整消息，不截断长回复，单条最新消息超限时仍会整条保留。") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
