@@ -1,0 +1,63 @@
+name: Mistbell 3.0 Generate Independent KtLint Baseline
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - codex/mistbell-v3-independent-ktlint-baseline
+    paths:
+      - '.github/workflows/mistbell-v3-generate-ktlint-baseline.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: mistbell-v3-independent-ktlint-baseline
+  cancel-in-progress: false
+
+jobs:
+  generate-baseline:
+    name: Generate and verify independent 3.0 KtLint baseline
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout dedicated baseline branch
+        uses: actions/checkout@v4
+        with:
+          ref: codex/mistbell-v3-independent-ktlint-baseline
+          persist-credentials: true
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Generate independent 3.0 KtLint baseline
+        run: ./gradlew -p mistbell-v3 :app:ktlintGenerateBaseline --no-daemon --no-parallel
+
+      - name: Verify KtLint against generated 3.0 baseline
+        run: ./gradlew -p mistbell-v3 :app:ktlintCheck --no-daemon --no-parallel
+
+      - name: Commit generated baseline on this dedicated branch only
+        run: |
+          if git diff --quiet -- mistbell-v3/app/config/ktlint/baseline.xml; then
+            echo "Generated KtLint baseline is already up to date."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add mistbell-v3/app/config/ktlint/baseline.xml
+          git commit -m "Generate independent Mistbell 3.0 KtLint baseline"
+          git push origin HEAD:codex/mistbell-v3-independent-ktlint-baseline
+
+      - name: Upload generated baseline for review
+        uses: actions/upload-artifact@v4
+        with:
+          name: mistbell-v3-independent-ktlint-baseline
+          path: mistbell-v3/app/config/ktlint/baseline.xml
+          if-no-files-found: error
+          retention-days: 7
