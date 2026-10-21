@@ -14,7 +14,7 @@ import com.mistbell.tavern.v3.feature.memory.MemoryExtractionQueueWorker
 @Composable
 internal fun ChatHistoryLoadLifecycle(
     context: Context,
-    historyStore: ChatHistoryStore,
+    historyStore: SqliteChatHistoryRepository,
     historyLoadCoordinator: ChatHistoryLoadCoordinator,
     diagnosticStore: DiagnosticLogStore,
     history: MutableList<ChatLine>,
