@@ -89,7 +89,7 @@ import com.mistbell.tavern.v3.feature.worldbook.LocalWorldBookService
 import com.mistbell.tavern.v3.feature.worldbook.WorldBookActivationState
 import com.mistbell.tavern.v3.feature.worldbook.WorldBookParser
 
-private fun formatCharacterCardForPrompt(card: CharacterCard): String = card.stableDefinition()
+
 
 internal val CHAT_EMBEDDING_DIMENSION_OPTIONS = listOf(128, 256, 512, 768, 1024, 1536, 2048)
 
@@ -568,7 +568,7 @@ fun ChatScreen(onBack: () -> Unit) {
                             history = history,
                             userText = userText,
                             selectedCard = selectedCard,
-                            characterDefinition = selectedCard?.let(::formatCharacterCardForPrompt),
+                            characterDefinition = selectedCard?.let(ChatCharacterPromptFormatter::format),
                             localEntries = localWorldbookEntries,
                             worldbookState = worldbookActivationState,
                             worldbookStateKey = worldbookStateKey,
