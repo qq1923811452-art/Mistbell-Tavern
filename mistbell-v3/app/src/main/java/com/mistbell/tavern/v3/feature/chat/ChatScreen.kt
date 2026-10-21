@@ -471,25 +471,20 @@ fun ChatScreen(onBack: () -> Unit) {
                         busy = true
                         memoryStatusNotice = ""
                         status = "正在连接聊天 API……"
-                        val selectedCard = characterCards.firstOrNull { it.id == selectedCharacterId }?.card
-                        val preparation = ChatSendMessageCoordinator(
+                        val messages = ChatTurnPromptPreparationCoordinator(
                             settings = settings,
                             diagnosticStore = diagnosticStore,
+                            mainHandler = mainHandler,
+                            setStatus = { status = it },
                         ).prepare(
                             history = history,
                             userText = userText,
-                            selectedCard = selectedCard,
-                            characterDefinition = selectedCard?.let(ChatCharacterPromptFormatter::format),
-                            localEntries = localWorldbookEntries,
+                            characterCards = characterCards,
+                            selectedCharacterId = selectedCharacterId,
+                            localWorldbookEntries = localWorldbookEntries,
                             worldbookState = worldbookActivationState,
                             worldbookStateKey = worldbookStateKey,
-                            onBudgetExceeded = { droppedCount ->
-                                mainHandler.post {
-                                    status = "世界书预算超限：本轮有 ${droppedCount} 个条目未注入"
-                                }
-                            },
                         )
-                        val messages = preparation.messages
                         val observer = ChatStreamObserverCoordinator(
                             mainHandler = mainHandler,
                             history = history,
