@@ -67,8 +67,11 @@ class WorldbookPlannerTest {
     @Test
     fun budgetDropsOversizedEntries() {
         val plan = planner.activate(
-            listOf(entry("a", content = "x".repeat(20)), entry("b", content = "y".repeat(20))),
-            scanText = "hello",
+            listOf(
+                entry("a", content = "x".repeat(20), keys = listOf("trigger")),
+                entry("b", content = "y".repeat(20), keys = listOf("trigger")),
+            ),
+            scanText = "trigger",
             maxBudget = 30,
             state = null,
         )
