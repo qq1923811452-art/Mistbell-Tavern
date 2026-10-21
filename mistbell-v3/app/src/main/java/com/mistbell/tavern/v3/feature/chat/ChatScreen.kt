@@ -488,95 +488,102 @@ fun ChatScreen(onBack: () -> Unit) {
                     )
             }
 
-            ChatContextBudgetCard(
-                recentTurnsText = recentTurnsText,
-                onRecentTurnsChange = { value ->
-                    recentTurnsText = value.filter(Char::isDigit).take(3)
-                    recentTurnsText.toIntOrNull()?.takeIf { it in 1..100 }?.let { turns ->
-                        settings.edit().putInt("chat_history_recent_turns", turns).apply()
-                    }
+            ChatMemoryAndContextSettingsPanel(
+                contextBudget = {
+                    ChatContextBudgetCard(
+                                    recentTurnsText = recentTurnsText,
+                                    onRecentTurnsChange = { value ->
+                                        recentTurnsText = value.filter(Char::isDigit).take(3)
+                                        recentTurnsText.toIntOrNull()?.takeIf { it in 1..100 }?.let { turns ->
+                                            settings.edit().putInt("chat_history_recent_turns", turns).apply()
+                                        }
+                                    },
+                                    summaryCharsText = summaryCharsText,
+                                    onSummaryCharsChange = { value ->
+                                        summaryCharsText = value.filter(Char::isDigit).take(5)
+                                        summaryCharsText.toIntOrNull()?.takeIf { it in 0..10_000 }?.let { chars ->
+                                            settings.edit().putInt("chat_history_summary_max_chars", chars).apply()
+                                        }
+                                    },
+                                    historyCharsText = historyCharsText,
+                                    onHistoryCharsChange = { value ->
+                                        historyCharsText = value.filter(Char::isDigit).take(6)
+                                        historyCharsText.toIntOrNull()?.takeIf { it in 12_000..100_000 }?.let { chars ->
+                                            settings.edit().putInt("chat_history_max_chars", chars).apply()
+                                        }
+                                    },
+                                )
                 },
-                summaryCharsText = summaryCharsText,
-                onSummaryCharsChange = { value ->
-                    summaryCharsText = value.filter(Char::isDigit).take(5)
-                    summaryCharsText.toIntOrNull()?.takeIf { it in 0..10_000 }?.let { chars ->
-                        settings.edit().putInt("chat_history_summary_max_chars", chars).apply()
-                    }
+                memoryApi = {
+                    ChatMemoryApiSettingsCard(
+                                    baseUrl = memoryBaseUrl,
+                                    onBaseUrlChange = {
+                                        memoryBaseUrl = it
+                                        settings.edit().putString("memory_api_base_url", it).apply()
+                                    },
+                                    modelId = memoryModelId,
+                                    onModelIdChange = {
+                                        memoryModelId = it
+                                        settings.edit().putString("memory_model_id", it).apply()
+                                    },
+                                    apiKey = memoryApiKey,
+                                    onApiKeyChange = { memoryApiKey = it },
+                                    hasSavedCredential = hasSavedMemoryCredential,
+                                    onSaveCredential = {
+                                        if (memoryApiKey.isBlank()) {
+                                            status = "请先输入记忆整理 API Key，再保存到 Android Keystore。"
+                                        } else {
+                                            runCatching {
+                                                val newHandle = memoryCredentialStore.put(memoryApiKey)
+                                                val oldHandle = settings.getString("memory_api_credential_handle", null)
+                                                if (!settings.edit().putString("memory_api_credential_handle", newHandle).commit()) {
+                                                    memoryCredentialStore.delete(newHandle)
+                                                    error("Credential handle could not be saved.")
+                                                }
+                                                if (!oldHandle.isNullOrBlank() && oldHandle != newHandle) {
+                                                    memoryCredentialStore.delete(oldHandle)
+                                                }
+                                                memoryApiKey = ""
+                                                hasSavedMemoryCredential = true
+                                                status = "记忆整理 API Key 已加密保存；设置中只保存凭据句柄。"
+                                                diagnosticStore.info("memory.credential.saved")
+                                            }.onFailure { error ->
+                                                status = "记忆 API Key 保存失败：${error::class.java.simpleName}"
+                                                diagnosticStore.warn("memory.credential.save_failed", "reason=${error::class.java.simpleName}")
+                                            }
+                                        }
+                                    },
+                                    onDeleteCredential = {
+                                        val handle = settings.getString("memory_api_credential_handle", null)
+                                        if (!handle.isNullOrBlank()) memoryCredentialStore.delete(handle)
+                                        settings.edit().remove("memory_api_credential_handle").commit()
+                                        hasSavedMemoryCredential = false
+                                        status = "已删除保存的记忆 API 密钥。"
+                                        diagnosticStore.info("memory.credential.deleted")
+                                    },
+                                )
                 },
-                historyCharsText = historyCharsText,
-                onHistoryCharsChange = { value ->
-                    historyCharsText = value.filter(Char::isDigit).take(6)
-                    historyCharsText.toIntOrNull()?.takeIf { it in 12_000..100_000 }?.let { chars ->
-                        settings.edit().putInt("chat_history_max_chars", chars).apply()
-                    }
+                embeddingDimensions = {
+                    ChatEmbeddingDimensionSelector(
+                                    selectedDimensions = selectedEmbeddingDimensions,
+                                    expanded = dimensionMenuExpanded,
+                                    onExpandedChange = { dimensionMenuExpanded = it },
+                                    onSelectDimensions = { dimensions ->
+                                        selectedEmbeddingDimensions = dimensions
+                                        context.getSharedPreferences("mistbell-v3-settings", Context.MODE_PRIVATE)
+                                            .edit().putInt("embedding_output_dimensions", dimensions).apply()
+                                        dimensionMenuExpanded = false
+                                        status = if (dimensions <= 768) {
+                                            "已选择 $dimensions 维输出。切换档位后，已有向量需要按新维度重建。"
+                                        } else {
+                                            "已保留 $dimensions 维档位供更高维模型使用；当前 EmbeddingGemma 2 原生最高为 768 维，超出时会跳过本地记忆并继续普通聊天。"
+                                        }
+                                        diagnosticStore.info("embedding.dimensions.changed", "dimensions=$dimensions")
+                                    },
+                                )
                 },
             )
 
-            ChatMemoryApiSettingsCard(
-                baseUrl = memoryBaseUrl,
-                onBaseUrlChange = {
-                    memoryBaseUrl = it
-                    settings.edit().putString("memory_api_base_url", it).apply()
-                },
-                modelId = memoryModelId,
-                onModelIdChange = {
-                    memoryModelId = it
-                    settings.edit().putString("memory_model_id", it).apply()
-                },
-                apiKey = memoryApiKey,
-                onApiKeyChange = { memoryApiKey = it },
-                hasSavedCredential = hasSavedMemoryCredential,
-                onSaveCredential = {
-                    if (memoryApiKey.isBlank()) {
-                        status = "请先输入记忆整理 API Key，再保存到 Android Keystore。"
-                    } else {
-                        runCatching {
-                            val newHandle = memoryCredentialStore.put(memoryApiKey)
-                            val oldHandle = settings.getString("memory_api_credential_handle", null)
-                            if (!settings.edit().putString("memory_api_credential_handle", newHandle).commit()) {
-                                memoryCredentialStore.delete(newHandle)
-                                error("Credential handle could not be saved.")
-                            }
-                            if (!oldHandle.isNullOrBlank() && oldHandle != newHandle) {
-                                memoryCredentialStore.delete(oldHandle)
-                            }
-                            memoryApiKey = ""
-                            hasSavedMemoryCredential = true
-                            status = "记忆整理 API Key 已加密保存；设置中只保存凭据句柄。"
-                            diagnosticStore.info("memory.credential.saved")
-                        }.onFailure { error ->
-                            status = "记忆 API Key 保存失败：${error::class.java.simpleName}"
-                            diagnosticStore.warn("memory.credential.save_failed", "reason=${error::class.java.simpleName}")
-                        }
-                    }
-                },
-                onDeleteCredential = {
-                    val handle = settings.getString("memory_api_credential_handle", null)
-                    if (!handle.isNullOrBlank()) memoryCredentialStore.delete(handle)
-                    settings.edit().remove("memory_api_credential_handle").commit()
-                    hasSavedMemoryCredential = false
-                    status = "已删除保存的记忆 API 密钥。"
-                    diagnosticStore.info("memory.credential.deleted")
-                },
-            )
-
-            ChatEmbeddingDimensionSelector(
-                selectedDimensions = selectedEmbeddingDimensions,
-                expanded = dimensionMenuExpanded,
-                onExpandedChange = { dimensionMenuExpanded = it },
-                onSelectDimensions = { dimensions ->
-                    selectedEmbeddingDimensions = dimensions
-                    context.getSharedPreferences("mistbell-v3-settings", Context.MODE_PRIVATE)
-                        .edit().putInt("embedding_output_dimensions", dimensions).apply()
-                    dimensionMenuExpanded = false
-                    status = if (dimensions <= 768) {
-                        "已选择 $dimensions 维输出。切换档位后，已有向量需要按新维度重建。"
-                    } else {
-                        "已保留 $dimensions 维档位供更高维模型使用；当前 EmbeddingGemma 2 原生最高为 768 维，超出时会跳过本地记忆并继续普通聊天。"
-                    }
-                    diagnosticStore.info("embedding.dimensions.changed", "dimensions=$dimensions")
-                },
-            )
             ChatConversationPanel(
                 status = status,
                 messages = history,
