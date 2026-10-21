@@ -46,6 +46,7 @@ object BackupValidator {
             require(sum <= MAX_TOTAL_UNCOMPRESSED_BYTES) { "Backup uncompressed size exceeds the limit." }
         }
         require(sum == manifest.totalBytes) { "Backup manifest total size does not match." }
+        require("data/settings.json" in paths) { "Backup settings entry is missing." }
     }
 
     fun sha256(file: File): String {
