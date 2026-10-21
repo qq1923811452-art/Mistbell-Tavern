@@ -68,7 +68,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.mistbell.tavern.v3.core.model.ProviderKind
 import com.mistbell.tavern.v3.core.model.ProviderProfile
