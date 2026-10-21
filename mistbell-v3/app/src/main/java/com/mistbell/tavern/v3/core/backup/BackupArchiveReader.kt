@@ -102,6 +102,6 @@ class BackupArchiveReader {
     }
 
     companion object {
-        private const val MAX_MANIFEST_BYTES = 4 * 1024 * 1024
+        private const val MAX_MANIFEST_BYTES = 16 * 1024 * 1024
     }
 }
