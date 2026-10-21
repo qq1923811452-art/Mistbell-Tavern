@@ -1,3 +1,6 @@
+// SillyTavern encodes position/role as small integer enums; they are data, not logic.
+@file:Suppress("MagicNumber")
+
 package com.mistbell.tavern.v3.feature.worldbook.core
 
 import org.json.JSONArray
@@ -33,9 +36,8 @@ object StWorldbookImporter {
     }
 
     private fun parseEntry(key: String, node: JSONObject?): WorldbookEntry? {
-        if (node == null) return null
-        val content = node.optString("content", "").trim()
-        if (content.isEmpty()) return null
+        val content = node?.optString("content", "")?.trim().orEmpty()
+        if (node == null || content.isEmpty()) return null
         val id = sequenceOf("uid", "id", "key")
             .map { node.opt(it)?.toString().orEmpty().trim() }
             .firstOrNull { it.isNotEmpty() && it != "null" }
