@@ -93,7 +93,7 @@ import com.mistbell.tavern.v3.feature.worldbook.WorldBookParser
 
 private fun formatCharacterCardForPrompt(card: CharacterCard): String = card.stableDefinition()
 
-private val CHAT_EMBEDDING_DIMENSION_OPTIONS = listOf(128, 256, 512, 768, 1024, 1536, 2048)
+internal val CHAT_EMBEDDING_DIMENSION_OPTIONS = listOf(128, 256, 512, 768, 1024, 1536, 2048)
 
 internal data class ChatLine(
     val id: String,
