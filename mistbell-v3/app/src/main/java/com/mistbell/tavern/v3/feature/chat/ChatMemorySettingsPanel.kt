@@ -2,11 +2,7 @@ package com.mistbell.tavern.v3.feature.chat
 
 import android.content.SharedPreferences
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
 import com.mistbell.tavern.v3.core.diagnostics.DiagnosticLogStore
-import com.mistbell.tavern.v3.core.security.AndroidKeystoreMemoryCredentialStore
-import com.mistbell.tavern.v3.feature.chat.ChatEmbeddingDimensionsSettingsSection
-import com.mistbell.tavern.v3.feature.memory.MemoryCredentialStore
 
 @Composable
 internal fun ChatMemorySettingsPanel(
@@ -15,7 +11,7 @@ internal fun ChatMemorySettingsPanel(
     modelId: String,
     apiKey: String,
     hasSavedCredential: Boolean,
-    credentialStore: MemoryCredentialStore,
+    credentialStore: AndroidKeystoreMemoryCredentialStore,
     diagnosticStore: DiagnosticLogStore,
     selectedDimensions: Int,
     dimensionMenuExpanded: Boolean,
