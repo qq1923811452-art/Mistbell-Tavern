@@ -729,36 +729,11 @@ fun ChatScreen(onBack: () -> Unit) {
                 }
             }
             Text(status, style = MaterialTheme.typography.bodySmall)
-            LazyColumn(
-                modifier = Modifier.weight(1f).fillMaxWidth(),
-                state = listState,
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                itemsIndexed(history) { _, line ->
-                    Card(modifier = Modifier.fillMaxWidth()) {
-                        Column(Modifier.padding(10.dp)) {
-                            Text(
-                                if (line.role == "user") "你" else "Mistbell",
-                                style = MaterialTheme.typography.labelMedium,
-                            )
-                            Spacer(Modifier.height(4.dp))
-                            Text(
-                                line.content.ifBlank {
-                                    when {
-                                        busy && line.role == "assistant" -> "正在生成……"
-                                        line.deliveryState == PersistedChatMessage.DeliveryState.PENDING ->
-                                            "上次回复未完成，可重新发送。"
-                                        line.deliveryState == PersistedChatMessage.DeliveryState.FAILED &&
-                                            line.role == "assistant" ->
-                                            "上次回复未完成，未生成完整回答。"
-                                        else -> ""
-                                    }
-                                },
-                            )
-                        }
-                    }
-                }
-            }
+            ChatHistoryMessageList(
+                history = history,
+                busy = busy,
+                listState = listState,
+            )
             OutlinedTextField(
                 value = chatUiState.draft,
                 onValueChange = chatViewModel::updateDraft,
