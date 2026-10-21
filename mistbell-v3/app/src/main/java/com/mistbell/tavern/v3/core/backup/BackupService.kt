@@ -12,6 +12,15 @@ import java.util.UUID
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
+/**
+ * Implemented by the app integration layer to close every live chat database handle before the
+ * swap and reopen the database after installation or rollback. Replacing an open SQLite file is unsafe.
+ */
+interface BackupDatabaseLifecycle {
+    fun closeBeforeRestore()
+    fun reopenAfterRestore()
+}
+
 /** Export, preview and restore orchestration. No UI entry points are added in this change. */
 class BackupService(
     context: Context,
@@ -20,6 +29,7 @@ class BackupService(
     private val writer: BackupArchiveWriter = BackupArchiveWriter(),
     private val reader: BackupArchiveReader = BackupArchiveReader(),
     private val validator: BackupValidatorFacade = BackupValidatorFacade(),
+    private val databaseLifecycle: BackupDatabaseLifecycle,
 ) {
     private val appContext = context.applicationContext
     private val source = BackupSource(appContext)
@@ -49,11 +59,30 @@ class BackupService(
             archiveHash = extracted.archiveSha256
             validator.validateDatabaseIfPresent(File(staging, BackupSource.CHAT_DATABASE_NAME))
             val plan = mapRestoreTargets(extracted)
-            RestoreTransaction().replaceFiles(
-                stagedToDestination = plan.replacements,
-                removeDestinations = plan.removals,
-                beforeCommit = { applySettings(File(staging, BackupSource.SETTINGS_BACKUP_FILE)) },
-            )
+            var rollbackSettings: (() -> Unit)? = null
+            var rollbackLifecycleHandled = false
+            databaseLifecycle.closeBeforeRestore()
+            try {
+                RestoreTransaction().replaceFiles(
+                    stagedToDestination = plan.replacements,
+                    removeDestinations = plan.removals,
+                    beforeCommit = {
+                        rollbackSettings = applySettings(File(staging, BackupSource.SETTINGS_BACKUP_FILE))
+                        databaseLifecycle.reopenAfterRestore()
+                    },
+                    beforeRollback = { databaseLifecycle.closeBeforeRestore() },
+                    afterRollback = {
+                        databaseLifecycle.reopenAfterRestore()
+                        rollbackLifecycleHandled = true
+                    },
+                )
+            } catch (failure: Throwable) {
+                runCatching { rollbackSettings?.invoke() }.onFailure(failure::addSuppressed)
+                if (!rollbackLifecycleHandled) {
+                    runCatching { databaseLifecycle.reopenAfterRestore() }.onFailure(failure::addSuppressed)
+                }
+                throw failure
+            }
             log("backup.restore", started, entryCount, archiveHash)
             preview(archive)
         } finally {
@@ -103,8 +132,8 @@ class BackupService(
         return RestorePlan(replacements, removals)
     }
 
-    private fun applySettings(file: File) {
-        if (!file.isFile) return
+    private fun applySettings(file: File): () -> Unit {
+        if (!file.isFile) return {}
         val json = JSONObject(file.readText(Charsets.UTF_8))
         val preferences = appContext.getSharedPreferences(BackupSource.SETTINGS_PREFERENCES, Context.MODE_PRIVATE)
         val previous = preferences.all
@@ -126,20 +155,28 @@ class BackupService(
             }
         }
         if (!editor.commit()) {
-            val rollback = preferences.edit().clear()
-            previous.forEach { (key, value) ->
-                when (value) {
-                    is String -> rollback.putString(key, value)
-                    is Boolean -> rollback.putBoolean(key, value)
-                    is Int -> rollback.putInt(key, value)
-                    is Long -> rollback.putLong(key, value)
-                    is Float -> rollback.putFloat(key, value)
-                    is Set<*> -> rollback.putStringSet(key, value.filterIsInstance<String>().toSet())
-                }
-            }
-            rollback.commit()
+            restorePreferences(preferences, previous)
             throw IOException("Settings restore could not be committed.")
         }
+        return { restorePreferences(preferences, previous) }
+    }
+
+    private fun restorePreferences(
+        preferences: android.content.SharedPreferences,
+        values: Map<String, *>,
+    ) {
+        val rollback = preferences.edit().clear()
+        values.forEach { (key, value) ->
+            when (value) {
+                is String -> rollback.putString(key, value)
+                is Boolean -> rollback.putBoolean(key, value)
+                is Int -> rollback.putInt(key, value)
+                is Long -> rollback.putLong(key, value)
+                is Float -> rollback.putFloat(key, value)
+                is Set<*> -> rollback.putStringSet(key, value.filterIsInstance<String>().toSet())
+            }
+        }
+        if (!rollback.commit()) throw IOException("Previous settings could not be restored.")
     }
 
     private fun log(event: String, started: Instant, entries: Int, hash: String) {
