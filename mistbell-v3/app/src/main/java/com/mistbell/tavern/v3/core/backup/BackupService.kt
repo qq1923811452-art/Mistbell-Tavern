@@ -59,7 +59,7 @@ class BackupService(
             val extracted = reader.extract(archive, staging)
             entryCount = extracted.manifest.entryCount
             archiveHash = extracted.archiveSha256
-            validator.validateDatabaseIfPresent(File(staging, BackupSource.CHAT_DATABASE_NAME))
+            validateStagedDatabase(File(staging, BackupSource.CHAT_DATABASE_NAME))
             val plan = mapRestoreTargets(extracted)
             var rollbackSettings: (() -> Unit)? = null
             var rollbackLifecycleHandled = false
@@ -89,6 +89,19 @@ class BackupService(
             preview(archive)
         } finally {
             staging.deleteRecursively()
+        }
+    }
+
+    private fun validateStagedDatabase(stagedDatabase: File) {
+        if (!stagedDatabase.isFile) return
+        val validationDirectory = File(appContext.cacheDir, "backup-db-validation-\${UUID.randomUUID()}")
+        require(validationDirectory.mkdirs()) { "Database validation directory could not be created." }
+        try {
+            val isolatedCopy = File(validationDirectory, BackupSource.CHAT_DATABASE_NAME)
+            stagedDatabase.copyTo(isolatedCopy, overwrite = true)
+            validator.validateDatabaseIfPresent(isolatedCopy)
+        } finally {
+            validationDirectory.deleteRecursively()
         }
     }
 
@@ -157,8 +170,10 @@ class BackupService(
             }
         }
         if (!editor.commit()) {
-            restorePreferences(preferences, previous)
-            throw IOException("Settings restore could not be committed.")
+            val commitFailure = IOException("Settings restore could not be committed.")
+            runCatching { restorePreferences(preferences, previous) }
+                .onFailure(commitFailure::addSuppressed)
+            throw commitFailure
         }
         return { restorePreferences(preferences, previous) }
     }
