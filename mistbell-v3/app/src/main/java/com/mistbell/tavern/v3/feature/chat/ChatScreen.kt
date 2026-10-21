@@ -312,26 +312,16 @@ fun ChatScreen(onBack: () -> Unit) {
         }
     }
 
-    fun scheduleMemoryIndexRebuild(
-        records: List<com.mistbell.tavern.v3.core.memory.MemoryTextRecord>,
-        runtime: com.mistbell.tavern.v3.core.memory.PassageEmbeddingRuntime,
-        memoryTextStore: AtomicMemoryTextStore,
-        vectorSnapshotStore: AtomicVectorSnapshotStore,
-        reason: String,
+    val memoryOperationsCoordinator = remember(
+        context,
+        memoryCredentialStore,
+        historyStore,
+        historySaveMutex,
+        coroutineScope,
+        diagnosticStore,
+        memoryScopeId,
     ) {
-        ChatMemoryIndexRebuildCoordinator(
-            coroutineScope = coroutineScope,
-            diagnosticStore = diagnosticStore,
-            memoryScopeId = memoryScopeId,
-            isInFlight = { memoryIndexRebuildInFlight },
-            setInFlight = { memoryIndexRebuildInFlight = it },
-            isBusy = { busy },
-            setStatus = { status = it },
-        ).schedule(records, runtime, memoryTextStore, vectorSnapshotStore, reason)
-    }
-
-    fun scheduleMemoryExtractionIfDue(providers: ProviderProfileSet) {
-        ChatMemoryExtractionSchedulingCoordinator(
+        ChatMemoryOperationsCoordinator(
             context = context,
             memoryCredentialStore = memoryCredentialStore,
             historyStore = historyStore,
@@ -339,8 +329,11 @@ fun ChatScreen(onBack: () -> Unit) {
             coroutineScope = coroutineScope,
             diagnosticStore = diagnosticStore,
             memoryScopeId = memoryScopeId,
+            isIndexRebuildInFlight = { memoryIndexRebuildInFlight },
+            setIndexRebuildInFlight = { memoryIndexRebuildInFlight = it },
+            isChatBusy = { busy },
             setStatus = { status = it },
-        ).schedule(providers, history.toList())
+        )
     }
 
     Scaffold(
@@ -488,7 +481,9 @@ fun ChatScreen(onBack: () -> Unit) {
                             memoryStatusNotice = { memoryStatusNotice },
                             setUsageSummary = { usageSummary = it },
                             persistHistory = ::persistHistory,
-                            scheduleMemoryExtraction = ::scheduleMemoryExtractionIfDue,
+                            scheduleMemoryExtraction = { providers ->
+                                memoryOperationsCoordinator.scheduleExtractionIfDue(providers, history.toList())
+                            },
                         ).create(providersForRequest)
                         ChatSendStreamFallbackCoordinator(
                             coroutineScope = coroutineScope,
