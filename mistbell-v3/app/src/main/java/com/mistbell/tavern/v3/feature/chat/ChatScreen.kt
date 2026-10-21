@@ -648,14 +648,11 @@ fun ChatScreen(onBack: () -> Unit) {
                     },
                     enabled = !busy && historyReady && !historyLoadFailed && worldbooksReady,
                 ) {
-                    Text(
-                        when {
-                            !historyReady -> "恢复记录中…"
-                            historyLoadFailed -> "记录异常，请先新建会话"
-                            !worldbooksReady -> "加载世界书中…"
-                            busy -> "生成中…"
-                            else -> "发送消息"
-                        },
+                    ChatSendActionLabel(
+                        historyReady = historyReady,
+                        historyLoadFailed = historyLoadFailed,
+                        worldbooksReady = worldbooksReady,
+                        busy = busy,
                     )
                 }
                 Button(
