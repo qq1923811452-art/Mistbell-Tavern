@@ -1001,60 +1001,17 @@ fun ChatScreen(onBack: () -> Unit) {
                                 latestUserMessage = userText,
                             ),
                         )
-                        val observer = object : ChatStreamObserver {
-                            override fun onDelta(text: String) {
-                                mainHandler.post {
-                                    val last = history.lastOrNull()
-                                    if (last?.role == "assistant") {
-                                        history[history.lastIndex] = last.copy(content = last.content + text)
-                                    }
-                                }
-                            }
-
-                            override fun onUsage(usage: ChatTokenUsage) {
-                                mainHandler.post {
-                                    usageSummary = "Token 用量：输入 ${usage.promptTokens} · 输出 ${usage.completionTokens} · 合计 ${usage.totalTokens} · 缓存输入 ${usage.cachedPromptTokens?.toString() ?: "未知"}"
-                                }
-                                diagnosticStore.info(
-                                    "chat.usage",
-                                    "promptTokens=${usage.promptTokens}; completionTokens=${usage.completionTokens}; totalTokens=${usage.totalTokens}; cachedPromptTokens=${usage.cachedPromptTokens ?: "unknown"}",
-                                )
-                            }
-
-                            override fun onComplete() {
-                                mainHandler.post {
-                                    busy = false
-                                    status = if (memoryStatusNotice.isBlank()) {
-                                        "回复完成。"
-                                    } else {
-                                        "回复完成。$memoryStatusNotice"
-                                    }
-                                    val last = history.lastOrNull()
-                                    if (last?.role == "assistant") {
-                                        history[history.lastIndex] = last.copy(
-                                            deliveryState = PersistedChatMessage.DeliveryState.COMPLETE,
-                                        )
-                                    }
-                                    persistHistory()
-                                    scheduleMemoryExtractionIfDue(providersForRequest)
-                                }
-                            }
-
-                            override fun onFailure(failure: ChatStreamFailure) {
-                                mainHandler.post {
-                                    busy = false
-                                    status = failure.safeMessage
-                                    val last = history.lastOrNull()
-                                    if (last?.role == "assistant") {
-                                        history[history.lastIndex] = last.copy(
-                                            content = last.content.ifBlank { failure.safeMessage },
-                                            deliveryState = PersistedChatMessage.DeliveryState.FAILED,
-                                        )
-                                    }
-                                    persistHistory()
-                                }
-                            }
-                        }
+                        val observer = ChatStreamObserverCoordinator(
+                            mainHandler = mainHandler,
+                            history = history,
+                            diagnosticStore = diagnosticStore,
+                            setBusy = { busy = it },
+                            setStatus = { status = it },
+                            memoryStatusNotice = { memoryStatusNotice },
+                            setUsageSummary = { usageSummary = it },
+                            persistHistory = ::persistHistory,
+                            scheduleMemoryExtraction = ::scheduleMemoryExtractionIfDue,
+                        ).create(providersForRequest)
                         coroutineScope.launch {
                             try {
                                 val embeddingSettings = context.getSharedPreferences("mistbell-v3-settings", Context.MODE_PRIVATE)
