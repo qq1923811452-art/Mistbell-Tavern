@@ -2,6 +2,7 @@ package com.mistbell.tavern.v3.feature.chat
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -20,7 +21,7 @@ import androidx.compose.ui.unit.dp
  * Renders the existing conversation history without changing message rendering rules.
  */
 @Composable
-internal fun ChatHistoryMessageList(
+internal fun ColumnScope.ChatHistoryMessageList(
     history: List<ChatLine>,
     busy: Boolean,
     listState: LazyListState,
