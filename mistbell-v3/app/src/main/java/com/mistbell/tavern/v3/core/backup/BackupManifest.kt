@@ -57,7 +57,7 @@ data class BackupManifest(
                 )
             } catch (failure: IllegalArgumentException) {
                 throw failure
-            } catch (failure: Exception) {
+            } catch (failure: org.json.JSONException) {
                 throw IllegalArgumentException("Backup manifest is invalid.", failure)
             }
         }
