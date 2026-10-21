@@ -1,7 +1,6 @@
 package com.mistbell.tavern.v3.core.backup
 
 import java.io.File
-import java.io.IOException
 import java.util.zip.ZipFile
 
 data class BackupPreview(
@@ -45,6 +44,7 @@ class BackupArchiveReader {
         }
     }
 
+    @Suppress("NestedBlockDepth")
     fun extract(archive: File, stagingDirectory: File): ExtractedBackup {
         val preview = preview(archive)
         require(!stagingDirectory.exists() || stagingDirectory.deleteRecursively()) {
@@ -66,7 +66,9 @@ class BackupArchiveReader {
                         "Backup path escapes the staging directory."
                     }
                     target.parentFile?.let { parent ->
-                        require(parent.isDirectory || parent.mkdirs()) { "Restore staging directory could not be created." }
+                        require(parent.isDirectory || parent.mkdirs()) {
+                            "Restore staging directory could not be created."
+                        }
                     }
                     var size = 0L
                     val digest = java.security.MessageDigest.getInstance("SHA-256")
@@ -78,7 +80,9 @@ class BackupArchiveReader {
                                 if (count < 0) break
                                 size += count
                                 total += count
-                                require(size <= BackupValidator.MAX_ENTRY_BYTES) { "Backup entry exceeds the size limit." }
+                                require(size <= BackupValidator.MAX_ENTRY_BYTES) {
+                                    "Backup entry exceeds the size limit."
+                                }
                                 require(total <= BackupValidator.MAX_TOTAL_UNCOMPRESSED_BYTES) {
                                     "Backup uncompressed size exceeds the limit."
                                 }
