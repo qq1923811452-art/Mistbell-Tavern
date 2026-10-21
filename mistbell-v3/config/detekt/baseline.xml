@@ -488,7 +488,6 @@
     <ID>NestedBlockDepth:ChatMemoryRuntimeCoordinator.kt$ChatMemoryRuntimeCoordinator$suspend fun stream( client: OpenAiCompatibleChatClient, messages: List&lt;PromptMessage&gt;, observer: ChatStreamObserver, maxTokensText: String, )</ID>
     <ID>NestedBlockDepth:LiteRtLmEmbeddingGemma2Engine.kt$LiteRtLmEmbeddingGemma2Engine$suspend fun runNpuInputLengthProbe(): List&lt;String&gt;</ID>
     <ID>NestedBlockDepth:VectorMemoryRetriever.kt$VectorMemoryRetriever$private fun countMatchedQueryTerms(text: String, queryTerms: Set&lt;String&gt;): Int</ID>
-    <ID>NewLineAtEndOfFile:CharacterCard.kt$com.mistbell.tavern.v3.feature.character.CharacterCard.kt</ID>
     <ID>RethrowCaughtException:EmbeddingGemma2ModelAssetManager.kt$EmbeddingGemma2ModelAssetManager$throw cancelled</ID>
     <ID>RethrowCaughtException:EmbeddingGemma2ModelAssetManager.kt$EmbeddingGemma2ModelAssetManager$throw error</ID>
     <ID>ReturnCount:AndroidKeystoreMemoryCredentialStore.kt$AndroidKeystoreMemoryCredentialStore$@Synchronized override fun resolve(handle: String): String?</ID>
