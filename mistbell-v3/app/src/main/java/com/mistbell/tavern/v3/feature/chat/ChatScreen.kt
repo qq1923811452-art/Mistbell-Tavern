@@ -445,21 +445,14 @@ fun ChatScreen(onBack: () -> Unit) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(
                     onClick = {
-                        val userText = chatViewModel.uiState.value.draft.trim()
-                        if (userText.isEmpty() || busy) return@Button
-                        if (!worldbooksReady) {
-                            status = "世界书加载中，请稍后再发送。"
-                            return@Button
-                        }
-                        if (modelId.isBlank()) {
-                            status = "请先填写模型 ID。"
-                            return@Button
-                        }
-                        val requestClient = ChatRequestClientCoordinator(
+                        val preparedRequest = ChatSendRequestPreflightCoordinator(
                             memoryCredentialStore = memoryCredentialStore,
                             settings = settings,
                             setStatus = { status = it },
-                        ).create(
+                        ).prepare(
+                            userText = chatViewModel.uiState.value.draft,
+                            busy = busy,
+                            worldbooksReady = worldbooksReady,
                             baseUrl = baseUrl,
                             modelId = modelId,
                             apiKey = apiKey,
@@ -467,8 +460,9 @@ fun ChatScreen(onBack: () -> Unit) {
                             memoryModelId = memoryModelId,
                             memoryApiKey = memoryApiKey,
                         ) ?: return@Button
-                        val providersForRequest = requestClient.providers
-                        val client = requestClient.client
+                        val userText = preparedRequest.userText
+                        val providersForRequest = preparedRequest.providers
+                        val client = preparedRequest.client
                         val openingMessage = characterCards.firstOrNull { it.id == selectedCharacterId }
                             ?.card?.firstMessage?.trim().orEmpty()
                         ChatTurnHistoryCoordinator().appendPendingTurn(history, openingMessage, userText)
