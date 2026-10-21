@@ -46,14 +46,13 @@ fun SessionRow(
     onTogglePin: (Boolean) -> Unit,
 ) {
     var menuExpanded by remember(session.id) { mutableStateOf(false) }
-    val context = androidx.compose.ui.platform.LocalContext.current
     val now = System.currentTimeMillis()
+    val currentYear = Calendar.getInstance().get(Calendar.YEAR)
+    val sessionYear = Calendar.getInstance().apply { timeInMillis = session.updatedAt }.get(Calendar.YEAR)
     val dateFormat = when {
         session.updatedAt <= 0L -> ""
         android.text.format.DateUtils.isToday(session.updatedAt) -> "HH:mm"
-        Calendar.getInstance().get(Calendar.YEAR) == Calendar.getInstance().apply {
-            timeInMillis = session.updatedAt
-        }.get(Calendar.YEAR) -> "MM/dd"
+        currentYear == sessionYear -> "MM/dd"
         else -> "yyyy/MM/dd"
     }
     val time = remember(session.updatedAt, dateFormat, now) {
