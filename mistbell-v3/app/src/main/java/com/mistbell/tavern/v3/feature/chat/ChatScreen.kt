@@ -900,30 +900,7 @@ fun ChatScreen(onBack: () -> Unit) {
                         val client = requestClient.client
                         val openingMessage = characterCards.firstOrNull { it.id == selectedCharacterId }
                             ?.card?.firstMessage?.trim().orEmpty()
-                        if (history.isEmpty() && openingMessage.isNotBlank()) {
-                            history += ChatLine(
-                                id = UUID.randomUUID().toString(),
-                                role = "assistant",
-                                content = openingMessage,
-                                createdAtEpochMillis = System.currentTimeMillis(),
-                                deliveryState = PersistedChatMessage.DeliveryState.COMPLETE,
-                            )
-                        }
-                        val now = System.currentTimeMillis()
-                        history += ChatLine(
-                            id = UUID.randomUUID().toString(),
-                            role = "user",
-                            content = userText,
-                            createdAtEpochMillis = now,
-                            deliveryState = PersistedChatMessage.DeliveryState.COMPLETE,
-                        )
-                        history += ChatLine(
-                            id = UUID.randomUUID().toString(),
-                            role = "assistant",
-                            content = "",
-                            createdAtEpochMillis = now,
-                            deliveryState = PersistedChatMessage.DeliveryState.PENDING,
-                        )
+                        ChatTurnHistoryCoordinator().appendPendingTurn(history, openingMessage, userText)
                         persistHistory()
                         chatViewModel.clearDraft()
                         busy = true
