@@ -272,6 +272,6 @@ if (installedModel == null || configuredDimensions !in CHAT_EMBEDDING_DIMENSION_
             maxTokens = maxTokensText.toIntOrNull()?.takeIf { it in 1..200_000 } ?: 4096,
         ),
     )
-    }
+        }
     }
 }
