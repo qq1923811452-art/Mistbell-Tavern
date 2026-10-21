@@ -2,7 +2,6 @@ package com.mistbell.tavern.v3.core.backup
 
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
-import android.os.Build
 import android.util.Log
 import org.json.JSONObject
 import java.io.File
@@ -50,8 +49,9 @@ class BackupService(
             archiveHash = extracted.archiveSha256
             validator.validateDatabaseIfPresent(File(staging, BackupSource.CHAT_DATABASE_NAME))
             val replacements = mapRestoreTargets(extracted)
-            RestoreTransaction().replaceFiles(replacements)
-            applySettings(File(staging, BackupSource.SETTINGS_BACKUP_FILE))
+            RestoreTransaction().replaceFiles(replacements) {
+                applySettings(File(staging, BackupSource.SETTINGS_BACKUP_FILE))
+            }
             log("backup.restore", started, entryCount, archiveHash)
             preview(archive)
         } finally {
