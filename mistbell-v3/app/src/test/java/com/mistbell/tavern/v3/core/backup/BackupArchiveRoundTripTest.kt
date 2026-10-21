@@ -3,6 +3,7 @@ package com.mistbell.tavern.v3.core.backup
 import java.io.File
 import java.io.FileOutputStream
 import java.nio.file.Files
+import java.io.RandomAccessFile
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import org.junit.Assert.assertEquals
@@ -37,6 +38,20 @@ class BackupArchiveRoundTripTest {
             assertEquals(result.manifest, extracted.manifest)
             assertEquals(source.readText(), File(staging, "settings.json").readText())
             assertTrue(extracted.archiveSha256.matches(Regex("[a-f0-9]{64}")))
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun rejectsArchivesAbove512MiBBeforeParsingZipContents() {
+        val root = Files.createTempDirectory("backup-size-limit").toFile()
+        try {
+            val oversized = File(root, "oversized.zip")
+            RandomAccessFile(oversized, "rw").use { it.setLength(BackupValidator.MAX_ARCHIVE_BYTES + 1) }
+            assertThrows(IllegalArgumentException::class.java) {
+                BackupArchiveReader().preview(oversized)
+            }
         } finally {
             root.deleteRecursively()
         }
