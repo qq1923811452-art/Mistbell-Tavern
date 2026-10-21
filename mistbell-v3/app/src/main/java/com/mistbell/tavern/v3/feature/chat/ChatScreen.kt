@@ -500,15 +500,7 @@ fun ChatScreen(onBack: () -> Unit) {
                                     diagnosticStore = diagnosticStore,
                                     memoryScopeId = memoryScopeId,
                                     memoryConversationId = memoryConversationId,
-                                    indexRebuildCoordinator = ChatMemoryIndexRebuildCoordinator(
-                                        coroutineScope = coroutineScope,
-                                        diagnosticStore = diagnosticStore,
-                                        memoryScopeId = memoryScopeId,
-                                        isInFlight = { memoryIndexRebuildInFlight },
-                                        setInFlight = { memoryIndexRebuildInFlight = it },
-                                        isBusy = { busy },
-                                        setStatus = { status = it },
-                                    ),
+                                    indexRebuildCoordinator = memoryOperationsCoordinator.createIndexRebuildCoordinator(),
                                     setStatus = { status = it },
                                     setMemoryStatusNotice = { memoryStatusNotice = it },
                                 ).stream(client, messages, observer, maxTokensText)
