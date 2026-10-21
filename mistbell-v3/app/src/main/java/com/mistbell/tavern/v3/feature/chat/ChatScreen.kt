@@ -1497,12 +1497,11 @@ fun ChatScreen(onBack: () -> Unit) {
                         history.clear()
                         historyLoadFailed = false
                         val previousMemoryScopeId = memoryScopeId
-                        memoryConversationId = UUID.randomUUID().toString()
-                        context.getSharedPreferences("mistbell-v3-settings", Context.MODE_PRIVATE).edit()
-                            .remove("memory_extraction_last_success_turn_id_$previousMemoryScopeId")
-                            .remove("memory_extraction_last_success_turn_id")
-                            .putString("memory_extraction_conversation_id", memoryConversationId)
-                            .apply()
+                        val newConversationId = UUID.randomUUID().toString()
+                        memoryConversationId = newConversationId
+                        ChatScopeSwitchCoordinator(
+                            context.getSharedPreferences("mistbell-v3-settings", Context.MODE_PRIVATE),
+                        ).persist(previousMemoryScopeId, newConversationId)
                         // The new scope gets its own history file. Do not overwrite the
                         // previous scope's persisted conversation with an empty list.
                         status = if (replacingUnreadableHistory) {
