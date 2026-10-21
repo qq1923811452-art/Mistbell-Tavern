@@ -36,6 +36,7 @@ class BackupArchiveRoundTripTest {
             val staging = File(root, "restore-tmp")
             val extracted = BackupArchiveReader().extract(archive, staging)
             assertEquals(result.manifest, extracted.manifest)
+            assertEquals(archive.length(), extracted.archiveBytes)
             assertEquals(source.readText(), File(staging, "settings.json").readText())
             assertTrue(extracted.archiveSha256.matches(Regex("[a-f0-9]{64}")))
         } finally {
