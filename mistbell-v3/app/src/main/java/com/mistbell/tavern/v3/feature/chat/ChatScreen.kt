@@ -610,7 +610,7 @@ fun ChatScreen(onBack: () -> Unit) {
                 enabled = !busy && !historyLoadFailed,
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(
+                ChatMessageSendButton(
                     onClick = {
                         val userText = chatViewModel.uiState.value.draft.trim()
                         if (userText.isEmpty() || busy) return@Button
@@ -741,17 +741,14 @@ fun ChatScreen(onBack: () -> Unit) {
                         }
                     },
                     enabled = !busy && historyReady && !historyLoadFailed && worldbooksReady,
-                ) {
-                    Text(
-                        when {
-                            !historyReady -> "恢复记录中…"
-                            historyLoadFailed -> "记录异常，请先新建会话"
-                            !worldbooksReady -> "加载世界书中…"
-                            busy -> "生成中…"
-                            else -> "发送消息"
-                        },
-                    )
-                }
+                    label = when {
+                        !historyReady -> "恢复记录中…"
+                        historyLoadFailed -> "记录异常，请先新建会话"
+                        !worldbooksReady -> "加载世界书中…"
+                        busy -> "生成中…"
+                        else -> "发送消息"
+                    },
+                )
                 Button(
                     onClick = {
                         val replacingUnreadableHistory = historyLoadFailed
