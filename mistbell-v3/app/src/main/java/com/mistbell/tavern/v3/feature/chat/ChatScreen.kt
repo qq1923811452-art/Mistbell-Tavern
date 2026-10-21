@@ -529,14 +529,10 @@ fun ChatScreen(onBack: () -> Unit) {
                 busy = busy,
                 listState = listState,
             )
-            OutlinedTextField(
-                value = chatUiState.draft,
-                onValueChange = chatViewModel::updateDraft,
-                label = { Text("输入消息") },
-                modifier = Modifier.fillMaxWidth(),
+            ChatMessageComposerInput(
+                draft = chatUiState.draft,
                 enabled = !busy && !historyLoadFailed,
-                minLines = 2,
-                maxLines = 4,
+                onDraftChange = chatViewModel::updateDraft,
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(
