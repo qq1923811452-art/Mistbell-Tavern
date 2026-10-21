@@ -28,6 +28,23 @@ class RestoreTransactionTest {
     }
 
     @Test
+    fun rollsBackEarlierFileSwapsWhenCommitCallbackFails() {
+        val root = Files.createTempDirectory("restore-transaction-test").toFile()
+        try {
+            val live = File(root, "live.txt").apply { writeText("old") }
+            val staged = File(root, "staged.txt").apply { writeText("new") }
+            assertThrows(IllegalStateException::class.java) {
+                RestoreTransaction().replaceFiles(mapOf(staged to live)) {
+                    throw IllegalStateException("simulated commit failure")
+                }
+            }
+            assertEquals("old", live.readText())
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
     fun rejectsDuplicateDestinationsBeforeMutation() {
         val root = Files.createTempDirectory("restore-transaction-test").toFile()
         try {
