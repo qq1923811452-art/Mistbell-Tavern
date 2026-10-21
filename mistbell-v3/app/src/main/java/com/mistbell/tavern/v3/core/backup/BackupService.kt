@@ -132,11 +132,15 @@ class BackupService(
             .forEach { removals += it }
 
         listOf("worldbooks", "characters", "generated-images").forEach { name ->
-            val stagedDirectory = File(extracted.stagingDirectory, name)
-            if (!stagedDirectory.exists() && !stagedDirectory.mkdirs()) {
-                throw IOException("Restore staging directory could not be created.")
+            // Older or partial archives may not contain every optional directory. Do not
+            // replace a user's existing directory with an empty staging directory in that case.
+            if (archivePaths.any { path -> path.startsWith("$name/") }) {
+                val stagedDirectory = File(extracted.stagingDirectory, name)
+                if (!stagedDirectory.exists() && !stagedDirectory.mkdirs()) {
+                    throw IOException("Restore staging directory could not be created.")
+                }
+                replacements[stagedDirectory] = File(appContext.filesDir, name)
             }
-            replacements[stagedDirectory] = File(appContext.filesDir, name)
         }
 
         val databaseFile = appContext.getDatabasePath(BackupSource.CHAT_DATABASE_NAME)
