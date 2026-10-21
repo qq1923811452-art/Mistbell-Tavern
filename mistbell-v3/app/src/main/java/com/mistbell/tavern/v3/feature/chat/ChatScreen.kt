@@ -127,7 +127,6 @@ fun ChatScreen(onBack: () -> Unit) {
     var historyReady by remember { mutableStateOf(false) }
     var historyLoadFailed by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("填写模型 ID 和 API 配置后即可测试聊天。") }
-    var showImportWarning by remember { mutableStateOf(false) }
     var memoryConversationId by remember(settings) {
         mutableStateOf(
             settings.getString("memory_extraction_conversation_id", null)
@@ -249,40 +248,16 @@ fun ChatScreen(onBack: () -> Unit) {
         historySaveCoordinator.save(ChatHistorySnapshotFactory.create(history))
     }
 
-    val importSessionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) {
-            ChatSessionImportCoordinator(
-                context = context,
-                coroutineScope = coroutineScope,
-                historyStore = historyStore,
-                historySaveMutex = historySaveMutex,
-                historySaveRevision = historySaveRevision,
-                history = history,
-                setStatus = { status = it },
-            ).import(uri)
-        }
-    }
-    ChatSessionImportWarningDialog(
-        visible = showImportWarning,
-        onDismiss = { showImportWarning = false },
-        onConfirm = {
-            showImportWarning = false
-            importSessionLauncher.launch(arrayOf("application/json", "application/jsonl", "text/plain", "*/*"))
-        },
+    val sessionDocumentActions = rememberChatSessionDocumentActions(
+        context = context,
+        coroutineScope = coroutineScope,
+        historyStore = historyStore,
+        historySaveMutex = historySaveMutex,
+        historySaveRevision = historySaveRevision,
+        history = history,
+        conversationId = memoryConversationId,
+        setStatus = { status = it },
     )
-
-    val exportJsonLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
-        if (uri != null) {
-            ChatSessionExportCoordinator(context, coroutineScope) { status = it }
-                .export(uri, memoryConversationId, history, jsonLines = false)
-        }
-    }
-    val exportJsonlLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/jsonl")) { uri ->
-        if (uri != null) {
-            ChatSessionExportCoordinator(context, coroutineScope) { status = it }
-                .export(uri, memoryConversationId, history, jsonLines = true)
-        }
-    }
 
     val historyLoadCoordinator = remember(historyStore, diagnosticStore) {
         ChatHistoryLoadCoordinator(historyStore, diagnosticStore)
@@ -366,9 +341,9 @@ fun ChatScreen(onBack: () -> Unit) {
                 usageSummary = usageSummary,
                 onMaxTokensTextChange = { maxTokensText = it },
                 transferEnabled = historyReady && !busy,
-                onImportSession = { showImportWarning = true },
-                onExportJson = { exportJsonLauncher.launch("mistbell-session.json") },
-                onExportJsonl = { exportJsonlLauncher.launch("mistbell-session.jsonl") },
+                onImportSession = sessionDocumentActions.onImportSession,
+                onExportJson = sessionDocumentActions.onExportJson,
+                onExportJsonl = sessionDocumentActions.onExportJsonl,
                 baseUrl = baseUrl,
                 modelId = modelId,
                 apiKey = apiKey,
