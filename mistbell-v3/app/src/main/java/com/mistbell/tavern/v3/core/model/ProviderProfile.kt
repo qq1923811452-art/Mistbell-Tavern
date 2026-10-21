@@ -19,6 +19,10 @@ data class ProviderProfile(
     val modelId: String,
     val credentialHandle: String? = null,
     val enabled: Boolean = true,
+    /** Providers that buffer SSE responses may prefer the non-streaming endpoint. */
+    val supportsStreaming: Boolean = true,
+    /** JSON merged into the request body when thinking mode is enabled for this profile. */
+    val thinkingBodyTemplate: String? = null,
 )
 
 class ProviderProfileSet(
