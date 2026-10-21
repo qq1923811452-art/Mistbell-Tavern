@@ -25,21 +25,40 @@ object WorldBookPlacement {
     )
 
     fun plan(entries: List<WorldBookEntry>): Plan {
-        val active = entries.filterNot { it.disable }
-        // Position 4 is depth-based even when depth is zero or omitted in source JSON.
-        // Keep legacy positive-depth entries working while allowing an explicit depth marker.
-        val depthEntries = active.filter { it.insertPosition == POSITION_DEPTH || it.depth > 0 }
-        val anchored = active - depthEntries.toSet()
+        val beforePrompt = mutableListOf<WorldBookEntry>()
+        val afterPrompt = mutableListOf<WorldBookEntry>()
+        val emBefore = mutableListOf<WorldBookEntry>()
+        val emAfter = mutableListOf<WorldBookEntry>()
+        val anBefore = mutableListOf<WorldBookEntry>()
+        val anAfter = mutableListOf<WorldBookEntry>()
+        val byDepth = mutableMapOf<Pair<Int, String>, MutableList<WorldBookEntry>>()
+
+        val active = entries.filterNot(WorldBookEntry::disable)
+        for (entry in active) {
+            val isDepth = entry.insertPosition == POSITION_DEPTH || entry.depth > 0
+            if (isDepth) {
+                val key = entry.depth.coerceAtLeast(0) to normalizeDepthRole(entry.depthRole)
+                byDepth.getOrPut(key) { mutableListOf() } += entry
+            } else {
+                when (entry.insertPosition) {
+                    POSITION_AFTER_PROMPT -> afterPrompt += entry
+                    POSITION_EM_BEFORE -> emBefore += entry
+                    POSITION_EM_AFTER -> emAfter += entry
+                    POSITION_AN_BEFORE -> anBefore += entry
+                    POSITION_AN_AFTER -> anAfter += entry
+                    else -> beforePrompt += entry
+                }
+            }
+        }
+
         return Plan(
-            beforePrompt = anchored.filter { it.insertPosition == POSITION_BEFORE_PROMPT },
-            afterPrompt = anchored.filter { it.insertPosition == POSITION_AFTER_PROMPT },
-            emBefore = anchored.filter { it.insertPosition == POSITION_EM_BEFORE },
-            emAfter = anchored.filter { it.insertPosition == POSITION_EM_AFTER },
-            anBefore = anchored.filter { it.insertPosition == POSITION_AN_BEFORE },
-            anAfter = anchored.filter { it.insertPosition == POSITION_AN_AFTER },
-            byDepth = depthEntries
-                .groupBy { it.depth.coerceAtLeast(0) to normalizeDepthRole(it.depthRole) }
-                .toSortedMap(compareBy({ it.first }, { it.second })),
+            beforePrompt = beforePrompt,
+            afterPrompt = afterPrompt,
+            emBefore = emBefore,
+            emAfter = emAfter,
+            anBefore = anBefore,
+            anAfter = anAfter,
+            byDepth = byDepth.toSortedMap(compareBy({ it.first }, { it.second })),
         )
     }
 
