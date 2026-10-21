@@ -18,6 +18,12 @@ class WorldbookPlanner(
         val droppedByBudget: Int,
     )
 
+    data class ActivationLimits(
+        val maxScanDepth: Int = DEFAULT_SCAN_DEPTH,
+        val maxBudget: Int = DEFAULT_MAX_BUDGET,
+        val maxRecursiveDepth: Int = DEFAULT_RECURSIVE_DEPTH,
+    )
+
     class WorldbookActivationState {
         internal var turn: Int = 0
         internal val lastActivatedTurn = mutableMapOf<String, Int>()
@@ -30,32 +36,38 @@ class WorldbookPlanner(
         }
     }
 
+    @Suppress(
+        "CyclomaticComplexMethod",
+        "NestedBlockDepth",
+        "ComplexCondition",
+        "ReturnCount",
+        "LoopWithTooManyJumpStatements",
+    )
     fun activate(
         entries: List<WorldbookEntry>,
         scanText: String,
         recentTexts: List<String> = emptyList(),
-        maxScanDepth: Int = DEFAULT_SCAN_DEPTH,
-        maxBudget: Int = DEFAULT_MAX_BUDGET,
-        maxRecursiveDepth: Int = DEFAULT_RECURSIVE_DEPTH,
+        limits: ActivationLimits = ActivationLimits(),
         state: WorldbookActivationState? = null,
     ): Plan {
-        require(maxBudget >= 0) { "maxBudget must be non-negative." }
-        require(maxScanDepth >= 0) { "maxScanDepth must be non-negative." }
-        require(maxRecursiveDepth >= 0) { "maxRecursiveDepth must be non-negative." }
+        require(limits.maxBudget >= 0) { "maxBudget must be non-negative." }
+        require(limits.maxScanDepth >= 0) { "maxScanDepth must be non-negative." }
+        require(limits.maxRecursiveDepth >= 0) { "maxRecursiveDepth must be non-negative." }
 
         val turn = state?.advanceTurn() ?: 0
         val ordered = entries.filterNot(WorldbookEntry::disabled).sortedBy(WorldbookEntry::order)
-        var corpus = buildCorpus(scanText, recentTexts, maxScanDepth)
+        var corpus = buildCorpus(scanText, recentTexts, limits.maxScanDepth)
         val activated = linkedMapOf<String, ActivatedWorldbookEntry>()
         val activatedGroups = mutableSetOf<String>()
         val droppedByBudget = linkedSetOf<String>()
         var usedBudget = 0
 
+        @Suppress("ReturnCount")
         fun tryActivate(entry: WorldbookEntry, matched: List<String>, carried: Boolean): Boolean {
             if (entry.id in activated) return false
             if (entry.groupName.isNotBlank() && entry.groupName in activatedGroups) return false
             if (!carried && !entry.constant && !passesProbability(entry.probability)) return false
-            if (usedBudget + entry.content.length > maxBudget) {
+            if (usedBudget + entry.content.length > limits.maxBudget) {
                 droppedByBudget += entry.id
                 return false
             }
@@ -97,7 +109,7 @@ class WorldbookPlanner(
                 }
                 if (tryActivate(entry, matched, carried)) newlyActivated += entry
             }
-            if (newlyActivated.isEmpty() || recursionDepth >= maxRecursiveDepth) break
+            if (newlyActivated.isEmpty() || recursionDepth >= limits.maxRecursiveDepth) break
             val recursiveContent = newlyActivated
                 .filter(WorldbookEntry::recursive)
                 .joinToString(separator = "\n") { it.content }
@@ -148,6 +160,7 @@ class WorldbookPlanner(
     fun totalCharacters(activated: List<ActivatedWorldbookEntry>): Int =
         activated.sumOf { it.entry.content.length }
 
+    @Suppress("CyclomaticComplexMethod", "ComplexCondition")
     private fun isCandidate(
         entry: WorldbookEntry,
         corpus: String,

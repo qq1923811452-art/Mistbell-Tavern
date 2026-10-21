@@ -8,6 +8,7 @@ class WorldbookPlannerTest {
 
     private val planner = WorldbookPlanner(randomDouble = { 0.5 })
 
+    @Suppress("LongParameterList")
     private fun entry(
         id: String,
         content: String = "content-$id",
@@ -72,7 +73,7 @@ class WorldbookPlannerTest {
                 entry("b", content = "y".repeat(20), keys = listOf("trigger")),
             ),
             scanText = "trigger",
-            maxBudget = 30,
+            limits = WorldbookPlanner.ActivationLimits(maxBudget = 30),
             state = null,
         )
         assertEquals(1, plan.activated.size)
@@ -86,7 +87,11 @@ class WorldbookPlannerTest {
             entry("b", keys = listOf("beta"), content = "beta introduces gamma", recursive = true),
             entry("c", keys = listOf("gamma"), content = "gamma"),
         )
-        val plan = planner.activate(entries, scanText = "alpha", maxRecursiveDepth = 4)
+        val plan = planner.activate(
+            entries,
+            scanText = "alpha",
+            limits = WorldbookPlanner.ActivationLimits(maxRecursiveDepth = 4),
+        )
         assertEquals(listOf("a", "b", "c").sorted(), plan.activated.map { it.entry.id }.sorted())
     }
 
@@ -97,7 +102,11 @@ class WorldbookPlannerTest {
             entry("b", keys = listOf("beta"), content = "gamma", recursive = true),
             entry("c", keys = listOf("gamma"), content = "done"),
         )
-        val plan = planner.activate(entries, scanText = "alpha", maxRecursiveDepth = 0)
+        val plan = planner.activate(
+            entries,
+            scanText = "alpha",
+            limits = WorldbookPlanner.ActivationLimits(maxRecursiveDepth = 0),
+        )
         assertEquals(listOf("a"), plan.activated.map { it.entry.id })
     }
 
