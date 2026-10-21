@@ -221,7 +221,6 @@ fun ChatScreen(onBack: () -> Unit) {
         coordinator = libraryLoadingCoordinator,
         selectedCharacterId = selectedCharacterId,
         setSelectedCharacterId = { selectedCharacterId = it },
-        activeWorldbookId = activeWorldbookId,
         setCharacterCards = { characterCards = it },
     )
     val memoryExtractionInFlight = remember { mutableSetOf<String>() }
