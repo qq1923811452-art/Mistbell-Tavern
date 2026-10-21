@@ -494,7 +494,7 @@ fun ChatScreen(onBack: () -> Unit) {
                     ChatSendActionLabel(
                         historyReady = historyReady,
                         historyLoadFailed = historyLoadFailed,
-                        worldbooksReady = worldbooksReady,
+                        worldbooksReady = worldbookSession.ready,
                         busy = busy,
                     )
                 }
