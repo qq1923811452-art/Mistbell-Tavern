@@ -430,15 +430,9 @@ fun ChatScreen(onBack: () -> Unit) {
         ).schedule(providers, history.toList())
     }
 
-    Scaffold(
-        topBar = {
-            ChatScreenTopBar(onBack = onBack)
-        },
-    ) { padding ->
-        Column(
-            modifier = Modifier.fillMaxSize().padding(padding).padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
+    ChatScreenLayout(
+        topBar = { ChatScreenTopBar(onBack = onBack) },
+    ) {
             ChatApiSettingsPanel {
                     ChatCharacterSelector(
                         selectedCharacterName = selectedCharacter?.card?.name,
@@ -760,6 +754,5 @@ fun ChatScreen(onBack: () -> Unit) {
                     onClick = { exportLogLauncher.launch("mistbell-diagnostics.txt") },
                 )
             }
-        }
     }
 }
