@@ -480,19 +480,12 @@ fun ChatScreen(onBack: () -> Unit) {
                             }
                         }
                     }
-                    OutlinedTextField(
-                        value = maxTokensText,
-                        onValueChange = { value ->
-                            maxTokensText = value.filter(Char::isDigit).take(6)
-                            maxTokensText.toIntOrNull()?.takeIf { it in 1..200_000 }?.let { limit ->
-                                settings.edit().putInt("chat_max_tokens", limit).apply()
-                            }
-                        },
-                        label = { Text("最大生成 Token（max_tokens，1–200000）") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
+                    ChatGenerationSettingsSection(
+                        settings = settings,
+                        maxTokensText = maxTokensText,
+                        usageSummary = usageSummary,
+                        onMaxTokensTextChange = { maxTokensText = it },
                     )
-                    Text(usageSummary, style = MaterialTheme.typography.bodySmall)
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         Button(
                             enabled = historyReady && !busy,
