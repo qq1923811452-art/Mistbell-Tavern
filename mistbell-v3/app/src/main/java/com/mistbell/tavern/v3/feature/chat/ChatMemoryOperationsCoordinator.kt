@@ -30,13 +30,7 @@ internal class ChatMemoryOperationsCoordinator(
     private val isChatBusy: () -> Boolean,
     private val setStatus: (String) -> Unit,
 ) {
-    fun scheduleIndexRebuild(
-        records: List<MemoryTextRecord>,
-        runtime: PassageEmbeddingRuntime,
-        memoryTextStore: AtomicMemoryTextStore,
-        vectorSnapshotStore: AtomicVectorSnapshotStore,
-        reason: String,
-    ) {
+    fun createIndexRebuildCoordinator(): ChatMemoryIndexRebuildCoordinator =
         ChatMemoryIndexRebuildCoordinator(
             coroutineScope = coroutineScope,
             diagnosticStore = diagnosticStore,
@@ -45,7 +39,16 @@ internal class ChatMemoryOperationsCoordinator(
             setInFlight = setIndexRebuildInFlight,
             isBusy = isChatBusy,
             setStatus = setStatus,
-        ).schedule(records, runtime, memoryTextStore, vectorSnapshotStore, reason)
+        )
+
+    fun scheduleIndexRebuild(
+        records: List<MemoryTextRecord>,
+        runtime: PassageEmbeddingRuntime,
+        memoryTextStore: AtomicMemoryTextStore,
+        vectorSnapshotStore: AtomicVectorSnapshotStore,
+        reason: String,
+    ) {
+        createIndexRebuildCoordinator().schedule(records, runtime, memoryTextStore, vectorSnapshotStore, reason)
     }
 
     fun scheduleExtractionIfDue(providers: ProviderProfileSet, history: List<ChatLine>) {
