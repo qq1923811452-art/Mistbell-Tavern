@@ -393,19 +393,12 @@ fun ChatScreen(onBack: () -> Unit) {
         ActivityResultContracts.CreateDocument("text/plain"),
     ) { uri ->
         if (uri != null) {
-            coroutineScope.launch {
-                val result = runCatching {
-                    withContext(Dispatchers.IO) {
-                        context.contentResolver.openOutputStream(uri)?.use(diagnosticStore::exportTo)
-                            ?: error("无法创建日志文件。")
-                    }
-                }
-                status = if (result.isSuccess) {
-                    "诊断日志已导出。日志不主动包含聊天正文或 API 密钥。"
-                } else {
-                    "诊断日志导出失败：${result.exceptionOrNull()?.message?.take(100) ?: "文件写入失败"}"
-                }
-            }
+            ChatDiagnosticExportCoordinator(
+                context = context,
+                coroutineScope = coroutineScope,
+                diagnosticStore = diagnosticStore,
+                setStatus = { status = it },
+            ).export(uri)
         }
     }
 
