@@ -291,24 +291,14 @@ fun ChatScreen(onBack: () -> Unit) {
             ).import(uri)
         }
     }
-    if (showImportWarning) {
-        AlertDialog(
-            onDismissRequest = { showImportWarning = false },
-            title = { Text("导入会覆盖当前会话") },
-            text = {
-                Text("导入的消息会替换当前会话的聊天记录，不会自动创建新会话。建议先导出当前会话备份。是否继续选择文件？")
-            },
-            confirmButton = {
-                Button(onClick = {
-                    showImportWarning = false
-                    importSessionLauncher.launch(arrayOf("application/json", "application/jsonl", "text/plain", "*/*"))
-                }) { Text("继续选择文件") }
-            },
-            dismissButton = {
-                Button(onClick = { showImportWarning = false }) { Text("取消") }
-            },
-        )
-    }
+    ChatSessionImportWarningDialog(
+        visible = showImportWarning,
+        onDismiss = { showImportWarning = false },
+        onConfirm = {
+            showImportWarning = false
+            importSessionLauncher.launch(arrayOf("application/json", "application/jsonl", "text/plain", "*/*"))
+        },
+    )
 
     val exportJsonLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         if (uri != null) {
