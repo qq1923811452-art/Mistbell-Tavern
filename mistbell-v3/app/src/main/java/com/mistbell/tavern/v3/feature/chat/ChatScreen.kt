@@ -1096,22 +1096,7 @@ fun ChatScreen(onBack: () -> Unit) {
                                 )
                             }
                         }
-                        // Clamp persisted preferences so a stale or malformed setting cannot create an unbounded prompt.
-                        val contextWindow = ConversationContextWindowBuilder.build(
-                            history = completeHistory,
-                            recentTurns = settings.getInt(
-                                "chat_history_recent_turns",
-                                ConversationContextWindowBuilder.DEFAULT_RECENT_TURNS,
-                            ).coerceIn(1, 100),
-                            summaryMaxChars = settings.getInt(
-                                "chat_history_summary_max_chars",
-                                ConversationContextWindowBuilder.DEFAULT_SUMMARY_MAX_CHARS,
-                            ).coerceIn(0, 10_000),
-                            maxHistoryChars = settings.getInt(
-                                "chat_history_max_chars",
-                                ConversationContextWindowBuilder.DEFAULT_MAX_HISTORY_CHARS,
-                            ).coerceIn(4_000, 100_000),
-                        )
+                        val contextWindow = ChatPromptHistoryCoordinator(settings).build(completeHistory)
                         // Activate entries from the asynchronously loaded local library against
                         // the current turn plus a bounded tail of recent conversation.
                         val selectedCard = characterCards.firstOrNull { it.id == selectedCharacterId }?.card
