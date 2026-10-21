@@ -12,6 +12,7 @@ data class BackupPreview(
 data class ExtractedBackup(
     val manifest: BackupManifest,
     val stagingDirectory: File,
+    val archiveBytes: Long,
     val archiveSha256: String,
 )
 
@@ -98,7 +99,7 @@ class BackupArchiveReader {
                 }
                 require(total == preview.manifest.totalBytes) { "Backup total size does not match." }
             }
-            return ExtractedBackup(preview.manifest, stagingDirectory, preview.archiveSha256)
+            return ExtractedBackup(preview.manifest, stagingDirectory, preview.archiveBytes, preview.archiveSha256)
         } catch (failure: Exception) {
             stagingDirectory.deleteRecursively()
             throw failure
