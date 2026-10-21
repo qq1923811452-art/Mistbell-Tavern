@@ -91,17 +91,7 @@ import com.mistbell.tavern.v3.feature.worldbook.LocalWorldBookService
 import com.mistbell.tavern.v3.feature.worldbook.WorldBookActivationState
 import com.mistbell.tavern.v3.feature.worldbook.WorldBookParser
 
-private fun formatCharacterCardForPrompt(card: CharacterCard): String = card.stableDefinition()
 
-private val CHAT_EMBEDDING_DIMENSION_OPTIONS = listOf(128, 256, 512, 768, 1024, 1536, 2048)
-
-private data class ChatLine(
-    val id: String,
-    val role: String,
-    val content: String,
-    val createdAtEpochMillis: Long,
-    val deliveryState: PersistedChatMessage.DeliveryState,
-)
 
 /**
  * Minimal end-to-end chat screen for 3.0 development.
