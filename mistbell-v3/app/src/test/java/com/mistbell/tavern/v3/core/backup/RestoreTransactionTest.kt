@@ -58,7 +58,7 @@ class RestoreTransactionTest {
                     removeDestinations = setOf(wal),
                     beforeCommit = {
                         wal.writeText("new-wal")
-                        throw IllegalStateException("simulated reopen failure")
+                        error("simulated reopen failure")
                     },
                 )
             }
