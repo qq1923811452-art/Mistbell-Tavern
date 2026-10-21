@@ -430,55 +430,39 @@ fun ChatScreen(onBack: () -> Unit) {
     }
 
 
+    val historyLoadCoordinator = remember(historyStore, diagnosticStore) {
+        ChatHistoryLoadCoordinator(historyStore, diagnosticStore)
+    }
+
     LaunchedEffect(historyStore) {
         // A role or conversation change must never leave the previous scope's messages on screen.
         historyReady = false
         historyLoadFailed = false
         history.clear()
-        val loaded = withContext(Dispatchers.IO) { historyStore.load() }
-        when (loaded) {
+        when (
+            historyLoadCoordinator.load(
+                onLoaded = { messages, recoveredInterruptedReply ->
+                    history.clear()
+                    history.addAll(messages.map { message ->
+                        ChatLine(
+                            id = message.id,
+                            role = message.role,
+                            content = message.content,
+                            createdAtEpochMillis = message.createdAtEpochMillis,
+                            deliveryState = message.deliveryState,
+                        )
+                    })
+                    if (recoveredInterruptedReply) {
+                        status = "已恢复聊天记录；上次未完成的回复已标记为失败，可继续发送新消息。"
+                    }
+                },
+                onRecoverySaveFailed = {
+                    status = "已恢复未完成回复，但恢复状态暂未保存；请导出诊断日志并稍后重试。"
+                },
+            )
+        ) {
             ChatHistoryLoadResult.Missing -> Unit
-            is ChatHistoryLoadResult.Loaded -> {
-                history.clear()
-                var recoveredInterruptedReply = false
-                history.addAll(loaded.messages.map { message ->
-                    val interruptedAssistant = message.role == "assistant" &&
-                        message.deliveryState == PersistedChatMessage.DeliveryState.PENDING
-                    if (interruptedAssistant) recoveredInterruptedReply = true
-                    ChatLine(
-                        id = message.id,
-                        role = message.role,
-                        content = message.content,
-                        createdAtEpochMillis = message.createdAtEpochMillis,
-                        deliveryState = if (interruptedAssistant) {
-                            PersistedChatMessage.DeliveryState.FAILED
-                        } else {
-                            message.deliveryState
-                        },
-                    )
-                })
-                if (recoveredInterruptedReply) {
-                    status = "已恢复聊天记录；上次未完成的回复已标记为失败，可继续发送新消息。"
-                    val recoveredSnapshot = history.map { line ->
-                        PersistedChatMessage(
-                            id = line.id,
-                            role = line.role,
-                            content = line.content,
-                            createdAtEpochMillis = line.createdAtEpochMillis,
-                            deliveryState = line.deliveryState,
-                        )
-                    }
-                    runCatching {
-                        withContext(Dispatchers.IO) { historyStore.save(recoveredSnapshot) }
-                    }.onFailure { error ->
-                        diagnosticStore.warn(
-                            "chat.history.recovery_save_failed",
-                            "reason=${error::class.java.simpleName}",
-                        )
-                        status = "已恢复未完成回复，但恢复状态暂未保存；请导出诊断日志并稍后重试。"
-                    }
-                }
-            }
+            is ChatHistoryLoadResult.Loaded -> Unit
             ChatHistoryLoadResult.Corrupt -> {
                 historyLoadFailed = true
                 diagnosticStore.warn("chat.history.load_failed", "reason=corrupt_or_unsupported_format")
