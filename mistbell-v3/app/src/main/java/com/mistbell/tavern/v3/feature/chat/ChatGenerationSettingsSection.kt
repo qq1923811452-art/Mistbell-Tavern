@@ -2,12 +2,11 @@ package com.mistbell.tavern.v3.feature.chat
 
 import android.content.SharedPreferences
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
-import androidx.compose.material3.MaterialTheme
 
 @Composable
 internal fun ChatGenerationSettingsSection(
