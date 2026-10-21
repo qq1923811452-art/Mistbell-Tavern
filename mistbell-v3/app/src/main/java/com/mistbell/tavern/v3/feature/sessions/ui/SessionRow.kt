@@ -1,5 +1,6 @@
 package com.mistbell.tavern.v3.feature.sessions.ui
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -10,6 +11,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
@@ -29,6 +31,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.mistbell.tavern.v3.feature.sessions.ChatSession
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
@@ -43,20 +46,18 @@ fun SessionRow(
     onTogglePin: (Boolean) -> Unit,
 ) {
     var menuExpanded by remember(session.id) { mutableStateOf(false) }
+    val context = androidx.compose.ui.platform.LocalContext.current
     val now = System.currentTimeMillis()
-    val updated = Date(session.updatedAt)
     val dateFormat = when {
         session.updatedAt <= 0L -> ""
         android.text.format.DateUtils.isToday(session.updatedAt) -> "HH:mm"
-        android.text.format.DateUtils.formatDateTime(
-            androidx.compose.ui.platform.LocalContext.current,
-            session.updatedAt,
-            android.text.format.DateUtils.FORMAT_SHOW_YEAR,
-        ).contains((java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)).toString()) -> "MM/dd"
+        Calendar.getInstance().get(Calendar.YEAR) == Calendar.getInstance().apply {
+            timeInMillis = session.updatedAt
+        }.get(Calendar.YEAR) -> "MM/dd"
         else -> "yyyy/MM/dd"
     }
     val time = remember(session.updatedAt, dateFormat, now) {
-        if (dateFormat.isEmpty()) "" else SimpleDateFormat(dateFormat, Locale.getDefault()).format(updated)
+        if (dateFormat.isEmpty()) "" else SimpleDateFormat(dateFormat, Locale.getDefault()).format(Date(session.updatedAt))
     }
     val colors = MaterialTheme.colorScheme
 
@@ -64,7 +65,7 @@ fun SessionRow(
         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
         shape = RoundedCornerShape(16.dp),
         color = if (selected) colors.secondaryContainer else colors.surface,
-        border = androidx.compose.foundation.BorderStroke(
+        border = BorderStroke(
             width = if (selected) 1.5.dp else 0.dp,
             color = if (selected) colors.primary else colors.surface,
         ),
@@ -96,7 +97,9 @@ fun SessionRow(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    if (session.pinned) Text("置顶", color = colors.primary, style = MaterialTheme.typography.labelSmall)
+                    if (session.pinned) {
+                        Text("置顶", color = colors.primary, style = MaterialTheme.typography.labelSmall)
+                    }
                     Text(time, color = colors.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
                 }
                 Text(
