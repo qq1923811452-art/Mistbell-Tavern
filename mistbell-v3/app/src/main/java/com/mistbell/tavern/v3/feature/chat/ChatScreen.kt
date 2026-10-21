@@ -316,15 +316,7 @@ fun ChatScreen(onBack: () -> Unit) {
             historyLoadCoordinator.load(
                 onLoaded = { messages, recoveredInterruptedReply ->
                     history.clear()
-                    history.addAll(messages.map { message ->
-                        ChatLine(
-                            id = message.id,
-                            role = message.role,
-                            content = message.content,
-                            createdAtEpochMillis = message.createdAtEpochMillis,
-                            deliveryState = message.deliveryState,
-                        )
-                    })
+                    history.addAll(ChatHistorySnapshotFactory.restore(messages))
                     if (recoveredInterruptedReply) {
                         status = "已恢复聊天记录；上次未完成的回复已标记为失败，可继续发送新消息。"
                     }
