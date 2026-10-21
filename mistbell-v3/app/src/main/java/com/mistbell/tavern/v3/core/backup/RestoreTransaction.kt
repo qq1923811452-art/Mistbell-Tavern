@@ -5,36 +5,46 @@ import java.io.IOException
 import java.util.UUID
 
 /**
- * Replaces a set of existing files with staged files. Each old file is renamed beside itself,
- * so backup and replacement stay on the same filesystem. Any failed move or pre-commit callback
- * rolls all prior moves back before returning control to the caller.
+ * Stages a multi-target swap on the same filesystem. Targets omitted from the backup can be
+ * removed transactionally; a failed move or pre-commit callback restores every prior target.
  */
 class RestoreTransaction(
     private val idFactory: () -> String = { UUID.randomUUID().toString() },
 ) {
     fun replaceFiles(
         stagedToDestination: Map<File, File>,
+        removeDestinations: Set<File> = emptySet(),
         beforeCommit: () -> Unit = {},
+        beforeRollback: () -> Unit = {},
+        afterRollback: () -> Unit = {},
     ) {
         val pairs = stagedToDestination.entries.toList()
-        if (pairs.isEmpty()) {
-            beforeCommit()
-            return
-        }
-        require(pairs.map { it.value.canonicalPath }.distinct().size == pairs.size) {
-            "Restore contains duplicate destination files."
+        val destinations = pairs.map { it.value } + removeDestinations
+        require(destinations.map { it.canonicalPath }.distinct().size == destinations.size) {
+            "Restore contains duplicate destination targets."
         }
         pairs.forEach { (staged, destination) ->
-            require(staged.isFile && staged.canRead()) { "Staged restore file is missing." }
-            destination.parentFile?.let { parent ->
-                if (!parent.isDirectory && !parent.mkdirs()) throw IOException("Restore destination directory could not be created.")
+            require(staged.exists() && (staged.isFile || staged.isDirectory) && staged.canRead()) {
+                "Staged restore data is missing."
             }
+            require(staged.isDirectory == destination.isDirectory || !destination.exists()) {
+                "Restore target type does not match the staged data."
+            }
+            destination.parentFile?.let { parent ->
+                if (!parent.isDirectory && !parent.mkdirs()) {
+                    throw IOException("Restore destination directory could not be created.")
+                }
+            }
+        }
+        if (destinations.isEmpty()) {
+            beforeCommit()
+            return
         }
 
         val backups = linkedMapOf<File, File>()
         val installed = mutableListOf<File>()
         try {
-            pairs.forEach { (_, destination) ->
+            destinations.forEach { destination ->
                 if (destination.exists()) {
                     val backup = File(destination.parentFile, ".${destination.name}.restore-old-${idFactory()}")
                     if (!destination.renameTo(backup)) throw IOException("Existing data could not be moved aside.")
@@ -47,9 +57,10 @@ class RestoreTransaction(
             }
             beforeCommit()
         } catch (failure: Throwable) {
+            runCatching(beforeRollback).onFailure(failure::addSuppressed)
             installed.asReversed().forEach { destination ->
-                if (destination.exists() && !destination.delete()) {
-                    failure.addSuppressed(IOException("Failed to remove partial restored file."))
+                if (destination.exists() && !destination.deleteRecursively()) {
+                    failure.addSuppressed(IOException("Failed to remove partially restored data."))
                 }
             }
             backups.entries.toList().asReversed().forEach { (destination, backup) ->
@@ -57,12 +68,13 @@ class RestoreTransaction(
                     failure.addSuppressed(IOException("Rollback failed; previous data remains at ${backup.absolutePath}."))
                 }
             }
+            runCatching(afterRollback).onFailure(failure::addSuppressed)
             throw failure
         }
 
         backups.values.forEach { backup ->
-            if (backup.exists() && !backup.delete()) {
-                // A leftover rollback file is safer than failing after the new data is committed.
+            if (backup.exists() && !backup.deleteRecursively()) {
+                // A leftover rollback copy is safer than failing after the new data is committed.
             }
         }
     }
