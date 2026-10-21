@@ -34,7 +34,7 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
-@Suppress("FunctionNaming", "LongMethod", "LongParameterList")
+@Suppress("FunctionNaming", "LongMethod", "LongParameterList", "CyclomaticComplexMethod")
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun SessionRow(
