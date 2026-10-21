@@ -57,8 +57,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -114,8 +112,9 @@ fun ChatScreen(onBack: () -> Unit) {
         ChatGenerationPreferences(context.getSharedPreferences("mistbell-v3-settings", Context.MODE_PRIVATE))
     }
     var backupStatus by remember { mutableStateOf("") }
-    val backupCoordinator = remember(context, coroutineScope) {
-        ChatBackupCoordinator(context, coroutineScope) { backupStatus = it }
+    val backupCoroutineScope = rememberCoroutineScope()
+    val backupCoordinator = remember(context) {
+        ChatBackupCoordinator(context, backupCoroutineScope) { backupStatus = it }
     }
     val exportBackupLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/zip"),
