@@ -470,23 +470,12 @@ fun ChatScreen(onBack: () -> Unit) {
                         usageSummary = usageSummary,
                         onMaxTokensTextChange = { maxTokensText = it },
                     )
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Button(
-                            enabled = historyReady && !busy,
-                            onClick = { showImportWarning = true },
-                            modifier = Modifier.weight(1f),
-                        ) { Text("导入 JSON/JSONL") }
-                        Button(
-                            enabled = historyReady && !busy,
-                            onClick = { exportJsonLauncher.launch("mistbell-session.json") },
-                            modifier = Modifier.weight(1f),
-                        ) { Text("导出 JSON") }
-                        Button(
-                            enabled = historyReady && !busy,
-                            onClick = { exportJsonlLauncher.launch("mistbell-session.jsonl") },
-                            modifier = Modifier.weight(1f),
-                        ) { Text("导出 JSONL") }
-                    }
+                    ChatSessionTransferActions(
+                        enabled = historyReady && !busy,
+                        onImport = { showImportWarning = true },
+                        onExportJson = { exportJsonLauncher.launch("mistbell-session.json") },
+                        onExportJsonl = { exportJsonlLauncher.launch("mistbell-session.jsonl") },
+                    )
                     ChatPrimaryApiSettingsSection(
                         settings = settings,
                         baseUrl = baseUrl,
