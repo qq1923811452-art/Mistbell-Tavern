@@ -778,44 +778,25 @@ fun ChatScreen(onBack: () -> Unit) {
                         busy = true
                         memoryStatusNotice = ""
                         status = "正在连接聊天 API……"
-                        val completeHistory = history.dropLast(2).mapNotNull { line ->
-                            if (line.content.isBlank()) {
-                                null
-                            } else {
-                                PromptMessage(
-                                    if (line.role == "user") PromptRole.USER else PromptRole.ASSISTANT,
-                                    line.content,
-                                )
-                            }
-                        }
-                        val contextWindow = ChatPromptHistoryCoordinator(settings).build(completeHistory)
-                        // Activate entries from the asynchronously loaded local library against
-                        // the current turn plus a bounded tail of recent conversation.
                         val selectedCard = characterCards.firstOrNull { it.id == selectedCharacterId }?.card
-                        val characterDefinition = selectedCard?.let(::formatCharacterCardForPrompt)
-                        val activationReport = ChatWorldBookActivationCoordinator(
+                        val preparation = ChatSendMessageCoordinator(
                             settings = settings,
                             diagnosticStore = diagnosticStore,
-                        ).activate(
-                            localEntries = localWorldbookEntries,
+                        ).prepare(
+                            history = history,
+                            userText = userText,
                             selectedCard = selectedCard,
-                            scanText = userText,
-                            recentTexts = completeHistory.takeLast(6).map { it.content },
-                            state = worldbookActivationState,
-                            stateKey = worldbookStateKey,
+                            characterDefinition = selectedCard?.let(::formatCharacterCardForPrompt),
+                            localEntries = localWorldbookEntries,
+                            worldbookState = worldbookActivationState,
+                            worldbookStateKey = worldbookStateKey,
                             onBudgetExceeded = { droppedCount ->
                                 mainHandler.post {
                                     status = "世界书预算超限：本轮有 ${droppedCount} 个条目未注入"
                                 }
                             },
                         )
-                        val activatedWorldbook = activationReport.activatedEntries
-                        val messages = ChatPromptAssemblyCoordinator().assemble(
-                            characterDefinition = characterDefinition,
-                            contextWindow = contextWindow,
-                            activatedWorldbook = activatedWorldbook.map { it.entry },
-                            latestUserMessage = userText,
-                        )
+                        val messages = preparation.messages
                         val observer = ChatStreamObserverCoordinator(
                             mainHandler = mainHandler,
                             history = history,
