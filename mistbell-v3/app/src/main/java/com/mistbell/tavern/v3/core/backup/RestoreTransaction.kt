@@ -113,7 +113,10 @@ class RestoreTransaction(
         val callbackCreatedRemovals = state.removeDestinations.filter { destination ->
             destination !in state.originallyExisted || destination in state.backups
         }
-        (state.installed + callbackCreatedRemovals).distinctBy { it.canonicalPath }.asReversed().forEach { destination ->
+        val rollbackTargets = (state.installed + callbackCreatedRemovals)
+            .distinctBy { it.canonicalPath }
+            .asReversed()
+        rollbackTargets.forEach { destination ->
             if (destination.exists() && !destination.deleteRecursively()) {
                 failure.addSuppressed(IOException("Failed to remove partially restored data."))
             }
