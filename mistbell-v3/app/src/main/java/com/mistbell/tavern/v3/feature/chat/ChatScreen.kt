@@ -496,8 +496,15 @@ fun ChatScreen(onBack: () -> Unit) {
                             persistHistory = ::persistHistory,
                             scheduleMemoryExtraction = ::scheduleMemoryExtractionIfDue,
                         ).create(providersForRequest)
-                        coroutineScope.launch {
-                            try {
+                        ChatSendStreamFallbackCoordinator(
+                            coroutineScope = coroutineScope,
+                            diagnosticStore = diagnosticStore,
+                            history = history,
+                            setBusy = { busy = it },
+                            setStatus = { status = it },
+                            persistHistory = ::persistHistory,
+                        ).launch(
+                            memoryStream = {
                                 ChatMemoryRuntimeCoordinator(
                                     context = context,
                                     mainHandler = mainHandler,
@@ -516,32 +523,18 @@ fun ChatScreen(onBack: () -> Unit) {
                                     setStatus = { status = it },
                                     setMemoryStatusNotice = { memoryStatusNotice = it },
                                 ).stream(client, messages, observer, maxTokensText)
-                            } catch (cancelled: CancellationException) {
-                                throw cancelled
-                            } catch (error: Exception) {
-                                diagnosticStore.warn(
-                                    "chat.embedding.fallback",
-                                    "reason=${error::class.java.simpleName}",
+                            },
+                            ordinaryStream = {
+                                client.stream(
+                                    messages,
+                                    observer,
+                                    ChatGenerationOptions(
+                                        maxTokens = maxTokensText.toIntOrNull()
+                                            ?.takeIf { it in 1..200_000 } ?: 4096,
+                                    ),
                                 )
-                                status = "本地记忆不可用，已尝试回退普通聊天：${error.message?.take(120) ?: error::class.java.simpleName}"
-                                try {
-                                    client.stream(messages, observer, ChatGenerationOptions(maxTokens = maxTokensText.toIntOrNull()?.takeIf { it in 1..200_000 } ?: 4096))
-                                } catch (chatCancelled: CancellationException) {
-                                    throw chatCancelled
-                                } catch (chatError: Exception) {
-                                    busy = false
-                                    status = chatError.message?.take(180) ?: "聊天请求配置失败。"
-                                    val last = history.lastOrNull()
-                                    if (last?.role == "assistant") {
-                                        history[history.lastIndex] = last.copy(
-                                            content = last.content.ifBlank { status },
-                                            deliveryState = PersistedChatMessage.DeliveryState.FAILED,
-                                        )
-                                    }
-                                    persistHistory()
-                                }
-                            }
-                        }
+                            },
+                        )
                     },
                     enabled = !busy && historyReady && !historyLoadFailed && worldbooksReady,
                 ) {
