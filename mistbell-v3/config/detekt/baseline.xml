@@ -11,6 +11,7 @@
     <ID>ComplexCondition:SessionArchiveCodec.kt$SessionArchiveCodec$jsonRoot != null &amp;&amp; (jsonRoot.has("format") || jsonRoot.has("version") || jsonRoot.has("messages"))</ID>
     <ID>ComplexCondition:VectorMemoryContextService.kt$VectorMemoryContextService$queryVector.size != snapshot.dimensions || queryVector.isEmpty() || queryVector.any { !it.isFinite() } || queryVector.all { it == 0f }</ID>
     <ID>CyclomaticComplexMethod:CharacterCardLibraryScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun CharacterCardLibraryScreen(onBack: () -&gt; Unit)</ID>
+    <ID>CyclomaticComplexMethod:ChatMemoryRuntimeCoordinator.kt$ChatMemoryRuntimeCoordinator$suspend fun stream( client: OpenAiCompatibleChatClient, messages: List&lt;PromptMessage&gt;, observer: ChatStreamObserver, maxTokensText: String, )</ID>
     <ID>CyclomaticComplexMethod:ChatScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun ChatScreen(onBack: () -&gt; Unit)</ID>
     <ID>CyclomaticComplexMethod:ConversationContextWindow.kt$ConversationContextWindowBuilder$private fun collectSnippets( messages: List&lt;Pair&lt;PromptMessage, String&gt;&gt;, maxChars: Int, newestFirst: Boolean, ): List&lt;String&gt;</ID>
     <ID>CyclomaticComplexMethod:EmbeddingGemma2ModelAssetManager.kt$EmbeddingGemma2ModelAssetManager$suspend fun download( onProgress: (downloadedBytes: Long, totalBytes: Long?) -&gt; Unit = { _, _ -&gt; }, ): DownloadedEmbeddingModel</ID>
@@ -39,7 +40,24 @@
     <ID>CyclomaticComplexMethod:WorldBookLibraryScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun WorldBookLibraryScreen(onBack: () -&gt; Unit)</ID>
     <ID>CyclomaticComplexMethod:WorldBookParser.kt$WorldBookParser$private fun parseEntry(value: JSONObject, bookId: String, mapKey: String?): WorldBookEntry?</ID>
     <ID>FunctionNaming:CharacterCardLibraryScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun CharacterCardLibraryScreen(onBack: () -&gt; Unit)</ID>
+    <ID>FunctionNaming:ChatApiSettingsSections.kt$@Composable internal fun ChatPrimaryApiSettingsSection( settings: SharedPreferences, baseUrl: String, modelId: String, apiKey: String, onBaseUrlChange: (String) -&gt; Unit, onModelIdChange: (String) -&gt; Unit, onApiKeyChange: (String) -&gt; Unit, )</ID>
+    <ID>FunctionNaming:ChatCharacterSelectionSection.kt$@Composable internal fun ChatCharacterSelectionSection( selectedCharacterName: String?, hasSelectedCharacter: Boolean, characterCards: List&lt;StoredCharacterCard&gt;, menuExpanded: Boolean, onMenuExpandedChange: (Boolean) -&gt; Unit, onCharacterSelected: (String) -&gt; Unit, )</ID>
+    <ID>FunctionNaming:ChatConfigurationPanel.kt$@Composable internal fun ChatConfigurationPanel( settings: SharedPreferences, selectedCharacterName: String?, hasSelectedCharacter: Boolean, characterCards: List&lt;StoredCharacterCard&gt;, characterMenuExpanded: Boolean, onCharacterMenuExpandedChange: (Boolean) -&gt; Unit, onCharacterSelected: (String) -&gt; Unit, maxTokensText: String, usageSummary: String, onMaxTokensTextChange: (String) -&gt; Unit, transferEnabled: Boolean, onImportSession: () -&gt; Unit, onExportJson: () -&gt; Unit, onExportJsonl: () -&gt; Unit, baseUrl: String, modelId: String, apiKey: String, onBaseUrlChange: (String) -&gt; Unit, onModelIdChange: (String) -&gt; Unit, onApiKeyChange: (String) -&gt; Unit, )</ID>
+    <ID>FunctionNaming:ChatDiagnosticExportAction.kt$@Composable internal fun ChatDiagnosticExportAction( enabled: Boolean, onClick: () -&gt; Unit, )</ID>
+    <ID>FunctionNaming:ChatEmbeddingDimensionsSettingsSection.kt$@Composable internal fun ChatEmbeddingDimensionsSettingsSection( selectedDimensions: Int, menuExpanded: Boolean, onMenuExpandedChange: (Boolean) -&gt; Unit, onDimensionsSelected: (Int) -&gt; Unit, )</ID>
+    <ID>FunctionNaming:ChatGenerationSettingsSection.kt$@Composable internal fun ChatGenerationSettingsSection( settings: SharedPreferences, maxTokensText: String, usageSummary: String, onMaxTokensTextChange: (String) -&gt; Unit, )</ID>
+    <ID>FunctionNaming:ChatHistoryBudgetSettingsSection.kt$@Composable internal fun ChatHistoryBudgetSettingsSection( settings: SharedPreferences, values: ChatHistoryBudgetSettingsValues, callbacks: ChatHistoryBudgetSettingsCallbacks, )</ID>
+    <ID>FunctionNaming:ChatHistoryLoadLifecycle.kt$@Composable internal fun ChatHistoryLoadLifecycle( context: Context, historyStore: SqliteChatHistoryRepository, historyLoadCoordinator: ChatHistoryLoadCoordinator, diagnosticStore: DiagnosticLogStore, history: MutableList&lt;ChatLine&gt;, setHistoryReady: (Boolean) -&gt; Unit, setHistoryLoadFailed: (Boolean) -&gt; Unit, setStatus: (String) -&gt; Unit, )</ID>
+    <ID>FunctionNaming:ChatHistoryMessageList.kt$@Composable internal fun ColumnScope.ChatHistoryMessageList( history: List&lt;ChatLine&gt;, busy: Boolean, listState: LazyListState, )</ID>
+    <ID>FunctionNaming:ChatLibraryLoadingLifecycle.kt$@Composable internal fun ChatLibraryLoadingLifecycle( context: Context, coordinator: ChatLibraryLoadingCoordinator, selectedCharacterId: String, setSelectedCharacterId: (String) -&gt; Unit, setCharacterCards: (List&lt;StoredCharacterCard&gt;) -&gt; Unit, )</ID>
+    <ID>FunctionNaming:ChatMemoryApiSettingsSection.kt$@Composable internal fun ChatMemoryApiSettingsSection( settings: SharedPreferences, baseUrl: String, modelId: String, apiKey: String, hasSavedCredential: Boolean, credentialStore: AndroidKeystoreMemoryCredentialStore, diagnosticStore: DiagnosticLogStore, onBaseUrlChange: (String) -&gt; Unit, onModelIdChange: (String) -&gt; Unit, onApiKeyChange: (String) -&gt; Unit, onSavedCredentialChange: (Boolean) -&gt; Unit, onStatusChange: (String) -&gt; Unit, )</ID>
+    <ID>FunctionNaming:ChatMemorySettingsPanel.kt$@Composable internal fun ChatMemorySettingsPanel( settings: SharedPreferences, baseUrl: String, modelId: String, apiKey: String, hasSavedCredential: Boolean, credentialStore: AndroidKeystoreMemoryCredentialStore, diagnosticStore: DiagnosticLogStore, selectedDimensions: Int, dimensionMenuExpanded: Boolean, onBaseUrlChange: (String) -&gt; Unit, onModelIdChange: (String) -&gt; Unit, onApiKeyChange: (String) -&gt; Unit, onSavedCredentialChange: (Boolean) -&gt; Unit, onStatusChange: (String) -&gt; Unit, onDimensionsMenuExpandedChange: (Boolean) -&gt; Unit, onDimensionsSelected: (Int) -&gt; Unit, )</ID>
+    <ID>FunctionNaming:ChatMessageComposerInput.kt$@Composable internal fun ChatMessageComposerInput( draft: String, enabled: Boolean, onDraftChange: (String) -&gt; Unit, )</ID>
     <ID>FunctionNaming:ChatScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun ChatScreen(onBack: () -&gt; Unit)</ID>
+    <ID>FunctionNaming:ChatSendActionLabel.kt$@Composable internal fun ChatSendActionLabel( historyReady: Boolean, historyLoadFailed: Boolean, worldbooksReady: Boolean, busy: Boolean, )</ID>
+    <ID>FunctionNaming:ChatSessionImportWarningDialog.kt$@Composable internal fun ChatSessionImportWarningDialog( visible: Boolean, onDismiss: () -&gt; Unit, onConfirm: () -&gt; Unit, )</ID>
+    <ID>FunctionNaming:ChatSessionResetAction.kt$@Composable internal fun ChatSessionResetAction( enabled: Boolean, historyLoadFailed: Boolean, onClick: () -&gt; Unit, )</ID>
+    <ID>FunctionNaming:ChatSessionTransferActions.kt$@Composable internal fun ChatSessionTransferActions( enabled: Boolean, onImport: () -&gt; Unit, onExportJson: () -&gt; Unit, onExportJsonl: () -&gt; Unit, )</ID>
     <ID>FunctionNaming:ImageGenerationScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun ImageGenerationScreen(onBack: () -&gt; Unit)</ID>
     <ID>FunctionNaming:MainActivity.kt$@Composable private fun InferenceStatusCard(status: InferenceRuntimeStatus)</ID>
     <ID>FunctionNaming:MainActivity.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable private fun DevelopmentHome( inferenceStatus: InferenceRuntimeStatus, operationMessage: String, operationBusy: Boolean, onOpenChat: () -&gt; Unit, onOpenImageGeneration: () -&gt; Unit, onOpenCharacterLibrary: () -&gt; Unit, onOpenWorldBookLibrary: () -&gt; Unit, onDownloadModel: () -&gt; Unit, onImportModel: () -&gt; Unit, qualcommModelSelected: Boolean, onSelectModelProfile: (Boolean) -&gt; Unit, selectedEmbeddingDimensions: Int, onCycleEmbeddingDimensions: () -&gt; Unit, onRunEmbeddingTest: () -&gt; Unit, onRunNpuDiagnosticProbe: () -&gt; Unit, onRunAlternateBackendBenchmark: () -&gt; Unit, onExportNpuEvidence: () -&gt; Unit, onExportLogs: () -&gt; Unit, )</ID>
@@ -47,8 +65,11 @@
     <ID>FunctionOnlyReturningConstant:MainActivity.kt$MainActivity$private fun publicModelDirectoryLabel(): String</ID>
     <ID>InstanceOfCheckForException:MainActivity.kt$MainActivity$error is IllegalArgumentException</ID>
     <ID>LongMethod:CharacterCardLibraryScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun CharacterCardLibraryScreen(onBack: () -&gt; Unit)</ID>
+    <ID>LongMethod:ChatHistoryBudgetSettingsSection.kt$@Composable internal fun ChatHistoryBudgetSettingsSection( settings: SharedPreferences, values: ChatHistoryBudgetSettingsValues, callbacks: ChatHistoryBudgetSettingsCallbacks, )</ID>
+    <ID>LongMethod:ChatMemoryApiSettingsSection.kt$@Composable internal fun ChatMemoryApiSettingsSection( settings: SharedPreferences, baseUrl: String, modelId: String, apiKey: String, hasSavedCredential: Boolean, credentialStore: AndroidKeystoreMemoryCredentialStore, diagnosticStore: DiagnosticLogStore, onBaseUrlChange: (String) -&gt; Unit, onModelIdChange: (String) -&gt; Unit, onApiKeyChange: (String) -&gt; Unit, onSavedCredentialChange: (Boolean) -&gt; Unit, onStatusChange: (String) -&gt; Unit, )</ID>
+    <ID>LongMethod:ChatMemoryExtractionSchedulingCoordinator.kt$ChatMemoryExtractionSchedulingCoordinator$fun schedule(providers: ProviderProfileSet, history: List&lt;ChatLine&gt;)</ID>
+    <ID>LongMethod:ChatMemoryRuntimeCoordinator.kt$ChatMemoryRuntimeCoordinator$suspend fun stream( client: OpenAiCompatibleChatClient, messages: List&lt;PromptMessage&gt;, observer: ChatStreamObserver, maxTokensText: String, )</ID>
     <ID>LongMethod:ChatScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun ChatScreen(onBack: () -&gt; Unit)</ID>
-    <ID>LongMethod:ChatScreen.kt$fun scheduleMemoryExtractionIfDue(providers: ProviderProfileSet)</ID>
     <ID>LongMethod:EmbeddingGemma2ModelAssetManager.kt$EmbeddingGemma2ModelAssetManager$suspend fun download( onProgress: (downloadedBytes: Long, totalBytes: Long?) -&gt; Unit = { _, _ -&gt; }, ): DownloadedEmbeddingModel</ID>
     <ID>LongMethod:EmbeddingGemma2ModelAssetManager.kt$EmbeddingGemma2ModelAssetManager$suspend fun importModel( sourceName: String, input: InputStream, onProgress: (downloadedBytes: Long, totalBytes: Long?) -&gt; Unit = { _, _ -&gt; }, ): DownloadedEmbeddingModel</ID>
     <ID>LongMethod:EmbeddingGemma2RuntimeAdapter.kt$EmbeddingGemma2RuntimeAdapter$private suspend fun inferAndValidate( texts: List&lt;String&gt;, formatter: (String, Int) -&gt; String, ): EmbeddingBatch</ID>
@@ -76,6 +97,25 @@
     <ID>LongMethod:VectorMemoryRetriever.kt$VectorMemoryRetriever$fun retrieve( snapshot: VectorSnapshot, queryVector: List&lt;Float&gt;, texts: List&lt;MemoryTextRecord&gt;, limit: Int = VectorSimilaritySearch.DEFAULT_RESULT_LIMIT, minimumScore: Double = VectorSimilaritySearch.DEFAULT_MINIMUM_SCORE, maxCharacters: Int = DEFAULT_MAX_CHARACTERS, queryText: String? = null, rrfConstant: Int = DEFAULT_RRF_CONSTANT, vectorWeight: Double = DEFAULT_VECTOR_WEIGHT, keywordWeight: Double = DEFAULT_KEYWORD_WEIGHT, ): List&lt;RetrievedMemory&gt;</ID>
     <ID>LongMethod:VectorSnapshot.kt$VectorSnapshotCodec$fun decodeMapped(source: ByteBuffer): VectorSnapshot</ID>
     <ID>LongMethod:WorldBookLibraryScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun WorldBookLibraryScreen(onBack: () -&gt; Unit)</ID>
+    <ID>LongParameterList:ChatApiSettingsSections.kt$( settings: SharedPreferences, baseUrl: String, modelId: String, apiKey: String, onBaseUrlChange: (String) -&gt; Unit, onModelIdChange: (String) -&gt; Unit, onApiKeyChange: (String) -&gt; Unit, )</ID>
+    <ID>LongParameterList:ChatCharacterSelectionSection.kt$( selectedCharacterName: String?, hasSelectedCharacter: Boolean, characterCards: List&lt;StoredCharacterCard&gt;, menuExpanded: Boolean, onMenuExpandedChange: (Boolean) -&gt; Unit, onCharacterSelected: (String) -&gt; Unit, )</ID>
+    <ID>LongParameterList:ChatConfigurationPanel.kt$( settings: SharedPreferences, selectedCharacterName: String?, hasSelectedCharacter: Boolean, characterCards: List&lt;StoredCharacterCard&gt;, characterMenuExpanded: Boolean, onCharacterMenuExpandedChange: (Boolean) -&gt; Unit, onCharacterSelected: (String) -&gt; Unit, maxTokensText: String, usageSummary: String, onMaxTokensTextChange: (String) -&gt; Unit, transferEnabled: Boolean, onImportSession: () -&gt; Unit, onExportJson: () -&gt; Unit, onExportJsonl: () -&gt; Unit, baseUrl: String, modelId: String, apiKey: String, onBaseUrlChange: (String) -&gt; Unit, onModelIdChange: (String) -&gt; Unit, onApiKeyChange: (String) -&gt; Unit, )</ID>
+    <ID>LongParameterList:ChatHistoryLoadLifecycle.kt$( context: Context, historyStore: SqliteChatHistoryRepository, historyLoadCoordinator: ChatHistoryLoadCoordinator, diagnosticStore: DiagnosticLogStore, history: MutableList&lt;ChatLine&gt;, setHistoryReady: (Boolean) -&gt; Unit, setHistoryLoadFailed: (Boolean) -&gt; Unit, setStatus: (String) -&gt; Unit, )</ID>
+    <ID>LongParameterList:ChatMemoryApiSettingsSection.kt$( settings: SharedPreferences, baseUrl: String, modelId: String, apiKey: String, hasSavedCredential: Boolean, credentialStore: AndroidKeystoreMemoryCredentialStore, diagnosticStore: DiagnosticLogStore, onBaseUrlChange: (String) -&gt; Unit, onModelIdChange: (String) -&gt; Unit, onApiKeyChange: (String) -&gt; Unit, onSavedCredentialChange: (Boolean) -&gt; Unit, onStatusChange: (String) -&gt; Unit, )</ID>
+    <ID>LongParameterList:ChatMemoryExtractionSchedulingCoordinator.kt$ChatMemoryExtractionSchedulingCoordinator$( private val context: Context, private val memoryCredentialStore: AndroidKeystoreMemoryCredentialStore, private val historyStore: SqliteChatHistoryRepository, private val historySaveMutex: Mutex, private val coroutineScope: CoroutineScope, private val diagnosticStore: DiagnosticLogStore, private val memoryScopeId: String, private val setStatus: (String) -&gt; Unit, )</ID>
+    <ID>LongParameterList:ChatMemoryIndexRebuildCoordinator.kt$ChatMemoryIndexRebuildCoordinator$( private val coroutineScope: CoroutineScope, private val diagnosticStore: DiagnosticLogStore, private val memoryScopeId: String, private val isInFlight: () -&gt; Boolean, private val setInFlight: (Boolean) -&gt; Unit, private val isBusy: () -&gt; Boolean, private val setStatus: (String) -&gt; Unit, )</ID>
+    <ID>LongParameterList:ChatMemoryOperationsCoordinator.kt$ChatMemoryOperationsCoordinator$( private val context: Context, private val memoryCredentialStore: AndroidKeystoreMemoryCredentialStore, private val historyStore: SqliteChatHistoryRepository, private val historySaveMutex: Mutex, private val coroutineScope: CoroutineScope, private val diagnosticStore: DiagnosticLogStore, private val memoryScopeId: String, private val isIndexRebuildInFlight: () -&gt; Boolean, private val setIndexRebuildInFlight: (Boolean) -&gt; Unit, private val isChatBusy: () -&gt; Boolean, private val setStatus: (String) -&gt; Unit, )</ID>
+    <ID>LongParameterList:ChatMemoryRuntimeCoordinator.kt$ChatMemoryRuntimeCoordinator$( private val context: Context, private val mainHandler: Handler, private val diagnosticStore: DiagnosticLogStore, private val memoryScopeId: String, private val memoryConversationId: String, private val indexRebuildCoordinator: ChatMemoryIndexRebuildCoordinator, private val setStatus: (String) -&gt; Unit, private val setMemoryStatusNotice: (String) -&gt; Unit, )</ID>
+    <ID>LongParameterList:ChatMemorySettingsPanel.kt$( settings: SharedPreferences, baseUrl: String, modelId: String, apiKey: String, hasSavedCredential: Boolean, credentialStore: AndroidKeystoreMemoryCredentialStore, diagnosticStore: DiagnosticLogStore, selectedDimensions: Int, dimensionMenuExpanded: Boolean, onBaseUrlChange: (String) -&gt; Unit, onModelIdChange: (String) -&gt; Unit, onApiKeyChange: (String) -&gt; Unit, onSavedCredentialChange: (Boolean) -&gt; Unit, onStatusChange: (String) -&gt; Unit, onDimensionsMenuExpandedChange: (Boolean) -&gt; Unit, onDimensionsSelected: (Int) -&gt; Unit, )</ID>
+    <ID>LongParameterList:ChatRequestClientCoordinator.kt$ChatRequestClientCoordinator$( baseUrl: String, modelId: String, apiKey: String, memoryBaseUrl: String, memoryModelId: String, memoryApiKey: String, )</ID>
+    <ID>LongParameterList:ChatSendMessageCoordinator.kt$ChatSendMessageCoordinator$( history: List&lt;ChatLine&gt;, userText: String, selectedCard: CharacterCard?, characterDefinition: String?, localEntries: List&lt;WorldBookEntry&gt;, worldbookState: WorldBookActivationState, worldbookStateKey: String, onBudgetExceeded: (Int) -&gt; Unit, )</ID>
+    <ID>LongParameterList:ChatSendRequestPreflightCoordinator.kt$ChatSendRequestPreflightCoordinator$( userText: String, busy: Boolean, worldbooksReady: Boolean, baseUrl: String, modelId: String, apiKey: String, memoryBaseUrl: String, memoryModelId: String, memoryApiKey: String, )</ID>
+    <ID>LongParameterList:ChatSessionDocumentActions.kt$( context: Context, coroutineScope: CoroutineScope, historyStore: SqliteChatHistoryRepository, historySaveMutex: Mutex, historySaveRevision: AtomicLong, history: MutableList&lt;ChatLine&gt;, conversationId: String, setStatus: (String) -&gt; Unit, )</ID>
+    <ID>LongParameterList:ChatSessionImportCoordinator.kt$ChatSessionImportCoordinator$( private val context: Context, private val coroutineScope: CoroutineScope, private val historyStore: SqliteChatHistoryRepository, private val historySaveMutex: Mutex, private val historySaveRevision: AtomicLong, private val history: MutableList&lt;ChatLine&gt;, private val setStatus: (String) -&gt; Unit, )</ID>
+    <ID>LongParameterList:ChatStreamObserverCoordinator.kt$ChatStreamObserverCoordinator$( private val mainHandler: Handler, private val history: MutableList&lt;ChatLine&gt;, private val diagnosticStore: DiagnosticLogStore, private val setBusy: (Boolean) -&gt; Unit, private val setStatus: (String) -&gt; Unit, private val memoryStatusNotice: () -&gt; String, private val setUsageSummary: (String) -&gt; Unit, private val persistHistory: () -&gt; Unit, private val scheduleMemoryExtraction: (ProviderProfileSet) -&gt; Unit, )</ID>
+    <ID>LongParameterList:ChatTurnPromptPreparationCoordinator.kt$ChatTurnPromptPreparationCoordinator$( history: List&lt;ChatLine&gt;, userText: String, characterCards: List&lt;StoredCharacterCard&gt;, selectedCharacterId: String, localWorldbookEntries: List&lt;WorldBookEntry&gt;, worldbookState: WorldBookActivationState, worldbookStateKey: String, )</ID>
+    <ID>LongParameterList:ChatWorldBookActivationCoordinator.kt$ChatWorldBookActivationCoordinator$( localEntries: List&lt;WorldBookEntry&gt;, selectedCard: CharacterCard?, scanText: String, recentTexts: List&lt;String&gt;, state: WorldBookActivationState, stateKey: String, onBudgetExceeded: (Int) -&gt; Unit, )</ID>
+    <ID>LongParameterList:ChatWorldBookSessionState.kt$( context: Context, settings: SharedPreferences, diagnosticStore: DiagnosticLogStore, roleId: String, conversationId: String, worldbookId: String, )</ID>
     <ID>LongParameterList:LiteRtBackendAvailability.kt$LiteRtBackendAvailability.Companion$( nativeLibraryDir: File, isArm64: Boolean, npuModelCompatible: Boolean, npuRuntimeValidated: Boolean = false, apkFiles: List&lt;File&gt; = emptyList(), androidApiLevel: Int = Int.MAX_VALUE, allowDiagnosticNpuProbe: Boolean = false, )</ID>
     <ID>LongParameterList:LiteRtLmEmbeddingGemma2Engine.kt$LiteRtLmEmbeddingGemma2Engine$( context: Context, private val modelFile: File, private val preferredBackends: List&lt;InferenceBackend&gt; = listOf( InferenceBackend.NPU, InferenceBackend.GPU, InferenceBackend.CPU, ), private val npuModelCompatible: Boolean = false, /** Explicit one-shot diagnostic only; never marks the runtime as verified. */ private val allowDiagnosticNpuProbe: Boolean = false, private val diagnostics: DiagnosticLogStore = DiagnosticLogStore(context.applicationContext.filesDir), /** Explicit experimental route for GPU/CPU baselines using the Qualcomm-targeted model. */ private val allowDiagnosticAlternateBackendProbe: Boolean = false, )</ID>
     <ID>LongParameterList:LocalWorldBookService.kt$LocalWorldBookService$( entries: List&lt;WorldBookEntry&gt;, scanText: String, maxBudget: Int = DEFAULT_MAX_BUDGET, recentTexts: List&lt;String&gt; = emptyList(), maxDepth: Int = DEFAULT_SCAN_DEPTH, maxRecursiveDepth: Int = DEFAULT_RECURSIVE_DEPTH, state: WorldBookActivationState? = null, )</ID>
@@ -96,27 +136,44 @@
     <ID>MagicNumber:AndroidKeystoreMemoryCredentialStore.kt$AndroidKeystoreMemoryCredentialStore$0xff</ID>
     <ID>MagicNumber:AndroidKeystoreMemoryCredentialStore.kt$AndroidKeystoreMemoryCredentialStore$256</ID>
     <ID>MagicNumber:CharacterCardLibraryScreen.kt$8192</ID>
+    <ID>MagicNumber:ChatDiagnosticExportCoordinator.kt$ChatDiagnosticExportCoordinator$100</ID>
+    <ID>MagicNumber:ChatEmbeddingDimensionsSelectionCoordinator.kt$ChatEmbeddingDimensionsSelectionCoordinator$768</ID>
+    <ID>MagicNumber:ChatEmbeddingDimensionsSettingsSection.kt$768</ID>
+    <ID>MagicNumber:ChatGenerationSettingsSection.kt$200_000</ID>
+    <ID>MagicNumber:ChatGenerationSettingsSection.kt$6</ID>
+    <ID>MagicNumber:ChatHistoryBudgetSettingsSection.kt$100</ID>
+    <ID>MagicNumber:ChatHistoryBudgetSettingsSection.kt$100_000</ID>
+    <ID>MagicNumber:ChatHistoryBudgetSettingsSection.kt$10_000</ID>
+    <ID>MagicNumber:ChatHistoryBudgetSettingsSection.kt$12_000</ID>
+    <ID>MagicNumber:ChatHistoryBudgetSettingsSection.kt$3</ID>
+    <ID>MagicNumber:ChatHistoryBudgetSettingsSection.kt$5</ID>
+    <ID>MagicNumber:ChatHistoryBudgetSettingsSection.kt$6</ID>
+    <ID>MagicNumber:ChatMemoryExtractionSchedulingCoordinator.kt$ChatMemoryExtractionSchedulingCoordinator$3</ID>
+    <ID>MagicNumber:ChatMemoryIndexRebuildCoordinator.kt$ChatMemoryIndexRebuildCoordinator$8</ID>
+    <ID>MagicNumber:ChatMemoryRuntimeCoordinator.kt$ChatMemoryRuntimeCoordinator$200_000</ID>
+    <ID>MagicNumber:ChatMemoryRuntimeCoordinator.kt$ChatMemoryRuntimeCoordinator$768</ID>
+    <ID>MagicNumber:ChatMemoryRuntimeCoordinator.kt$ChatMemoryRuntimeCoordinator$8</ID>
+    <ID>MagicNumber:ChatPromptHistoryCoordinator.kt$ChatPromptHistoryCoordinator$100</ID>
+    <ID>MagicNumber:ChatPromptHistoryCoordinator.kt$ChatPromptHistoryCoordinator$100_000</ID>
+    <ID>MagicNumber:ChatPromptHistoryCoordinator.kt$ChatPromptHistoryCoordinator$10_000</ID>
+    <ID>MagicNumber:ChatPromptHistoryCoordinator.kt$ChatPromptHistoryCoordinator$4_000</ID>
     <ID>MagicNumber:ChatScreen.kt$100</ID>
     <ID>MagicNumber:ChatScreen.kt$100_000</ID>
     <ID>MagicNumber:ChatScreen.kt$1024</ID>
     <ID>MagicNumber:ChatScreen.kt$10_000</ID>
-    <ID>MagicNumber:ChatScreen.kt$120</ID>
     <ID>MagicNumber:ChatScreen.kt$128</ID>
-    <ID>MagicNumber:ChatScreen.kt$12_000</ID>
     <ID>MagicNumber:ChatScreen.kt$1536</ID>
-    <ID>MagicNumber:ChatScreen.kt$180</ID>
     <ID>MagicNumber:ChatScreen.kt$200_000</ID>
     <ID>MagicNumber:ChatScreen.kt$2048</ID>
     <ID>MagicNumber:ChatScreen.kt$256</ID>
-    <ID>MagicNumber:ChatScreen.kt$3</ID>
     <ID>MagicNumber:ChatScreen.kt$4096</ID>
     <ID>MagicNumber:ChatScreen.kt$4_000</ID>
-    <ID>MagicNumber:ChatScreen.kt$5</ID>
     <ID>MagicNumber:ChatScreen.kt$512</ID>
-    <ID>MagicNumber:ChatScreen.kt$6</ID>
     <ID>MagicNumber:ChatScreen.kt$768</ID>
-    <ID>MagicNumber:ChatScreen.kt$8</ID>
-    <ID>MagicNumber:ChatScreen.kt$8192</ID>
+    <ID>MagicNumber:ChatSendMessageCoordinator.kt$ChatSendMessageCoordinator$6</ID>
+    <ID>MagicNumber:ChatSendStreamFallbackCoordinator.kt$ChatSendStreamFallbackCoordinator$120</ID>
+    <ID>MagicNumber:ChatSendStreamFallbackCoordinator.kt$ChatSendStreamFallbackCoordinator$180</ID>
+    <ID>MagicNumber:ChatSessionImportCoordinator.kt$ChatSessionImportCoordinator$8192</ID>
     <ID>MagicNumber:ConversationContextWindow.kt$ConversationContextWindowBuilder$3</ID>
     <ID>MagicNumber:DiagnosticLogStore.kt$DiagnosticLogStore$3</ID>
     <ID>MagicNumber:EmbeddingContracts.kt$EmbeddingModelSpec$256</ID>
@@ -259,6 +316,8 @@
     <ID>MagicNumber:WorldBookParser.kt$WorldBookParser$4</ID>
     <ID>MagicNumber:WorldBookParser.kt$WorldBookParser$5</ID>
     <ID>MagicNumber:WorldBookParser.kt$WorldBookParser$6</ID>
+    <ID>MatchingDeclarationName:ChatSendTurnOrchestrator.kt$ChatSendTurnStages</ID>
+    <ID>MatchingDeclarationName:ChatSessionDocumentActions.kt$ChatSessionDocumentCallbacks</ID>
     <ID>MaxLineLength:AndroidKeystoreMemoryCredentialStore.kt$AndroidKeystoreMemoryCredentialStore$handle.length == HANDLE_LENGTH &amp;&amp; runCatching { UUID.fromString(handle).toString() == handle }.getOrDefault(false)</ID>
     <ID>MaxLineLength:CharacterCardJsonCodecTest.kt$CharacterCardJsonCodecTest$"""{"spec":"chara_card_v2","spec_version":"2.0","data":{"name":"Mira","description":"A mage","first_mes":"Hello","alternate_greetings":["Hi","Welcome"],"tags":["fantasy"],"character_book":{"name":"Lore","entries":[]}}}"""</ID>
     <ID>MaxLineLength:CharacterCardJsonCodecTest.kt$CharacterCardJsonCodecTest$"Name: Mira\n\nDescription: A mage\n\nPersonality: Curious\n\nExample dialogue:\nExample: The mage smiles.\n\nSystem instructions: Be kind\n\nPost-history instructions: Stay in character"</ID>
@@ -283,46 +342,21 @@
     <ID>MaxLineLength:CharacterCardLibraryScreen.kt$if (item.card.tags.isNotEmpty()) Text(item.card.tags.joinToString(" · "), style = MaterialTheme.typography.labelMedium)</ID>
     <ID>MaxLineLength:CharacterCardLibraryScreen.kt$val</ID>
     <ID>MaxLineLength:CharacterCardLibraryStore.kt$CharacterCardLibraryStore$.</ID>
-    <ID>MaxLineLength:ChatScreen.kt$"count=${activationReport.droppedByBudget}; budget=${LocalWorldBookService.DEFAULT_MAX_BUDGET}"</ID>
-    <ID>MaxLineLength:ChatScreen.kt$"facts=${matchingFacts.size}; currentFacts=${matchingFacts.count { it.isCurrent }}; scope=${memoryScopeId.take(8)}"</ID>
-    <ID>MaxLineLength:ChatScreen.kt$"phase=${backendStatus.phase}; backend=${backendStatus.backend}; evidence=${backendStatus.backendEvidence}"</ID>
-    <ID>MaxLineLength:ChatScreen.kt$"reason=unsupported_dimension; dimensions=$configuredDimensions; native_max_dimensions=768"</ID>
-    <ID>MaxLineLength:ChatScreen.kt$"与聊天 API 分开配置。Base URL 和模型 ID 保存在本机；密钥可仅本次使用，或通过 Android Keystore 加密保存。每累计 3 轮已完成对话后异步整理，失败不会撤销聊天回复。"</ID>
-    <ID>MaxLineLength:ChatScreen.kt$"聊天 API Key 仅保存在当前页面内存中，离开页面后需要重新输入；独立记忆 API Key 可选择加密保存到 Android Keystore。Base URL 和模型 ID 会保存在本机设置中。"</ID>
-    <ID>MaxLineLength:ChatScreen.kt$.</ID>
-    <ID>MaxLineLength:ChatScreen.kt$// Clamp persisted preferences so a stale or malformed setting cannot create an unbounded prompt.</ID>
-    <ID>MaxLineLength:ChatScreen.kt$&lt;no name provided&gt;$"promptTokens=${usage.promptTokens}; completionTokens=${usage.completionTokens}; totalTokens=${usage.totalTokens}; cachedPromptTokens=${usage.cachedPromptTokens ?: "unknown"}"</ID>
-    <ID>MaxLineLength:ChatScreen.kt$&lt;no name provided&gt;$usageSummary = "Token 用量：输入 ${usage.promptTokens} · 输出 ${usage.completionTokens} · 合计 ${usage.totalTokens} · 缓存输入 ${usage.cachedPromptTokens?.toString() ?: "未知"}"</ID>
-    <ID>MaxLineLength:ChatScreen.kt$ChatLine(message.id, message.role, message.content, message.createdAtEpochMillis, message.deliveryState)</ID>
-    <ID>MaxLineLength:ChatScreen.kt$DropdownMenu</ID>
-    <ID>MaxLineLength:ChatScreen.kt$PersistedChatMessage(line.id, line.role, line.content, line.createdAtEpochMillis, line.deliveryState)</ID>
-    <ID>MaxLineLength:ChatScreen.kt$SessionArchiveCodec.importAnyDetailed(raw).let { result -&gt; result.archive ?: error(result.error ?: "会话文件无效。") }</ID>
-    <ID>MaxLineLength:ChatScreen.kt$Text("当前角色：${selectedCharacter?.card?.name ?: "默认助手"}", style = MaterialTheme.typography.bodyMedium)</ID>
-    <ID>MaxLineLength:ChatScreen.kt$client.stream(messages, observer, ChatGenerationOptions(maxTokens = maxTokensText.toIntOrNull()?.takeIf { it in 1..200_000 } ?: 4096))</ID>
-    <ID>MaxLineLength:ChatScreen.kt$com.mistbell.tavern.v3.core.storage.TemporalFactLoadResult.Missing -&gt; Unit</ID>
-    <ID>MaxLineLength:ChatScreen.kt$createdAtEpochMillis = (System.currentTimeMillis().coerceAtLeast(0L) + batchIndex).coerceAtMost(Long.MAX_VALUE)</ID>
-    <ID>MaxLineLength:ChatScreen.kt$diagnosticStore.info("memory.index.rebuild_not_needed", "reason=empty_source; scope=${memoryScopeId.take(8)}")</ID>
-    <ID>MaxLineLength:ChatScreen.kt$diagnosticStore.warn("memory.credential.save_failed", "reason=${error::class.java.simpleName}")</ID>
-    <ID>MaxLineLength:ChatScreen.kt$id = TemporalFactExtractionPipeline.FACT_TEXT_ID_PREFIX + fact.id</ID>
-    <ID>MaxLineLength:ChatScreen.kt$if</ID>
-    <ID>MaxLineLength:ChatScreen.kt$if (currentTexts.isNotEmpty()) memoryTextStore.save(currentTexts)</ID>
-    <ID>MaxLineLength:ChatScreen.kt$if (installedModelResult.isFailure) "reason=model_asset_verification_failed" else "reason=model_not_installed"</ID>
-    <ID>MaxLineLength:ChatScreen.kt$if (selectedCharacter == null) "尚未绑定角色卡；本轮使用默认系统提示。" else "角色卡会注入描述、性格、场景、开场白、示例对话及系统指令。"</ID>
-    <ID>MaxLineLength:ChatScreen.kt$is com.mistbell.tavern.v3.core.storage.TemporalFactLoadResult.Corrupt</ID>
-    <ID>MaxLineLength:ChatScreen.kt$is com.mistbell.tavern.v3.core.storage.TemporalFactLoadResult.Loaded</ID>
-    <ID>MaxLineLength:ChatScreen.kt$maxTokens = maxTokensText.toIntOrNull()?.takeIf { it in 1..200_000 } ?: 4096</ID>
+    <ID>MaxLineLength:ChatMemoryExtractionSchedulingCoordinator.kt$ChatMemoryExtractionSchedulingCoordinator$createdAtEpochMillis = (System.currentTimeMillis().coerceAtLeast(0L) + batchIndex).coerceAtMost(Long.MAX_VALUE)</ID>
+    <ID>MaxLineLength:ChatMemoryIndexRebuildCoordinator.kt$ChatMemoryIndexRebuildCoordinator$diagnosticStore.info("memory.index.rebuild_not_needed", "reason=empty_source; scope=${memoryScopeId.take(8)}")</ID>
+    <ID>MaxLineLength:ChatMemoryRuntimeCoordinator.kt$ChatMemoryRuntimeCoordinator$"facts=${matchingFacts.size}; currentFacts=${matchingFacts.count { it.isCurrent }}; scope=${memoryScopeId.take(8)}"</ID>
+    <ID>MaxLineLength:ChatMemoryRuntimeCoordinator.kt$ChatMemoryRuntimeCoordinator$client.stream(messages, observer, ChatGenerationOptions(maxTokens = maxTokensText.toIntOrNull()?.takeIf { it in 1..200_000 } ?: 4096))</ID>
+    <ID>MaxLineLength:ChatMemoryRuntimeCoordinator.kt$ChatMemoryRuntimeCoordinator$if</ID>
+    <ID>MaxLineLength:ChatMemoryRuntimeCoordinator.kt$ChatMemoryRuntimeCoordinator$if (installedModelResult.isFailure) "reason=model_asset_verification_failed" else "reason=model_not_installed"</ID>
+    <ID>MaxLineLength:ChatScreen.kt$indexRebuildCoordinator = memoryOperationsCoordinator.createIndexRebuildCoordinator()</ID>
     <ID>MaxLineLength:ChatScreen.kt$mutableStateOf(settings.getString("chat_api_base_url", "https://api.odys.work/v1") ?: "https://api.odys.work/v1")</ID>
     <ID>MaxLineLength:ChatScreen.kt$mutableStateOf(settings.getString("memory_api_base_url", "https://api.odys.work/v1") ?: "https://api.odys.work/v1")</ID>
     <ID>MaxLineLength:ChatScreen.kt$settings.getInt("chat_history_summary_max_chars", ConversationContextWindowBuilder.DEFAULT_SUMMARY_MAX_CHARS)</ID>
-    <ID>MaxLineLength:ChatScreen.kt$status</ID>
-    <ID>MaxLineLength:ChatScreen.kt$text = "${fact.subject} ${fact.predicate}: ${fact.value}"</ID>
-    <ID>MaxLineLength:ChatScreen.kt$val</ID>
-    <ID>MaxLineLength:ChatScreen.kt$val currentHashes = sourceTexts.records.map { it.sourceTextSha256 }.sorted()</ID>
-    <ID>MaxLineLength:ChatScreen.kt$val embeddingSettings = context.getSharedPreferences("mistbell-v3-settings", Context.MODE_PRIVATE)</ID>
-    <ID>MaxLineLength:ChatScreen.kt$val indexedHashes = existingSnapshot.snapshot.records.map { it.sourceTextSha256 }.sorted()</ID>
-    <ID>MaxLineLength:ChatScreen.kt$val worldbookStateKey = "worldbook_activation_state_${activeMemoryRoleId}_${memoryConversationId}_${activeWorldbookId.ifBlank { "none" }}"</ID>
     <ID>MaxLineLength:ChatScreen.kt$var characterCards by remember(context) { mutableStateOf(emptyList&lt;com.mistbell.tavern.v3.feature.character.StoredCharacterCard&gt;()) }</ID>
-    <ID>MaxLineLength:ChatScreen.kt$when</ID>
+    <ID>MaxLineLength:ChatSessionExportCoordinator.kt$ChatSessionExportCoordinator$PersistedChatMessage(line.id, line.role, line.content, line.createdAtEpochMillis, line.deliveryState)</ID>
+    <ID>MaxLineLength:ChatSessionImportCoordinator.kt$ChatSessionImportCoordinator$ChatLine(message.id, message.role, message.content, message.createdAtEpochMillis, message.deliveryState)</ID>
+    <ID>MaxLineLength:ChatStreamObserverCoordinator.kt$ChatStreamObserverCoordinator.&lt;no name provided&gt;$"promptTokens=${usage.promptTokens}; completionTokens=${usage.completionTokens}; totalTokens=${usage.totalTokens}; cachedPromptTokens=${usage.cachedPromptTokens ?: "unknown"}"</ID>
+    <ID>MaxLineLength:ChatStreamObserverCoordinator.kt$ChatStreamObserverCoordinator.&lt;no name provided&gt;$setUsageSummary("Token 用量：输入 ${usage.promptTokens} · 输出 ${usage.completionTokens} · 合计 ${usage.totalTokens} · 缓存输入 ${usage.cachedPromptTokens?.toString() ?: "未知"}")</ID>
     <ID>MaxLineLength:DiagnosticLogStore.kt$DiagnosticLogStore$.</ID>
     <ID>MaxLineLength:DiagnosticLogStore.kt$DiagnosticLogStore$Regex("(?i)\\b(?:sk-[A-Za-z0-9_-]{16,}|AIza[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|ya29\\.[A-Za-z0-9_-]{20,})\\b")</ID>
     <ID>MaxLineLength:DiagnosticLogStoreTest.kt$DiagnosticLogStoreTest$"Authorization: Basic dXNlcjpwYXNz; X-Api-Key=api-secret; https://example.test/?token=query-secret; hf_abcdefghijklmnopqrstuvwxyz; \"token\": \"json-secret\""</ID>
@@ -459,6 +493,7 @@
     <ID>MaxLineLength:WorldBookParserTest.kt$WorldBookParserTest$"""{"id":"11111111-1111-1111-1111-111111111111","entries":[{"uid":"depth-zero","content":"at depth zero","position":4,"depth":0,"role":1}]}"""</ID>
     <ID>MaxLineLength:WorldBookParserTest.kt$WorldBookParserTest$"""{"name":"Lore","entries":{"1":{"comment":"rule","content":"night","key":"night","enabled":true,"insertion_order":2},"2":{"content":"hidden","disable":true,"order":8}}}"""</ID>
     <ID>MaxLineLength:WorldBookPlacementTest.kt$WorldBookPlacementTest$entry("depth-zero", WorldBookPlacement.POSITION_DEPTH, depth = 0, role = WorldBookPlacement.DEPTH_ROLE_USER)</ID>
+    <ID>NestedBlockDepth:ChatMemoryRuntimeCoordinator.kt$ChatMemoryRuntimeCoordinator$suspend fun stream( client: OpenAiCompatibleChatClient, messages: List&lt;PromptMessage&gt;, observer: ChatStreamObserver, maxTokensText: String, )</ID>
     <ID>NestedBlockDepth:LiteRtLmEmbeddingGemma2Engine.kt$LiteRtLmEmbeddingGemma2Engine$suspend fun runNpuInputLengthProbe(): List&lt;String&gt;</ID>
     <ID>NestedBlockDepth:VectorMemoryRetriever.kt$VectorMemoryRetriever$private fun countMatchedQueryTerms(text: String, queryTerms: Set&lt;String&gt;): Int</ID>
     <ID>NewLineAtEndOfFile:CharacterCard.kt$com.mistbell.tavern.v3.feature.character.CharacterCard.kt</ID>
@@ -472,7 +507,8 @@
     <ID>ReturnCount:AtomicVectorSnapshotStore.kt$AtomicVectorSnapshotStore$@Synchronized override fun load(expectedModelId: String, expectedDimensions: Int): VectorSnapshotLoadResult</ID>
     <ID>ReturnCount:CharacterCardLibraryStore.kt$CharacterCardLibraryStore$fun delete(id: String): Boolean</ID>
     <ID>ReturnCount:ChatHistoryStore.kt$ChatHistoryStore$@Synchronized fun load(): ChatHistoryLoadResult</ID>
-    <ID>ReturnCount:ChatScreen.kt$fun scheduleMemoryExtractionIfDue(providers: ProviderProfileSet)</ID>
+    <ID>ReturnCount:ChatMemoryExtractionSchedulingCoordinator.kt$ChatMemoryExtractionSchedulingCoordinator$fun schedule(providers: ProviderProfileSet, history: List&lt;ChatLine&gt;)</ID>
+    <ID>ReturnCount:ChatSendRequestPreflightCoordinator.kt$ChatSendRequestPreflightCoordinator$fun prepare( userText: String, busy: Boolean, worldbooksReady: Boolean, baseUrl: String, modelId: String, apiKey: String, memoryBaseUrl: String, memoryModelId: String, memoryApiKey: String, ): PreparedChatSendRequest?</ID>
     <ID>ReturnCount:ConversationContextWindow.kt$ConversationContextWindowBuilder$private fun buildExtractiveSummary(history: List&lt;PromptMessage&gt;, maxChars: Int): String</ID>
     <ID>ReturnCount:ConversationContextWindow.kt$ConversationContextWindowBuilder$private fun findRecentTurnBoundary(history: List&lt;PromptMessage&gt;, recentTurns: Int): Int</ID>
     <ID>ReturnCount:EmbeddingGemma2RuntimeAdapter.kt$EmbeddingGemma2RuntimeAdapter.Companion$fun cachedQuery( query: String, outputDimensions: Int = EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS, modelProfileId: String = EmbeddingGemma2TextPolicy.MODEL_ID, onDiagnostic: (String, String) -&gt; Unit = { event, detail -&gt; EmbeddingVectorCache.log(event, detail) }, ): EmbeddingBatch?</ID>
@@ -522,8 +558,9 @@
     <ID>TooGenericExceptionCaught:AtomicVectorSnapshotStore.kt$AtomicVectorSnapshotStore$failure: Throwable</ID>
     <ID>TooGenericExceptionCaught:CharacterCardLibraryStore.kt$CharacterCardLibraryStore$error: Exception</ID>
     <ID>TooGenericExceptionCaught:ChatHistoryStore.kt$ChatHistoryStore$failure: Throwable</ID>
-    <ID>TooGenericExceptionCaught:ChatScreen.kt$chatError: Exception</ID>
-    <ID>TooGenericExceptionCaught:ChatScreen.kt$error: Exception</ID>
+    <ID>TooGenericExceptionCaught:ChatSendStreamFallbackCoordinator.kt$ChatSendStreamFallbackCoordinator$chatError: Exception</ID>
+    <ID>TooGenericExceptionCaught:ChatSendStreamFallbackCoordinator.kt$ChatSendStreamFallbackCoordinator$error: Exception</ID>
+    <ID>TooGenericExceptionCaught:ChatSessionImportCoordinator.kt$ChatSessionImportCoordinator$error: Exception</ID>
     <ID>TooGenericExceptionCaught:EmbeddingEngineProcessHolder.kt$EmbeddingEngineProcessHolder$failure: Throwable</ID>
     <ID>TooGenericExceptionCaught:EmbeddingGemma2ModelAssetManager.kt$EmbeddingGemma2ModelAssetManager$error: Exception</ID>
     <ID>TooGenericExceptionCaught:GeneratedImageStore.kt$GeneratedImageStore$error: Exception</ID>
