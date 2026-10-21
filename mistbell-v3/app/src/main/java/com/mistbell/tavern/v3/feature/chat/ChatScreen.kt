@@ -315,44 +315,17 @@ fun ChatScreen(onBack: () -> Unit) {
     }
 
     val exportJsonLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
-        if (uri != null) coroutineScope.launch {
-            runCatching {
-                val archive = SessionArchive(
-                    id = memoryConversationId,
-                    title = "Mistbell Tavern session",
-                    messages = history.map { line ->
-                        PersistedChatMessage(line.id, line.role, line.content, line.createdAtEpochMillis, line.deliveryState)
-                    },
-                )
-                val raw = SessionArchiveCodec.exportJson(archive)
-                withContext(Dispatchers.IO) {
-                    context.contentResolver.openOutputStream(uri)?.use { it.write(raw.toByteArray(Charsets.UTF_8)) }
-                        ?: error("无法写入导出文件")
-                }
-            }.onSuccess { status = "会话 JSON 导出完成。" }
-                .onFailure { error -> status = "会话导出失败：${error.message ?: error::class.java.simpleName}" }
+        if (uri != null) {
+            ChatSessionExportCoordinator(context, coroutineScope) { status = it }
+                .export(uri, memoryConversationId, history, jsonLines = false)
         }
     }
     val exportJsonlLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/jsonl")) { uri ->
-        if (uri != null) coroutineScope.launch {
-            runCatching {
-                val archive = SessionArchive(
-                    id = memoryConversationId,
-                    title = "Mistbell Tavern session",
-                    messages = history.map { line ->
-                        PersistedChatMessage(line.id, line.role, line.content, line.createdAtEpochMillis, line.deliveryState)
-                    },
-                )
-                val raw = SessionArchiveCodec.exportJsonl(archive)
-                withContext(Dispatchers.IO) {
-                    context.contentResolver.openOutputStream(uri)?.use { it.write(raw.toByteArray(Charsets.UTF_8)) }
-                        ?: error("无法写入导出文件")
-                }
-            }.onSuccess { status = "会话 JSONL 导出完成。" }
-                .onFailure { error -> status = "会话导出失败：${error.message ?: error::class.java.simpleName}" }
+        if (uri != null) {
+            ChatSessionExportCoordinator(context, coroutineScope) { status = it }
+                .export(uri, memoryConversationId, history, jsonLines = true)
         }
     }
-
 
     val historyLoadCoordinator = remember(historyStore, diagnosticStore) {
         ChatHistoryLoadCoordinator(historyStore, diagnosticStore)
