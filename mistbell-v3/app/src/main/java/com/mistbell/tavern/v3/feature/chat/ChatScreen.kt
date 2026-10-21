@@ -439,12 +439,7 @@ fun ChatScreen(onBack: () -> Unit) {
             modifier = Modifier.fillMaxSize().padding(padding).padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(
-                    modifier = Modifier.fillMaxWidth().padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Text("聊天 API 配置", style = MaterialTheme.typography.titleMedium)
+            ChatApiSettingsPanel {
                     ChatCharacterSelector(
                         selectedCharacterName = selectedCharacter?.card?.name,
                         characterOptions = characterCards.map { stored -> stored.id to stored.card.name },
@@ -491,7 +486,6 @@ fun ChatScreen(onBack: () -> Unit) {
                         apiKey = apiKey,
                         onApiKeyChange = { apiKey = it },
                     )
-                }
             }
 
             ChatContextBudgetCard(
