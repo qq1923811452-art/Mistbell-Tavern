@@ -558,7 +558,6 @@ fun ChatScreen(onBack: () -> Unit) {
             }
 
             ChatContextBudgetCard(
-                settings = settings,
                 recentTurnsText = recentTurnsText,
                 onRecentTurnsChange = { value ->
                     recentTurnsText = value.filter(Char::isDigit).take(3)
