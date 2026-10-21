@@ -94,7 +94,7 @@ class BackupService(
 
     private fun validateStagedDatabase(stagedDatabase: File) {
         if (!stagedDatabase.isFile) return
-        val validationDirectory = File(appContext.cacheDir, "backup-db-validation-\${UUID.randomUUID()}")
+        val validationDirectory = File(appContext.cacheDir, "backup-db-validation-" + UUID.randomUUID())
         require(validationDirectory.mkdirs()) { "Database validation directory could not be created." }
         try {
             val isolatedCopy = File(validationDirectory, BackupSource.CHAT_DATABASE_NAME)
