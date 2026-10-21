@@ -9,10 +9,7 @@ import com.mistbell.tavern.v3.core.memory.MemoryTextRecord
 import com.mistbell.tavern.v3.core.memory.PassageEmbeddingRuntime
 import com.mistbell.tavern.v3.core.storage.AtomicMemoryTextStore
 import com.mistbell.tavern.v3.core.storage.AtomicVectorSnapshotStore
-import com.mistbell.tavern.v3.core.storage.MemoryScopeId
-import com.mistbell.tavern.v3.core.memory.EligibleConversationTurn
 import com.mistbell.tavern.v3.core.model.ProviderProfileSet
-import com.mistbell.tavern.v3.feature.memory.MemoryExtractionSchedulingCoordinator
 
 /**
  * Keeps chat-screen memory scheduling in one cohesive coordinator.
@@ -27,7 +24,7 @@ internal class ChatMemoryOperationsCoordinator(
     private val historySaveMutex: Mutex,
     private val coroutineScope: CoroutineScope,
     private val diagnosticStore: DiagnosticLogStore,
-    private val memoryScopeId: MemoryScopeId,
+    private val memoryScopeId: String,
     private val isIndexRebuildInFlight: () -> Boolean,
     private val setIndexRebuildInFlight: (Boolean) -> Unit,
     private val isChatBusy: () -> Boolean,
