@@ -108,6 +108,9 @@ fun ChatScreen(onBack: () -> Unit) {
         mutableStateOf(settings.getString("chat_model_id", "") ?: "")
     }
     var apiKey by remember { mutableStateOf("") }
+    val chatGenerationPreferences = remember(context) {
+        ChatGenerationPreferences(context.getSharedPreferences("mistbell-v3-settings", Context.MODE_PRIVATE))
+    }
     var memoryBaseUrl by remember(settings) {
         mutableStateOf(settings.getString("memory_api_base_url", "https://api.odys.work/v1") ?: "https://api.odys.work/v1")
     }
@@ -484,6 +487,8 @@ fun ChatScreen(onBack: () -> Unit) {
                                     ChatGenerationOptions(
                                         maxTokens = maxTokensText.toIntOrNull()
                                             ?.takeIf { it in 1..200_000 } ?: 4096,
+                                        stream = chatGenerationPreferences.streamEnabled,
+                                        thinkingEnabled = chatGenerationPreferences.thinkingEnabled,
                                     ),
                                 )
                             },
