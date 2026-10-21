@@ -8,6 +8,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.fillMaxWidth
 
 @Composable
@@ -19,7 +20,7 @@ internal fun ChatEmbeddingDimensionsSettingsSection(
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(androidx.compose.ui.unit.dp(8)),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Button(onClick = { onMenuExpandedChange(true) }) {
             Text("向量维度：$selectedDimensions 维")
