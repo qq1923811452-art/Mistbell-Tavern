@@ -1,0 +1,59 @@
+name: Mistbell 3.0 Generate Independent Detekt Baseline
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - codex/mistbell-development-3.0
+    paths:
+      - 'mistbell-v3/**'
+      - '.github/workflows/mistbell-v3-generate-detekt-baseline.yml'
+  push:
+    branches:
+      - codex/mistbell-v3-independent-detekt-baseline
+
+# Baseline generation is validation-only. Never grant write access to a PR run.
+permissions:
+  contents: read
+
+concurrency:
+  group: mistbell-v3-independent-detekt-baseline
+  cancel-in-progress: false
+
+jobs:
+  generate-baseline:
+    name: Generate and verify independent 3.0 Detekt baseline
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout PR source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Generate independent 3.0 Detekt baseline
+        run: ./gradlew -p mistbell-v3 :app:detektBaseline --no-daemon --no-parallel
+
+      - name: Verify checked-in baseline matches generated baseline
+        run: git diff --exit-code -- mistbell-v3/config/detekt/baseline.xml
+
+      - name: Verify Detekt against generated 3.0 baseline
+        run: ./gradlew -p mistbell-v3 :app:detekt --no-daemon --no-parallel
+
+      - name: Upload generated baseline
+        uses: actions/upload-artifact@v4
+        with:
+          name: mistbell-v3-detekt-baseline
+          path: mistbell-v3/config/detekt/baseline.xml
+          if-no-files-found: error
+          retention-days: 7
