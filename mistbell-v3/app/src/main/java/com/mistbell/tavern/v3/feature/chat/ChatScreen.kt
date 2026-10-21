@@ -655,7 +655,9 @@ fun ChatScreen(onBack: () -> Unit) {
                         busy = busy,
                     )
                 }
-                Button(
+                ChatSessionResetAction(
+                    enabled = !busy && historyReady && (history.isNotEmpty() || historyLoadFailed),
+                    historyLoadFailed = historyLoadFailed,
                     onClick = {
                         ChatSessionResetCoordinator(
                             settings = context.getSharedPreferences("mistbell-v3-settings", Context.MODE_PRIVATE),
@@ -668,8 +670,7 @@ fun ChatScreen(onBack: () -> Unit) {
                             previousMemoryScopeId = memoryScopeId,
                         )
                     },
-                    enabled = !busy && historyReady && (history.isNotEmpty() || historyLoadFailed),
-                ) { Text(if (historyLoadFailed) "放弃旧记录并新建会话" else "清空会话") }
+                )
                 ChatDiagnosticExportAction(
                     enabled = !busy && historyReady,
                     onClick = { exportLogLauncher.launch("mistbell-diagnostics.txt") },
