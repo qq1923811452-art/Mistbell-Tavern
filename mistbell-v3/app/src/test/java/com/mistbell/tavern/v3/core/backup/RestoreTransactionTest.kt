@@ -72,6 +72,30 @@ class RestoreTransactionTest {
     }
 
     @Test
+    fun restoresOldFilesAndPreservesCallbackFailuresWhenRollbackHooksThrow() {
+        val root = Files.createTempDirectory("restore-transaction-test").toFile()
+        try {
+            val live = File(root, "live.txt").apply { writeText("old") }
+            val staged = File(root, "staged.txt").apply { writeText("new") }
+
+            val failure = assertThrows(IllegalStateException::class.java) {
+                RestoreTransaction().replaceFiles(
+                    stagedToDestination = mapOf(staged to live),
+                    beforeCommit = { error("simulated reopen failure") },
+                    beforeRollback = { error("simulated database close failure") },
+                    afterRollback = { error("simulated database reopen failure") },
+                )
+            }
+
+            assertEquals("simulated reopen failure", failure.message)
+            assertEquals(2, failure.suppressed.size)
+            assertEquals("old", live.readText())
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
     fun rejectsDuplicateDestinationsBeforeMutation() {
         val root = Files.createTempDirectory("restore-transaction-test").toFile()
         try {
