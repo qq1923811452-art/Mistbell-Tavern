@@ -80,8 +80,9 @@ class BackupSource(private val context: Context) {
     }
 
     companion object {
-        fun isMemoryFileName(name: String): Boolean =
-            name in MEMORY_FILE_NAMES || MEMORY_FILE_PATTERNS.any { it.matches(name) }
+        fun isMemoryFileName(name: String): Boolean {
+            return name in MEMORY_FILE_NAMES || MEMORY_FILE_PATTERNS.any { it.matches(name) }
+        }
 
         const val CHAT_DATABASE_NAME = "mistbell-v3-chat.db"
         const val SETTINGS_PREFERENCES = "mistbell-v3-settings"
