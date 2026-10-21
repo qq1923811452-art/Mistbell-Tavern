@@ -74,7 +74,11 @@ class BackupService(
                         rollbackSettings = applySettings(File(staging, BackupSource.SETTINGS_BACKUP_FILE))
                         databaseLifecycle.reopenAfterRestore()
                     },
-                    beforeRollback = { databaseLifecycle.closeBeforeRestore() },
+                    beforeRollback = {
+                        databaseLifecycle.closeBeforeRestore()
+                        rollbackSettings?.invoke()
+                        rollbackSettings = null
+                    },
                     afterRollback = {
                         databaseLifecycle.reopenAfterRestore()
                         rollbackLifecycleHandled = true
