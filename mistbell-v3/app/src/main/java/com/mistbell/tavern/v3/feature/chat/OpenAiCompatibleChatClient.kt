@@ -47,6 +47,10 @@ data class ChatGenerationOptions(
     val temperature: Double = 0.7,
     val maxTokens: Int = 4096,
     val includeUsage: Boolean = true,
+    /** When false the request uses the non-streaming JSON endpoint. */
+    val stream: Boolean = true,
+    /** Enables provider-specific thinking/reasoning parameters. */
+    val thinkingEnabled: Boolean = false,
 ) {
     init {
         require(temperature.isFinite() && temperature in 0.0..2.0) {
@@ -137,13 +141,20 @@ class OpenAiCompatibleChatClient(
         }
         val body = JSONObject()
             .put("model", profile.modelId)
-            .put("stream", true)
+            .put("stream", options.stream)
             .put("temperature", options.temperature)
             .put("max_tokens", options.maxTokens)
             .put("messages", messagesJson)
             .also { payload ->
-                if (options.includeUsage) {
+                if (options.includeUsage && options.stream) {
                     payload.put("stream_options", JSONObject().put("include_usage", true))
+                }
+                if (options.thinkingEnabled) {
+                    profile.thinkingBodyTemplate?.let { template ->
+                        runCatching { JSONObject(template) }.getOrNull()?.let { extra ->
+                            extra.keys().forEach { key -> payload.put(key, extra.opt(key)) }
+                        }
+                    }
                 }
             }
             .toString()
@@ -151,12 +162,60 @@ class OpenAiCompatibleChatClient(
 
         val requestBuilder = Request.Builder()
             .url("$baseUrl/chat/completions")
-            .header("Accept", "text/event-stream")
+            .header("Accept", if (options.stream) "text/event-stream" else "application/json")
             .header("Content-Type", "application/json")
             .post(body)
         if (apiKey != null) requestBuilder.header("Authorization", "Bearer $apiKey")
 
         val call = httpClient.newCall(requestBuilder.build())
+        if (!options.stream) {
+            call.enqueue(object : Callback {
+                override fun onFailure(call: Call, e: IOException) {
+                    observer.onFailure(
+                        if (call.isCanceled()) {
+                            ChatStreamFailure(ChatFailureKind.CANCELLED, safeMessage = "Generation was cancelled.")
+                        } else {
+                            ChatStreamFailure(ChatFailureKind.NETWORK, safeMessage = "Chat provider request failed.")
+                        },
+                    )
+                }
+
+                override fun onResponse(call: Call, response: Response) {
+                    response.use { opened ->
+                        if (!opened.isSuccessful) {
+                            observer.onFailure(
+                                ChatStreamFailure(
+                                    kind = ChatFailureKind.HTTP_STATUS,
+                                    httpStatus = opened.code,
+                                    safeMessage = "Chat provider returned HTTP ${opened.code}.",
+                                ),
+                            )
+                            return
+                        }
+                        val payload = runCatching { opened.body?.string() }.getOrNull()
+                        val message = runCatching {
+                            JSONObject(payload.orEmpty())
+                                .optJSONArray("choices")
+                                ?.optJSONObject(0)
+                                ?.optJSONObject("message")
+                        }.getOrNull()
+                        if (message == null) {
+                            observer.onFailure(
+                                ChatStreamFailure(
+                                    ChatFailureKind.INVALID_STREAM,
+                                    safeMessage = "Chat provider returned malformed completion data.",
+                                ),
+                            )
+                            return
+                        }
+                        val content = message.optString("content")
+                        if (content.isNotEmpty()) observer.onDelta(content)
+                        observer.onComplete()
+                    }
+                }
+            })
+            return call
+        }
         call.enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
                 observer.onFailure(
