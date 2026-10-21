@@ -577,16 +577,14 @@ fun ChatScreen(onBack: () -> Unit) {
                     diagnosticStore.info("embedding.dimensions.changed", "dimensions=$dimensions")
                 },
             )
-            ChatStatusLine(message = status)
-            ChatHistoryMessageList(
-                history = history,
-                busy = busy,
-                listState = listState,
-            )
-            ChatMessageComposerInput(
-                value = chatUiState.draft,
-                onValueChange = chatViewModel::updateDraft,
-                enabled = !busy && !historyLoadFailed,
+            ChatConversationPanel(
+                status = status,
+                messages = history,
+                generating = busy,
+                state = listState,
+                inputText = chatUiState.draft,
+                onInputTextChange = chatViewModel::updateDraft,
+                inputEnabled = !busy && !historyLoadFailed,
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 ChatMessageSendButton(
