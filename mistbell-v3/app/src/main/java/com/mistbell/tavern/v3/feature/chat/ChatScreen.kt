@@ -242,29 +242,7 @@ fun ChatScreen(onBack: () -> Unit) {
     LaunchedEffect(context, activeWorldbookId) {
         worldbooksReady = false
         val loadedWorldbookEntries = withContext(Dispatchers.IO) {
-            runCatching {
-                val directory = File(context.filesDir, "worldbooks")
-                if (activeWorldbookId.isBlank()) {
-                    emptyList()
-                } else {
-                    directory.listFiles { file ->
-                        file.isFile && file.extension == "json" && file.nameWithoutExtension == activeWorldbookId
-                    }.orEmpty().flatMap { file ->
-                        runCatching {
-                            WorldBookParser.parse(
-                                AtomicFile(file).openRead().use { it.readBytes().toString(Charsets.UTF_8) },
-                                file.nameWithoutExtension,
-                            )?.entries.orEmpty()
-                        }.getOrElse { error ->
-                            diagnosticStore.warn(
-                                "worldbook.file_skipped",
-                                "book_id=$activeWorldbookId reason=${error::class.java.simpleName}",
-                            )
-                            emptyList()
-                        }
-                    }
-                }
-            }
+            ChatWorldBookLibraryLoader(context.applicationContext, diagnosticStore).load(activeWorldbookId)
         }
         localWorldbookEntries = loadedWorldbookEntries.getOrElse { error ->
             diagnosticStore.warn(
