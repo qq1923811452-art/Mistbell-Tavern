@@ -1,6 +1,5 @@
 package com.mistbell.tavern.v3.feature.chat
 
-import android.os.Handler
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -18,10 +17,10 @@ import com.mistbell.tavern.v3.feature.embedding.EmbeddingGemma2RuntimeAdapter
 import com.mistbell.tavern.v3.feature.embedding.EmbeddingEngineProcessHolder
 import com.mistbell.tavern.v3.feature.embedding.EmbeddingGemma2TextPolicy
 import java.io.File
-import androidx.compose.material3.Text
 import com.mistbell.tavern.v3.feature.memory.TemporalFactTextSynchronizer
 import com.mistbell.tavern.v3.feature.memory.TemporalFactTextSyncResult
 import com.mistbell.tavern.v3.feature.memory.TemporalFactExtractionPipeline
+import android.os.Handler
 import com.mistbell.tavern.v3.core.diagnostics.DiagnosticLogStore
 
 /**
