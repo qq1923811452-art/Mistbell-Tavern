@@ -48,10 +48,12 @@ class BackupService(
             entryCount = extracted.manifest.entryCount
             archiveHash = extracted.archiveSha256
             validator.validateDatabaseIfPresent(File(staging, BackupSource.CHAT_DATABASE_NAME))
-            val replacements = mapRestoreTargets(extracted)
-            RestoreTransaction().replaceFiles(replacements) {
-                applySettings(File(staging, BackupSource.SETTINGS_BACKUP_FILE))
-            }
+            val plan = mapRestoreTargets(extracted)
+            RestoreTransaction().replaceFiles(
+                stagedToDestination = plan.replacements,
+                removeDestinations = plan.removals,
+                beforeCommit = { applySettings(File(staging, BackupSource.SETTINGS_BACKUP_FILE)) },
+            )
             log("backup.restore", started, entryCount, archiveHash)
             preview(archive)
         } finally {
@@ -59,28 +61,46 @@ class BackupService(
         }
     }
 
-    private fun mapRestoreTargets(extracted: ExtractedBackup): Map<File, File> {
-        val mapping = linkedMapOf<File, File>()
-        extracted.manifest.entries.forEach { entry ->
-            val relative = entry.path.removePrefix("data/")
+    private data class RestorePlan(
+        val replacements: Map<File, File>,
+        val removals: Set<File>,
+    )
+
+    private fun mapRestoreTargets(extracted: ExtractedBackup): RestorePlan {
+        val replacements = linkedMapOf<File, File>()
+        val removals = linkedSetOf<File>()
+        val archivePaths = extracted.manifest.entries.map { it.path.removePrefix("data/") }.toSet()
+
+        archivePaths.filter { it.startsWith("memory/") }.forEach { relative ->
+            val name = relative.substringAfter("memory/")
             val staged = File(extracted.stagingDirectory, relative)
-            val destination = when {
-                relative == BackupSource.CHAT_DATABASE_NAME ->
-                    appContext.getDatabasePath(BackupSource.CHAT_DATABASE_NAME)
-                relative.startsWith("memory/") ->
-                    File(appContext.filesDir, relative.substringAfter("memory/"))
-                relative.startsWith("worldbooks/") ->
-                    File(appContext.filesDir, relative)
-                relative.startsWith("characters/") ->
-                    File(appContext.filesDir, relative)
-                relative.startsWith("generated-images/") ->
-                    File(appContext.filesDir, relative)
-                relative == BackupSource.SETTINGS_BACKUP_FILE -> null
-                else -> throw IllegalArgumentException("Backup contains an unsupported data path.")
-            }
-            if (destination != null) mapping[staged] = destination
+            replacements[staged] = File(appContext.filesDir, name)
         }
-        return mapping
+        appContext.filesDir.listFiles().orEmpty()
+            .filter { it.isFile && BackupSource.isMemoryFileName(it.name) }
+            .filterNot { it.name in archivePaths.map { path -> path.substringAfter("memory/") } }
+            .forEach { removals += it }
+
+        listOf("worldbooks", "characters", "generated-images").forEach { name ->
+            val stagedDirectory = File(extracted.stagingDirectory, name)
+            if (!stagedDirectory.exists() && !stagedDirectory.mkdirs()) {
+                throw IOException("Restore staging directory could not be created.")
+            }
+            replacements[stagedDirectory] = File(appContext.filesDir, name)
+        }
+
+        val databaseFile = appContext.getDatabasePath(BackupSource.CHAT_DATABASE_NAME)
+        val stagedDatabase = File(extracted.stagingDirectory, BackupSource.CHAT_DATABASE_NAME)
+        if (archivePaths.contains(BackupSource.CHAT_DATABASE_NAME)) {
+            replacements[stagedDatabase] = databaseFile
+        } else {
+            removals += databaseFile
+        }
+        // A WAL or SHM from the previous database must never be replayed against the restored DB.
+        removals += File(databaseFile.path + "-wal")
+        removals += File(databaseFile.path + "-shm")
+
+        return RestorePlan(replacements, removals)
     }
 
     private fun applySettings(file: File) {
