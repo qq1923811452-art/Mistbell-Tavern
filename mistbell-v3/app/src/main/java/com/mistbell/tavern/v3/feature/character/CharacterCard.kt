@@ -1,6 +1,11 @@
 package com.mistbell.tavern.v3.feature.character
 
-/** Format-neutral character card fields used by the independent 3.0 importer/exporter. */
+/**
+ * Character definition independent of any interchange format.
+ *
+ * Importers fill these fields from PNG/JSON cards; exporters write them back. Raw character book
+ * JSON stays untouched so round trips do not lose unknown lore data.
+ */
 data class CharacterCard(
     val name: String,
     val description: String = "",
@@ -14,23 +19,29 @@ data class CharacterCard(
     val alternateGreetings: List<String> = emptyList(),
     val tags: List<String> = emptyList(),
     val creator: String = "",
-    /** Raw character_book JSON is preserved for loss-minimizing interchange. */
     val characterBookJson: String? = null,
 ) {
     init {
         require(name.isNotBlank()) { "Character name is required." }
     }
 
-    /** Stable character definition; volatile conversation state is assembled separately. */
-    fun stableDefinition(): String = buildList {
-        add("Name: ${name.trim()}")
-        description.trim().takeIf(String::isNotEmpty)?.let { add("Description: $it") }
-        personality.trim().takeIf(String::isNotEmpty)?.let { add("Personality: $it") }
-        scenario.trim().takeIf(String::isNotEmpty)?.let { add("Scenario: $it") }
-        exampleDialogue.trim().takeIf(String::isNotEmpty)?.let { add("Example dialogue:\n$it") }
-        systemPrompt.trim().takeIf(String::isNotEmpty)?.let { add("System instructions: $it") }
-        postHistoryInstructions.trim().takeIf(String::isNotEmpty)?.let {
-            add("Post-history instructions: $it")
+    /**
+     * Prompt-stable definition block. Conversation state is assembled elsewhere so this output
+     * can be cached and reused across turns.
+     */
+    fun stableDefinition(): String {
+        val blocks = mutableListOf<String>()
+        fun append(label: String, value: String) {
+            val trimmed = value.trim()
+            if (trimmed.isNotEmpty()) blocks += "$label: $trimmed"
         }
-    }.joinToString("\n\n")
+        append("Name", name)
+        append("Description", description)
+        append("Personality", personality)
+        append("Scenario", scenario)
+        exampleDialogue.trim().takeIf(String::isNotEmpty)?.let { blocks += "Example dialogue:\n$it" }
+        append("System instructions", systemPrompt)
+        append("Post-history instructions", postHistoryInstructions)
+        return blocks.joinToString("\n\n")
+    }
 }
