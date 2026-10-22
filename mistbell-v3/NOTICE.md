@@ -8,5 +8,6 @@
   expression.
 - Third-party components and model terms are listed in `LICENSES/THIRD_PARTY_NOTICES.md`.
 
-The root `LICENSE` remains in place for the archived 2.x code and repository history; it does not
-describe the 3.0 application.
+The 3.0 application is licensed under the MIT license in `mistbell-v3/LICENSE`. The root `LICENSE`
+remains in place for the archived 2.x code and repository history; it does not describe the 3.0
+application.
