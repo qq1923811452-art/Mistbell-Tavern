@@ -51,10 +51,11 @@ class SessionStore(
     fun create(
         roleId: String,
         title: String,
+        id: String = UUID.randomUUID().toString(),
         now: Long = System.currentTimeMillis(),
     ): ChatSession {
         val session = ChatSession(
-            id = UUID.randomUUID().toString(),
+            id = id,
             roleId = roleId,
             title = title.ifBlank { DEFAULT_TITLE },
             updatedAt = now,

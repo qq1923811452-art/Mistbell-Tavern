@@ -56,6 +56,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
@@ -85,6 +86,9 @@ import com.mistbell.tavern.v3.feature.worldbook.LocalWorldBookService
 import com.mistbell.tavern.v3.feature.worldbook.WorldBookActivationState
 import com.mistbell.tavern.v3.feature.worldbook.WorldBookParser
 import com.mistbell.tavern.v3.ui.findActivity
+import com.mistbell.tavern.v3.feature.sessions.ChatSession
+import com.mistbell.tavern.v3.feature.sessions.SessionStore
+import com.mistbell.tavern.v3.feature.sessions.ui.SessionListScreen
 
 
 
@@ -184,6 +188,17 @@ fun ChatScreen(onBack: () -> Unit) {
     val activeMemoryRoleId = selectedCharacterId.takeIf(String::isNotBlank) ?: "default-character"
     val memoryScopeId = remember(activeMemoryRoleId, memoryConversationId) {
         MemoryScopeId.forRoleAndConversation(activeMemoryRoleId, memoryConversationId)
+    }
+    val sessionStore = remember(context) { SessionStore(context) }
+    var sessions by remember { mutableStateOf(emptyList<ChatSession>()) }
+    var showSessionList by remember { mutableStateOf(false) }
+    LaunchedEffect(sessionStore) {
+        val current = memoryConversationId
+        val existing = sessionStore.list()
+        if (existing.none { it.id == current }) {
+            runCatching { sessionStore.create(activeMemoryRoleId, "新对话", id = current) }
+        }
+        sessions = sessionStore.list()
     }
     var memoryIndexRebuildInFlight by remember { mutableStateOf(false) }
     var memoryStatusNotice by remember { mutableStateOf("") }
@@ -350,12 +365,55 @@ fun ChatScreen(onBack: () -> Unit) {
         )
     }
 
+    if (showSessionList) {
+        SessionListScreen(
+            sessions = sessions,
+            selectedSessionId = memoryConversationId,
+            onSessionClick = { id ->
+                memoryConversationId = id
+                settings.edit().putString("memory_extraction_conversation_id", id).apply()
+                showSessionList = false
+            },
+            onCreateSession = {
+                val created = runCatching { sessionStore.create(activeMemoryRoleId, "新对话") }.getOrNull()
+                if (created != null) {
+                    memoryConversationId = created.id
+                    settings.edit().putString("memory_extraction_conversation_id", created.id).apply()
+                    sessions = sessionStore.list()
+                }
+                showSessionList = false
+            },
+            onRenameSession = { id, title ->
+                if (sessionStore.rename(id, title)) sessions = sessionStore.list()
+            },
+            onDeleteSession = { id ->
+                sessionStore.delete(id)
+                sessions = sessionStore.list()
+                if (id == memoryConversationId) {
+                    val next = sessions.firstOrNull()
+                    if (next != null) {
+                        memoryConversationId = next.id
+                        settings.edit().putString("memory_extraction_conversation_id", next.id).apply()
+                    }
+                }
+            },
+            onTogglePin = { id, pinned ->
+                if (sessionStore.setPinned(id, pinned)) sessions = sessionStore.list()
+            },
+            onBack = { showSessionList = false },
+        )
+        return
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("Mistbell Tavern · 聊天测试") },
                 navigationIcon = {
                     Button(onClick = onBack) { Text("返回首页") }
+                },
+                actions = {
+                    TextButton(onClick = { showSessionList = true }) { Text("会话") }
                 },
             )
         },
