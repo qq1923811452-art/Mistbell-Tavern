@@ -20,6 +20,8 @@ data class CharacterCard(
     val tags: List<String> = emptyList(),
     val creator: String = "",
     val characterBookJson: String? = null,
+    /** File name under the avatar directory; null when the card has no picture. */
+    val avatarFileName: String? = null,
 ) {
     init {
         require(name.isNotBlank()) { "Character name is required." }
