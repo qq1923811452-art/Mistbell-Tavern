@@ -896,10 +896,6 @@ fun ChatScreen(onBack: () -> Unit, settingsMode: Boolean = false) {
                         )
                     },
                 )
-                ChatDiagnosticExportAction(
-                    enabled = !busy && historyReady,
-                    onClick = { exportLogLauncher.launch("mistbell-diagnostics.txt") },
-                )
             }
             }
             Text(status, style = MaterialTheme.typography.bodySmall)
