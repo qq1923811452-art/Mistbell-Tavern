@@ -21,6 +21,17 @@ class WorldBookParserTest {
         assertEquals(2, book.entries.first { it.id == "1" }.order)
     }
 
+    @Test fun acceptsSillyTavernCharacterBookKeysAlias() {
+        val book = WorldBookParser.parse(
+            """{"entries":[{"id":0,"keys":["行为规则","情绪规则"],"content":"rules","constant":true,"position":"before_char","insertion_order":10}]}""",
+            "card-book",
+        )
+        assertNotNull(book)
+        val entry = book!!.entries.single()
+        assertEquals(listOf("行为规则", "情绪规则"), entry.keys)
+        assertEquals(true, entry.constant)
+    }
+
     @Test fun parsesArrayAndSillyTavernPlacementProbabilityAndRole() {
         val book = WorldBookParser.parse(
             """{"entries":[{"uid":5,"content":"at depth","key":["dragon"],"extensions":{"position":4,"depth":3,"probability":50,"role":2}}]}""",
