@@ -58,3 +58,21 @@ authors.
 `./gradlew -p mistbell-v3 :app:dependencies` lists the Java graph. Native libraries can be listed
 with `unzip -l app-debug.apk | grep 'lib/arm64-v8a/'`. Add new entries in the same section and
 record the license before release.
+
+## User content and fan works
+
+| Content | Status | Notes |
+|---|---|---|
+| User-imported character cards (JSON/PNG) | Not bundled | Imported at runtime from the user's device; the app does not redistribute them |
+| User-imported world books | Not bundled | Same as above |
+| Character artwork and backgrounds supplied by the user | Not bundled | Used only on the user's device; rights remain with their creators |
+| Third-party fictional settings (e.g. 崩坏学园2, Fate, Cthulhu Mythos) | Fan use | Names and settings belong to their respective rights holders; the app ships no such text by default |
+
+When distributing an APK, do not include imported cards or world books in the package, and do not
+present bundled sample content as licensed third-party material.
+
+## Model terms in the app
+
+`EmbeddingGemma 2` and any downloaded chat model require presenting their terms before download and
+keeping them reachable afterwards. The current build shows the download source but does not yet
+provide a dedicated terms screen; add one before a public release.
