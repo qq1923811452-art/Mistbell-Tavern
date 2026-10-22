@@ -108,6 +108,57 @@ class PromptAssemblerTest {
     }
 
     @Test
+    fun assistantDepthEntryKeepsAssistantRole() {
+        val depthEntry = WorldBookEntry(
+            id = "depth-assistant",
+            bookId = "book",
+            content = "Earlier assistant aside",
+            insertPosition = WorldBookPlacement.POSITION_DEPTH,
+            depth = 1,
+            depthRole = WorldBookPlacement.DEPTH_ROLE_ASSISTANT,
+        )
+        val messages = PromptAssembler.assemble(
+            PromptAssemblyInput(
+                stableSystemPrefix = "Rules",
+                worldbookEntries = listOf(depthEntry),
+                conversationHistory = listOf(
+                    PromptMessage(PromptRole.USER, "one"),
+                    PromptMessage(PromptRole.ASSISTANT, "two"),
+                ),
+                latestUserMessage = "three",
+            ),
+        )
+        val depthMessage = messages.first { it.content == "Earlier assistant aside" }
+        assertEquals(PromptRole.ASSISTANT, depthMessage.role)
+        assertEquals("two", messages[messages.indexOf(depthMessage) + 1].content)
+    }
+
+    @Test
+    fun depthBeyondHistoryClampsToTheStart() {
+        val depthEntry = WorldBookEntry(
+            id = "deep",
+            bookId = "book",
+            content = "Very old note",
+            insertPosition = WorldBookPlacement.POSITION_DEPTH,
+            depth = 99,
+            depthRole = WorldBookPlacement.DEPTH_ROLE_USER,
+        )
+        val messages = PromptAssembler.assemble(
+            PromptAssemblyInput(
+                stableSystemPrefix = "Rules",
+                worldbookEntries = listOf(depthEntry),
+                conversationHistory = listOf(
+                    PromptMessage(PromptRole.USER, "one"),
+                    PromptMessage(PromptRole.ASSISTANT, "two"),
+                ),
+                latestUserMessage = "three",
+            ),
+        )
+        assertEquals("Very old note", messages[1].content)
+        assertEquals("one", messages[2].content)
+    }
+
+    @Test
     fun constantWorldbookStaysInTheSystemMessage() {
         val messages = PromptAssembler.assemble(
             PromptAssemblyInput(
