@@ -20,19 +20,28 @@ internal object GroupChatSendPlanner {
         draft: String,
         lastSpeakerId: String?,
     ): Prepared? {
-        if (members.isEmpty() || draft.isBlank()) return null
-        val resolution = GroupSpeakerResolver.resolve(
-            message = draft,
-            members = members.map { GroupMember(it.id, it.name) },
-            previousSpeakerId = lastSpeakerId,
-        ) ?: return null
-        val messages = GroupChatTurnBuilder.build(
-            stableSystemPrefix = stableSystemPrefix,
-            members = members,
-            speakerName = resolution.speakerName,
-            history = history,
-            latestUserMessage = draft,
-        )
-        return Prepared(resolution.speakerId, resolution.speakerName, messages)
+        val resolution = if (members.isEmpty() || draft.isBlank()) {
+            null
+        } else {
+            GroupSpeakerResolver.resolve(
+                message = draft,
+                members = members.map { GroupMember(it.id, it.name) },
+                previousSpeakerId = lastSpeakerId,
+            )
+        }
+        return resolution?.let { speaker ->
+            Prepared(
+                speakerId = speaker.speakerId,
+                speakerName = speaker.speakerName,
+                messages = GroupChatTurnBuilder.build(
+                    stableSystemPrefix = stableSystemPrefix,
+                    members = members,
+                    speakerName = speaker.speakerName,
+                    history = history,
+                    latestUserMessage = draft,
+                ),
+            )
+        }
+    }
     }
 }
