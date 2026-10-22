@@ -92,6 +92,8 @@ import com.mistbell.tavern.v3.feature.sessions.SessionParticipant
 import com.mistbell.tavern.v3.feature.sessions.SessionStore
 import com.mistbell.tavern.v3.feature.sessions.ui.GroupCandidate
 import com.mistbell.tavern.v3.feature.sessions.ui.SessionListScreen
+import com.mistbell.tavern.v3.ui.TavernBottomBar
+import com.mistbell.tavern.v3.ui.TavernTab
 import com.mistbell.tavern.v3.ui.findActivity
 
 
@@ -199,6 +201,7 @@ fun ChatScreen(onBack: () -> Unit) {
     var lastGroupSpeakerId by remember { mutableStateOf<String?>(null) }
     var promptPreview by remember { mutableStateOf<PromptPreviewBuilder.Preview?>(null) }
     var showPromptPreview by remember { mutableStateOf(false) }
+    var selectedTab by remember { mutableStateOf(TavernTab.CHAT) }
     LaunchedEffect(sessionStore) {
         val current = memoryConversationId
         val existing = sessionStore.list()
@@ -564,11 +567,15 @@ fun ChatScreen(onBack: () -> Unit) {
                 },
             )
         },
+        bottomBar = {
+            TavernBottomBar(selected = selectedTab, onSelect = { selectedTab = it })
+        },
     ) { padding ->
         Column(
             modifier = Modifier.fillMaxSize().padding(padding).padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            if (selectedTab == TavernTab.SETTINGS) {
             ChatConfigurationPanel(
                 settings = settings,
                 selectedCharacterName = selectedCharacter?.card?.name,
@@ -685,7 +692,7 @@ fun ChatScreen(onBack: () -> Unit) {
                     ).select(dimensions)
                 },
             )
-            Text(status, style = MaterialTheme.typography.bodySmall)
+            } else {
             ChatHistoryMessageList(
                 history = history,
                 busy = busy,
@@ -884,6 +891,8 @@ fun ChatScreen(onBack: () -> Unit) {
                     onClick = { exportLogLauncher.launch("mistbell-diagnostics.txt") },
                 )
             }
+            }
+            Text(status, style = MaterialTheme.typography.bodySmall)
         }
     }
 }
