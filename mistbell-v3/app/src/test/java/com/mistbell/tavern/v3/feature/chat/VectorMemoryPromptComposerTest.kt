@@ -87,4 +87,78 @@ class VectorMemoryPromptComposerTest {
         assertTrue(result[0].content.contains("A stable fact."))
         assertTrue(!result[0].content.contains("Must not be included."))
     }
+
+    @Test
+    fun deduplicatesMemoriesWhoseTrimmedTextsMatch() {
+        val result = VectorMemoryPromptComposer.compose(
+            history,
+            VectorMemoryContextResult.Ready(
+                listOf(
+                    RetrievedMemory("m1", "User prefers tea.", 0.95),
+                    RetrievedMemory("m2", "  User prefers tea.  ", 0.90),
+                    RetrievedMemory("m3", "User prefers coffee.", 0.85),
+                ),
+            ),
+        )
+        assertEquals(history.size, result.size)
+        assertEquals(1, result.count { it.role == PromptRole.SYSTEM })
+        assertEquals(history.drop(1), result.drop(1))
+        val section = result.first().content
+            .substringAfter(VectorMemoryPromptComposer.MEMORY_SECTION_HEADER)
+            .trim()
+        assertEquals("1. User prefers tea.\n2. User prefers coffee.", section)
+    }
+
+    @Test
+    fun capsAccumulatedMemoryTextAtTheConfiguredLimit() {
+        val first = "a".repeat(600)
+        val second = "b".repeat(600)
+        val third = "c".repeat(100)
+        val result = VectorMemoryPromptComposer.compose(
+            history,
+            VectorMemoryContextResult.Ready(
+                listOf(
+                    RetrievedMemory("m1", first, 0.95),
+                    RetrievedMemory("m2", second, 0.90),
+                    RetrievedMemory("m3", third, 0.85),
+                ),
+            ),
+        )
+        val section = result.first().content.substringAfter(VectorMemoryPromptComposer.MEMORY_SECTION_HEADER)
+        assertTrue(section.contains(first))
+        assertTrue(section.contains(second))
+        assertTrue(!section.contains(third))
+        assertEquals(VectorMemoryPromptComposer.MAX_MEMORY_SECTION_CHARS, section.count { it == 'a' || it == 'b' })
+    }
+
+    @Test
+    fun filtersAllMemoriesWhenNoneHaveUsableText() {
+        assertSame(history, VectorMemoryPromptComposer.compose(history, VectorMemoryContextResult.Ready(emptyList())))
+        assertSame(
+            history,
+            VectorMemoryPromptComposer.compose(
+                history,
+                VectorMemoryContextResult.Ready(
+                    listOf(
+                        RetrievedMemory("blank", " \n\t ", 0.9),
+                        RetrievedMemory("nan", "Must not appear.", Double.NaN),
+                        RetrievedMemory("infinite", "Must not appear either.", Double.POSITIVE_INFINITY),
+                    ),
+                ),
+            ),
+        )
+    }
+
+    @Test
+    fun keepsExactlyOneSystemMessageWhenAddingMemories() {
+        val result = VectorMemoryPromptComposer.compose(
+            history,
+            VectorMemoryContextResult.Ready(listOf(RetrievedMemory("m1", "A stable fact.", 0.8))),
+        )
+        assertEquals(1, result.count { it.role == PromptRole.SYSTEM })
+        assertEquals(history.map { it.role }, result.map { it.role })
+        assertEquals(history.size, result.size)
+        assertEquals(history.drop(1), result.drop(1))
+        assertTrue(result.first().content.endsWith("1. A stable fact."))
+    }
 }

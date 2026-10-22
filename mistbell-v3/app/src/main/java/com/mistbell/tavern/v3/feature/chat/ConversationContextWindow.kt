@@ -34,7 +34,7 @@ object ConversationContextWindowBuilder {
         }
 
         val boundary = findRecentTurnBoundary(history, recentTurns)
-        val splitAt = if (boundary >= SUMMARY_BLOCK_MESSAGES) {
+        val splitAt = if (recentTurns > 0 && boundary >= SUMMARY_BLOCK_MESSAGES) {
             boundary / SUMMARY_BLOCK_MESSAGES * SUMMARY_BLOCK_MESSAGES
         } else {
             boundary
