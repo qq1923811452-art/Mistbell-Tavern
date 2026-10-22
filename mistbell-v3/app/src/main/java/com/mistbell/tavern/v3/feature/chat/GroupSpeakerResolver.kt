@@ -100,7 +100,7 @@ object GroupSpeakerResolver {
         var cursor = message.indexOf(MENTION_PREFIX)
         while (cursor >= 0) {
             val nameStart = skipWhitespace(message, cursor + 1)
-            if (nameStart < message.length && isNameCharacter(message[nameStart])) return cursor
+            if (nameStart < message.length && isNameCharacter(message, nameStart)) return cursor
             cursor = message.indexOf(MENTION_PREFIX, cursor + 1)
         }
         return null
