@@ -14,6 +14,8 @@ data class PersistedChatMessage(
     val content: String,
     val createdAtEpochMillis: Long,
     val deliveryState: DeliveryState,
+    val speakerId: String? = null,
+    val speakerName: String? = null,
 ) {
     enum class DeliveryState { COMPLETE, PENDING, FAILED }
 
@@ -71,7 +73,11 @@ class ChatHistoryStore(
                     .put("role", message.role)
                     .put("content", message.content)
                     .put("created_at", message.createdAtEpochMillis)
-                    .put("delivery_state", message.deliveryState.name),
+                    .put("delivery_state", message.deliveryState.name)
+                    .also { item ->
+                        message.speakerId?.let { item.put("speaker_id", it) }
+                        message.speakerName?.let { item.put("speaker_name", it) }
+                    },
             )
         }
         root.put("messages", array)
@@ -110,6 +116,8 @@ class ChatHistoryStore(
                     deliveryState = PersistedChatMessage.DeliveryState.valueOf(
                         item.getString("delivery_state"),
                     ),
+                    speakerId = item.optString("speaker_id", "").takeIf(String::isNotBlank),
+                    speakerName = item.optString("speaker_name", "").takeIf(String::isNotBlank),
                 )
             }
             require(messages.map(PersistedChatMessage::id).distinct().size == messages.size)

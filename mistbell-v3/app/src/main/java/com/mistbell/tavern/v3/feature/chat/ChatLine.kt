@@ -6,4 +6,7 @@ internal data class ChatLine(
     val content: String,
     val createdAtEpochMillis: Long,
     val deliveryState: PersistedChatMessage.DeliveryState,
+    /** Group chats only: which participant produced this assistant message. */
+    val speakerId: String? = null,
+    val speakerName: String? = null,
 )
