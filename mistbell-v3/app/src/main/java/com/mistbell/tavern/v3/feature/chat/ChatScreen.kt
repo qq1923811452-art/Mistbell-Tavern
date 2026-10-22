@@ -559,6 +559,19 @@ fun ChatScreen(onBack: () -> Unit) {
                 history = history,
                 busy = busy,
                 listState = listState,
+                onSelectVariant = { messageId, requested ->
+                    val index = history.indexOfFirst { it.id == messageId }
+                    if (index >= 0) {
+                        val line = history[index]
+                        val target = MessageVariants.select(line.variants, requested)
+                        history[index] = line.copy(
+                            content = line.variants.getOrElse(target) { line.content },
+                            activeVariant = target,
+                        )
+                        persistHistory()
+                        diagnosticStore.info("chat.swipe.selected", "variants=${line.variants.size}")
+                    }
+                },
             )
             ChatMessageComposerInput(
                 draft = chatUiState.draft,

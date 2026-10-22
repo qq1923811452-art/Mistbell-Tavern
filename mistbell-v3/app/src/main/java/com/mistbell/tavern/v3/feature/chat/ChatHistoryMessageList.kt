@@ -20,11 +20,13 @@ import androidx.compose.ui.unit.dp
 /**
  * Renders the existing conversation history without changing message rendering rules.
  */
+@Suppress("FunctionNaming")
 @Composable
 internal fun ColumnScope.ChatHistoryMessageList(
     history: List<ChatLine>,
     busy: Boolean,
     listState: LazyListState,
+    onSelectVariant: (messageId: String, index: Int) -> Unit = { _, _ -> },
 ) {
     LazyColumn(
         modifier = Modifier.weight(1f).fillMaxWidth(),
@@ -35,12 +37,16 @@ internal fun ColumnScope.ChatHistoryMessageList(
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(10.dp)) {
                     Text(
-                        if (line.role == "user") "你" else "Mistbell",
+                        when {
+                            line.role == "user" -> "你"
+                            line.speakerName.isNullOrBlank() -> "Mistbell"
+                            else -> line.speakerName
+                        },
                         style = MaterialTheme.typography.labelMedium,
                     )
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        line.content.ifBlank {
+                        line.activeContent.ifBlank {
                             when {
                                 busy && line.role == "assistant" -> "正在生成……"
                                 line.deliveryState == PersistedChatMessage.DeliveryState.PENDING ->
@@ -52,6 +58,14 @@ internal fun ColumnScope.ChatHistoryMessageList(
                             }
                         },
                     )
+                    if (line.variants.size > 1) {
+                        SwipeControls(
+                            index = line.activeVariant,
+                            total = line.variants.size,
+                            onPrevious = { onSelectVariant(line.id, line.activeVariant - 1) },
+                            onNext = { onSelectVariant(line.id, line.activeVariant + 1) },
+                        )
+                    }
                 }
             }
         }
