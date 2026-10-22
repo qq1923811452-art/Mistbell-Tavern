@@ -88,6 +88,27 @@ class SessionStore(
         return session
     }
 
+    private fun encodeParticipants(participants: List<SessionParticipant>): String {
+        val array = JSONArray()
+        participants.forEach { participant ->
+            array.put(JSONObject().put("id", participant.id).put("name", participant.name))
+        }
+        return array.toString()
+    }
+
+    private fun decodeParticipants(raw: String?): List<SessionParticipant> {
+        if (raw.isNullOrBlank()) return emptyList()
+        return runCatching {
+            val array = JSONArray(raw)
+            (0 until array.length()).mapNotNull { index ->
+                val node = array.optJSONObject(index) ?: return@mapNotNull null
+                val id = node.optString("id", "").trim()
+                val name = node.optString("name", "").trim()
+                if (id.isEmpty() || name.isEmpty()) null else SessionParticipant(id, name)
+            }
+        }.getOrDefault(emptyList())
+    }
+
     fun rename(id: String, title: String): Boolean {
         val normalized = title.trim().take(MAX_TITLE_CHARS)
         if (normalized.isEmpty()) return false
