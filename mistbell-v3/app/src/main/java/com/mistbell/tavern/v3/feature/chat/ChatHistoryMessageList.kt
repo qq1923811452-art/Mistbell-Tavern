@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.dp
 /**
  * Renders the existing conversation history without changing message rendering rules.
  */
+@Suppress("FunctionNaming")
 @Composable
 internal fun ColumnScope.ChatHistoryMessageList(
     history: List<ChatLine>,
