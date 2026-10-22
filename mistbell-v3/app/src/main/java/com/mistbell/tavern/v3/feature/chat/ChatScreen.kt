@@ -553,14 +553,7 @@ fun ChatScreen(onBack: () -> Unit) {
                                     indexRebuildCoordinator = memoryOperationsCoordinator.createIndexRebuildCoordinator(),
                                     setStatus = { status = it },
                                     setMemoryStatusNotice = { memoryStatusNotice = it },
-                                ).stream(
-                                        client,
-                                        messages,
-                                        observer,
-                                        maxTokensText,
-                                        streamEnabled,
-                                        thinkingEnabled,
-                                    )
+                                ).stream(client, messages, observer, maxTokensText)
                             },
                             ordinaryStream = {
                                 client.stream(

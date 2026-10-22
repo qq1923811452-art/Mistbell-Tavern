@@ -42,9 +42,10 @@ internal class ChatMemoryRuntimeCoordinator(
         messages: List<PromptMessage>,
         observer: ChatStreamObserver,
         maxTokensText: String,
-        streamEnabled: Boolean = true,
-        thinkingEnabled: Boolean = false,
     ) {
+val generationSwitches = context.getSharedPreferences("mistbell-v3-settings", Context.MODE_PRIVATE)
+val streamEnabled = generationSwitches.getBoolean("chat_stream_enabled", true)
+val thinkingEnabled = generationSwitches.getBoolean("chat_thinking_enabled", false)
 val embeddingSettings = context.getSharedPreferences("mistbell-v3-settings", Context.MODE_PRIVATE)
 val modelAssets = EmbeddingGemma2ModelAssetManager(
     modelDirectory = File(context.filesDir, "models"),
