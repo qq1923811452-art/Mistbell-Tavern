@@ -47,6 +47,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -583,6 +585,7 @@ fun ChatScreen(onBack: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             if (selectedTab == TavernTab.SETTINGS) {
+            Column(modifier = Modifier.weight(1f).verticalScroll(rememberScrollState())) {
             ChatConfigurationPanel(
                 settings = settings,
                 selectedCharacterName = selectedCharacter?.card?.name,
@@ -699,6 +702,7 @@ fun ChatScreen(onBack: () -> Unit) {
                     ).select(dimensions)
                 },
             )
+            }
             } else {
             ChatHistoryMessageList(
                 history = history,
