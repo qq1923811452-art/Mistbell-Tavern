@@ -42,7 +42,7 @@ internal class ChatTurnPromptPreparationCoordinator(
                 }
             },
         ).messages
-        val elapsedMillis = (System.nanoTime() - startedNanos) / 1_000_000
+        val elapsedMillis = (System.nanoTime() - startedNanos) / NANOS_PER_MILLI
         val promptChars = messages.sumOf { it.content.length }
         diagnosticStore.info(
             "chat.prompt.assembled",
@@ -51,3 +51,5 @@ internal class ChatTurnPromptPreparationCoordinator(
         return messages
     }
 }
+
+private const val NANOS_PER_MILLI = 1_000_000

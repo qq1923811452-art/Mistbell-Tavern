@@ -56,7 +56,7 @@ internal fun ChatHistoryLoadLifecycle(
             }
         }
         setHistoryReady(true)
-        val loadMillis = (System.nanoTime() - loadStartedNanos) / 1_000_000
+        val loadMillis = (System.nanoTime() - loadStartedNanos) / NANOS_PER_MILLI
         diagnosticStore.info("chat.history.loaded", "messages=${history.size}; elapsedMs=$loadMillis")
         val pendingQueue = withContext(Dispatchers.IO) {
             runCatching {
@@ -76,3 +76,5 @@ internal fun ChatHistoryLoadLifecycle(
     }
 
 }
+
+private const val NANOS_PER_MILLI = 1_000_000
