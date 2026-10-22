@@ -17,6 +17,8 @@ object ConversationContextWindowBuilder {
     const val DEFAULT_RECENT_TURNS = 40
     const val DEFAULT_SUMMARY_MAX_CHARS = 4_000
     const val DEFAULT_MAX_HISTORY_CHARS = 24_000
+    // Freeze the summary over fixed blocks so the prompt prefix stops changing every turn.
+    const val SUMMARY_BLOCK_MESSAGES = 10
 
     fun build(
         history: List<PromptMessage>,
@@ -31,7 +33,12 @@ object ConversationContextWindowBuilder {
             "Conversation history may contain only user and assistant messages."
         }
 
-        val splitAt = findRecentTurnBoundary(history, recentTurns)
+        val boundary = findRecentTurnBoundary(history, recentTurns)
+        val splitAt = if (boundary >= SUMMARY_BLOCK_MESSAGES) {
+            boundary / SUMMARY_BLOCK_MESSAGES * SUMMARY_BLOCK_MESSAGES
+        } else {
+            boundary
+        }
         val older = history.take(splitAt)
         val recent = history.drop(splitAt)
         return ConversationContextWindow(

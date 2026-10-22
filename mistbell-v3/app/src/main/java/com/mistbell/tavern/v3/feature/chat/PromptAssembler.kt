@@ -24,7 +24,12 @@ data class PromptAssemblyInput(
     val latestUserMessage: String,
 )
 
-/** Stable prefix first; variable worldbook/memory follows it. */
+/**
+ * Builds a cache-friendly layout: the system message contains only stable content, while every
+ * per-turn section (summary, activated worldbook, memory, author notes) travels with the latest
+ * user message. Providers cache prompt prefixes, so changing only the tail keeps the earlier
+ * turns reusable.
+ */
 object PromptAssembler {
     fun assemble(input: PromptAssemblyInput): List<PromptMessage> {
         require(input.stableSystemPrefix.isNotBlank()) { "A stable system prefix is required." }
@@ -34,63 +39,53 @@ object PromptAssembler {
         }) { "Conversation history may contain only user and assistant messages." }
 
         val plan = WorldBookPlacement.plan(input.worldbookEntries)
-        val systemSections = buildList {
+        val stableSections = buildList {
             add(input.stableSystemPrefix.trimEnd())
-            appendEntries("Worldbook before character", plan.beforePrompt)
             input.stableCharacterDefinition?.trim()?.takeIf(String::isNotEmpty)?.let(::add)
+            appendEntries("Worldbook constants", plan.beforePrompt.filter(WorldBookEntry::constant))
+            appendEntries("Worldbook constants after character", plan.afterPrompt.filter(WorldBookEntry::constant))
+        }
+        val systemMessage = PromptMessage(PromptRole.SYSTEM, stableSections.joinToString("\n\n"))
+
+        val dynamicSections = buildList {
             input.earlierConversationSummary?.trim()?.takeIf(String::isNotEmpty)?.let {
                 add("Earlier conversation notes (extractive, not a full transcript):\n$it")
             }
-            appendEntries("Worldbook after character", plan.afterPrompt)
+            appendEntries("Worldbook before character", plan.beforePrompt.filterNot(WorldBookEntry::constant))
+            appendEntries("Worldbook after character", plan.afterPrompt.filterNot(WorldBookEntry::constant))
             val memoryFacts = input.activeMemoryFacts.map(String::trim).filter(String::isNotEmpty)
             if (memoryFacts.isNotEmpty()) add("Relevant memory facts:\n" + memoryFacts.joinToString("\n") { "- $it" })
-            appendEntries("Author note before", plan.anBefore)
-            appendEntries("Author note after", plan.anAfter)
-            appendEntries("Example block before", plan.emBefore)
-            appendEntries("Example block after", plan.emAfter)
-            val systemDepthSections = plan.byDepth.entries
-                .filter { it.key.second == WorldBookPlacement.DEPTH_ROLE_SYSTEM }
-                .sortedBy { it.key.first }
+            appendEntries("Author note before", plan.anBefore.filterNot(WorldBookEntry::constant))
+            appendEntries("Author note after", plan.anAfter.filterNot(WorldBookEntry::constant))
+            appendEntries("Example block before", plan.emBefore.filterNot(WorldBookEntry::constant))
+            appendEntries("Example block after", plan.emAfter.filterNot(WorldBookEntry::constant))
+            val depthSections = plan.byDepth.entries
                 .flatMap { (key, entries) ->
-                    entries.mapNotNull { entry ->
-                        entry.content.trim().takeIf(String::isNotEmpty)?.let { "[depth ${key.first}] $it" }
+                    entries.filterNot(WorldBookEntry::constant).mapNotNull { entry ->
+                        entry.content.trim().takeIf(String::isNotEmpty)?.let {
+                            "[depth ${key.first} · ${key.second}] $it"
+                        }
                     }
                 }
-            if (systemDepthSections.isNotEmpty()) {
-                add(
-                    "Worldbook depth entries (system role; kept in the system prefix for API compatibility):\n" +
-                        systemDepthSections.joinToString("\n\n"),
-                )
-            }
+            if (depthSections.isNotEmpty()) add("Worldbook depth entries:\n" + depthSections.joinToString("\n\n"))
         }
-        val result = mutableListOf(PromptMessage(PromptRole.SYSTEM, systemSections.joinToString("\n\n")))
-        val history = input.conversationHistory
-        val insertionsByIndex = plan.byDepth.entries
-            .filter { it.key.second != WorldBookPlacement.DEPTH_ROLE_SYSTEM }
-            .mapNotNull { (key, entries) ->
-                val content = entries.map { it.content.trim() }.filter(String::isNotEmpty).joinToString("\n\n")
-                if (content.isEmpty()) return@mapNotNull null
-                val role = when (key.second) {
-                    WorldBookPlacement.DEPTH_ROLE_USER -> PromptRole.USER
-                    WorldBookPlacement.DEPTH_ROLE_ASSISTANT -> PromptRole.ASSISTANT
-                    else -> PromptRole.SYSTEM
-                }
-                (history.size - key.first).coerceIn(0, history.size) to
-                    (key.first to PromptMessage(role, content))
-            }.groupBy({ it.first }, { it.second })
-            .mapValues { (_, values) ->
-                values.sortedWith(compareBy({ it.first }, { it.second.role.name })).map { it.second }
-            }
-        for (index in 0..history.size) {
-            result += insertionsByIndex[index].orEmpty()
-            if (index < history.size) result += history[index]
+
+        val userContent = if (dynamicSections.isEmpty()) {
+            input.latestUserMessage.trim()
+        } else {
+            dynamicSections.joinToString("\n\n") + "\n\n" + input.latestUserMessage.trim()
         }
-        result += PromptMessage(PromptRole.USER, input.latestUserMessage.trim())
-        return result.toList()
+        return buildList {
+            add(systemMessage)
+            addAll(input.conversationHistory)
+            add(PromptMessage(PromptRole.USER, userContent))
+        }
     }
 
-    private fun MutableList<String>.appendEntries(title: String, entries: List<WorldBookEntry>) {
-        val content = entries.map { it.content.trim() }.filter(String::isNotEmpty)
-        if (content.isNotEmpty()) add("$title:\n" + content.joinToString("\n\n"))
+    private fun MutableList<String>.appendEntries(label: String, entries: List<WorldBookEntry>) {
+        val contents = entries.mapNotNull { entry ->
+            entry.content.trim().takeIf(String::isNotEmpty)
+        }
+        if (contents.isNotEmpty()) add("$label:\n" + contents.joinToString("\n\n"))
     }
 }
