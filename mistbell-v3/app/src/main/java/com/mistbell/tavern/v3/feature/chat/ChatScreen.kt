@@ -722,6 +722,13 @@ fun ChatScreen(onBack: () -> Unit, settingsMode: Boolean = false) {
                 },
                 onRegenerate = ::regenerateReply,
             )
+            if (usageSummary.isNotBlank()) {
+                Text(
+                    text = usageSummary,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             ChatMessageComposerInput(
                 draft = chatUiState.draft,
                 enabled = !busy && !historyLoadFailed,
