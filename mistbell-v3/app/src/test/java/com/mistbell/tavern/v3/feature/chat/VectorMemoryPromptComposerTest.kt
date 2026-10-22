@@ -116,7 +116,10 @@ class VectorMemoryPromptComposerTest {
                 ),
             ),
         )
-        val section = result.last().content.substringAfter(VectorMemoryPromptComposer.MEMORY_SECTION_HEADER)
+        val section = result.last().content
+            .substringAfter(VectorMemoryPromptComposer.MEMORY_SECTION_HEADER)
+            .substringBefore("What did I say?")
+            .trim()
         assertTrue(section.contains(first))
         assertTrue(section.contains(second))
         assertTrue(!section.contains(third))
@@ -151,6 +154,7 @@ class VectorMemoryPromptComposerTest {
         assertEquals(history.map { it.role }, result.map { it.role })
         assertEquals(history.size, result.size)
         assertEquals(history[0], result[0])
-        assertTrue(result.last().content.endsWith("1. A stable fact."))
+        assertTrue(result.last().content.contains("1. A stable fact."))
+        assertTrue(result.last().content.trimEnd().endsWith("What did I say?"))
     }
 }
