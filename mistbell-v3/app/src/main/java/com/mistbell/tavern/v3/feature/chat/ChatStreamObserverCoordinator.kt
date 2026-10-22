@@ -33,7 +33,7 @@ internal class ChatStreamObserverCoordinator(
                 mainHandler.post {
                     val cached = usage.cachedPromptTokens
                     val cacheRatio = if (cached != null && usage.promptTokens > 0) {
-                        "（${cached * 100 / usage.promptTokens}%）"
+                        "（${cached * PERCENT / usage.promptTokens}%）"
                     } else {
                         ""
                     }
@@ -84,4 +84,8 @@ internal class ChatStreamObserverCoordinator(
                 }
             }
         }
+
+    private companion object {
+        const val PERCENT = 100
+    }
 }
