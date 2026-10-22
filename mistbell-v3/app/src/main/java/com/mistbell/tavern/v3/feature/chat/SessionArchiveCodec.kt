@@ -1,5 +1,7 @@
 package com.mistbell.tavern.v3.feature.chat
 
+import com.mistbell.tavern.v3.feature.sessions.SessionKind
+import com.mistbell.tavern.v3.feature.sessions.SessionParticipant
 import org.json.JSONArray
 import org.json.JSONObject
 import java.time.Instant
@@ -9,6 +11,8 @@ data class SessionArchive(
     val id: String,
     val title: String,
     val messages: List<PersistedChatMessage>,
+    val kind: SessionKind = SessionKind.SINGLE,
+    val participants: List<SessionParticipant> = emptyList(),
 )
 
 data class SessionArchiveImportResult(
@@ -28,12 +32,10 @@ object SessionArchiveCodec {
         validate(archive)
         val messages = JSONArray()
         archive.messages.forEach { message ->
-            messages.put(JSONObject().put("id", message.id).put("role", message.role)
-                .put("content", message.content).put("created_at", message.createdAtEpochMillis)
-                .put("delivery_state", message.deliveryState.name))
+            messages.put(messageJson(message))
         }
         return JSONObject().put("format", "mistbell-session").put("version", 1)
-            .put("session", JSONObject().put("id", archive.id).put("title", archive.title))
+            .put("session", sessionJson(archive))
             .put("messages", messages).toString()
             .also { require(it.toByteArray(Charsets.UTF_8).size <= MAX_IMPORT_BYTES) }
     }
@@ -41,14 +43,11 @@ object SessionArchiveCodec {
     fun exportJsonl(archive: SessionArchive): String {
         validate(archive)
         val lines = buildString {
-            appendLine(JSONObject().put("type", "session")
-                .put("session", JSONObject().put("id", archive.id).put("title", archive.title)))
+            appendLine(JSONObject().put("type", "session").put("session", sessionJson(archive)))
             archive.messages.forEach { message ->
-                appendLine(JSONObject().put("id", message.id).put("role", message.role)
-                    .put("content", message.content).put("mes", message.content)
+                appendLine(messageJson(message).put("mes", message.content)
                     .put("is_user", message.role == "user").put("is_system", message.role == "system")
-                    .put("send_date", message.createdAtEpochMillis.toString())
-                    .put("delivery_state", message.deliveryState.name))
+                    .put("send_date", message.createdAtEpochMillis.toString()))
             }
         }
         require(lines.toByteArray(Charsets.UTF_8).size <= MAX_IMPORT_BYTES)
@@ -163,6 +162,31 @@ object SessionArchiveCodec {
         if (messages.isEmpty() && raw.isNotBlank() && !hasSessionHeader) return null
         return SessionArchive(id, title, messages).also(::validate)
     }
+
+    private fun sessionJson(archive: SessionArchive): JSONObject = JSONObject()
+        .put("id", archive.id)
+        .put("title", archive.title)
+        .put("kind", archive.kind.name.lowercase())
+        .put("participants", JSONArray().apply {
+            archive.participants.forEach { participant ->
+                put(JSONObject().put("id", participant.id).put("name", participant.name))
+            }
+        })
+
+    private fun messageJson(message: PersistedChatMessage): JSONObject = JSONObject()
+        .put("id", message.id)
+        .put("role", message.role)
+        .put("content", message.content)
+        .put("created_at", message.createdAtEpochMillis)
+        .put("delivery_state", message.deliveryState.name)
+        .also { node ->
+            message.speakerId?.let { node.put("speaker_id", it) }
+            message.speakerName?.let { node.put("speaker_name", it) }
+            if (message.variants.isNotEmpty()) {
+                node.put("variants", JSONArray(message.variants))
+                node.put("active_variant", message.activeVariant)
+            }
+        }
 
     private fun parseMessage(item: JSONObject, index: Int): PersistedChatMessage {
         val role = item.optString("role").takeIf { it in setOf("user", "assistant", "system") }
