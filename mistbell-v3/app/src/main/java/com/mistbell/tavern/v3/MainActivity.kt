@@ -259,7 +259,9 @@ class MainActivity : ComponentActivity() {
                     } else if (showImageGeneration) {
                         ImageGenerationScreen(onBack = { showImageGeneration = false })
                     } else if (showChat) {
-                        ChatScreen(onBack = { showChat = false })
+                        com.mistbell.tavern.v3.ui.TavernBackground {
+                            ChatScreen(onBack = { showChat = false })
+                        }
                     } else {
                         DevelopmentHome(
                             inferenceStatus = inferenceStatus,
