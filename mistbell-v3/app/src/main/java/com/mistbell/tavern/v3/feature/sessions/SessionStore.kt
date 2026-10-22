@@ -14,6 +14,7 @@ import org.json.JSONObject
  * Messages remain in the chat database keyed by scope; this store only tracks ordering, titles
  * and summaries, which keeps the list fast even for long histories.
  */
+@Suppress("TooManyFunctions")
 class SessionStore(
     context: Context,
     databaseName: String = DEFAULT_DATABASE_NAME,
