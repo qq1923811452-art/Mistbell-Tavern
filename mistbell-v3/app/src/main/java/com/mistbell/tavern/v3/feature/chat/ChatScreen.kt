@@ -86,11 +86,13 @@ import com.mistbell.tavern.v3.feature.character.CharacterCardLibraryStore
 import com.mistbell.tavern.v3.feature.worldbook.LocalWorldBookService
 import com.mistbell.tavern.v3.feature.worldbook.WorldBookActivationState
 import com.mistbell.tavern.v3.feature.worldbook.WorldBookParser
-import com.mistbell.tavern.v3.ui.findActivity
 import com.mistbell.tavern.v3.feature.sessions.ChatSession
 import com.mistbell.tavern.v3.feature.sessions.SessionKind
+import com.mistbell.tavern.v3.feature.sessions.SessionParticipant
 import com.mistbell.tavern.v3.feature.sessions.SessionStore
+import com.mistbell.tavern.v3.feature.sessions.ui.GroupCandidate
 import com.mistbell.tavern.v3.feature.sessions.ui.SessionListScreen
+import com.mistbell.tavern.v3.ui.findActivity
 
 
 
@@ -502,6 +504,36 @@ fun ChatScreen(onBack: () -> Unit) {
                 }
             },
             onBack = { showSessionList = false },
+            characters = characterCards.map { card ->
+                GroupCandidate(card.id, card.card.name)
+            },
+            onCreateGroup = { ids ->
+                val participants = ids.mapNotNull { id ->
+                    characterCards.firstOrNull { it.id == id }?.let { card ->
+                        SessionParticipant(card.id, card.card.name)
+                    }
+                }
+                if (participants.size >= 2) {
+                    val created = runCatching {
+                        sessionStore.create(
+                            roleId = activeMemoryRoleId,
+                            title = "群聊",
+                            kind = SessionKind.GROUP,
+                            participants = participants,
+                        )
+                    }.getOrNull()
+                    if (created != null) {
+                        memoryConversationId = created.id
+                        settings.edit().putString("memory_extraction_conversation_id", created.id).apply()
+                        sessions = sessionStore.list()
+                        diagnosticStore.info(
+                            "chat.session.created",
+                            "kind=group; participants=${participants.size}",
+                        )
+                    }
+                }
+                showSessionList = false
+            },
         )
         return
     }

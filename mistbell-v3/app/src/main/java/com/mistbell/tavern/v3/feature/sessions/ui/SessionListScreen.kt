@@ -3,6 +3,9 @@ package com.mistbell.tavern.v3.feature.sessions.ui
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Row
+import androidx.compose.material3.Checkbox
+import androidx.compose.ui.Alignment
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
@@ -21,6 +24,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.mistbell.tavern.v3.feature.sessions.ChatSession
 
+data class GroupCandidate(val id: String, val name: String)
+
 @Suppress("FunctionNaming", "LongMethod", "LongParameterList")
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -33,9 +38,12 @@ fun SessionListScreen(
     onDeleteSession: (id: String) -> Unit,
     onTogglePin: (id: String, pinned: Boolean) -> Unit,
     onBack: () -> Unit,
+    characters: List<GroupCandidate> = emptyList(),
+    onCreateGroup: (participantIds: List<String>) -> Unit = {},
 ) {
     var renameTarget by remember { mutableStateOf<ChatSession?>(null) }
     var deleteTarget by remember { mutableStateOf<ChatSession?>(null) }
+    var showGroupDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -43,6 +51,11 @@ fun SessionListScreen(
                 title = { Text("会话") },
                 navigationIcon = {
                     TextButton(onClick = onBack) { Text("‹ 返回") }
+                },
+                actions = {
+                    if (characters.isNotEmpty()) {
+                        TextButton(onClick = { showGroupDialog = true }) { Text("新建群聊") }
+                    }
                 },
             )
         },
@@ -54,6 +67,16 @@ fun SessionListScreen(
             )
         },
     ) { innerPadding ->
+        if (showGroupDialog) {
+            GroupCreateDialog(
+                characters = characters,
+                onDismiss = { showGroupDialog = false },
+                onConfirm = { ids ->
+                    showGroupDialog = false
+                    onCreateGroup(ids)
+                },
+            )
+        }
         if (sessions.isEmpty()) {
             SessionEmptyState(
                 onCreateSession = onCreateSession,
@@ -106,3 +129,48 @@ fun SessionListScreen(
         )
     }
 }
+
+@Suppress("FunctionNaming", "LongParameterList")
+@Composable
+private fun GroupCreateDialog(
+    characters: List<GroupCandidate>,
+    onDismiss: () -> Unit,
+    onConfirm: (List<String>) -> Unit,
+) {
+    var selected by remember { mutableStateOf(setOf<String>()) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("新建群聊") },
+        text = {
+            LazyColumn {
+                items(characters, key = { it.id }) { candidate ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(
+                            checked = candidate.id in selected,
+                            onCheckedChange = { checked ->
+                                selected = if (checked) {
+                                    (selected + candidate.id).take(MAX_GROUP_MEMBERS).toSet()
+                                } else {
+                                    selected - candidate.id
+                                }
+                            },
+                        )
+                        Text(candidate.name)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onConfirm(selected.toList()) },
+                enabled = selected.size in MIN_GROUP_MEMBERS..MAX_GROUP_MEMBERS,
+            ) { Text("创建") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("取消") }
+        },
+    )
+}
+
+private const val MIN_GROUP_MEMBERS = 2
+private const val MAX_GROUP_MEMBERS = 6
