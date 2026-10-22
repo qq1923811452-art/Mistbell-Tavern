@@ -12,8 +12,8 @@ object VectorMemoryPromptComposer {
         messages: List<PromptMessage>,
         memoryResult: VectorMemoryContextResult,
     ): List<PromptMessage> {
-        val systemIndex = messages.indexOfFirst { it.role == PromptRole.SYSTEM }
-        if (systemIndex < 0) return messages
+        val userIndex = messages.indexOfLast { it.role == PromptRole.USER }
+        if (userIndex < 0) return messages
         val memories = (memoryResult as? VectorMemoryContextResult.Ready)?.memories
             ?.filter { it.textIsUsable() }
             ?.distinctBy { it.text.trim() }
@@ -30,11 +30,13 @@ object VectorMemoryPromptComposer {
                 append(memory.text.trim())
             }
         }
+        // Memories are volatile: keep them out of the system message so the stable prefix stays
+        // byte-identical and provider prefix caches keep hitting.
         return messages.toMutableList().also { result ->
-            val system = result[systemIndex]
-            val existingContent = system.content.trimEnd()
-            val combinedContent = if (existingContent.isBlank()) section else "$existingContent\n\n$section"
-            result[systemIndex] = system.copy(content = combinedContent)
+            val target = result[userIndex]
+            val existingContent = target.content.trim()
+            val combinedContent = if (existingContent.isBlank()) section else "$section\n\n$existingContent"
+            result[userIndex] = target.copy(content = combinedContent)
         }
     }
 
