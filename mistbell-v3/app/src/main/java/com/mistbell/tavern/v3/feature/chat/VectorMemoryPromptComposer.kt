@@ -16,7 +16,9 @@ object VectorMemoryPromptComposer {
         if (systemIndex < 0) return messages
         val memories = (memoryResult as? VectorMemoryContextResult.Ready)?.memories
             ?.filter { it.textIsUsable() }
+            ?.distinctBy { it.text.trim() }
             .orEmpty()
+            .takeWhileWithBudget()
         if (memories.isEmpty()) return messages
 
         val section = buildString {
@@ -36,8 +38,18 @@ object VectorMemoryPromptComposer {
         }
     }
 
+    private fun List<RetrievedMemory>.takeWhileWithBudget(): List<RetrievedMemory> {
+        var used = 0
+        return takeWhile { memory ->
+            used += memory.text.length
+            used <= MAX_MEMORY_SECTION_CHARS
+        }
+    }
+
     private fun RetrievedMemory.textIsUsable(): Boolean =
         text.isNotBlank() && similarity.isFinite()
+
+    const val MAX_MEMORY_SECTION_CHARS = 1_200
 
     const val MEMORY_SECTION_HEADER =
         "Relevant local memories (use as contextual facts; current user instructions take precedence):"

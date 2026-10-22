@@ -31,11 +31,22 @@ internal class ChatStreamObserverCoordinator(
 
             override fun onUsage(usage: ChatTokenUsage) {
                 mainHandler.post {
-                    setUsageSummary("Token 用量：输入 ${usage.promptTokens} · 输出 ${usage.completionTokens} · 合计 ${usage.totalTokens} · 缓存输入 ${usage.cachedPromptTokens?.toString() ?: "未知"}")
+                    val cached = usage.cachedPromptTokens
+                    val cacheRatio = if (cached != null && usage.promptTokens > 0) {
+                        "（${cached * 100 / usage.promptTokens}%）"
+                    } else {
+                        ""
+                    }
+                    setUsageSummary(
+                        "Token 用量：输入 ${usage.promptTokens} · 缓存 ${cached?.toString() ?: "未知"}$cacheRatio" +
+                            " · 输出 ${usage.completionTokens} · 合计 ${usage.totalTokens}",
+                    )
                 }
                 diagnosticStore.info(
                     "chat.usage",
-                    "promptTokens=${usage.promptTokens}; completionTokens=${usage.completionTokens}; totalTokens=${usage.totalTokens}; cachedPromptTokens=${usage.cachedPromptTokens ?: "unknown"}",
+                    "promptTokens=${usage.promptTokens}; completionTokens=${usage.completionTokens}; " +
+                        "totalTokens=${usage.totalTokens}; " +
+                        "cachedPromptTokens=${usage.cachedPromptTokens ?: "unknown"}",
                 )
             }
 

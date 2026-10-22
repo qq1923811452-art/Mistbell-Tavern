@@ -281,6 +281,12 @@ class OpenAiCompatibleChatClient(
                                             it.has("cache_read_input_tokens") -> it.optInt("cache_read_input_tokens")
                                             else -> null
                                         }
+                                    } ?: when {
+                                        usage.has("prompt_cache_hit_tokens") ->
+                                            usage.optInt("prompt_cache_hit_tokens")
+                                        usage.has("total_cached_tokens") ->
+                                            usage.optInt("total_cached_tokens")
+                                        else -> null
                                     }
                                     observer.onUsage(
                                         ChatTokenUsage(
