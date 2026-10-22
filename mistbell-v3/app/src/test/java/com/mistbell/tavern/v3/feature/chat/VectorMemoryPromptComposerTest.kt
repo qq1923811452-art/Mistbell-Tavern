@@ -9,14 +9,14 @@ import org.junit.Test
 
 class VectorMemoryPromptComposerTest {
     private val history = listOf(
-        PromptMessage(PromptRole.SYSTEM, "Role card.\n\nActivated worldbook entries:\nWorld."),
+        PromptMessage(PromptRole.SYSTEM, "Role card.\n\nWorldbook constants:\nWorld."),
         PromptMessage(PromptRole.USER, "Earlier question"),
         PromptMessage(PromptRole.ASSISTANT, "Earlier answer"),
         PromptMessage(PromptRole.USER, "What did I say?"),
     )
 
     @Test
-    fun mergesMemoryIntoFirstSystemMessageWithoutAddingAnotherSystemMessage() {
+    fun appendsMemoryToTheLastUserMessageAndLeavesSystemUntouched() {
         val result = VectorMemoryPromptComposer.compose(
             history,
             VectorMemoryContextResult.Ready(
@@ -27,12 +27,14 @@ class VectorMemoryPromptComposerTest {
             ),
         )
         assertEquals(4, result.size)
-        assertEquals(1, result.count { it.role == PromptRole.SYSTEM })
-        assertTrue(result[0].content.contains("User is building Mistbell 3.0."))
-        assertTrue(result[0].content.indexOf("Activated worldbook entries") <
-            result[0].content.indexOf(VectorMemoryPromptComposer.MEMORY_SECTION_HEADER))
-        assertEquals(history.last(), result.last())
-        assertEquals(4, history.size)
+        assertEquals(history[0], result[0])
+        val tail = result.last()
+        assertEquals(PromptRole.USER, tail.role)
+        assertTrue(tail.content.contains("User is building Mistbell 3.0."))
+        assertTrue(tail.content.contains("What did I say?"))
+        assertTrue(tail.content.indexOf(VectorMemoryPromptComposer.MEMORY_SECTION_HEADER) <
+            tail.content.indexOf("What did I say?"))
+        assertEquals(history, listOf(history[0], history[1], history[2], history[3]))
     }
 
     @Test
@@ -48,26 +50,15 @@ class VectorMemoryPromptComposerTest {
     }
 
     @Test
-    fun leavesPromptUnchangedWhenThereIsNoSystemMessage() {
+    fun appendsMemoryEvenWithoutSystemMessage() {
         val noSystem = listOf(PromptMessage(PromptRole.USER, "Hi"))
-        assertSame(
-            noSystem,
-            VectorMemoryPromptComposer.compose(
-                noSystem,
-                VectorMemoryContextResult.Ready(listOf(RetrievedMemory("m1", "A fact.", 0.9))),
-            ),
-        )
-    }
-
-    @Test
-    fun emptySystemMessageDoesNotCreateLeadingPromptSeparators() {
-        val messages = listOf(PromptMessage(PromptRole.SYSTEM, ""), PromptMessage(PromptRole.USER, "Hi"))
         val result = VectorMemoryPromptComposer.compose(
-            messages,
-            VectorMemoryContextResult.Ready(listOf(RetrievedMemory("m1", "A stable fact.", 0.8))),
+            noSystem,
+            VectorMemoryContextResult.Ready(listOf(RetrievedMemory("m1", "A fact.", 0.9))),
         )
-        assertTrue(result.first().content.startsWith(VectorMemoryPromptComposer.MEMORY_SECTION_HEADER))
-        assertTrue(!result.first().content.startsWith("\n\n"))
+        assertEquals(1, result.size)
+        assertTrue(result.single().content.startsWith(VectorMemoryPromptComposer.MEMORY_SECTION_HEADER))
+        assertTrue(result.single().content.endsWith("Hi"))
     }
 
     @Test
@@ -83,8 +74,8 @@ class VectorMemoryPromptComposerTest {
             ),
         )
         assertEquals(4, result.size)
-        assertEquals(1, result.count { it.role == PromptRole.SYSTEM })
-        assertTrue(result[0].content.contains("A stable fact."))
-        assertTrue(!result[0].content.contains("Must not be included."))
+        assertTrue(result.last().content.contains("A stable fact."))
+        assertTrue(!result.last().content.contains("Must not be included."))
+        assertEquals(history[0], result[0])
     }
 }
