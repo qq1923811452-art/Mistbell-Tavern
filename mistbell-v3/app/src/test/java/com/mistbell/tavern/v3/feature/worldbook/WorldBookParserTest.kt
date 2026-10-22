@@ -23,7 +23,8 @@ class WorldBookParserTest {
 
     @Test fun acceptsSillyTavernCharacterBookKeysAlias() {
         val book = WorldBookParser.parse(
-            """{"entries":[{"id":0,"keys":["行为规则","情绪规则"],"content":"rules","constant":true,"position":"before_char","insertion_order":10}]}""",
+            """{"entries":[{"id":0,"keys":["行为规则","情绪规则"],"content":"rules",""" +
+                """"constant":true,"position":"before_char","insertion_order":10}]}""",
             "card-book",
         )
         assertNotNull(book)
