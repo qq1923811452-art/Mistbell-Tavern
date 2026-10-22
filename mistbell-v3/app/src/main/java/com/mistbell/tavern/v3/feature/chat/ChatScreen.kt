@@ -7,6 +7,7 @@ import android.content.Context
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.rememberCoroutineScope
@@ -197,7 +198,7 @@ fun ChatScreen(onBack: () -> Unit, settingsMode: Boolean = false) {
     }
     val sessionStore = remember(context) { SessionStore(context) }
     var sessions by remember { mutableStateOf(emptyList<ChatSession>()) }
-    var showSessionList by remember { mutableStateOf(false) }
+    var showSessionList by remember { mutableStateOf(true) }
     var lastGroupSpeakerId by remember { mutableStateOf<String?>(null) }
     var promptPreview by remember { mutableStateOf<PromptPreviewBuilder.Preview?>(null) }
     var showPromptPreview by remember { mutableStateOf(false) }
@@ -550,6 +551,8 @@ fun ChatScreen(onBack: () -> Unit, settingsMode: Boolean = false) {
         return
     }
 
+    BackHandler(enabled = !showSessionList) { showSessionList = true }
+
     Scaffold(
         containerColor = Color.Transparent,
         topBar = {
@@ -861,12 +864,7 @@ fun ChatScreen(onBack: () -> Unit, settingsMode: Boolean = false) {
                     },
                     enabled = !busy && historyReady && !historyLoadFailed && worldbookSession.ready,
                 ) {
-                    ChatSendActionLabel(
-                        historyReady = historyReady,
-                        historyLoadFailed = historyLoadFailed,
-                        worldbooksReady = worldbookSession.ready,
-                        busy = busy,
-                    )
+                    Text("➤", style = MaterialTheme.typography.titleLarge)
                 }
                 ChatSessionResetAction(
                     enabled = !busy && historyReady && (history.isNotEmpty() || historyLoadFailed),

@@ -258,6 +258,10 @@ class MainActivity : ComponentActivity() {
                         LicensesScreen(onBack = { showLicenses = false })
                     } else if (showImageGeneration) {
                         ImageGenerationScreen(onBack = { showImageGeneration = false })
+                    } else if (showCharacterLibrary) {
+                        CharacterCardLibraryScreen(onBack = { showCharacterLibrary = false })
+                    } else if (showWorldBookLibrary) {
+                        WorldBookLibraryScreen(onBack = { showWorldBookLibrary = false })
                     } else if (chatSettingsMode) {
                         TavernBackground {
                             ChatScreen(onBack = { chatSettingsMode = false }, settingsMode = true)
@@ -269,12 +273,6 @@ class MainActivity : ComponentActivity() {
                                     TavernTab.CHAT -> TavernBackground {
                                         ChatScreen(onBack = { mainTab = TavernTab.SETTINGS })
                                     }
-                                    TavernTab.CHARACTERS -> CharacterCardLibraryScreen(
-                                        onBack = { mainTab = TavernTab.CHAT },
-                                    )
-                                    TavernTab.WORLD_BOOK -> WorldBookLibraryScreen(
-                                        onBack = { mainTab = TavernTab.CHAT },
-                                    )
                                     TavernTab.SETTINGS -> DevelopmentHome(
                                         inferenceStatus = inferenceStatus,
                                         operationMessage = operationMessage,
@@ -282,8 +280,8 @@ class MainActivity : ComponentActivity() {
                                         onOpenChat = { mainTab = TavernTab.CHAT },
                                         onOpenChatSettings = { chatSettingsMode = true },
                                         onOpenImageGeneration = { showImageGeneration = true },
-                                        onOpenCharacterLibrary = { mainTab = TavernTab.CHARACTERS },
-                                        onOpenWorldBookLibrary = { mainTab = TavernTab.WORLD_BOOK },
+                                        onOpenCharacterLibrary = { showCharacterLibrary = true },
+                                        onOpenWorldBookLibrary = { showWorldBookLibrary = true },
                                         onOpenLicenses = { showLicenses = true },
                                         onDownloadModel = ::downloadEmbeddingModel,
                                         onImportModel = { importModel.launch(arrayOf("*/*")) },
