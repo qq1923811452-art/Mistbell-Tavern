@@ -52,7 +52,7 @@ fun SessionListScreen(
                 },
                 actions = {
                     if (characters.isNotEmpty()) {
-                        TextButton(onClick = { showGroupDialog = true }) { Text("新建群聊") }
+                        TextButton(onClick = { showGroupDialog = true }) { Text("＋ 群聊") }
                     }
                 },
             )
