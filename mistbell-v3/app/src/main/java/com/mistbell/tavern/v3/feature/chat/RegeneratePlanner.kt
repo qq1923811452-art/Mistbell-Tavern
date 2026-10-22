@@ -7,7 +7,7 @@ package com.mistbell.tavern.v3.feature.chat
  * that precedes its user turn and, once the stream completes, appends the new text as another
  * variant instead of creating a new message.
  */
-object RegeneratePlanner {
+internal object RegeneratePlanner {
 
     data class Plan(
         /** History before the user turn that produced the target reply. */
