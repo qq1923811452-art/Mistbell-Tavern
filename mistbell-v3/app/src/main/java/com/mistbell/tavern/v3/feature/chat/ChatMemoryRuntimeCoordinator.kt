@@ -43,6 +43,9 @@ internal class ChatMemoryRuntimeCoordinator(
         observer: ChatStreamObserver,
         maxTokensText: String,
     ) {
+val generationSwitches = context.getSharedPreferences("mistbell-v3-settings", Context.MODE_PRIVATE)
+val streamEnabled = generationSwitches.getBoolean("chat_stream_enabled", true)
+val thinkingEnabled = generationSwitches.getBoolean("chat_thinking_enabled", false)
 val embeddingSettings = context.getSharedPreferences("mistbell-v3-settings", Context.MODE_PRIVATE)
 val modelAssets = EmbeddingGemma2ModelAssetManager(
     modelDirectory = File(context.filesDir, "models"),
@@ -76,7 +79,15 @@ if (installedModel == null || configuredDimensions !in CHAT_EMBEDDING_DIMENSION_
     } else {
         "当前 EmbeddingGemma 2 原生最高支持 768 维；所选 ${configuredDimensions} 维暂不可用于本地记忆，继续普通聊天。"
     })
-    client.stream(messages, observer, ChatGenerationOptions(maxTokens = maxTokensText.toIntOrNull()?.takeIf { it in 1..200_000 } ?: 4096))
+    client.stream(
+        messages,
+        observer,
+        ChatGenerationOptions(
+            maxTokens = maxTokensText.toIntOrNull()?.takeIf { it in 1..200_000 } ?: 4096,
+            stream = streamEnabled,
+            thinkingEnabled = thinkingEnabled,
+        ),
+    )
 } else {
     // The process holder owns native engine lifetime across UI/background transitions.
     val engine = EmbeddingEngineProcessHolder.acquire(
@@ -270,6 +281,8 @@ if (installedModel == null || configuredDimensions !in CHAT_EMBEDDING_DIMENSION_
         observer,
         ChatGenerationOptions(
             maxTokens = maxTokensText.toIntOrNull()?.takeIf { it in 1..200_000 } ?: 4096,
+            stream = streamEnabled,
+            thinkingEnabled = thinkingEnabled,
         ),
     )
         }

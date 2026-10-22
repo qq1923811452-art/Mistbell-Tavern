@@ -81,6 +81,33 @@ class PromptAssemblerTest {
     }
 
     @Test
+    fun userDepthEntryKeepsItsHistoricalPositionAndRole() {
+        val depthEntry = WorldBookEntry(
+            id = "depth",
+            bookId = "book",
+            content = "Remember this",
+            insertPosition = WorldBookPlacement.POSITION_DEPTH,
+            depth = 1,
+            depthRole = WorldBookPlacement.DEPTH_ROLE_USER,
+        )
+        val messages = PromptAssembler.assemble(
+            PromptAssemblyInput(
+                stableSystemPrefix = "Rules",
+                worldbookEntries = listOf(depthEntry),
+                conversationHistory = listOf(
+                    PromptMessage(PromptRole.USER, "one"),
+                    PromptMessage(PromptRole.ASSISTANT, "two"),
+                    PromptMessage(PromptRole.USER, "three"),
+                ),
+                latestUserMessage = "four",
+            ),
+        )
+        val depthMessage = messages.first { it.content == "Remember this" }
+        assertEquals(PromptRole.USER, depthMessage.role)
+        assertEquals("three", messages[messages.indexOf(depthMessage) + 1].content)
+    }
+
+    @Test
     fun constantWorldbookStaysInTheSystemMessage() {
         val messages = PromptAssembler.assemble(
             PromptAssemblyInput(

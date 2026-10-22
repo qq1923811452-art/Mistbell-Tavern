@@ -19,6 +19,7 @@ class ChatBackupCoordinator(
     private val context: Context,
     private val scope: CoroutineScope,
     private val onStatus: (String) -> Unit,
+    private val onRestored: () -> Unit = {},
 ) {
     private val mainHandler = Handler(Looper.getMainLooper())
     private val service by lazy { BackupService(context, databaseLifecycle = AppBackupDatabaseLifecycle()) }
@@ -52,7 +53,8 @@ class ChatBackupCoordinator(
                     ?: error("备份文件不可读")
                 input.use { stream -> temporary.outputStream().use { stream.copyTo(it) } }
                 val preview = service.restore(temporary)
-                publish("已恢复 ${preview.manifest.entryCount} 项，请重启应用")
+                publish("已恢复 ${preview.manifest.entryCount} 项，正在重新加载")
+                mainHandler.post { onRestored() }
             } catch (error: Exception) {
                 publish("恢复失败：${error.message ?: error.javaClass.simpleName}")
             } finally {

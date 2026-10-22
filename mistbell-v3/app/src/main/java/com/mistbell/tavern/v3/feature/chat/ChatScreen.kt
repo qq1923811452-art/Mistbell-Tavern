@@ -3,6 +3,7 @@ package com.mistbell.tavern.v3.feature.chat
 import android.os.Handler
 import android.util.AtomicFile
 import android.os.Looper
+import android.app.Activity
 import android.content.Context
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -130,7 +131,9 @@ fun ChatScreen(onBack: () -> Unit) {
     var backupStatus by remember { mutableStateOf("") }
     val backupCoroutineScope = rememberCoroutineScope()
     val backupCoordinator = remember(context) {
-        ChatBackupCoordinator(context, backupCoroutineScope) { backupStatus = it }
+        ChatBackupCoordinator(context, backupCoroutineScope, { backupStatus = it }) {
+            (context as? Activity)?.recreate()
+        }
     }
     val exportBackupLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/zip"),
@@ -424,6 +427,7 @@ fun ChatScreen(onBack: () -> Unit) {
                         runCatching { chatCredentialStore.delete(handle) }
                     }
                     chatGenerationPreferences.setCredentialHandle(null)
+                    apiKey = ""
                     hasSavedChatCredential = false
                     chatSettingsStatus = "已删除已保存密钥"
                 },

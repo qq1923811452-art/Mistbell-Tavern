@@ -60,6 +60,7 @@ object PromptAssembler {
             appendEntries("Example block before", plan.emBefore.filterNot(WorldBookEntry::constant))
             appendEntries("Example block after", plan.emAfter.filterNot(WorldBookEntry::constant))
             val depthSections = plan.byDepth.entries
+                .filter { it.key.second == WorldBookPlacement.DEPTH_ROLE_SYSTEM }
                 .flatMap { (key, entries) ->
                     entries.filterNot(WorldBookEntry::constant).mapNotNull { entry ->
                         entry.content.trim().takeIf(String::isNotEmpty)?.let {
@@ -68,6 +69,8 @@ object PromptAssembler {
                     }
                 }
             if (depthSections.isNotEmpty()) add("Worldbook depth entries:\n" + depthSections.joinToString("\n\n"))
+            // Non-system depth entries keep their historical position and role; only the system
+            // variant can live in the volatile tail without changing semantics.
         }
 
         val userContent = if (dynamicSections.isEmpty()) {
@@ -75,9 +78,29 @@ object PromptAssembler {
         } else {
             dynamicSections.joinToString("\n\n") + "\n\n" + input.latestUserMessage.trim()
         }
+        val history = input.conversationHistory
+        val depthInsertions = plan.byDepth.entries
+            .filter { it.key.second != WorldBookPlacement.DEPTH_ROLE_SYSTEM }
+            .mapNotNull { (key, entries) ->
+                val content = entries
+                    .mapNotNull { entry -> entry.content.trim().takeIf(String::isNotEmpty) }
+                    .joinToString("\n\n")
+                if (content.isEmpty()) return@mapNotNull null
+                val role = if (key.second == WorldBookPlacement.DEPTH_ROLE_USER) {
+                    PromptRole.USER
+                } else {
+                    PromptRole.ASSISTANT
+                }
+                (history.size - key.first).coerceIn(0, history.size) to PromptMessage(role, content)
+            }
+            .groupBy({ it.first }, { it.second })
+
         return buildList {
             add(systemMessage)
-            addAll(input.conversationHistory)
+            for (index in 0..history.size) {
+                depthInsertions[index]?.forEach(::add)
+                if (index < history.size) add(history[index])
+            }
             add(PromptMessage(PromptRole.USER, userContent))
         }
     }
