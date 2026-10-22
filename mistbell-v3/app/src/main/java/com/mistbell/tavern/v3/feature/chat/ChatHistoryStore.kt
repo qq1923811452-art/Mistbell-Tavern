@@ -16,6 +16,8 @@ data class PersistedChatMessage(
     val deliveryState: DeliveryState,
     val speakerId: String? = null,
     val speakerName: String? = null,
+    val variants: List<String> = emptyList(),
+    val activeVariant: Int = 0,
 ) {
     enum class DeliveryState { COMPLETE, PENDING, FAILED }
 
@@ -24,11 +26,17 @@ data class PersistedChatMessage(
         require(role == "user" || role == "assistant" || role == "system")
         require(content.length <= MAX_MESSAGE_CHARS)
         require(createdAtEpochMillis >= 0L)
+        require(variants.size <= MAX_VARIANTS) { "Too many message variants." }
+        require(variants.all { it.length <= MAX_MESSAGE_CHARS }) { "Variant exceeds the size limit." }
+        require(variants.isEmpty() || activeVariant in variants.indices) {
+            "Active variant index is out of range."
+        }
     }
 
     companion object {
         const val MAX_ID_CHARS = 160
         const val MAX_MESSAGE_CHARS = 100_000
+        const val MAX_VARIANTS = 64
     }
 }
 
@@ -77,6 +85,10 @@ class ChatHistoryStore(
                     .also { item ->
                         message.speakerId?.let { item.put("speaker_id", it) }
                         message.speakerName?.let { item.put("speaker_name", it) }
+                        if (message.variants.isNotEmpty()) {
+                            item.put("variants", JSONArray(message.variants))
+                            item.put("active_variant", message.activeVariant)
+                        }
                     },
             )
         }
@@ -118,6 +130,12 @@ class ChatHistoryStore(
                     ),
                     speakerId = item.optString("speaker_id", "").takeIf(String::isNotBlank),
                     speakerName = item.optString("speaker_name", "").takeIf(String::isNotBlank),
+                    variants = item.optJSONArray("variants")?.let { array ->
+                        (0 until array.length()).mapNotNull { index ->
+                            array.optString(index, "").takeIf(String::isNotEmpty)
+                        }
+                    }.orEmpty(),
+                    activeVariant = item.optInt("active_variant", 0),
                 )
             }
             require(messages.map(PersistedChatMessage::id).distinct().size == messages.size)

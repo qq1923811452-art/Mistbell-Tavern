@@ -9,6 +9,10 @@ internal object ChatHistorySnapshotFactory {
                 content = line.content,
                 createdAtEpochMillis = line.createdAtEpochMillis,
                 deliveryState = line.deliveryState,
+                speakerId = line.speakerId,
+                speakerName = line.speakerName,
+                variants = line.variants,
+                activeVariant = line.activeVariant,
             )
         }
 
@@ -20,6 +24,10 @@ internal object ChatHistorySnapshotFactory {
                 content = message.content,
                 createdAtEpochMillis = message.createdAtEpochMillis,
                 deliveryState = message.deliveryState,
+                speakerId = message.speakerId,
+                speakerName = message.speakerName,
+                variants = message.variants,
+                activeVariant = message.activeVariant,
             )
         }
 }
