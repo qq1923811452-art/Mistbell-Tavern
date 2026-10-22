@@ -197,6 +197,8 @@ fun ChatScreen(onBack: () -> Unit) {
     var sessions by remember { mutableStateOf(emptyList<ChatSession>()) }
     var showSessionList by remember { mutableStateOf(false) }
     var lastGroupSpeakerId by remember { mutableStateOf<String?>(null) }
+    var promptPreview by remember { mutableStateOf<PromptPreviewBuilder.Preview?>(null) }
+    var showPromptPreview by remember { mutableStateOf(false) }
     LaunchedEffect(sessionStore) {
         val current = memoryConversationId
         val existing = sessionStore.list()
@@ -344,6 +346,7 @@ fun ChatScreen(onBack: () -> Unit) {
             worldbookState = worldbookSession.activation.activationState,
             worldbookStateKey = worldbookSession.activation.stateKey,
         )
+        promptPreview = PromptPreviewBuilder.build(messages)
         busy = true
         status = "正在重新生成…"
         val generated = StringBuilder()
@@ -458,6 +461,13 @@ fun ChatScreen(onBack: () -> Unit) {
         )
     }
 
+    if (showPromptPreview) {
+        promptPreview?.let { preview ->
+            PromptPreviewScreen(preview = preview, onBack = { showPromptPreview = false })
+        }
+        return
+    }
+
     if (showSessionList) {
         SessionListScreen(
             sessions = sessions,
@@ -547,6 +557,9 @@ fun ChatScreen(onBack: () -> Unit) {
                     Button(onClick = onBack) { Text("返回首页") }
                 },
                 actions = {
+                    if (promptPreview != null) {
+                        TextButton(onClick = { showPromptPreview = true }) { Text("预览") }
+                    }
                     TextButton(onClick = { showSessionList = true }) { Text("会话") }
                 },
             )
@@ -766,6 +779,7 @@ fun ChatScreen(onBack: () -> Unit) {
                             worldbookState = worldbookSession.activation.activationState,
                             worldbookStateKey = worldbookSession.activation.stateKey,
                         )
+                        promptPreview = PromptPreviewBuilder.build(messages)
                         val baseObserver = ChatStreamObserverCoordinator(
                             mainHandler = mainHandler,
                             history = history,
