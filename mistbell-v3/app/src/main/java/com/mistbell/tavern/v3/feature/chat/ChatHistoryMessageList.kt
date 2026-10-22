@@ -27,12 +27,14 @@ internal fun ColumnScope.ChatHistoryMessageList(
     busy: Boolean,
     listState: LazyListState,
     onSelectVariant: (messageId: String, index: Int) -> Unit = { _, _ -> },
+    onRegenerate: (messageId: String) -> Unit = {},
 ) {
     LazyColumn(
         modifier = Modifier.weight(1f).fillMaxWidth(),
         state = listState,
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        val lastAssistantId = history.lastOrNull { it.role == "assistant" }?.id
         itemsIndexed(history) { _, line ->
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(10.dp)) {
@@ -58,6 +60,11 @@ internal fun ColumnScope.ChatHistoryMessageList(
                             }
                         },
                     )
+                    if (!busy && line.id == lastAssistantId && line.role == "assistant") {
+                        androidx.compose.material3.TextButton(onClick = { onRegenerate(line.id) }) {
+                            Text("重新生成")
+                        }
+                    }
                     if (line.variants.size > 1) {
                         SwipeControls(
                             index = line.activeVariant,
