@@ -38,7 +38,7 @@ object WorldBookParser {
             id = entryId(node, mapKey),
             bookId = bookId,
             comment = node.optString("comment"),
-            keys = keywordList(node.opt("key")),
+            keys = keywordList(node.opt("key")).ifEmpty { keywordList(node.opt("keys")) },
             secondaryKeys = keywordList(node.opt("keysecondary")).ifEmpty {
                 keywordList(node.opt("secondary_keys"))
             },
