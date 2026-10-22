@@ -43,5 +43,4 @@ internal object GroupChatSendPlanner {
             )
         }
     }
-    }
 }
