@@ -5,6 +5,8 @@ import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import java.util.UUID
+import org.json.JSONArray
+import org.json.JSONObject
 
 /**
  * Durable session index for the conversation list.
@@ -12,6 +14,7 @@ import java.util.UUID
  * Messages remain in the chat database keyed by scope; this store only tracks ordering, titles
  * and summaries, which keeps the list fast even for long histories.
  */
+@Suppress("TooManyFunctions")
 class SessionStore(
     context: Context,
     databaseName: String = DEFAULT_DATABASE_NAME,
@@ -31,7 +34,12 @@ class SessionStore(
         db.execSQL(CREATE_ORDER_INDEX)
     }
 
-    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+        if (oldVersion < 2) {
+            db.execSQL("ALTER TABLE $TABLE ADD COLUMN $COLUMN_KIND TEXT NOT NULL DEFAULT 'single'")
+            db.execSQL("ALTER TABLE $TABLE ADD COLUMN $COLUMN_PARTICIPANTS TEXT NOT NULL DEFAULT '[]'")
+        }
+    }
 
     fun list(): List<ChatSession> =
         readableDatabase.query(
@@ -53,12 +61,16 @@ class SessionStore(
         title: String,
         id: String = UUID.randomUUID().toString(),
         now: Long = System.currentTimeMillis(),
+        kind: SessionKind = SessionKind.SINGLE,
+        participants: List<SessionParticipant> = emptyList(),
     ): ChatSession {
         val session = ChatSession(
             id = id,
             roleId = roleId,
             title = title.ifBlank { DEFAULT_TITLE },
             updatedAt = now,
+            kind = kind,
+            participants = participants,
         )
         writableDatabase.insertOrThrow(
             TABLE,
@@ -71,9 +83,32 @@ class SessionStore(
                 put(COLUMN_UPDATED_AT, session.updatedAt)
                 put(COLUMN_MESSAGE_COUNT, session.messageCount)
                 put(COLUMN_PINNED, if (session.pinned) 1 else 0)
+                put(COLUMN_KIND, session.kind.name.lowercase())
+                put(COLUMN_PARTICIPANTS, encodeParticipants(session.participants))
             },
         )
         return session
+    }
+
+    private fun encodeParticipants(participants: List<SessionParticipant>): String {
+        val array = JSONArray()
+        participants.forEach { participant ->
+            array.put(JSONObject().put("id", participant.id).put("name", participant.name))
+        }
+        return array.toString()
+    }
+
+    private fun decodeParticipants(raw: String?): List<SessionParticipant> {
+        if (raw.isNullOrBlank()) return emptyList()
+        return runCatching {
+            val array = JSONArray(raw)
+            (0 until array.length()).mapNotNull { index ->
+                val node = array.optJSONObject(index) ?: return@mapNotNull null
+                val id = node.optString("id", "").trim()
+                val name = node.optString("name", "").trim()
+                if (id.isEmpty() || name.isEmpty()) null else SessionParticipant(id, name)
+            }
+        }.getOrDefault(emptyList())
     }
 
     fun rename(id: String, title: String): Boolean {
@@ -118,6 +153,11 @@ class SessionStore(
         updatedAt = getLong(getColumnIndexOrThrow(COLUMN_UPDATED_AT)),
         messageCount = getInt(getColumnIndexOrThrow(COLUMN_MESSAGE_COUNT)),
         pinned = getInt(getColumnIndexOrThrow(COLUMN_PINNED)) != 0,
+        kind = when (getString(getColumnIndexOrThrow(COLUMN_KIND)).lowercase()) {
+            "group" -> SessionKind.GROUP
+            else -> SessionKind.SINGLE
+        },
+        participants = decodeParticipants(getString(getColumnIndexOrThrow(COLUMN_PARTICIPANTS))),
     )
 
     companion object {
@@ -136,7 +176,7 @@ class SessionStore(
         const val MAX_TITLE_CHARS = 120
         const val MAX_PREVIEW_CHARS = 200
 
-        private const val DATABASE_VERSION = 1
+        private const val DATABASE_VERSION = 2
         private const val TABLE = "sessions"
         private const val COLUMN_ID = "id"
         private const val COLUMN_ROLE_ID = "role_id"
@@ -145,10 +185,12 @@ class SessionStore(
         private const val COLUMN_UPDATED_AT = "updated_at"
         private const val COLUMN_MESSAGE_COUNT = "message_count"
         private const val COLUMN_PINNED = "pinned"
+        private const val COLUMN_KIND = "kind"
+        private const val COLUMN_PARTICIPANTS = "participants"
 
         private val COLUMNS = arrayOf(
             COLUMN_ID, COLUMN_ROLE_ID, COLUMN_TITLE, COLUMN_PREVIEW,
-            COLUMN_UPDATED_AT, COLUMN_MESSAGE_COUNT, COLUMN_PINNED,
+            COLUMN_UPDATED_AT, COLUMN_MESSAGE_COUNT, COLUMN_PINNED, COLUMN_KIND, COLUMN_PARTICIPANTS,
         )
 
         private const val CREATE_TABLE = """
@@ -159,7 +201,9 @@ class SessionStore(
                 $COLUMN_PREVIEW TEXT NOT NULL DEFAULT '',
                 $COLUMN_UPDATED_AT INTEGER NOT NULL,
                 $COLUMN_MESSAGE_COUNT INTEGER NOT NULL DEFAULT 0,
-                $COLUMN_PINNED INTEGER NOT NULL DEFAULT 0
+                $COLUMN_PINNED INTEGER NOT NULL DEFAULT 0,
+                $COLUMN_KIND TEXT NOT NULL DEFAULT 'single',
+                $COLUMN_PARTICIPANTS TEXT NOT NULL DEFAULT '[]'
             )
         """
 
