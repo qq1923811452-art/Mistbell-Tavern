@@ -72,6 +72,7 @@ fun SessionListScreen(
                         onRename = { renameTarget = session },
                         onDelete = { deleteTarget = session },
                         onTogglePin = { pinned -> onTogglePin(session.id, pinned) },
+                        modifier = Modifier.animateItem(),
                     )
                 }
             }

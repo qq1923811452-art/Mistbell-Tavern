@@ -114,6 +114,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        com.mistbell.tavern.v3.ui.HighRefreshRate.apply(this)
         diagnostics = DiagnosticLogStore(filesDir)
         val settings = getSharedPreferences("mistbell-v3-settings", MODE_PRIVATE)
         selectedEmbeddingDimensions = settings

@@ -44,6 +44,7 @@ fun SessionRow(
     onRename: () -> Unit,
     onDelete: () -> Unit,
     onTogglePin: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     var menuExpanded by remember(session.id) { mutableStateOf(false) }
     val nowCalendar = Calendar.getInstance()
@@ -68,7 +69,7 @@ fun SessionRow(
     val colors = MaterialTheme.colorScheme
 
     Surface(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        modifier = modifier.fillMaxWidth().padding(vertical = 4.dp),
         shape = RoundedCornerShape(16.dp),
         color = if (selected) colors.secondaryContainer else colors.surface,
         border = BorderStroke(
