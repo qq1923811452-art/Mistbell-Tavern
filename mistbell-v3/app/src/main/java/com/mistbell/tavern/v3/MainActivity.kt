@@ -64,6 +64,7 @@ import com.mistbell.tavern.v3.feature.chat.ChatScreen
 import com.mistbell.tavern.v3.feature.character.CharacterCardLibraryScreen
 import com.mistbell.tavern.v3.feature.worldbook.WorldBookLibraryScreen
 import com.mistbell.tavern.v3.feature.image.ImageGenerationScreen
+import com.mistbell.tavern.v3.ui.TavernBackground
 
 private data class BuildStage(val title: String, val detail: String)
 
@@ -259,7 +260,7 @@ class MainActivity : ComponentActivity() {
                     } else if (showImageGeneration) {
                         ImageGenerationScreen(onBack = { showImageGeneration = false })
                     } else if (showChat) {
-                        com.mistbell.tavern.v3.ui.TavernBackground {
+                        TavernBackground {
                             ChatScreen(onBack = { showChat = false })
                         }
                     } else {
