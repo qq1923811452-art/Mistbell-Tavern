@@ -307,6 +307,7 @@ fun ChatScreen(onBack: () -> Unit) {
         diagnosticStore.info("chat.history.saved", "messages=${snapshot.size}; elapsedMs=$elapsedMillis")
     }
 
+    @Suppress("LongMethod")
     fun regenerateReply(targetMessageId: String) {
         val plan = RegeneratePlanner.plan(history.toList(), targetMessageId)
         if (plan == null) {
