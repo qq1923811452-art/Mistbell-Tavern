@@ -20,16 +20,20 @@ internal object RegeneratePlanner {
 
     fun plan(history: List<ChatLine>, targetMessageId: String): Plan? {
         val targetIndex = history.indexOfFirst { it.id == targetMessageId }
-        if (targetIndex < 0) return null
-        val target = history[targetIndex]
-        if (target.role != "assistant") return null
-        val userIndex = (targetIndex - 1 downTo 0).firstOrNull { history[it].role == "user" } ?: return null
-        val userText = history[userIndex].content.trim()
-        if (userText.isEmpty()) return null
-        return Plan(
-            prefixHistory = history.subList(0, userIndex).toList(),
-            userText = userText,
-            targetIndex = targetIndex,
-        )
+        val target = history.getOrNull(targetIndex)?.takeIf { it.role == "assistant" }
+        val userIndex = target?.let { index ->
+            (index - 1 downTo 0).firstOrNull { history[it].role == "user" }
+        }
+        val userText = userIndex?.let { history[it].content.trim() }
+        return if (userIndex != null && !userText.isNullOrEmpty()) {
+            Plan(
+                prefixHistory = history.subList(0, userIndex).toList(),
+                userText = userText,
+                targetIndex = targetIndex,
+            )
+        } else {
+            null
+        }
+    }
     }
 }
