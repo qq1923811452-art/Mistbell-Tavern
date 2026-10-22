@@ -36,7 +36,7 @@ fun TavernBackground(
                 .background(
                     Brush.verticalGradient(
                         0.0f to Color.Black.copy(alpha = SCRIM_TOP_ALPHA),
-                        0.35f to Color.Black.copy(alpha = SCRIM_MIDDLE_ALPHA),
+                        SCRIM_MIDDLE_STOP to Color.Black.copy(alpha = SCRIM_MIDDLE_ALPHA),
                         1.0f to Color.Black.copy(alpha = SCRIM_BOTTOM_ALPHA),
                     ),
                 ),
@@ -45,6 +45,7 @@ fun TavernBackground(
     }
 }
 
+private const val SCRIM_MIDDLE_STOP = 0.35f
 private const val SCRIM_TOP_ALPHA = 0.45f
 private const val SCRIM_MIDDLE_ALPHA = 0.25f
 private const val SCRIM_BOTTOM_ALPHA = 0.55f

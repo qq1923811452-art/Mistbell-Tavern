@@ -57,4 +57,5 @@ fun CharacterAvatar(
     }
 }
 
+@Suppress("MagicNumber")
 private val AVATAR_PLACEHOLDER = Color(0xFF2A2140)
