@@ -11,7 +11,7 @@ object MessageVariants {
     fun append(existing: List<String>, alternative: String): List<String> {
         val trimmed = alternative.trim()
         if (trimmed.isEmpty()) return existing
-        if (existing.size >= ChatHistoryStore.PersistedChatMessage.MAX_VARIANTS) return existing
+        if (existing.size >= PersistedChatMessage.MAX_VARIANTS) return existing
         return existing + trimmed
     }
 
