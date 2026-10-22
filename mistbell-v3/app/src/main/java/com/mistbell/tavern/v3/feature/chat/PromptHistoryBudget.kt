@@ -2,6 +2,13 @@ package com.mistbell.tavern.v3.feature.chat
 
 /** Selects the newest contiguous whole history messages within the configured limits. */
 object PromptHistoryBudget {
+    /**
+     * Align the window start to fixed message blocks. A sliding window shifts the prompt prefix
+     * every turn, which defeats provider prefix caches; block alignment changes it only once per
+     * block. Slightly exceeding the character budget is cheaper than losing the whole cache.
+     */
+    const val WINDOW_BLOCK_MESSAGES = 10
+
     fun select(history: List<PromptMessage>, maxCharacters: Int, maxMessages: Int): List<PromptMessage> {
         require(maxCharacters >= 0) { "maxCharacters must be non-negative." }
         require(maxMessages >= 0) { "maxMessages must be non-negative." }
@@ -23,6 +30,11 @@ object PromptHistoryBudget {
             selectedNewestFirst += message
             usedCharacters += size
         }
-        return selectedNewestFirst.asReversed()
+        val selected = selectedNewestFirst.asReversed()
+        val start = history.size - selected.size
+        if (start <= 0) return selected
+        if (start < WINDOW_BLOCK_MESSAGES) return selected
+        val alignedStart = start / WINDOW_BLOCK_MESSAGES * WINDOW_BLOCK_MESSAGES
+        return if (alignedStart < start) history.subList(alignedStart, history.size) else selected
     }
 }
