@@ -60,6 +60,7 @@ import com.mistbell.tavern.v3.core.diagnostics.DiagnosticLogStore
 import com.mistbell.tavern.v3.core.inference.InferenceBackend
 import com.mistbell.tavern.v3.core.inference.InferencePhase
 import com.mistbell.tavern.v3.core.inference.InferenceRuntimeStatus
+import com.mistbell.tavern.v3.feature.about.LicensesScreen
 import com.mistbell.tavern.v3.feature.chat.ChatScreen
 import com.mistbell.tavern.v3.feature.character.CharacterCardLibraryScreen
 import com.mistbell.tavern.v3.feature.worldbook.WorldBookLibraryScreen
@@ -86,6 +87,7 @@ class MainActivity : ComponentActivity() {
     private var showImageGeneration by mutableStateOf(false)
     private var showCharacterLibrary by mutableStateOf(false)
     private var showWorldBookLibrary by mutableStateOf(false)
+    private var showLicenses by mutableStateOf(false)
     private val embeddingDimensionOptions = listOf(128, 256, 512, 768, 1024, 1536, 2048)
     private var selectedEmbeddingDimensions by mutableStateOf(768)
     private var qualcommModelSelected by mutableStateOf(false)
@@ -253,7 +255,9 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background,
                 ) {
-                    if (showWorldBookLibrary) {
+                    if (showLicenses) {
+                        LicensesScreen(onBack = { showLicenses = false })
+                    } else if (showWorldBookLibrary) {
                         WorldBookLibraryScreen(onBack = { showWorldBookLibrary = false })
                     } else if (showCharacterLibrary) {
                         CharacterCardLibraryScreen(onBack = { showCharacterLibrary = false })
@@ -272,6 +276,7 @@ class MainActivity : ComponentActivity() {
                             onOpenImageGeneration = { showImageGeneration = true },
                             onOpenCharacterLibrary = { showCharacterLibrary = true },
                             onOpenWorldBookLibrary = { showWorldBookLibrary = true },
+                            onOpenLicenses = { showLicenses = true },
                             onDownloadModel = ::downloadEmbeddingModel,
                             onImportModel = { importModel.launch(arrayOf("*/*")) },
                             qualcommModelSelected = qualcommModelSelected,
@@ -686,6 +691,7 @@ private fun DevelopmentHome(
     onOpenImageGeneration: () -> Unit,
     onOpenCharacterLibrary: () -> Unit,
     onOpenWorldBookLibrary: () -> Unit,
+    onOpenLicenses: () -> Unit,
     onDownloadModel: () -> Unit,
     onImportModel: () -> Unit,
     qualcommModelSelected: Boolean,
@@ -701,6 +707,9 @@ private fun DevelopmentHome(
     Scaffold(
         topBar = {
             TopAppBar(
+                actions = {
+                    TextButton(onClick = onOpenLicenses) { Text("许可") }
+                },
                 title = {
                     Column {
                         Text("Mistbell Tavern 3.0")
