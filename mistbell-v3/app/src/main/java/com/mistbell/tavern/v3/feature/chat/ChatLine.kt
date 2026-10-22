@@ -6,4 +6,11 @@ internal data class ChatLine(
     val content: String,
     val createdAtEpochMillis: Long,
     val deliveryState: PersistedChatMessage.DeliveryState,
-)
+    /** All generated alternatives for this assistant message; index 0 is the first reply. */
+    val variants: List<String> = emptyList(),
+    val activeVariant: Int = 0,
+) {
+    /** Text of the currently selected alternative, falling back to [content]. */
+    val activeContent: String
+        get() = variants.getOrNull(activeVariant) ?: content
+}
