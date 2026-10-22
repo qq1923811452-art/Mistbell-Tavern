@@ -149,7 +149,7 @@ fun ChatScreen(onBack: () -> Unit) {
     ) { uri -> if (uri != null) backupCoordinator.export(uri) }
     val restoreBackupLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument(),
-    ) { uri -> if (uri != null) backupCoordinator.restore(uri) }
+    ) { uri -> if (uri != null && !busy) backupCoordinator.restore(uri) }
     var memoryBaseUrl by remember(settings) {
         mutableStateOf(settings.getString("memory_api_base_url", "https://api.odys.work/v1") ?: "https://api.odys.work/v1")
     }
@@ -407,7 +407,12 @@ fun ChatScreen(onBack: () -> Unit) {
 
             ChatBackupSettingsSection(
                 onExport = { exportBackupLauncher.launch("mistbell-backup.zip") },
-                onRestore = { restoreBackupLauncher.launch(arrayOf("application/zip", "application/octet-stream")) },
+                onRestore = {
+                    if (!busy) {
+                        restoreBackupLauncher.launch(arrayOf("application/zip", "application/octet-stream"))
+                    }
+                },
+                canRestore = !busy,
                 statusMessage = backupStatus,
             )
 

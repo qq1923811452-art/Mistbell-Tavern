@@ -152,7 +152,9 @@ class OpenAiCompatibleChatClient(
                 if (options.thinkingEnabled) {
                     profile.thinkingBodyTemplate?.let { template ->
                         runCatching { JSONObject(template) }.getOrNull()?.let { extra ->
-                            extra.keys().forEach { key -> payload.put(key, extra.opt(key)) }
+                            extra.keys().forEach { key ->
+                                if (key !in CONTROLLED_REQUEST_KEYS) payload.put(key, extra.opt(key))
+                            }
                         }
                     }
                 }
@@ -325,5 +327,11 @@ class OpenAiCompatibleChatClient(
     companion object {
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
         private val LOOPBACK_HOSTS = setOf("localhost", "127.0.0.1", "::1")
+
+        /** Fields owned by the client; a provider template must never override them. */
+        private val CONTROLLED_REQUEST_KEYS = setOf(
+            "model", "messages", "stream", "stream_options",
+            "temperature", "max_tokens", "n", "stop",
+        )
     }
 }
