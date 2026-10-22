@@ -684,6 +684,7 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+@Suppress("LongParameterList", "LongMethod", "FunctionNaming")
 private fun DevelopmentHome(
     inferenceStatus: InferenceRuntimeStatus,
     operationMessage: String,
