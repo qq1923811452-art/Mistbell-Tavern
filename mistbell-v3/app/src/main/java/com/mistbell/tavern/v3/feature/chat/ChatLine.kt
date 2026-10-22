@@ -9,4 +9,11 @@ internal data class ChatLine(
     /** Group chats only: which participant produced this assistant message. */
     val speakerId: String? = null,
     val speakerName: String? = null,
-)
+    /** All generated alternatives for this assistant message; index 0 is the first reply. */
+    val variants: List<String> = emptyList(),
+    val activeVariant: Int = 0,
+) {
+    /** Text of the currently selected alternative, falling back to [content]. */
+    val activeContent: String
+        get() = variants.getOrNull(activeVariant) ?: content
+}
