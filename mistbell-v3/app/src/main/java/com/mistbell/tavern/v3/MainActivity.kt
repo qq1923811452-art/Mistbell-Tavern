@@ -15,6 +15,7 @@ import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
@@ -86,8 +87,6 @@ class MainActivity : ComponentActivity() {
     private var operationBusy by mutableStateOf(false)
     private var showChat by mutableStateOf(true)
     private var showImageGeneration by mutableStateOf(false)
-    private var showCharacterLibrary by mutableStateOf(false)
-    private var showWorldBookLibrary by mutableStateOf(false)
     private var showLicenses by mutableStateOf(false)
     private val embeddingDimensionOptions = listOf(128, 256, 512, 768, 1024, 1536, 2048)
     private var selectedEmbeddingDimensions by mutableStateOf(768)
@@ -258,25 +257,37 @@ class MainActivity : ComponentActivity() {
                 ) {
                     if (showLicenses) {
                         LicensesScreen(onBack = { showLicenses = false })
-                    } else if (showWorldBookLibrary) {
-                        WorldBookLibraryScreen(onBack = { showWorldBookLibrary = false })
-                    } else if (showCharacterLibrary) {
-                        CharacterCardLibraryScreen(onBack = { showCharacterLibrary = false })
                     } else if (showImageGeneration) {
                         ImageGenerationScreen(onBack = { showImageGeneration = false })
                     } else if (showChat) {
-                        TavernBackground {
-                            ChatScreen(onBack = { showChat = false })
+                        Column(Modifier.fillMaxSize()) {
+                            Box(Modifier.weight(1f)) {
+                                when (mainTab) {
+                                    TavernTab.CHAT -> TavernBackground {
+                                        ChatScreen(onBack = { showChat = false })
+                                    }
+                                    TavernTab.SETTINGS -> TavernBackground {
+                                        ChatScreen(onBack = { showChat = false }, settingsMode = true)
+                                    }
+                                    TavernTab.CHARACTERS -> CharacterCardLibraryScreen(
+                                        onBack = { mainTab = TavernTab.CHAT },
+                                    )
+                                    TavernTab.WORLD_BOOK -> WorldBookLibraryScreen(
+                                        onBack = { mainTab = TavernTab.CHAT },
+                                    )
+                                }
+                            }
+                            TavernBottomBar(selected = mainTab, onSelect = { mainTab = it })
                         }
                     } else {
                         DevelopmentHome(
                             inferenceStatus = inferenceStatus,
                             operationMessage = operationMessage,
                             operationBusy = operationBusy,
-                            onOpenChat = { showChat = true },
+                            onOpenChat = { mainTab = TavernTab.CHAT; showChat = true },
                             onOpenImageGeneration = { showImageGeneration = true },
-                            onOpenCharacterLibrary = { showCharacterLibrary = true },
-                            onOpenWorldBookLibrary = { showWorldBookLibrary = true },
+                            onOpenCharacterLibrary = { mainTab = TavernTab.CHARACTERS; showChat = true },
+                            onOpenWorldBookLibrary = { mainTab = TavernTab.WORLD_BOOK; showChat = true },
                             onOpenLicenses = { showLicenses = true },
                             onDownloadModel = ::downloadEmbeddingModel,
                             onImportModel = { importModel.launch(arrayOf("*/*")) },

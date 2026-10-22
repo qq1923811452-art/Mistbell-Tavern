@@ -46,6 +46,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -92,8 +94,6 @@ import com.mistbell.tavern.v3.feature.sessions.SessionParticipant
 import com.mistbell.tavern.v3.feature.sessions.SessionStore
 import com.mistbell.tavern.v3.feature.sessions.ui.GroupCandidate
 import com.mistbell.tavern.v3.feature.sessions.ui.SessionListScreen
-import com.mistbell.tavern.v3.ui.TavernBottomBar
-import com.mistbell.tavern.v3.ui.TavernTab
 import com.mistbell.tavern.v3.ui.findActivity
 
 
@@ -106,7 +106,7 @@ internal val CHAT_EMBEDDING_DIMENSION_OPTIONS = listOf(128, 256, 512, 768, 1024,
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ChatScreen(onBack: () -> Unit) {
+fun ChatScreen(onBack: () -> Unit, settingsMode: Boolean = false) {
     val context = LocalContext.current
     val chatViewModel: ChatViewModel = viewModel()
     val chatUiState by chatViewModel.uiState.collectAsStateWithLifecycle()
@@ -201,7 +201,6 @@ fun ChatScreen(onBack: () -> Unit) {
     var lastGroupSpeakerId by remember { mutableStateOf<String?>(null) }
     var promptPreview by remember { mutableStateOf<PromptPreviewBuilder.Preview?>(null) }
     var showPromptPreview by remember { mutableStateOf(false) }
-    var selectedTab by remember { mutableStateOf(TavernTab.CHAT) }
     LaunchedEffect(sessionStore) {
         val current = memoryConversationId
         val existing = sessionStore.list()
@@ -567,15 +566,13 @@ fun ChatScreen(onBack: () -> Unit) {
                 },
             )
         },
-        bottomBar = {
-            TavernBottomBar(selected = selectedTab, onSelect = { selectedTab = it })
-        },
     ) { padding ->
         Column(
             modifier = Modifier.fillMaxSize().padding(padding).padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            if (selectedTab == TavernTab.SETTINGS) {
+            if (settingsMode) {
+            Column(modifier = Modifier.weight(1f).verticalScroll(rememberScrollState())) {
             ChatConfigurationPanel(
                 settings = settings,
                 selectedCharacterName = selectedCharacter?.card?.name,
@@ -692,6 +689,7 @@ fun ChatScreen(onBack: () -> Unit) {
                     ).select(dimensions)
                 },
             )
+            }
             } else {
             ChatHistoryMessageList(
                 history = history,

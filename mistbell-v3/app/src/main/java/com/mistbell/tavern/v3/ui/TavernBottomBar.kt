@@ -41,6 +41,8 @@ fun TavernBottomBar(
                     Text(
                         text = when (tab) {
                             TavernTab.CHAT -> "聊天"
+                            TavernTab.CHARACTERS -> "角色"
+                            TavernTab.WORLD_BOOK -> "世界书"
                             TavernTab.SETTINGS -> "设置"
                         },
                         style = MaterialTheme.typography.labelLarge,
