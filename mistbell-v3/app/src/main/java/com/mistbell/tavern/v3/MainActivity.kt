@@ -36,6 +36,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import android.widget.Toast
@@ -277,7 +280,19 @@ class MainActivity : ComponentActivity() {
                                     TavernTab.CHAT -> TavernBackground {
                                         ChatScreen(onBack = { mainTab = TavernTab.SETTINGS })
                                     }
-                                    TavernTab.SETTINGS -> DevelopmentHome(
+                                    TavernTab.SETTINGS -> Box(Modifier.fillMaxSize()) {
+                                        Image(
+                                            painter = painterResource(R.drawable.bg_settings),
+                                            contentDescription = null,
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentScale = ContentScale.Crop,
+                                        )
+                                        Box(
+                                            Modifier
+                                                .fillMaxSize()
+                                                .background(Color.Black.copy(alpha = 0.55f)),
+                                        )
+                                        DevelopmentHome(
                                         inferenceStatus = inferenceStatus,
                                         operationMessage = operationMessage,
                                         operationBusy = operationBusy,
@@ -299,6 +314,7 @@ class MainActivity : ComponentActivity() {
                                         onExportNpuEvidence = { exportNpuEvidence.launch("npu-evidence.json") },
                                         onExportLogs = { exportDiagnostics.launch("mistbell-diagnostics.txt") },
                                     )
+                                    }
                                 }
                             }
                             TavernBottomBar(selected = mainTab, onSelect = { mainTab = it })
