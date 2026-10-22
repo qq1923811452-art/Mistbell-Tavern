@@ -6,6 +6,8 @@
     <application
         android:allowBackup="false"
         android:label="Mistbell Tavern 3.0 Dev"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:usesCleartextTraffic="false">
         <uses-native-library android:name="libvndksupport.so" android:required="false" />
