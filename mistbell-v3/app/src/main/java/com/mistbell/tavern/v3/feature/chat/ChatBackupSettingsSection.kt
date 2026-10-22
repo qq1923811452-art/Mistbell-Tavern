@@ -17,13 +17,14 @@ import androidx.compose.ui.unit.dp
 internal fun ChatBackupSettingsSection(
     onExport: () -> Unit,
     onRestore: () -> Unit,
+    canRestore: Boolean,
     statusMessage: String,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
         Text("备份与恢复", style = MaterialTheme.typography.titleMedium)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = onExport) { Text("导出备份") }
-            OutlinedButton(onClick = onRestore) { Text("恢复备份") }
+            OutlinedButton(onClick = onRestore, enabled = canRestore) { Text("恢复备份") }
         }
         Text(
             "备份包含聊天记录、会话列表、记忆、世界书、角色卡和设置；不包含模型文件与 API 密钥。",

@@ -3,7 +3,6 @@ package com.mistbell.tavern.v3.feature.chat
 import android.os.Handler
 import android.util.AtomicFile
 import android.os.Looper
-import android.app.Activity
 import android.content.Context
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -57,6 +56,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
@@ -85,6 +85,10 @@ import com.mistbell.tavern.v3.feature.character.CharacterCardLibraryStore
 import com.mistbell.tavern.v3.feature.worldbook.LocalWorldBookService
 import com.mistbell.tavern.v3.feature.worldbook.WorldBookActivationState
 import com.mistbell.tavern.v3.feature.worldbook.WorldBookParser
+import com.mistbell.tavern.v3.ui.findActivity
+import com.mistbell.tavern.v3.feature.sessions.ChatSession
+import com.mistbell.tavern.v3.feature.sessions.SessionStore
+import com.mistbell.tavern.v3.feature.sessions.ui.SessionListScreen
 
 
 
@@ -128,11 +132,21 @@ fun ChatScreen(onBack: () -> Unit) {
         )
     }
     var chatSettingsStatus by remember { mutableStateOf("") }
+    LaunchedEffect(Unit) {
+        val handle = chatGenerationPreferences.credentialHandle ?: return@LaunchedEffect
+        if (!chatCredentialStore.contains(handle)) {
+            chatGenerationPreferences.setCredentialHandle(null)
+            hasSavedChatCredential = false
+            apiKey = ""
+            chatSettingsStatus = "已保存的密钥已失效，请重新输入"
+        }
+    }
+    var busy by remember { mutableStateOf(false) }
     var backupStatus by remember { mutableStateOf("") }
     val backupCoroutineScope = rememberCoroutineScope()
     val backupCoordinator = remember(context) {
         ChatBackupCoordinator(context, backupCoroutineScope, { backupStatus = it }) {
-            (context as? Activity)?.recreate()
+            context.findActivity()?.recreate()
         }
     }
     val exportBackupLauncher = rememberLauncherForActivityResult(
@@ -140,7 +154,7 @@ fun ChatScreen(onBack: () -> Unit) {
     ) { uri -> if (uri != null) backupCoordinator.export(uri) }
     val restoreBackupLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument(),
-    ) { uri -> if (uri != null) backupCoordinator.restore(uri) }
+    ) { uri -> if (uri != null && !busy) backupCoordinator.restore(uri) }
     var memoryBaseUrl by remember(settings) {
         mutableStateOf(settings.getString("memory_api_base_url", "https://api.odys.work/v1") ?: "https://api.odys.work/v1")
     }
@@ -156,7 +170,6 @@ fun ChatScreen(onBack: () -> Unit) {
             } ?: false,
         )
     }
-    var busy by remember { mutableStateOf(false) }
     var historyReady by remember { mutableStateOf(false) }
     var historyLoadFailed by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("填写模型 ID 和 API 配置后即可测试聊天。") }
@@ -175,6 +188,17 @@ fun ChatScreen(onBack: () -> Unit) {
     val activeMemoryRoleId = selectedCharacterId.takeIf(String::isNotBlank) ?: "default-character"
     val memoryScopeId = remember(activeMemoryRoleId, memoryConversationId) {
         MemoryScopeId.forRoleAndConversation(activeMemoryRoleId, memoryConversationId)
+    }
+    val sessionStore = remember(context) { SessionStore(context) }
+    var sessions by remember { mutableStateOf(emptyList<ChatSession>()) }
+    var showSessionList by remember { mutableStateOf(false) }
+    LaunchedEffect(sessionStore) {
+        val current = memoryConversationId
+        val existing = sessionStore.list()
+        if (existing.none { it.id == current }) {
+            runCatching { sessionStore.create(activeMemoryRoleId, "新对话", id = current) }
+        }
+        sessions = sessionStore.list()
     }
     var memoryIndexRebuildInFlight by remember { mutableStateOf(false) }
     var memoryStatusNotice by remember { mutableStateOf("") }
@@ -341,12 +365,55 @@ fun ChatScreen(onBack: () -> Unit) {
         )
     }
 
+    if (showSessionList) {
+        SessionListScreen(
+            sessions = sessions,
+            selectedSessionId = memoryConversationId,
+            onSessionClick = { id ->
+                memoryConversationId = id
+                settings.edit().putString("memory_extraction_conversation_id", id).apply()
+                showSessionList = false
+            },
+            onCreateSession = {
+                val created = runCatching { sessionStore.create(activeMemoryRoleId, "新对话") }.getOrNull()
+                if (created != null) {
+                    memoryConversationId = created.id
+                    settings.edit().putString("memory_extraction_conversation_id", created.id).apply()
+                    sessions = sessionStore.list()
+                }
+                showSessionList = false
+            },
+            onRenameSession = { id, title ->
+                if (sessionStore.rename(id, title)) sessions = sessionStore.list()
+            },
+            onDeleteSession = { id ->
+                sessionStore.delete(id)
+                sessions = sessionStore.list()
+                if (id == memoryConversationId) {
+                    val next = sessions.firstOrNull()
+                    if (next != null) {
+                        memoryConversationId = next.id
+                        settings.edit().putString("memory_extraction_conversation_id", next.id).apply()
+                    }
+                }
+            },
+            onTogglePin = { id, pinned ->
+                if (sessionStore.setPinned(id, pinned)) sessions = sessionStore.list()
+            },
+            onBack = { showSessionList = false },
+        )
+        return
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("Mistbell Tavern · 聊天测试") },
                 navigationIcon = {
                     Button(onClick = onBack) { Text("返回首页") }
+                },
+                actions = {
+                    TextButton(onClick = { showSessionList = true }) { Text("会话") }
                 },
             )
         },
@@ -398,7 +465,12 @@ fun ChatScreen(onBack: () -> Unit) {
 
             ChatBackupSettingsSection(
                 onExport = { exportBackupLauncher.launch("mistbell-backup.zip") },
-                onRestore = { restoreBackupLauncher.launch(arrayOf("application/zip", "application/octet-stream")) },
+                onRestore = {
+                    if (!busy) {
+                        restoreBackupLauncher.launch(arrayOf("application/zip", "application/octet-stream"))
+                    }
+                },
+                canRestore = !busy,
                 statusMessage = backupStatus,
             )
 
