@@ -71,6 +71,8 @@ import com.mistbell.tavern.v3.feature.character.CharacterCardLibraryScreen
 import com.mistbell.tavern.v3.feature.worldbook.WorldBookLibraryScreen
 import com.mistbell.tavern.v3.feature.image.ImageGenerationScreen
 import com.mistbell.tavern.v3.ui.TavernBackground
+import com.mistbell.tavern.v3.ui.TavernBottomBar
+import com.mistbell.tavern.v3.ui.TavernTab
 
 private data class BuildStage(val title: String, val detail: String)
 
