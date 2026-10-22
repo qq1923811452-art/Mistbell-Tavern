@@ -302,7 +302,7 @@ fun ChatScreen(onBack: () -> Unit) {
         val startedNanos = System.nanoTime()
         val snapshot = ChatHistorySnapshotFactory.create(history)
         historySaveCoordinator.save(snapshot)
-        val elapsedMillis = (System.nanoTime() - startedNanos) / 1_000_000
+        val elapsedMillis = (System.nanoTime() - startedNanos) / NANOS_PER_MILLI
         diagnosticStore.info("chat.history.saved", "messages=${snapshot.size}; elapsedMs=$elapsedMillis")
     }
 
@@ -688,3 +688,5 @@ fun ChatScreen(onBack: () -> Unit) {
         }
     }
 }
+
+private const val NANOS_PER_MILLI = 1_000_000
