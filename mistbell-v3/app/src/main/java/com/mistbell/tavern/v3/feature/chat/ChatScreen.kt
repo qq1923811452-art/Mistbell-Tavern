@@ -141,6 +141,7 @@ fun ChatScreen(onBack: () -> Unit) {
             chatSettingsStatus = "已保存的密钥已失效，请重新输入"
         }
     }
+    var busy by remember { mutableStateOf(false) }
     var backupStatus by remember { mutableStateOf("") }
     val backupCoroutineScope = rememberCoroutineScope()
     val backupCoordinator = remember(context) {
@@ -169,7 +170,6 @@ fun ChatScreen(onBack: () -> Unit) {
             } ?: false,
         )
     }
-    var busy by remember { mutableStateOf(false) }
     var historyReady by remember { mutableStateOf(false) }
     var historyLoadFailed by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("填写模型 ID 和 API 配置后即可测试聊天。") }
