@@ -45,6 +45,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -201,7 +202,9 @@ fun ChatScreen(onBack: () -> Unit) {
     var lastGroupSpeakerId by remember { mutableStateOf<String?>(null) }
     var promptPreview by remember { mutableStateOf<PromptPreviewBuilder.Preview?>(null) }
     var showPromptPreview by remember { mutableStateOf(false) }
-    var selectedTab by remember { mutableStateOf(TavernTab.CHAT) }
+    var selectedTab by remember {
+        mutableStateOf(if (modelId.isBlank()) TavernTab.SETTINGS else TavernTab.CHAT)
+    }
     LaunchedEffect(sessionStore) {
         val current = memoryConversationId
         val existing = sessionStore.list()
@@ -568,7 +571,11 @@ fun ChatScreen(onBack: () -> Unit) {
             )
         },
         bottomBar = {
-            TavernBottomBar(selected = selectedTab, onSelect = { selectedTab = it })
+            TavernBottomBar(
+                selected = selectedTab,
+                onSelect = { selectedTab = it },
+                modifier = Modifier.navigationBarsPadding(),
+            )
         },
     ) { padding ->
         Column(
