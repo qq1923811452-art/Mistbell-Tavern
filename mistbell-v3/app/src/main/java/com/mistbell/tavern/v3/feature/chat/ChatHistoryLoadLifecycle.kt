@@ -23,6 +23,7 @@ internal fun ChatHistoryLoadLifecycle(
     setStatus: (String) -> Unit,
 ) {
     LaunchedEffect(historyStore) {
+        val loadStartedNanos = System.nanoTime()
         // A role or conversation change must never leave the previous scope's messages on screen.
         setHistoryReady(false)
         setHistoryLoadFailed(false)
@@ -55,6 +56,8 @@ internal fun ChatHistoryLoadLifecycle(
             }
         }
         setHistoryReady(true)
+        val loadMillis = (System.nanoTime() - loadStartedNanos) / 1_000_000
+        diagnosticStore.info("chat.history.loaded", "messages=${history.size}; elapsedMs=$loadMillis")
         val pendingQueue = withContext(Dispatchers.IO) {
             runCatching {
                 MemoryExtractionJobRepository(

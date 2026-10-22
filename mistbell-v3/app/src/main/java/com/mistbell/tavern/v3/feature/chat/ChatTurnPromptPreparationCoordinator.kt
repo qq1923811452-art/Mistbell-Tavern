@@ -23,8 +23,9 @@ internal class ChatTurnPromptPreparationCoordinator(
         worldbookState: WorldBookActivationState,
         worldbookStateKey: String,
     ): List<PromptMessage> {
+        val startedNanos = System.nanoTime()
         val selectedCard = characterCards.firstOrNull { it.id == selectedCharacterId }?.card
-        return ChatSendMessageCoordinator(
+        val messages = ChatSendMessageCoordinator(
             settings = settings,
             diagnosticStore = diagnosticStore,
         ).prepare(
@@ -41,5 +42,12 @@ internal class ChatTurnPromptPreparationCoordinator(
                 }
             },
         ).messages
+        val elapsedMillis = (System.nanoTime() - startedNanos) / 1_000_000
+        val promptChars = messages.sumOf { it.content.length }
+        diagnosticStore.info(
+            "chat.prompt.assembled",
+            "messages=${messages.size}; promptChars=$promptChars; elapsedMs=$elapsedMillis",
+        )
+        return messages
     }
 }
