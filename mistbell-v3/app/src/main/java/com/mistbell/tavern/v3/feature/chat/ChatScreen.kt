@@ -88,6 +88,7 @@ import com.mistbell.tavern.v3.feature.worldbook.WorldBookActivationState
 import com.mistbell.tavern.v3.feature.worldbook.WorldBookParser
 import com.mistbell.tavern.v3.ui.findActivity
 import com.mistbell.tavern.v3.feature.sessions.ChatSession
+import com.mistbell.tavern.v3.feature.sessions.SessionKind
 import com.mistbell.tavern.v3.feature.sessions.SessionStore
 import com.mistbell.tavern.v3.feature.sessions.ui.SessionListScreen
 
@@ -193,6 +194,7 @@ fun ChatScreen(onBack: () -> Unit) {
     val sessionStore = remember(context) { SessionStore(context) }
     var sessions by remember { mutableStateOf(emptyList<ChatSession>()) }
     var showSessionList by remember { mutableStateOf(false) }
+    var lastGroupSpeakerId by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(sessionStore) {
         val current = memoryConversationId
         val existing = sessionStore.list()
@@ -686,6 +688,30 @@ fun ChatScreen(onBack: () -> Unit) {
                         val client = preparedRequest.client
                         val openingMessage = characterCards.firstOrNull { it.id == selectedCharacterId }
                             ?.card?.firstMessage?.trim().orEmpty()
+                        val historyBeforeTurn = history.toList()
+                        val currentSession = sessions.firstOrNull { it.id == memoryConversationId }
+                        val groupMembers = currentSession?.participants
+                            ?.map { GroupPromptAssembler.Member(it.id, it.name, "") }
+                            .orEmpty()
+                        val isGroupTurn = currentSession?.kind == SessionKind.GROUP &&
+                            groupMembers.isNotEmpty()
+                        val groupPrepared = if (isGroupTurn) {
+                            val cardDefinition = characterCards
+                                .firstOrNull { it.id == selectedCharacterId }
+                                ?.card
+                                ?.let(ChatCharacterPromptFormatter::format)
+                                ?.takeIf(String::isNotBlank)
+                                ?: "You are taking part in a multi-character roleplay."
+                            GroupChatSendPlanner.prepare(
+                                stableSystemPrefix = cardDefinition,
+                                members = groupMembers,
+                                history = historyBeforeTurn,
+                                draft = userText,
+                                lastSpeakerId = lastGroupSpeakerId,
+                            )
+                        } else {
+                            null
+                        }
                         ChatSendTurnStartCoordinator(
                             history = history,
                             persistHistory = ::persistHistory,
@@ -694,7 +720,7 @@ fun ChatScreen(onBack: () -> Unit) {
                             setMemoryStatusNotice = { memoryStatusNotice = it },
                             setStatus = { status = it },
                         ).start(openingMessage, userText)
-                        val messages = ChatTurnPromptPreparationCoordinator(
+                        val messages = groupPrepared?.messages ?: ChatTurnPromptPreparationCoordinator(
                             settings = settings,
                             diagnosticStore = diagnosticStore,
                             mainHandler = mainHandler,
@@ -708,7 +734,7 @@ fun ChatScreen(onBack: () -> Unit) {
                             worldbookState = worldbookSession.activation.activationState,
                             worldbookStateKey = worldbookSession.activation.stateKey,
                         )
-                        val observer = ChatStreamObserverCoordinator(
+                        val baseObserver = ChatStreamObserverCoordinator(
                             mainHandler = mainHandler,
                             history = history,
                             diagnosticStore = diagnosticStore,
@@ -721,6 +747,33 @@ fun ChatScreen(onBack: () -> Unit) {
                                 memoryOperationsCoordinator.scheduleExtractionIfDue(providers, history.toList())
                             },
                         ).create(providersForRequest)
+                        val observer = if (groupPrepared != null) {
+                            object : ChatStreamObserver {
+                                override fun onDelta(text: String) = baseObserver.onDelta(text)
+
+                                override fun onUsage(usage: ChatTokenUsage) = baseObserver.onUsage(usage)
+
+                                override fun onFailure(failure: ChatStreamFailure) =
+                                    baseObserver.onFailure(failure)
+
+                                override fun onComplete() {
+                                    mainHandler.post {
+                                        val index = history.indexOfLast { it.role == "assistant" }
+                                        if (index >= 0) {
+                                            history[index] = history[index].copy(
+                                                speakerId = groupPrepared.speakerId,
+                                                speakerName = groupPrepared.speakerName,
+                                            )
+                                        }
+                                        lastGroupSpeakerId = groupPrepared.speakerId
+                                        persistHistory()
+                                    }
+                                    baseObserver.onComplete()
+                                }
+                            }
+                        } else {
+                            baseObserver
+                        }
                         ChatSendStreamFallbackCoordinator(
                             coroutineScope = coroutineScope,
                             diagnosticStore = diagnosticStore,
