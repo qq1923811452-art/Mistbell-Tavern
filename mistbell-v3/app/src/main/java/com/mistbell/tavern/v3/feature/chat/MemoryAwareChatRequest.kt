@@ -1,5 +1,6 @@
 package com.mistbell.tavern.v3.feature.chat
 
+import com.mistbell.tavern.v3.core.diagnostics.DiagnosticLogStore
 import com.mistbell.tavern.v3.core.memory.VectorMemoryContextResult
 import com.mistbell.tavern.v3.core.memory.VectorMemoryContextService
 import kotlinx.coroutines.CancellationException
@@ -16,6 +17,7 @@ class MemoryAwareChatRequest(
     private val chatClient: OpenAiCompatibleChatClient,
     private val memoryContext: VectorMemoryContextService,
     private val onMemoryStatus: (String) -> Unit = {},
+    private val diagnosticStore: DiagnosticLogStore? = null,
 ) {
     suspend fun stream(
         messages: List<PromptMessage>,
@@ -36,6 +38,14 @@ class MemoryAwareChatRequest(
                     VectorMemoryContextResult.Reason.UNEXPECTED_FAILURE,
                 )
             }
+        }
+        if (memoryResult is VectorMemoryContextResult.Ready && memoryResult.memories.isNotEmpty()) {
+            val scores = memoryResult.memories.map { it.similarity }
+            diagnosticStore?.info(
+                "memory.injected",
+                "count=${memoryResult.memories.size}; " +
+                    "minScore=${"%.3f".format(scores.min())}; maxScore=${"%.3f".format(scores.max())}",
+            )
         }
         onMemoryStatus(
             when (memoryResult) {

@@ -30,6 +30,12 @@ internal class ChatWorldBookActivationCoordinator(
         maxBudget = LocalWorldBookService.DEFAULT_MAX_BUDGET,
         state = state,
     ).also { report ->
+        diagnosticStore.info(
+            "worldbook.activated",
+            "count=${report.activatedEntries.size}; " +
+                "chars=${report.activatedEntries.sumOf { it.entry.content.length }}; " +
+                "dropped=${report.droppedByBudget}; source=${localEntries.size}",
+        )
         if (report.droppedByBudget > 0) {
             diagnosticStore.warn(
                 "worldbook.budget_dropped",
