@@ -23,6 +23,7 @@ data class SessionArchiveImportResult(
 }
 
 /** Bounded JSON/JSONL import and export for v3 sessions, including common Tavern JSONL fields. */
+@Suppress("TooManyFunctions")
 object SessionArchiveCodec {
     const val MAX_IMPORT_BYTES = 32 * 1024 * 1024
     const val MAX_IMPORT_MESSAGES = 100_000
