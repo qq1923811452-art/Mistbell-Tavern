@@ -318,6 +318,11 @@ fun ChatScreen(onBack: () -> Unit) {
 
     @Suppress("LongMethod")
     fun regenerateReply(targetMessageId: String) {
+        if (apiKey.isBlank() && !hasSavedChatCredential) {
+            status = "请先到「设置」填写 API Key 并点保存。"
+            selectedTab = TavernTab.SETTINGS
+            return
+        }
         val plan = RegeneratePlanner.plan(history.toList(), targetMessageId)
         if (plan == null) {
             status = "无法重新生成：找不到对应的用户消息。"
@@ -720,6 +725,11 @@ fun ChatScreen(onBack: () -> Unit) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(
                     onClick = {
+                        if (apiKey.isBlank() && !hasSavedChatCredential) {
+                            status = "请先到「设置」填写 API Key 并点保存。"
+                            selectedTab = TavernTab.SETTINGS
+                            return@Button
+                        }
                         val preparedRequest = ChatSendRequestPreflightCoordinator(
                             memoryCredentialStore = memoryCredentialStore,
                             settings = settings,
