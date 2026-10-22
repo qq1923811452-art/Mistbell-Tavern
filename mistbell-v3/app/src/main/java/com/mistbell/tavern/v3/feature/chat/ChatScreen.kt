@@ -18,6 +18,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import com.mistbell.tavern.v3.core.diagnostics.DiagnosticLogStore
 import com.mistbell.tavern.v3.core.security.AndroidKeystoreMemoryCredentialStore
+import com.mistbell.tavern.v3.core.security.ChatCredentialStore
 import com.mistbell.tavern.v3.core.memory.MemoryIndexRebuilder
 import com.mistbell.tavern.v3.core.memory.MemoryIndexRebuildResult
 import com.mistbell.tavern.v3.core.memory.EligibleConversationTurn
@@ -107,10 +108,25 @@ fun ChatScreen(onBack: () -> Unit) {
     var modelId by remember(settings) {
         mutableStateOf(settings.getString("chat_model_id", "") ?: "")
     }
-    var apiKey by remember { mutableStateOf("") }
     val chatGenerationPreferences = remember(context) {
         ChatGenerationPreferences(context.getSharedPreferences("mistbell-v3-settings", Context.MODE_PRIVATE))
     }
+    val chatCredentialStore = remember(context) { ChatCredentialStore(context) }
+    var apiKey by remember {
+        mutableStateOf(
+            chatGenerationPreferences.credentialHandle
+                ?.let { handle -> chatCredentialStore.resolve(handle) }
+                .orEmpty(),
+        )
+    }
+    var streamEnabled by remember { mutableStateOf(chatGenerationPreferences.streamEnabled) }
+    var thinkingEnabled by remember { mutableStateOf(chatGenerationPreferences.thinkingEnabled) }
+    var hasSavedChatCredential by remember {
+        mutableStateOf(
+            chatGenerationPreferences.credentialHandle?.let(chatCredentialStore::contains) == true,
+        )
+    }
+    var chatSettingsStatus by remember { mutableStateOf("") }
     var backupStatus by remember { mutableStateOf("") }
     val backupCoroutineScope = rememberCoroutineScope()
     val backupCoordinator = remember(context) {
@@ -381,6 +397,44 @@ fun ChatScreen(onBack: () -> Unit) {
                 onExport = { exportBackupLauncher.launch("mistbell-backup.zip") },
                 onRestore = { restoreBackupLauncher.launch(arrayOf("application/zip", "application/octet-stream")) },
                 statusMessage = backupStatus,
+            )
+
+            ChatGenerationSwitchSection(
+                hasSavedCredential = hasSavedChatCredential,
+                canSaveCredential = apiKey.isNotBlank(),
+                streamEnabled = streamEnabled,
+                thinkingEnabled = thinkingEnabled,
+                statusMessage = chatSettingsStatus,
+                onSaveCredential = {
+                    if (apiKey.isBlank()) {
+                        chatSettingsStatus = "请先输入 API Key"
+                    } else {
+                        val handle = runCatching { chatCredentialStore.save(apiKey) }.getOrNull()
+                        if (handle != null) {
+                            chatGenerationPreferences.setCredentialHandle(handle)
+                            hasSavedChatCredential = true
+                            chatSettingsStatus = "已加密保存"
+                        } else {
+                            chatSettingsStatus = "保存失败"
+                        }
+                    }
+                },
+                onDeleteCredential = {
+                    chatGenerationPreferences.credentialHandle?.let { handle ->
+                        runCatching { chatCredentialStore.delete(handle) }
+                    }
+                    chatGenerationPreferences.setCredentialHandle(null)
+                    hasSavedChatCredential = false
+                    chatSettingsStatus = "已删除已保存密钥"
+                },
+                onStreamChange = { enabled ->
+                    streamEnabled = enabled
+                    chatGenerationPreferences.setStreamEnabled(enabled)
+                },
+                onThinkingChange = { enabled ->
+                    thinkingEnabled = enabled
+                    chatGenerationPreferences.setThinkingEnabled(enabled)
+                },
             )
 
             ChatMemorySettingsPanel(
