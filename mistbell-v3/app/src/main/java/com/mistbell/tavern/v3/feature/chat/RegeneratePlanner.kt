@@ -22,7 +22,7 @@ internal object RegeneratePlanner {
         val targetIndex = history.indexOfFirst { it.id == targetMessageId }
         val target = history.getOrNull(targetIndex)?.takeIf { it.role == "assistant" }
         val userIndex = target?.let { index ->
-            (index - 1 downTo 0).firstOrNull { history[it].role == "user" }
+            ((index - 1) downTo 0).firstOrNull { history[it].role == "user" }
         }
         val userText = userIndex?.let { history[it].content.trim() }
         return if (userIndex != null && !userText.isNullOrEmpty()) {
@@ -34,6 +34,5 @@ internal object RegeneratePlanner {
         } else {
             null
         }
-    }
     }
 }
