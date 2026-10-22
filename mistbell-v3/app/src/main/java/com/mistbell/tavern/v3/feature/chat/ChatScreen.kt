@@ -307,6 +307,89 @@ fun ChatScreen(onBack: () -> Unit) {
         diagnosticStore.info("chat.history.saved", "messages=${snapshot.size}; elapsedMs=$elapsedMillis")
     }
 
+    fun regenerateReply(targetMessageId: String) {
+        val plan = RegeneratePlanner.plan(history.toList(), targetMessageId)
+        if (plan == null) {
+            status = "无法重新生成：找不到对应的用户消息。"
+            return
+        }
+        val configuration = ChatRequestClientCoordinator(
+            memoryCredentialStore = memoryCredentialStore,
+            settings = settings,
+            setStatus = { status = it },
+        ).create(
+            baseUrl = baseUrl,
+            modelId = modelId,
+            apiKey = apiKey,
+            memoryBaseUrl = "",
+            memoryModelId = "",
+            memoryApiKey = "",
+        ) ?: return
+        val messages = ChatTurnPromptPreparationCoordinator(
+            settings = settings,
+            diagnosticStore = diagnosticStore,
+            mainHandler = mainHandler,
+            setStatus = { status = it },
+        ).prepare(
+            history = plan.prefixHistory,
+            userText = plan.userText,
+            characterCards = characterCards,
+            selectedCharacterId = selectedCharacterId,
+            localWorldbookEntries = worldbookSession.entries,
+            worldbookState = worldbookSession.activation.activationState,
+            worldbookStateKey = worldbookSession.activation.stateKey,
+        )
+        busy = true
+        status = "正在重新生成…"
+        val generated = StringBuilder()
+        val observer = object : ChatStreamObserver {
+            override fun onDelta(text: String) {
+                generated.append(text)
+            }
+
+            override fun onComplete() {
+                mainHandler.post {
+                    val index = history.indexOfFirst { it.id == targetMessageId }
+                    val replacement = if (index >= 0) {
+                        val line = history[index]
+                        val base = line.variants.ifEmpty { listOf(line.content) }
+                        val variants = MessageVariants.append(base, generated.toString())
+                        if (variants !== base) {
+                            history[index] = line.copy(
+                                content = variants.last(),
+                                activeVariant = variants.lastIndex,
+                                variants = variants,
+                            )
+                            persistHistory()
+                            diagnosticStore.info("chat.regenerate.completed", "variants=${variants.size}")
+                        }
+                        true
+                    } else {
+                        false
+                    }
+                    busy = false
+                    status = if (replacement) "已生成新版本。" else "生成完成，但目标消息已不存在。"
+                }
+            }
+
+            override fun onFailure(failure: ChatStreamFailure) {
+                mainHandler.post {
+                    busy = false
+                    status = "重新生成失败：${failure.safeMessage}"
+                }
+            }
+        }
+        configuration.client.stream(
+            messages,
+            observer,
+            ChatGenerationOptions(
+                maxTokens = maxTokensText.toIntOrNull()?.takeIf { it in 1..200_000 } ?: 4096,
+                stream = chatGenerationPreferences.streamEnabled,
+                thinkingEnabled = chatGenerationPreferences.thinkingEnabled,
+            ),
+        )
+    }
+
     val sessionDocumentActions = rememberChatSessionDocumentActions(
         context = context,
         coroutineScope = coroutineScope,
@@ -572,6 +655,7 @@ fun ChatScreen(onBack: () -> Unit) {
                         diagnosticStore.info("chat.swipe.selected", "variants=${line.variants.size}")
                     }
                 },
+                onRegenerate = ::regenerateReply,
             )
             ChatMessageComposerInput(
                 draft = chatUiState.draft,
