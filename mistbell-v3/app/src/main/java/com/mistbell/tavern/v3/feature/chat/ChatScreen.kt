@@ -299,7 +299,11 @@ fun ChatScreen(onBack: () -> Unit) {
     }
 
     fun persistHistory() {
-        historySaveCoordinator.save(ChatHistorySnapshotFactory.create(history))
+        val startedNanos = System.nanoTime()
+        val snapshot = ChatHistorySnapshotFactory.create(history)
+        historySaveCoordinator.save(snapshot)
+        val elapsedMillis = (System.nanoTime() - startedNanos) / NANOS_PER_MILLI
+        diagnosticStore.info("chat.history.saved", "messages=${snapshot.size}; elapsedMs=$elapsedMillis")
     }
 
     val sessionDocumentActions = rememberChatSessionDocumentActions(
@@ -372,6 +376,7 @@ fun ChatScreen(onBack: () -> Unit) {
             onSessionClick = { id ->
                 memoryConversationId = id
                 settings.edit().putString("memory_extraction_conversation_id", id).apply()
+                diagnosticStore.info("chat.session.switched", "reason=click")
                 showSessionList = false
             },
             onCreateSession = {
@@ -380,25 +385,34 @@ fun ChatScreen(onBack: () -> Unit) {
                     memoryConversationId = created.id
                     settings.edit().putString("memory_extraction_conversation_id", created.id).apply()
                     sessions = sessionStore.list()
+                    diagnosticStore.info("chat.session.created", "sessions=${sessions.size}")
                 }
                 showSessionList = false
             },
             onRenameSession = { id, title ->
-                if (sessionStore.rename(id, title)) sessions = sessionStore.list()
+                if (sessionStore.rename(id, title)) {
+                    sessions = sessionStore.list()
+                    diagnosticStore.info("chat.session.renamed", "titleChars=${title.length}")
+                }
             },
             onDeleteSession = { id ->
                 sessionStore.delete(id)
                 sessions = sessionStore.list()
+                diagnosticStore.info("chat.session.deleted", "remaining=${sessions.size}")
                 if (id == memoryConversationId) {
                     val next = sessions.firstOrNull()
                     if (next != null) {
                         memoryConversationId = next.id
                         settings.edit().putString("memory_extraction_conversation_id", next.id).apply()
+                        diagnosticStore.info("chat.session.switched", "reason=delete_fallback")
                     }
                 }
             },
             onTogglePin = { id, pinned ->
-                if (sessionStore.setPinned(id, pinned)) sessions = sessionStore.list()
+                if (sessionStore.setPinned(id, pinned)) {
+                    sessions = sessionStore.list()
+                    diagnosticStore.info("chat.session.pinned", "pinned=$pinned")
+                }
             },
             onBack = { showSessionList = false },
         )
@@ -674,3 +688,5 @@ fun ChatScreen(onBack: () -> Unit) {
         }
     }
 }
+
+private const val NANOS_PER_MILLI = 1_000_000

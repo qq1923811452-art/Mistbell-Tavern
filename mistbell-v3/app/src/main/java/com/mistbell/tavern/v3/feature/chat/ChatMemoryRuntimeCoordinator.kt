@@ -270,6 +270,7 @@ if (installedModel == null || configuredDimensions !in CHAT_EMBEDDING_DIMENSION_
     MemoryAwareChatRequest(
         chatClient = client,
         memoryContext = memoryContext,
+        diagnosticStore = diagnosticStore,
         onMemoryStatus = { notice ->
             mainHandler.post {
                 setMemoryStatusNotice(notice)
