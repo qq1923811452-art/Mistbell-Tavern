@@ -38,7 +38,7 @@ class PromptAssemblerTest {
                 stableSystemPrefix = "Follow the roleplay rules.",
                 stableCharacterDefinition = "Character: Mira",
                 activeMemoryFacts = listOf("Mira now prefers coffee."),
-                worldbookEntries = listOf(entry("city", "The city has four moons.", constant = true)),
+                worldbookEntries = listOf(entry("city", "The city has three moons.", constant = true)),
                 latestUserMessage = "Good morning",
             ),
         )
