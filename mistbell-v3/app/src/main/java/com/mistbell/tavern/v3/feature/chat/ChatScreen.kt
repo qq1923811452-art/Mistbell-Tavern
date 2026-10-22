@@ -68,6 +68,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.mistbell.tavern.v3.core.model.ProviderKind
 import com.mistbell.tavern.v3.core.model.ProviderProfile
@@ -420,6 +421,7 @@ fun ChatScreen(onBack: () -> Unit) {
     }
 
     Scaffold(
+        containerColor = Color.Transparent,
         topBar = {
             TopAppBar(
                 title = { Text("Mistbell Tavern · 聊天测试") },
