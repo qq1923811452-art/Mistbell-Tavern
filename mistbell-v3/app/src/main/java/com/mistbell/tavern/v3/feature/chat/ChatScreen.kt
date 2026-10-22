@@ -3,7 +3,6 @@ package com.mistbell.tavern.v3.feature.chat
 import android.os.Handler
 import android.util.AtomicFile
 import android.os.Looper
-import android.app.Activity
 import android.content.Context
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -85,6 +84,7 @@ import com.mistbell.tavern.v3.feature.character.CharacterCardLibraryStore
 import com.mistbell.tavern.v3.feature.worldbook.LocalWorldBookService
 import com.mistbell.tavern.v3.feature.worldbook.WorldBookActivationState
 import com.mistbell.tavern.v3.feature.worldbook.WorldBookParser
+import com.mistbell.tavern.v3.ui.findActivity
 
 
 
@@ -128,11 +128,20 @@ fun ChatScreen(onBack: () -> Unit) {
         )
     }
     var chatSettingsStatus by remember { mutableStateOf("") }
+    LaunchedEffect(Unit) {
+        val handle = chatGenerationPreferences.credentialHandle ?: return@LaunchedEffect
+        if (!chatCredentialStore.contains(handle)) {
+            chatGenerationPreferences.setCredentialHandle(null)
+            hasSavedChatCredential = false
+            apiKey = ""
+            chatSettingsStatus = "已保存的密钥已失效，请重新输入"
+        }
+    }
     var backupStatus by remember { mutableStateOf("") }
     val backupCoroutineScope = rememberCoroutineScope()
     val backupCoordinator = remember(context) {
         ChatBackupCoordinator(context, backupCoroutineScope, { backupStatus = it }) {
-            (context as? Activity)?.recreate()
+            context.findActivity()?.recreate()
         }
     }
     val exportBackupLauncher = rememberLauncherForActivityResult(
