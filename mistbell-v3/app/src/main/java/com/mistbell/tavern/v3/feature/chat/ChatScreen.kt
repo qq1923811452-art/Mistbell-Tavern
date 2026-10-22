@@ -201,6 +201,9 @@ fun ChatScreen(onBack: () -> Unit, settingsMode: Boolean = false) {
     var showSessionList by remember { mutableStateOf(true) }
     var lastGroupSpeakerId by remember { mutableStateOf<String?>(null) }
     var promptPreview by remember { mutableStateOf<PromptPreviewBuilder.Preview?>(null) }
+    var memoryExtractionEnabled by remember {
+        mutableStateOf(settings.getBoolean("memory_extraction_enabled", true))
+    }
     var showPromptPreview by remember { mutableStateOf(false) }
     LaunchedEffect(sessionStore) {
         val current = memoryConversationId
@@ -683,6 +686,12 @@ fun ChatScreen(onBack: () -> Unit, settingsMode: Boolean = false) {
                 onSavedCredentialChange = { hasSavedMemoryCredential = it },
                 onStatusChange = { status = it },
                 onDimensionsMenuExpandedChange = { dimensionMenuExpanded = it },
+                extractionEnabled = memoryExtractionEnabled,
+                onExtractionEnabledChange = { enabled ->
+                    memoryExtractionEnabled = enabled
+                    settings.edit().putBoolean("memory_extraction_enabled", enabled).apply()
+                    status = if (enabled) "已启用记忆整理。" else "已关闭记忆整理，仅保留检索。"
+                },
                 onDimensionsSelected = { dimensions ->
                     selectedEmbeddingDimensions = dimensions
                     dimensionMenuExpanded = false
@@ -798,7 +807,12 @@ fun ChatScreen(onBack: () -> Unit, settingsMode: Boolean = false) {
                             setUsageSummary = { usageSummary = it },
                             persistHistory = ::persistHistory,
                             scheduleMemoryExtraction = { providers ->
-                                memoryOperationsCoordinator.scheduleExtractionIfDue(providers, history.toList())
+                                if (memoryExtractionEnabled) {
+                                    memoryOperationsCoordinator.scheduleExtractionIfDue(
+                                        providers,
+                                        history.toList(),
+                                    )
+                                }
                             },
                         ).create(providersForRequest)
                         val observer = if (groupPrepared != null) {

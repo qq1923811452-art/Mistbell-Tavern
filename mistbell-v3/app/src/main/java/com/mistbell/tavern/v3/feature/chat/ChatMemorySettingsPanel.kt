@@ -23,6 +23,8 @@ internal fun ChatMemorySettingsPanel(
     onStatusChange: (String) -> Unit,
     onDimensionsMenuExpandedChange: (Boolean) -> Unit,
     onDimensionsSelected: (Int) -> Unit,
+    extractionEnabled: Boolean,
+    onExtractionEnabledChange: (Boolean) -> Unit,
 ) {
     ChatMemoryApiSettingsSection(
         settings = settings,
@@ -37,6 +39,8 @@ internal fun ChatMemorySettingsPanel(
         onApiKeyChange = onApiKeyChange,
         onSavedCredentialChange = onSavedCredentialChange,
         onStatusChange = onStatusChange,
+        extractionEnabled = extractionEnabled,
+        onExtractionEnabledChange = onExtractionEnabledChange,
     )
     ChatEmbeddingDimensionsSettingsSection(
         selectedDimensions = selectedDimensions,
