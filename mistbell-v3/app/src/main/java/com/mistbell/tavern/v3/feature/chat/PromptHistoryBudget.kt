@@ -9,6 +9,9 @@ object PromptHistoryBudget {
      */
     const val WINDOW_BLOCK_MESSAGES = 10
 
+    /** Extra characters allowed when the aligned window expands past the budget. */
+    const val ALIGNMENT_SLACK_CHARS = 2_000
+
     fun select(history: List<PromptMessage>, maxCharacters: Int, maxMessages: Int): List<PromptMessage> {
         require(maxCharacters >= 0) { "maxCharacters must be non-negative." }
         require(maxMessages >= 0) { "maxMessages must be non-negative." }
@@ -35,6 +38,9 @@ object PromptHistoryBudget {
         if (start <= 0) return selected
         if (start < WINDOW_BLOCK_MESSAGES) return selected
         val alignedStart = start / WINDOW_BLOCK_MESSAGES * WINDOW_BLOCK_MESSAGES
-        return if (alignedStart < start) history.subList(alignedStart, history.size) else selected
+        if (alignedStart >= start) return selected
+        val expanded = history.subList(alignedStart, history.size)
+        val expandedChars = expanded.sumOf { it.content.length }
+        return if (expandedChars <= maxCharacters + ALIGNMENT_SLACK_CHARS) expanded else selected
     }
 }

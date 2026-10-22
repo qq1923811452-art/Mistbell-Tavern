@@ -157,4 +157,68 @@ class ConversationContextWindowTest {
     fun rejectsNegativeWindowSize() {
         ConversationContextWindowBuilder.build(emptyList(), recentTurns = -1)
     }
+
+    @Test
+    fun summaryStaysFrozenAcrossTurnsWithinTheSameTenMessageBlock() {
+        val summaries = (1..5).map { turnCount ->
+            val history = conversationWithTurns(turnCount)
+            val result = ConversationContextWindowBuilder.build(history, recentTurns = 1)
+            // The split stays at index 10 for one to five turns, so no recent turn may leak into the summary.
+            assertEquals(history.drop(10), result.recentMessages)
+            assertTrue(!result.earlierSummary.contains("turn-"))
+            result.earlierSummary
+        }
+        assertEquals(1, summaries.distinct().size)
+        assertTrue(summaries.first().contains("prefix-1"))
+        assertTrue(summaries.first().contains("prefix-10"))
+    }
+
+    @Test
+    fun summaryChangesWhenTheBoundaryCrossesIntoTheNextTenMessageBlock() {
+        val withinBlock = conversationWithTurns(5)
+        val nextBlock = conversationWithTurns(6)
+        val frozen = ConversationContextWindowBuilder.build(withinBlock, recentTurns = 1)
+        val shifted = ConversationContextWindowBuilder.build(nextBlock, recentTurns = 1)
+        assertEquals(10, withinBlock.size - frozen.recentMessages.size)
+        assertEquals(20, nextBlock.size - shifted.recentMessages.size)
+        assertTrue(frozen.earlierSummary != shifted.earlierSummary)
+        assertTrue(!frozen.earlierSummary.contains("turn-5-user"))
+        assertTrue(shifted.earlierSummary.contains("turn-5-user"))
+        assertTrue(!shifted.earlierSummary.contains("turn-6-user"))
+        assertEquals(listOf("turn-6-user", "turn-6-assistant"), shifted.recentMessages.map { it.content })
+    }
+
+    @Test
+    fun recentMessagesKeepEveryMessageAfterTheSummaryFreezesToABlock() {
+        val history = (1..25).map { index ->
+            PromptMessage(
+                if (index % 2 == 1) PromptRole.USER else PromptRole.ASSISTANT,
+                "message-$index",
+            )
+        }
+        val result = ConversationContextWindowBuilder.build(history, recentTurns = 1)
+        val splitAt = history.size - result.recentMessages.size
+        assertEquals(20, splitAt)
+        assertEquals(0, splitAt % ConversationContextWindowBuilder.SUMMARY_BLOCK_MESSAGES)
+        assertEquals(history.drop(splitAt), result.recentMessages)
+        assertEquals((21..25).map { "message-$it" }, result.recentMessages.map { it.content })
+        assertTrue(result.earlierSummary.contains("message-1"))
+        assertTrue(result.earlierSummary.contains("message-20"))
+        assertTrue(!result.earlierSummary.contains("message-21"))
+    }
+
+    private fun conversationWithTurns(turnCount: Int): List<PromptMessage> = buildList {
+        (1..10).forEach { index ->
+            add(
+                PromptMessage(
+                    if (index % 2 == 1) PromptRole.USER else PromptRole.ASSISTANT,
+                    "prefix-$index",
+                ),
+            )
+        }
+        (1..turnCount).forEach { turn ->
+            add(PromptMessage(PromptRole.USER, "turn-$turn-user"))
+            add(PromptMessage(PromptRole.ASSISTANT, "turn-$turn-assistant"))
+        }
+    }
 }

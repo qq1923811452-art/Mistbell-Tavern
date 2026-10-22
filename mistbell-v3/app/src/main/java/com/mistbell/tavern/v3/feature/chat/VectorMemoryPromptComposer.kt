@@ -49,6 +49,7 @@ object VectorMemoryPromptComposer {
     private fun RetrievedMemory.textIsUsable(): Boolean =
         text.isNotBlank() && similarity.isFinite()
 
+    /** Upper bound for memory text; numbering and the section header are not counted. */
     const val MAX_MEMORY_SECTION_CHARS = 1_200
 
     const val MEMORY_SECTION_HEADER =
