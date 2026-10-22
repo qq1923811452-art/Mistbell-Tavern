@@ -93,9 +93,10 @@ class VectorMemoryPromptComposerTest {
         )
         assertEquals(history.size, result.size)
         assertEquals(1, result.count { it.role == PromptRole.SYSTEM })
-        assertEquals(history.drop(1), result.drop(1))
-        val section = result.first().content
+        assertEquals(history[0], result[0])
+        val section = result.last().content
             .substringAfter(VectorMemoryPromptComposer.MEMORY_SECTION_HEADER)
+            .substringBefore("What did I say?")
             .trim()
         assertEquals("1. User prefers tea.\n2. User prefers coffee.", section)
     }
@@ -115,7 +116,7 @@ class VectorMemoryPromptComposerTest {
                 ),
             ),
         )
-        val section = result.first().content.substringAfter(VectorMemoryPromptComposer.MEMORY_SECTION_HEADER)
+        val section = result.last().content.substringAfter(VectorMemoryPromptComposer.MEMORY_SECTION_HEADER)
         assertTrue(section.contains(first))
         assertTrue(section.contains(second))
         assertTrue(!section.contains(third))
@@ -149,7 +150,7 @@ class VectorMemoryPromptComposerTest {
         assertEquals(1, result.count { it.role == PromptRole.SYSTEM })
         assertEquals(history.map { it.role }, result.map { it.role })
         assertEquals(history.size, result.size)
-        assertEquals(history.drop(1), result.drop(1))
-        assertTrue(result.first().content.endsWith("1. A stable fact."))
+        assertEquals(history[0], result[0])
+        assertTrue(result.last().content.endsWith("1. A stable fact."))
     }
 }
