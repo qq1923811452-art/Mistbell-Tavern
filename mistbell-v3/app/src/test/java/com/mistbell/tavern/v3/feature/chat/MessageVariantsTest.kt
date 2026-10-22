@@ -14,7 +14,7 @@ class MessageVariantsTest {
 
     @Test
     fun refusesMoreThanTheStorageLimit() {
-        val full = (0 until ChatHistoryStore.PersistedChatMessage.MAX_VARIANTS).map { "v$it" }
+        val full = (0 until PersistedChatMessage.MAX_VARIANTS).map { "v$it" }
         assertEquals(full, MessageVariants.append(full, "overflow"))
     }
 
