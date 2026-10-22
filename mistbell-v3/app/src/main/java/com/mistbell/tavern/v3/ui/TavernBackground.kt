@@ -17,6 +17,7 @@ import com.mistbell.tavern.v3.R
  * Full-screen backdrop with a readability scrim. The scrim keeps chat bubbles legible regardless
  * of how bright the artwork is, so new backgrounds can be swapped without retuning text colors.
  */
+@Suppress("FunctionNaming")
 @Composable
 fun TavernBackground(
     modifier: Modifier = Modifier,
@@ -34,12 +35,16 @@ fun TavernBackground(
                 .fillMaxSize()
                 .background(
                     Brush.verticalGradient(
-                        0.0f to Color.Black.copy(alpha = 0.45f),
-                        0.35f to Color.Black.copy(alpha = 0.25f),
-                        1.0f to Color.Black.copy(alpha = 0.55f),
+                        0.0f to Color.Black.copy(alpha = SCRIM_TOP_ALPHA),
+                        0.35f to Color.Black.copy(alpha = SCRIM_MIDDLE_ALPHA),
+                        1.0f to Color.Black.copy(alpha = SCRIM_BOTTOM_ALPHA),
                     ),
                 ),
         )
         content()
     }
 }
+
+private const val SCRIM_TOP_ALPHA = 0.45f
+private const val SCRIM_MIDDLE_ALPHA = 0.25f
+private const val SCRIM_BOTTOM_ALPHA = 0.55f

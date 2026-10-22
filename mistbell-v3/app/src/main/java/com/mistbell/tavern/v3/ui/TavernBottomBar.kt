@@ -16,8 +16,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
-enum class TavernTab { CHAT, SETTINGS }
-
 @Suppress("FunctionNaming")
 @Composable
 fun TavernBottomBar(

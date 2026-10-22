@@ -37,7 +37,7 @@ fun CharacterAvatar(
         modifier = modifier
             .size(size)
             .clip(CircleShape)
-            .background(Color(0xFF2A2140)),
+            .background(AVATAR_PLACEHOLDER),
         contentAlignment = Alignment.Center,
     ) {
         if (bitmap != null) {
@@ -56,3 +56,5 @@ fun CharacterAvatar(
         }
     }
 }
+
+private val AVATAR_PLACEHOLDER = Color(0xFF2A2140)
