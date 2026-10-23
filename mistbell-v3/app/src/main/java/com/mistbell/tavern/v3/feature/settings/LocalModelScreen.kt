@@ -17,6 +17,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.mistbell.tavern.v3.core.inference.BackendEvidence
 import com.mistbell.tavern.v3.core.inference.InferenceBackend
 import com.mistbell.tavern.v3.core.inference.InferencePhase
 import com.mistbell.tavern.v3.core.inference.InferenceRuntimeStatus
@@ -62,14 +63,26 @@ fun LocalModelScreen(
             if (operationMessage.isNotBlank()) {
                 Text(operationMessage, style = MaterialTheme.typography.bodySmall)
             }
-            Button(onClick = { onSelectModelProfile(false) }, modifier = Modifier.fillMaxWidth()) {
+            Button(
+                onClick = { onSelectModelProfile(false) },
+                enabled = !operationBusy,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
                 Text(if (qualcommModelSelected) "使用通用版" else "✓ 通用版")
             }
-            Button(onClick = { onSelectModelProfile(true) }, modifier = Modifier.fillMaxWidth()) {
+            Button(
+                onClick = { onSelectModelProfile(true) },
+                enabled = !operationBusy,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
                 Text(if (qualcommModelSelected) "✓ Qualcomm SM8650 专用版" else "使用 Qualcomm SM8650 专用版")
             }
             Text("向量维度：$selectedEmbeddingDimensions", style = MaterialTheme.typography.bodyMedium)
-            Button(onClick = onCycleEmbeddingDimensions, modifier = Modifier.fillMaxWidth()) {
+            Button(
+                onClick = onCycleEmbeddingDimensions,
+                enabled = !operationBusy,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
                 Text("切换向量维度")
             }
             Button(onClick = onDownloadModel, enabled = !operationBusy, modifier = Modifier.fillMaxWidth()) {
@@ -122,6 +135,13 @@ private fun ModelStatusBlock(status: InferenceRuntimeStatus) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text("本地 Embedding / NPU 状态", style = MaterialTheme.typography.titleMedium)
         Text("$phase · 配置后端：$backend", style = MaterialTheme.typography.bodyMedium)
+        val evidence = when (status.backendEvidence) {
+            BackendEvidence.NOT_AVAILABLE -> "未验证"
+            BackendEvidence.CONFIGURED_ONLY -> "仅配置成功，未独立确认硬件调用"
+            BackendEvidence.RUNTIME_REPORTED -> "运行时报告已加载并推理"
+            BackendEvidence.DEVICE_VERIFIED -> "设备侧证据确认"
+        }
+        Text("实际验证：$evidence", style = MaterialTheme.typography.bodySmall)
         status.modelId?.let { Text("模型：$it", style = MaterialTheme.typography.bodySmall) }
         status.acceleratorName?.let {
             Text("配置后端：$it", style = MaterialTheme.typography.bodySmall)

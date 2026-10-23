@@ -343,6 +343,10 @@ fun ChatScreen(
         )
     }
 
+    fun effectiveMaxTokens(): Int =
+        settings.getInt("chat_max_tokens", maxTokensText.toIntOrNull() ?: 4096)
+            .coerceIn(1, 200_000)
+
     fun persistHistory() {
         val startedNanos = System.nanoTime()
         val snapshot = ChatHistorySnapshotFactory.create(history)
@@ -444,7 +448,7 @@ fun ChatScreen(
             messages,
             observer,
             ChatGenerationOptions(
-                maxTokens = maxTokensText.toIntOrNull()?.takeIf { it in 1..200_000 } ?: 4096,
+                maxTokens = effectiveMaxTokens(),
                 stream = chatGenerationPreferences.streamEnabled,
                 thinkingEnabled = chatGenerationPreferences.thinkingEnabled,
             ),
@@ -467,12 +471,15 @@ fun ChatScreen(
         sessionParticipants = sessions.firstOrNull { it.id == memoryConversationId }?.participants
             .orEmpty(),
         onImported = { archive ->
-            sessionStore.updateImportedMetadata(
+            val metadataUpdated = sessionStore.updateImportedMetadata(
                 id = memoryConversationId,
                 title = archive.title,
                 kind = archive.kind,
                 participants = archive.participants,
             )
+            if (!metadataUpdated) {
+                status = "会话已导入，但列表标题/类型未能同步，请重新打开应用检查。"
+            }
             val preview = history.lastOrNull { it.content.isNotBlank() }
                 ?.content
                 ?.trim()
@@ -1097,8 +1104,7 @@ fun ChatScreen(
                                     messages,
                                     observer,
                                     ChatGenerationOptions(
-                                        maxTokens = maxTokensText.toIntOrNull()
-                                            ?.takeIf { it in 1..200_000 } ?: 4096,
+                                        maxTokens = effectiveMaxTokens(),
                                         stream = chatGenerationPreferences.streamEnabled,
                                         thinkingEnabled = chatGenerationPreferences.thinkingEnabled,
                                     ),
