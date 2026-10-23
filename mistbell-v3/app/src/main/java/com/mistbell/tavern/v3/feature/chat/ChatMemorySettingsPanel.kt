@@ -6,6 +6,7 @@ import com.mistbell.tavern.v3.core.diagnostics.DiagnosticLogStore
 import com.mistbell.tavern.v3.core.security.AndroidKeystoreMemoryCredentialStore
 
 @Composable
+@Suppress("LongParameterList")
 internal fun ChatMemorySettingsPanel(
     settings: SharedPreferences,
     baseUrl: String,

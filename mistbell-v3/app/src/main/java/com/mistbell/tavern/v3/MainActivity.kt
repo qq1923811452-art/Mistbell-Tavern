@@ -86,6 +86,7 @@ private val initialStages = listOf(
     BuildStage("生图、安全与备份", "独立生图 API、独立密钥输入、远程图片显式下载、本地图片库及导出已接入；完整事务式备份/恢复流程仍需收尾。"),
 )
 
+@Suppress("LargeClass")
 class MainActivity : ComponentActivity() {
     private lateinit var diagnostics: DiagnosticLogStore
     private lateinit var modelAssets: EmbeddingGemma2ModelAssetManager
