@@ -438,6 +438,30 @@ fun ChatScreen(
         setStatus = { status = it },
     )
 
+    LaunchedEffect(historyReady, historyLoadFailed, selectedCharacterId, memoryConversationId) {
+        if (!historyReady || historyLoadFailed || history.isNotEmpty()) return@LaunchedEffect
+        val session = sessions.firstOrNull { it.id == memoryConversationId }
+        if (session != null && session.kind != SessionKind.SINGLE) return@LaunchedEffect
+        val card = characterCards.firstOrNull { it.id == selectedCharacterId }?.card
+            ?: return@LaunchedEffect
+        val greeting = card.firstMessage.trim()
+        if (greeting.isEmpty()) return@LaunchedEffect
+        val content = greeting.replace("{{char}}", card.name).replace("{{user}}", "你")
+        history.add(
+            ChatLine(
+                id = UUID.randomUUID().toString(),
+                role = "assistant",
+                content = content,
+                createdAtEpochMillis = System.currentTimeMillis(),
+                deliveryState = PersistedChatMessage.DeliveryState.COMPLETE,
+                speakerId = selectedCharacterId.takeIf(String::isNotBlank),
+                speakerName = card.name,
+            ),
+        )
+        persistHistory()
+        diagnosticStore.info("chat.greeting.inserted", "chars=${content.length}")
+    }
+
     val memoryOperationsCoordinator = remember(
         context,
         memoryCredentialStore,
