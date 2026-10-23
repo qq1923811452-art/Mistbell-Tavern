@@ -33,6 +33,9 @@ internal fun rememberChatSessionDocumentActions(
     conversationId: String,
     setStatus: (String) -> Unit,
     onImported: () -> Unit = {},
+    sessionTitle: String = "Mistbell Tavern session",
+    sessionKind: SessionKind = SessionKind.SINGLE,
+    sessionParticipants: List<SessionParticipant> = emptyList(),
 ): ChatSessionDocumentCallbacks {
     var showImportWarning by remember { mutableStateOf(false) }
 
@@ -66,7 +69,11 @@ internal fun rememberChatSessionDocumentActions(
     ) { uri ->
         if (uri != null) {
             ChatSessionExportCoordinator(context, coroutineScope, setStatus)
-                .export(uri, conversationId, history, jsonLines = false)
+                .export(
+                    uri, conversationId, history, jsonLines = false,
+                    title = sessionTitle, kind = sessionKind,
+                    participants = sessionParticipants,
+                )
         }
     }
     val exportJsonlLauncher = rememberLauncherForActivityResult(
@@ -74,7 +81,11 @@ internal fun rememberChatSessionDocumentActions(
     ) { uri ->
         if (uri != null) {
             ChatSessionExportCoordinator(context, coroutineScope, setStatus)
-                .export(uri, conversationId, history, jsonLines = true)
+                .export(
+                    uri, conversationId, history, jsonLines = true,
+                    title = sessionTitle, kind = sessionKind,
+                    participants = sessionParticipants,
+                )
         }
     }
 

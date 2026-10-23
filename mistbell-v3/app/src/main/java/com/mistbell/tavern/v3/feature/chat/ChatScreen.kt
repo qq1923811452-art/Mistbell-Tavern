@@ -293,11 +293,15 @@ fun ChatScreen(
     val activeWorldbookId = remember(settings) {
         settings.getString("active_worldbook_id", "") ?: ""
     }
-    val sessionWorldbookId = sessions.firstOrNull { it.id == memoryConversationId }
-        ?.worldbookId.orEmpty()
-    val effectiveWorldbookId = sessionWorldbookId.ifBlank { activeWorldbookId }
     val worldbookLibrary = remember(context) {
         WorldBookLibraryStore(File(context.filesDir, "worldbooks")).list()
+    }
+    val sessionWorldbookId = sessions.firstOrNull { it.id == memoryConversationId }
+        ?.worldbookId.orEmpty()
+    val sessionWorldbookExists = worldbookLibrary.any { it.id == sessionWorldbookId }
+    val effectiveWorldbookId = when {
+        sessionWorldbookId.isNotBlank() && sessionWorldbookExists -> sessionWorldbookId
+        else -> activeWorldbookId
     }
     val worldbookSession = rememberChatWorldBookSessionState(
         context = context,
@@ -453,6 +457,12 @@ fun ChatScreen(
         history = history,
         conversationId = memoryConversationId,
         setStatus = { status = it },
+        sessionTitle = sessions.firstOrNull { it.id == memoryConversationId }?.title
+            ?: "Mistbell Tavern session",
+        sessionKind = sessions.firstOrNull { it.id == memoryConversationId }?.kind
+            ?: SessionKind.SINGLE,
+        sessionParticipants = sessions.firstOrNull { it.id == memoryConversationId }?.participants
+            .orEmpty(),
         onImported = {
             val preview = history.lastOrNull { it.content.isNotBlank() }
                 ?.content
