@@ -53,7 +53,6 @@ fun SessionListScreen(
     onRenameSession: (id: String, title: String) -> Unit,
     onDeleteSession: (id: String) -> Unit,
     onTogglePin: (id: String, pinned: Boolean) -> Unit,
-    onBack: () -> Unit,
     characters: List<GroupCandidate> = emptyList(),
     onCreateGroup: (participantIds: List<String>) -> Unit = {},
 ) {

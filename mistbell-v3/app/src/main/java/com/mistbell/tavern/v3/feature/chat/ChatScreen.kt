@@ -536,7 +536,6 @@ fun ChatScreen(
                     diagnosticStore.info("chat.session.pinned", "pinned=$pinned")
                 }
             },
-            onBack = { showSessionList = false },
             characters = characterCards.map { card ->
                 GroupCandidate(card.id, card.card.name)
             },
