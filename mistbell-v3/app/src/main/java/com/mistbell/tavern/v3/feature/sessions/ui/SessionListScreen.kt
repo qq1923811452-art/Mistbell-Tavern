@@ -69,7 +69,6 @@ fun SessionListScreen(
                 containerColor = Color.Transparent,
                 topBar = {
                     SessionListHeader(
-                        onBack = onBack,
                         showGroupAction = characters.isNotEmpty(),
                         onOpenGroupDialog = { showGroupDialog = true },
                     )
