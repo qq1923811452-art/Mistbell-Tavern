@@ -48,7 +48,7 @@ private const val FORM_FOOTNOTE =
 fun ApiConfigDialog(
     initial: ApiProfile,
     onDismiss: () -> Unit,
-    onConfirm: (ApiProfile) -> Unit,
+    onConfirm: (ApiProfile, String) -> Unit,
 ) {
     val state = remember(initial) { ApiConfigFormState(initial) }
     AlertDialog(
@@ -57,7 +57,7 @@ fun ApiConfigDialog(
         text = { ApiConfigDialogContent(state) },
         confirmButton = {
             TextButton(
-                onClick = { onConfirm(state.toProfile(initial)) },
+                onClick = { onConfirm(state.toProfile(initial), state.apiKey) },
                 enabled = state.canConfirm,
             ) {
                 Text("确认")
