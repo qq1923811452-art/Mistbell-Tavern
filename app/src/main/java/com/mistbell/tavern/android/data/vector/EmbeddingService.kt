@@ -27,4 +27,7 @@ interface EmbeddingService {
      * 获取向量维度
      */
     fun getDimension(): Int
+
+    /** Stable namespace for persisted vectors; every implementation must identify its model. */
+    fun getModelId(): String
 }

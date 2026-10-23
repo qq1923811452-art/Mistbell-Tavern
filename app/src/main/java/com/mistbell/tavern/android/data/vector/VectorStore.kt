@@ -44,6 +44,9 @@ interface VectorStore {
      */
     suspend fun get(id: String): VectorEntry?
 
+    /** Snapshot of stored entries for explicit, safe maintenance operations such as legacy reindexing. */
+    suspend fun getAllEntries(): List<VectorEntry>
+
     /**
      * 根据 ID 删除向量
      */
@@ -98,7 +101,8 @@ interface VectorStore {
      */
     data class SearchResult(
         val id: String,
-        val score: Float, // 相似度分数 (0-1)
+        // 相似度分数 (0-1)
+        val score: Float,
         val content: String,
         val metadata: Map<String, Any>,
     )

@@ -66,7 +66,7 @@ class OpenAIEmbeddingService(
                         delay(delayMs)
                     }
                 } catch (e: Exception) {
-                    if (e.message?.contains("429") == true) {
+                    if (isRetryableHttpError(e)) {
                         lastException = e
                         if (attempt < MAX_RETRIES - 1) {
                             val delayMs = INITIAL_RETRY_DELAY_MS * (1 shl attempt) * 2
@@ -79,7 +79,7 @@ class OpenAIEmbeddingService(
                 }
             }
 
-            throw lastException ?: Exception("Embedding request failed after $MAX_RETRIES retries")
+            lastException?.let { throw it } ?: error("Embedding request failed after $MAX_RETRIES retries")
         }
 
     private fun executeEmbedRequest(text: String): FloatArray {
@@ -107,20 +107,25 @@ class OpenAIEmbeddingService(
 
         if (!response.isSuccessful) {
             val errorBody = response.body?.string() ?: "Unknown error"
-            throw Exception("OpenAI API error: ${response.code} - $errorBody")
+            throw EmbeddingHttpException(response.code, "OpenAI API error: ${response.code} - $errorBody")
         }
 
         val responseBody =
             response.body?.string()
-                ?: throw Exception("Empty response body")
+                ?: error("Empty response body")
 
         val embeddingResponse = json.decodeFromString<EmbeddingResponse>(responseBody)
 
         if (embeddingResponse.data.isEmpty()) {
-            throw Exception("No embedding data returned")
+            error("No embedding data returned")
         }
 
         val embedding = embeddingResponse.data.first().embedding
+        if (embedding.size != DIMENSION) {
+            error(
+                "Unexpected embedding dimension for model $model: ${embedding.size} (expected $DIMENSION)",
+            )
+        }
 
         Log.d(TAG, "Generated embedding: dimension=${embedding.size}")
 
@@ -149,7 +154,7 @@ class OpenAIEmbeddingService(
                         delay(delayMs)
                     }
                 } catch (e: Exception) {
-                    if (e.message?.contains("429") == true) {
+                    if (isRetryableHttpError(e)) {
                         lastException = e
                         if (attempt < MAX_RETRIES - 1) {
                             val delayMs = INITIAL_RETRY_DELAY_MS * (1 shl attempt) * 2
@@ -162,7 +167,7 @@ class OpenAIEmbeddingService(
                 }
             }
 
-            throw lastException ?: Exception("Batch embedding request failed after $MAX_RETRIES retries")
+            lastException?.let { throw it } ?: error("Batch embedding request failed after $MAX_RETRIES retries")
         }
 
     private fun executeEmbedBatchRequest(texts: List<String>): List<FloatArray> {
@@ -190,27 +195,49 @@ class OpenAIEmbeddingService(
 
         if (!response.isSuccessful) {
             val errorBody = response.body?.string() ?: "Unknown error"
-            throw Exception("OpenAI API error: ${response.code} - $errorBody")
+            throw EmbeddingHttpException(response.code, "OpenAI API error: ${response.code} - $errorBody")
         }
 
         val responseBody =
             response.body?.string()
-                ?: throw Exception("Empty response body")
+                ?: error("Empty response body")
 
         val embeddingResponse = json.decodeFromString<EmbeddingResponse>(responseBody)
 
         if (embeddingResponse.data.isEmpty()) {
-            throw Exception("No embedding data returned")
+            error("No embedding data returned")
         }
 
         Log.d(TAG, "Generated ${embeddingResponse.data.size} embeddings in batch")
 
-        return embeddingResponse.data.map { data ->
+        validateEmbeddingResponseIndices(
+            indices = embeddingResponse.data.map { it.index },
+            expectedCount = texts.size,
+        )
+        val orderedData = embeddingResponse.data.sortedBy { it.index }
+        if (orderedData.any { it.embedding.size != DIMENSION }) {
+            val dimensions = orderedData.map { it.embedding.size }.distinct()
+            error(
+                "Unexpected embedding dimensions for model $model: $dimensions (expected $DIMENSION)",
+            )
+        }
+
+        return orderedData.map { data ->
             FloatArray(data.embedding.size) { i -> data.embedding[i].toFloat() }
         }
     }
 
+    private fun isRetryableHttpError(error: Exception): Boolean =
+        error is EmbeddingHttpException && isRetryableEmbeddingStatusCode(error.statusCode)
+
+    private class EmbeddingHttpException(
+        val statusCode: Int,
+        message: String,
+    ) : Exception(message)
+
     override fun getDimension(): Int = DIMENSION
+
+    override fun getModelId(): String = "api:${baseUrl.trimEnd('/')}:$model"
 
     @Serializable
     private data class EmbeddingRequestSingle(
@@ -235,3 +262,32 @@ class OpenAIEmbeddingService(
         val index: Int,
     )
 }
+
+/** Reject duplicate, missing, negative, or out-of-range indexes before trusting batch order. */
+internal fun validateEmbeddingResponseIndices(
+    indices: List<Int>,
+    expectedCount: Int,
+) {
+    if (indices.size != expectedCount) {
+        error("Embedding response count mismatch: expected $expectedCount, received ${indices.size}")
+    }
+    if (indices.distinct().size != indices.size) {
+        error("Embedding response contains duplicate input indices")
+    }
+    val expectedIndices = (0 until expectedCount).toList()
+    if (indices.sorted() != expectedIndices) {
+        val actualIndices = indices.sorted()
+        error(
+            "Embedding response contains invalid input indices: " +
+                "expected $expectedIndices, received $actualIndices",
+        )
+    }
+}
+
+private const val HTTP_TOO_MANY_REQUESTS = 429
+private const val HTTP_SERVER_ERROR_MIN = 500
+private const val HTTP_SERVER_ERROR_MAX = 599
+
+internal fun isRetryableEmbeddingStatusCode(statusCode: Int): Boolean =
+    statusCode == HTTP_TOO_MANY_REQUESTS ||
+        statusCode in HTTP_SERVER_ERROR_MIN..HTTP_SERVER_ERROR_MAX

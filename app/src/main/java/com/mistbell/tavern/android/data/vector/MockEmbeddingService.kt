@@ -40,4 +40,6 @@ class MockEmbeddingService : EmbeddingService {
     }
 
     override fun getDimension(): Int = DIMENSION
+
+    override fun getModelId(): String = "mock:deterministic-random"
 }

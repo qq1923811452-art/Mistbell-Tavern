@@ -103,8 +103,18 @@ class InMemoryVectorStore(
         withContext(Dispatchers.Default) {
             mutex.withLock {
                 ensureLoaded()
-                vectors.values
-                    .filter { entry -> matchesFilters(entry, filters) }
+                val matchingEntries =
+                    vectors.values
+                        .filter { entry -> matchesFilters(entry, filters) }
+                val compatibleEntries = matchingEntries.filter { it.vector.size == queryVector.size }
+                if (compatibleEntries.size != matchingEntries.size) {
+                    Log.w(
+                        TAG,
+                        "Skipped ${matchingEntries.size - compatibleEntries.size} vectors with incompatible " +
+                            "dimensions (query=${queryVector.size})",
+                    )
+                }
+                compatibleEntries
                     .map { entry ->
                         val score = VectorUtils.cosineSimilarity(queryVector, entry.vector)
                         VectorStore.SearchResult(
@@ -125,6 +135,12 @@ class InMemoryVectorStore(
             vectors[id]
         }
     }
+
+    override suspend fun getAllEntries(): List<VectorStore.VectorEntry> =
+        mutex.withLock {
+            ensureLoaded()
+            vectors.values.toList()
+        }
 
     override suspend fun delete(id: String) {
         mutex.withLock {

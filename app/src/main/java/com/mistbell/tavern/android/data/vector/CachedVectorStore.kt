@@ -2,8 +2,10 @@ package com.mistbell.tavern.android.data.vector
 
 import android.util.Log
 import android.util.LruCache
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 
 /**
  * 带缓存的向量存储装饰器
@@ -13,12 +15,16 @@ import kotlinx.coroutines.sync.withLock
  * - LRU 缓存策略，避免内存过度占用
  * - 写操作自动清除相关缓存
  */
+@Suppress("TooManyFunctions")
 class CachedVectorStore(
     private val delegate: VectorStore,
     cacheSize: Int = 50,
 ) : VectorStore {
     private val searchCache = LruCache<SearchCacheKey, List<VectorStore.SearchResult>>(cacheSize)
     private val cacheMutex = Mutex()
+
+    // Prevent an in-flight search from repopulating the cache after a write invalidates it.
+    private var cacheGeneration: Long = 0L
 
     companion object {
         private const val TAG = "CachedVectorStore"
@@ -29,13 +35,15 @@ class CachedVectorStore(
         vector: FloatArray,
         metadata: Map<String, Any>,
     ) {
-        delegate.add(id, vector, metadata)
-        invalidateCache()
+        mutateAndInvalidate {
+            delegate.add(id, vector, metadata)
+        }
     }
 
     override suspend fun addBatch(entries: List<VectorStore.VectorEntry>) {
-        delegate.addBatch(entries)
-        invalidateCache()
+        mutateAndInvalidate {
+            delegate.addBatch(entries)
+        }
     }
 
     override suspend fun search(
@@ -43,28 +51,36 @@ class CachedVectorStore(
         topK: Int,
         filters: Map<String, Any>,
     ): List<VectorStore.SearchResult> {
+        // Exact vector contents avoid collisions from contentHashCode-only cache keys.
         val cacheKey =
             SearchCacheKey(
-                vectorHash = queryVector.contentHashCode(),
+                queryVector = QueryVectorKey(queryVector),
                 topK = topK,
-                filters = filters,
+                filters = filters.entries.sortedBy { it.key }.map { it.key to it.value },
             )
+        // Only immutable scalar values have stable equality/hash semantics across calls. For
+        // arrays and mutable collections, bypass result caching rather than risk a false hit.
+        val cacheable = filters.values.all(::isStableFilterValue)
 
-        // 尝试从缓存获取
-        cacheMutex.withLock {
-            searchCache.get(cacheKey)?.let { cached ->
-                Log.d(TAG, "Cache hit for search (hash=${cacheKey.vectorHash})")
-                return cached
+        val generation =
+            cacheMutex.withLock {
+                if (cacheable) {
+                    searchCache.get(cacheKey)?.let { cached ->
+                        Log.d(TAG, "Cache hit for search")
+                        return cached
+                    }
+                }
+                cacheGeneration
             }
-        }
 
-        // 缓存未命中，执行实际搜索
-        Log.d(TAG, "Cache miss for search (hash=${cacheKey.vectorHash})")
+        Log.d(TAG, "Cache miss for search")
         val results = delegate.search(queryVector, topK, filters)
 
-        // 缓存结果
+        // Do not cache stale results if a write/delete occurred during the search.
         cacheMutex.withLock {
-            searchCache.put(cacheKey, results)
+            if (cacheable && generation == cacheGeneration) {
+                searchCache.put(cacheKey, results)
+            }
         }
 
         return results
@@ -74,39 +90,86 @@ class CachedVectorStore(
         return delegate.get(id)
     }
 
+    override suspend fun getAllEntries(): List<VectorStore.VectorEntry> = delegate.getAllEntries()
+
     override suspend fun delete(id: String) {
-        delegate.delete(id)
-        invalidateCache()
+        mutateAndInvalidate {
+            delegate.delete(id)
+        }
     }
 
-    override suspend fun deleteByFilters(filters: Map<String, Any>): Int {
-        val count = delegate.deleteByFilters(filters)
-        if (count > 0) {
-            invalidateCache()
+    override suspend fun deleteByFilters(filters: Map<String, Any>): Int =
+        mutateAndInvalidate {
+            delegate.deleteByFilters(filters)
         }
-        return count
-    }
 
     override suspend fun count(): Int {
         return delegate.count()
     }
 
     override suspend fun clear() {
-        delegate.clear()
-        invalidateCache()
+        mutateAndInvalidate {
+            delegate.clear()
+        }
     }
 
-    private fun invalidateCache() {
-        searchCache.evictAll()
+    /** Public hook for provider/model reconfiguration. */
+    suspend fun invalidateSearchCache() = invalidateCache()
+
+    /**
+     * Invalidate even when a delegate mutation throws: some stores can mutate in-memory state
+     * before persistence fails, so retaining old search results would hide the partial change.
+     */
+    private fun isStableFilterValue(value: Any): Boolean =
+        value is String ||
+            value is Boolean ||
+            value is Byte ||
+            value is Short ||
+            value is Int ||
+            value is Long ||
+            value is Float ||
+            value is Double ||
+            value is Char ||
+            value is Enum<*>
+
+    // Any delegate exception may follow a partial in-memory mutation; invalidate for all Exception types.
+    @Suppress("TooGenericExceptionCaught")
+    private suspend fun <T> mutateAndInvalidate(mutation: suspend () -> T): T {
+        val result =
+            try {
+                mutation()
+            } catch (e: Exception) {
+                withContext(NonCancellable) { invalidateCache() }
+                throw e
+            }
+        withContext(NonCancellable) { invalidateCache() }
+        return result
+    }
+
+    private suspend fun invalidateCache() {
+        cacheMutex.withLock {
+            cacheGeneration += 1
+            searchCache.evictAll()
+        }
         Log.d(TAG, "Cache invalidated")
     }
 
     /**
      * 搜索缓存键
      */
+    private class QueryVectorKey(vector: FloatArray) {
+        private val values = vector.copyOf()
+        private val contentHash = values.contentHashCode()
+
+        override fun hashCode(): Int = contentHash
+
+        override fun equals(other: Any?): Boolean =
+            other is QueryVectorKey && values.contentEquals(other.values)
+    }
+
     private data class SearchCacheKey(
-        val vectorHash: Int,
+        val queryVector: QueryVectorKey,
         val topK: Int,
-        val filters: Map<String, Any>,
+        val filters: List<Pair<String, Any?>>,
     )
 }
