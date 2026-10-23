@@ -1,3 +1,5 @@
+@file:Suppress("FunctionNaming", "LongMethod", "CyclomaticComplexMethod")
+
 package com.mistbell.tavern.v3.feature.chat
 
 import android.os.Handler
@@ -433,19 +435,6 @@ fun ChatScreen(
         setHistoryLoadFailed = { historyLoadFailed = it },
         setStatus = { status = it },
     )
-
-    val exportLogLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.CreateDocument("text/plain"),
-    ) { uri ->
-        if (uri != null) {
-            ChatDiagnosticExportCoordinator(
-                context = context,
-                coroutineScope = coroutineScope,
-                diagnosticStore = diagnosticStore,
-                setStatus = { status = it },
-            ).export(uri)
-        }
-    }
 
     val memoryOperationsCoordinator = remember(
         context,

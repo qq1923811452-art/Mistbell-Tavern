@@ -1,3 +1,5 @@
+@file:Suppress("FunctionNaming", "LongMethod", "MagicNumber")
+
 package com.mistbell.tavern.v3.feature.chat
 
 import androidx.compose.foundation.layout.Arrangement

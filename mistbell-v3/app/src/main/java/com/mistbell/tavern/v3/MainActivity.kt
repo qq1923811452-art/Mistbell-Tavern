@@ -1,3 +1,5 @@
+@file:Suppress("LargeClass")
+
 package com.mistbell.tavern.v3
 
 import android.os.Bundle
