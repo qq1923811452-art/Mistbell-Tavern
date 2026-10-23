@@ -101,7 +101,7 @@ fun LocalModelScreen(
     }
 }
 
-@Suppress("FunctionNaming")
+@Suppress("FunctionNaming", "CyclomaticComplexMethod")
 @Composable
 private fun ModelStatusBlock(status: InferenceRuntimeStatus) {
     val backend = when (status.backend) {
