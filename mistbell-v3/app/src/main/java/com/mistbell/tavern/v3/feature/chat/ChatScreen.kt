@@ -559,7 +559,41 @@ fun ChatScreen(
         containerColor = Color.Transparent,
         topBar = {
             TopAppBar(
-                title = { Text("Mistbell Tavern · 聊天测试") },
+                title = {
+                    Box {
+                        TextButton(onClick = { characterMenuExpanded = true }) {
+                            Text(
+                                (selectedCharacter?.card?.name ?: "聊天") + " ▾",
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = characterMenuExpanded,
+                            onDismissRequest = { characterMenuExpanded = false },
+                        ) {
+                            characterCards.forEach { character ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            character.card.name +
+                                                if (character.id == selectedCharacterId) " ✓" else "",
+                                        )
+                                    },
+                                    onClick = {
+                                        selectedCharacterId = character.id
+                                        ChatCharacterSelectionCoordinator(settings).select(character.id)
+                                        if (memoryConversationId.isNotBlank() &&
+                                            sessionStore.setRoleId(memoryConversationId, character.id)
+                                        ) {
+                                            sessions = sessionStore.list()
+                                        }
+                                        characterMenuExpanded = false
+                                    },
+                                )
+                            }
+                        }
+                    }
+                },
                 navigationIcon = {
                     Button(onClick = onBack) { Text("返回首页") }
                 },
@@ -609,6 +643,7 @@ fun ChatScreen(
                 onBaseUrlChange = { baseUrl = it },
                 onModelIdChange = { modelId = it },
                 onApiKeyChange = { apiKey = it },
+                showCharacterSection = false,
             )
 
             ChatHistoryBudgetSettingsSection(

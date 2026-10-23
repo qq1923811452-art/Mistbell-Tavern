@@ -33,12 +33,14 @@ internal fun ChatConfigurationPanel(
     onBaseUrlChange: (String) -> Unit,
     onModelIdChange: (String) -> Unit,
     onApiKeyChange: (String) -> Unit,
+    showCharacterSection: Boolean = true,
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.fillMaxWidth().padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            if (showCharacterSection) {
             ChatCharacterSelectionSection(
                 selectedCharacterName = selectedCharacterName,
                 hasSelectedCharacter = hasSelectedCharacter,
@@ -47,6 +49,7 @@ internal fun ChatConfigurationPanel(
                 onMenuExpandedChange = onCharacterMenuExpandedChange,
                 onCharacterSelected = onCharacterSelected,
             )
+            }
             ChatGenerationSettingsSection(
                 settings = settings,
                 maxTokensText = maxTokensText,
