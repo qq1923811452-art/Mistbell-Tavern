@@ -1,3 +1,5 @@
+@file:Suppress("MagicNumber")
+
 package com.mistbell.tavern.v3.feature.sessions
 
 import android.content.ContentValues
@@ -39,6 +41,9 @@ class SessionStore(
             db.execSQL("ALTER TABLE $TABLE ADD COLUMN $COLUMN_KIND TEXT NOT NULL DEFAULT 'single'")
             db.execSQL("ALTER TABLE $TABLE ADD COLUMN $COLUMN_PARTICIPANTS TEXT NOT NULL DEFAULT '[]'")
         }
+        if (oldVersion < 3) {
+            db.execSQL("ALTER TABLE $TABLE ADD COLUMN $COLUMN_WORLDBOOK_ID TEXT NOT NULL DEFAULT ''")
+        }
     }
 
     fun list(): List<ChatSession> =
@@ -64,6 +69,7 @@ class SessionStore(
         now: Long = System.currentTimeMillis(),
         kind: SessionKind = SessionKind.SINGLE,
         participants: List<SessionParticipant> = emptyList(),
+        worldbookId: String = "",
     ): ChatSession {
         val session = ChatSession(
             id = id,
@@ -72,6 +78,7 @@ class SessionStore(
             updatedAt = now,
             kind = kind,
             participants = participants,
+            worldbookId = worldbookId,
         )
         writableDatabase.insertOrThrow(
             TABLE,
@@ -86,6 +93,7 @@ class SessionStore(
                 put(COLUMN_PINNED, if (session.pinned) 1 else 0)
                 put(COLUMN_KIND, session.kind.name.lowercase())
                 put(COLUMN_PARTICIPANTS, encodeParticipants(session.participants))
+                put(COLUMN_WORLDBOOK_ID, session.worldbookId)
             },
         )
         return session
@@ -133,6 +141,14 @@ class SessionStore(
         ) > 0
     }
 
+    fun setWorldbookId(id: String, worldbookId: String): Boolean =
+        writableDatabase.update(
+            TABLE,
+            ContentValues().apply { put(COLUMN_WORLDBOOK_ID, worldbookId) },
+            "$COLUMN_ID = ?",
+            arrayOf(id),
+        ) > 0
+
     fun setPinned(id: String, pinned: Boolean): Boolean =
         writableDatabase.update(
             TABLE,
@@ -169,6 +185,7 @@ class SessionStore(
             else -> SessionKind.SINGLE
         },
         participants = decodeParticipants(getString(getColumnIndexOrThrow(COLUMN_PARTICIPANTS))),
+        worldbookId = getString(getColumnIndexOrThrow(COLUMN_WORLDBOOK_ID)),
     )
 
     companion object {
@@ -187,7 +204,7 @@ class SessionStore(
         const val MAX_TITLE_CHARS = 120
         const val MAX_PREVIEW_CHARS = 200
 
-        private const val DATABASE_VERSION = 2
+        private const val DATABASE_VERSION = 3
         private const val TABLE = "sessions"
         private const val COLUMN_ID = "id"
         private const val COLUMN_ROLE_ID = "role_id"
@@ -198,10 +215,12 @@ class SessionStore(
         private const val COLUMN_PINNED = "pinned"
         private const val COLUMN_KIND = "kind"
         private const val COLUMN_PARTICIPANTS = "participants"
+        private const val COLUMN_WORLDBOOK_ID = "worldbook_id"
 
         private val COLUMNS = arrayOf(
             COLUMN_ID, COLUMN_ROLE_ID, COLUMN_TITLE, COLUMN_PREVIEW,
             COLUMN_UPDATED_AT, COLUMN_MESSAGE_COUNT, COLUMN_PINNED, COLUMN_KIND, COLUMN_PARTICIPANTS,
+            COLUMN_WORLDBOOK_ID,
         )
 
         private const val CREATE_TABLE = """
@@ -214,7 +233,8 @@ class SessionStore(
                 $COLUMN_MESSAGE_COUNT INTEGER NOT NULL DEFAULT 0,
                 $COLUMN_PINNED INTEGER NOT NULL DEFAULT 0,
                 $COLUMN_KIND TEXT NOT NULL DEFAULT 'single',
-                $COLUMN_PARTICIPANTS TEXT NOT NULL DEFAULT '[]'
+                $COLUMN_PARTICIPANTS TEXT NOT NULL DEFAULT '[]',
+                $COLUMN_WORLDBOOK_ID TEXT NOT NULL DEFAULT ''
             )
         """
 
