@@ -13,7 +13,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -21,10 +23,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 
-/** Compact settings hub: one line per destination, no development prose. */
+/** Compact settings hub modelled on the 2.x layout: groups of one-line destinations. */
 @Suppress("FunctionNaming", "LongParameterList")
 @Composable
 fun SettingsHomeScreen(
+    apiProfileLabel: String,
+    contextTokens: Int,
+    memoryEnabled: Boolean,
+    onContextTokensChange: (Int) -> Unit,
+    onMemoryEnabledChange: (Boolean) -> Unit,
+    onOpenApiSettings: () -> Unit,
+    onOpenEmbedding: () -> Unit,
     onOpenChatSettings: () -> Unit,
     onOpenImage: () -> Unit,
     onOpenCharacters: () -> Unit,
@@ -40,25 +49,72 @@ fun SettingsHomeScreen(
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Text("设置", style = MaterialTheme.typography.headlineMedium, color = Color.White)
-        Text(
-            "偏好与配置",
-            style = MaterialTheme.typography.bodySmall,
-            color = Color.White.copy(alpha = 0.7f),
-        )
-        SettingsGroup("连接与生成") {
-            SettingsRow("聊天 API 与生成", "模型、密钥、流式、备份", onOpenChatSettings)
-            SettingsRow("图片生成", "独立 API 与本地图片库", onOpenImage)
+        Text("偏好与配置", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.7f))
+
+        SettingsGroup("🔧 AI 连接") {
+            SettingsRow("当前 API 配置", apiProfileLabel, onOpenApiSettings)
+            SettingsRow("Embedding API", "本地向量与检索", onOpenEmbedding)
         }
-        SettingsGroup("内容") {
+        SettingsGroup("💬 对话设置") {
+            ContextLengthRow(contextTokens, onContextTokensChange)
+            SettingsRow("聊天与生成", "流式、思考、导入导出、备份", onOpenChatSettings)
+        }
+        SettingsGroup("🧠 记忆") {
+            SwitchRow("启用记忆整理", "抽取事实；关闭后只保留检索", memoryEnabled, onMemoryEnabledChange)
+        }
+        SettingsGroup("🎨 内容") {
             SettingsRow("角色卡管理", "导入、编辑、删除", onOpenCharacters)
             SettingsRow("世界书管理", "导入、启停、编辑", onOpenWorldBook)
+            SettingsRow("图片生成", "独立 API 与本地图片库", onOpenImage)
         }
-        SettingsGroup("本地推理") {
+        SettingsGroup("💾 本地推理") {
             SettingsRow("模型与 NPU", "下载、导入、维度、诊断", onOpenLocalModel)
         }
-        SettingsGroup("关于") {
+        SettingsGroup("ℹ️ 关于") {
             SettingsRow("许可与第三方声明", "开源许可、模型条款", onOpenLicenses)
         }
+    }
+}
+
+@Composable
+private fun ContextLengthRow(value: Int, onChange: (Int) -> Unit) {
+    val options = listOf(2_000, 4_000, 8_000, 16_000, 32_000, 64_000, 128_000, 1_000_000)
+    val index = options.indexOf(value).takeIf { it >= 0 } ?: 1
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "默认上下文长度",
+                style = MaterialTheme.typography.bodyLarge,
+                color = Color.White,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                formatTokens(options[index]),
+                style = MaterialTheme.typography.titleMedium,
+                color = Color(0xFFD8B4FE),
+            )
+        }
+        Text("新会话的默认上下文预算", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.6f))
+        Slider(
+            value = index.toFloat(),
+            onValueChange = { onChange(options[it.toInt().coerceIn(0, options.lastIndex)]) },
+            valueRange = 0f..options.lastIndex.toFloat(),
+            steps = options.size - 2,
+        )
+    }
+}
+
+@Composable
+private fun SwitchRow(title: String, subtitle: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge, color = Color.White)
+            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.6f))
+        }
+        Switch(checked = checked, onCheckedChange = onChange)
     }
 }
 
@@ -67,14 +123,10 @@ private fun SettingsGroup(title: String, content: @Composable () -> Unit) {
     Text(
         title,
         style = MaterialTheme.typography.labelLarge,
-        color = Color.White.copy(alpha = 0.7f),
+        color = Color.White.copy(alpha = 0.75f),
         modifier = Modifier.padding(top = 6.dp),
     )
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        color = Color(0xCC140C22),
-    ) {
+    Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), color = Color(0xCC140C22)) {
         Column { content() }
     }
 }
@@ -82,20 +134,19 @@ private fun SettingsGroup(title: String, content: @Composable () -> Unit) {
 @Composable
 private fun SettingsRow(title: String, subtitle: String, onClick: () -> Unit) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 14.dp),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.bodyLarge, color = Color.White)
-            Text(
-                subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = Color.White.copy(alpha = 0.6f),
-            )
+            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.6f))
         }
         Text("›", style = MaterialTheme.typography.titleLarge, color = Color.White.copy(alpha = 0.6f))
     }
+}
+
+private fun formatTokens(tokens: Int): String = when {
+    tokens >= 1_000_000 -> "1M"
+    tokens >= 1_000 -> "${tokens / 1_000}K"
+    else -> tokens.toString()
 }
