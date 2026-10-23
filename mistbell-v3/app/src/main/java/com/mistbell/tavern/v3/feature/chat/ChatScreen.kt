@@ -254,14 +254,15 @@ fun ChatScreen(
     val history = remember { mutableStateListOf<ChatLine>() }
     val listState = rememberLazyListState()
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
-    val historyStore = remember(context, memoryScopeId) {
+    val historyScopeId = memoryConversationId.ifBlank { memoryScopeId }
+    val historyStore = remember(context, historyScopeId) {
         val legacyStore = ChatHistoryStore(
             context.applicationContext,
-            MemoryScopeFileNames.forScope(ChatHistoryStore.DEFAULT_FILE_NAME, memoryScopeId),
+            MemoryScopeFileNames.forScope(ChatHistoryStore.DEFAULT_FILE_NAME, historyScopeId),
         )
         SqliteChatHistoryRepository(
             context.applicationContext,
-            memoryScopeId,
+            historyScopeId,
             legacyStore,
         )
     }
@@ -588,6 +589,11 @@ fun ChatScreen(
                     selectedCharacterId = characterId
                     ChatCharacterSelectionCoordinator(settings).select(characterId)
                     characterMenuExpanded = false
+                    if (memoryConversationId.isNotBlank() &&
+                        sessionStore.setRoleId(memoryConversationId, characterId)
+                    ) {
+                        sessions = sessionStore.list()
+                    }
                 },
                 maxTokensText = maxTokensText,
                 usageSummary = usageSummary,

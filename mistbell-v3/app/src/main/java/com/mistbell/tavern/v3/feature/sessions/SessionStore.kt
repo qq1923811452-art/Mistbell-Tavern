@@ -123,6 +123,16 @@ class SessionStore(
         ) > 0
     }
 
+    fun setRoleId(id: String, roleId: String): Boolean {
+        if (id.isBlank() || roleId.isBlank()) return false
+        return writableDatabase.update(
+            TABLE,
+            ContentValues().apply { put(COLUMN_ROLE_ID, roleId) },
+            "$COLUMN_ID = ?",
+            arrayOf(id),
+        ) > 0
+    }
+
     fun setPinned(id: String, pinned: Boolean): Boolean =
         writableDatabase.update(
             TABLE,
