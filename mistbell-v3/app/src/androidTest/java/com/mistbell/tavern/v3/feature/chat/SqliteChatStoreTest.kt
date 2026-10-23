@@ -41,6 +41,27 @@ class SqliteChatStoreTest {
         assertEquals(listOf("a2", "a1"), store.loadRecent("role-a/session-1", 10).map { it.id })
     }
 
+
+    @Test
+    fun persistsSpeakerAndVariantsAcrossReopen() {
+        val scope = "group/session-1"
+        val message = PersistedChatMessage(
+            id = "m1",
+            role = "assistant",
+            content = "second variant",
+            createdAtEpochMillis = 10L,
+            deliveryState = PersistedChatMessage.DeliveryState.COMPLETE,
+            speakerId = "character-2",
+            speakerName = "艾莉丝",
+            variants = listOf("first variant", "second variant"),
+            activeVariant = 1,
+        )
+        store.upsert(scope, message)
+        store.close()
+        store = SqliteChatStore(context, databaseName)
+        assertEquals(listOf(message), store.loadRecent(scope, 10))
+    }
+
     @Test
     fun pagesOlderMessagesWithoutRepeatingTimestampTies() {
         store.append("session", message("a", "user", "first", 10L))
