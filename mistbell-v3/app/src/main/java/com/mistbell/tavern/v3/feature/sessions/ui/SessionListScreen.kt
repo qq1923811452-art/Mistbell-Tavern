@@ -44,7 +44,7 @@ private val GROUP_ITEM_VERTICAL_PADDING = 2.dp
 private const val MIN_GROUP_MEMBERS = 2
 private const val MAX_GROUP_MEMBERS = 6
 
-@Suppress("LongParameterList")
+@Suppress("LongMethod", "LongParameterList")
 @Composable
 fun SessionListScreen(
     sessions: List<ChatSession>,

@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.dp
 import com.mistbell.tavern.v3.core.diagnostics.DiagnosticLogStore
 import com.mistbell.tavern.v3.core.security.AndroidKeystoreMemoryCredentialStore
 
+@Suppress("LongParameterList", "LongMethod")
 @Composable
 internal fun ChatMemoryApiSettingsSection(
     settings: SharedPreferences,

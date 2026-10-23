@@ -314,7 +314,9 @@ class MainActivity : ComponentActivity() {
                                         selectedEmbeddingDimensions = selectedEmbeddingDimensions,
                                         onCycleEmbeddingDimensions = ::cycleEmbeddingDimensions,
                                         onRunEmbeddingTest = { runEmbeddingSelfTest() },
-                                        onRunNpuDiagnosticProbe = { runEmbeddingSelfTest(allowDiagnosticNpuProbe = true) },
+                                        onRunNpuDiagnosticProbe = {
+                                            runEmbeddingSelfTest(allowDiagnosticNpuProbe = true)
+                                        },
                                         onRunAlternateBackendBenchmark = { runAlternateBackendBenchmark() },
                                         onExportNpuEvidence = { exportNpuEvidence.launch("npu-evidence.json") },
                                         onExportLogs = { exportDiagnostics.launch("mistbell-diagnostics.txt") },
