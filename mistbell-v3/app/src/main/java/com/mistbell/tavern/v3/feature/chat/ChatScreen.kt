@@ -204,7 +204,7 @@ fun ChatScreen(
     var sessions by remember { mutableStateOf(emptyList<ChatSession>()) }
     var showSessionList by remember { mutableStateOf(true) }
     var lastGroupSpeakerId by remember { mutableStateOf<String?>(null) }
-    var promptPreview by remember { mutableStateOf<PromptPreviewBuilder.Preview?>(null) }
+    var lastPromptMessages by remember { mutableStateOf<List<PromptMessage>>(emptyList()) }
     var memoryExtractionEnabled by remember {
         mutableStateOf(settings.getBoolean("memory_extraction_enabled", true))
     }
