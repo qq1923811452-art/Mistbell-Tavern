@@ -17,7 +17,7 @@ import androidx.compose.ui.unit.dp
 import com.mistbell.tavern.v3.feature.character.StoredCharacterCard
 
 /** Session-scoped settings: the character and the transcript, not the global API. */
-@Suppress("FunctionNaming", "LongParameterList")
+@Suppress("FunctionNaming", "LongParameterList", "LongMethod")
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun ChatSessionSettingsSheet(
