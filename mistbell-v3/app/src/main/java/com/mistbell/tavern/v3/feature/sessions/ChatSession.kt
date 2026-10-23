@@ -23,4 +23,6 @@ data class ChatSession(
     val pinned: Boolean = false,
     val kind: SessionKind = SessionKind.SINGLE,
     val participants: List<SessionParticipant> = emptyList(),
+    /** Optional per-session worldbook override; blank means use the global active book. */
+    val worldbookId: String = "",
 )

@@ -99,6 +99,7 @@ import com.mistbell.tavern.v3.feature.sessions.SessionParticipant
 import com.mistbell.tavern.v3.feature.sessions.SessionStore
 import com.mistbell.tavern.v3.feature.sessions.ui.GroupCandidate
 import com.mistbell.tavern.v3.feature.sessions.ui.SessionListScreen
+import com.mistbell.tavern.v3.feature.worldbook.WorldBookLibraryStore
 import com.mistbell.tavern.v3.ui.findActivity
 
 
@@ -280,13 +281,19 @@ fun ChatScreen(
     val activeWorldbookId = remember(settings) {
         settings.getString("active_worldbook_id", "") ?: ""
     }
+    val sessionWorldbookId = sessions.firstOrNull { it.id == memoryConversationId }
+        ?.worldbookId.orEmpty()
+    val effectiveWorldbookId = sessionWorldbookId.ifBlank { activeWorldbookId }
+    val worldbookLibrary = remember(context) {
+        WorldBookLibraryStore(File(context.filesDir, "worldbooks")).list()
+    }
     val worldbookSession = rememberChatWorldBookSessionState(
         context = context,
         settings = settings,
         diagnosticStore = diagnosticStore,
         roleId = activeMemoryRoleId,
         conversationId = memoryConversationId,
-        worldbookId = activeWorldbookId,
+        worldbookId = effectiveWorldbookId,
     )
     var characterCards by remember(context) { mutableStateOf(emptyList<com.mistbell.tavern.v3.feature.character.StoredCharacterCard>()) }
     var characterMenuExpanded by remember { mutableStateOf(false) }
@@ -575,6 +582,15 @@ fun ChatScreen(
             characters = characterCards,
             selectedCharacterId = selectedCharacterId,
             messageCount = history.size,
+            worldbooks = worldbookLibrary.map { book -> book.id to book.name },
+            selectedWorldbookId = sessionWorldbookId,
+            onSelectWorldbook = { worldbookId ->
+                if (memoryConversationId.isNotBlank()) {
+                    sessionStore.setWorldbookId(memoryConversationId, worldbookId)
+                    sessions = sessionStore.list()
+                }
+                showSessionSettings = false
+            },
             onSelectCharacter = { characterId ->
                 selectedCharacterId = characterId
                 ChatCharacterSelectionCoordinator(settings).select(characterId)

@@ -24,6 +24,9 @@ internal fun ChatSessionSettingsSheet(
     characters: List<StoredCharacterCard>,
     selectedCharacterId: String,
     messageCount: Int,
+    worldbooks: List<Pair<String, String>>,
+    selectedWorldbookId: String,
+    onSelectWorldbook: (String) -> Unit,
     onSelectCharacter: (String) -> Unit,
     onClearSession: () -> Unit,
     onOpenGlobalSettings: () -> Unit,
@@ -54,6 +57,35 @@ internal fun ChatSessionSettingsSheet(
                         character.card.name + if (character.id == selectedCharacterId) "  ✓" else "",
                         style = MaterialTheme.typography.bodyLarge,
                         modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+            Text(
+                "当前世界书",
+                style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier.padding(top = 16.dp, bottom = 4.dp),
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onSelectWorldbook("") }
+                    .padding(vertical = 8.dp),
+            ) {
+                Text(
+                    "跟随全局" + if (selectedWorldbookId.isBlank()) "  ✓" else "",
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+            }
+            worldbooks.forEach { (id, name) ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onSelectWorldbook(id) }
+                        .padding(vertical = 8.dp),
+                ) {
+                    Text(
+                        name + if (id == selectedWorldbookId) "  ✓" else "",
+                        style = MaterialTheme.typography.bodyLarge,
                     )
                 }
             }
