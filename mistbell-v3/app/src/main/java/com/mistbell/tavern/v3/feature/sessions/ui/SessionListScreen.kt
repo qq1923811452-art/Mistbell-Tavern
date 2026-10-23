@@ -2,7 +2,6 @@
 
 package com.mistbell.tavern.v3.feature.sessions.ui
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -54,7 +53,6 @@ fun SessionListScreen(
     onRenameSession: (id: String, title: String) -> Unit,
     onDeleteSession: (id: String) -> Unit,
     onTogglePin: (id: String, pinned: Boolean) -> Unit,
-    onBack: () -> Unit,
     characters: List<GroupCandidate> = emptyList(),
     onCreateGroup: (participantIds: List<String>) -> Unit = {},
 ) {
@@ -62,7 +60,6 @@ fun SessionListScreen(
     var deleteTarget by remember { mutableStateOf<ChatSession?>(null) }
     var showGroupDialog by remember { mutableStateOf(false) }
 
-    BackHandler(onBack = onBack)
 
     MaterialTheme(colorScheme = TAVERN_DARK_COLOR_SCHEME) {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -71,7 +68,6 @@ fun SessionListScreen(
                 containerColor = Color.Transparent,
                 topBar = {
                     SessionListHeader(
-                        onBack = onBack,
                         showGroupAction = characters.isNotEmpty(),
                         onOpenGroupDialog = { showGroupDialog = true },
                     )

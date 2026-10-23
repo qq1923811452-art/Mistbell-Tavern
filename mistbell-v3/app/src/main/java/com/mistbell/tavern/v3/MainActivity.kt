@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -74,6 +75,7 @@ import com.mistbell.tavern.v3.feature.chat.ChatScreen
 import com.mistbell.tavern.v3.feature.character.CharacterCardLibraryScreen
 import com.mistbell.tavern.v3.feature.worldbook.WorldBookLibraryScreen
 import com.mistbell.tavern.v3.feature.image.ImageGenerationScreen
+import com.mistbell.tavern.v3.feature.settings.SettingsHomeScreen
 import com.mistbell.tavern.v3.ui.TavernBackground
 import com.mistbell.tavern.v3.ui.TavernBottomBar
 import com.mistbell.tavern.v3.ui.TavernTab
@@ -98,6 +100,7 @@ class MainActivity : ComponentActivity() {
     private var showLicenses by mutableStateOf(false)
     private var mainTab by mutableStateOf(TavernTab.CHAT)
     private var chatSettingsMode by mutableStateOf(false)
+    private var showLocalModel by mutableStateOf(false)
     private var showCharacterLibrary by mutableStateOf(false)
     private var showWorldBookLibrary by mutableStateOf(false)
     private val embeddingDimensionOptions = listOf(128, 256, 512, 768, 1024, 1536, 2048)
@@ -275,6 +278,31 @@ class MainActivity : ComponentActivity() {
                         CharacterCardLibraryScreen(onBack = { showCharacterLibrary = false })
                     } else if (showWorldBookLibrary) {
                         WorldBookLibraryScreen(onBack = { showWorldBookLibrary = false })
+                    } else if (showLocalModel) {
+                        TavernBackground {
+                            DevelopmentHome(
+                                inferenceStatus = inferenceStatus,
+                                operationMessage = operationMessage,
+                                operationBusy = operationBusy,
+                                onOpenChat = { showLocalModel = false; mainTab = TavernTab.CHAT },
+                                onOpenChatSettings = { showLocalModel = false; chatSettingsMode = true },
+                                onOpenImageGeneration = { showLocalModel = false; showImageGeneration = true },
+                                onOpenCharacterLibrary = { showLocalModel = false; showCharacterLibrary = true },
+                                onOpenWorldBookLibrary = { showLocalModel = false; showWorldBookLibrary = true },
+                                onOpenLicenses = { showLicenses = true },
+                                onDownloadModel = ::downloadEmbeddingModel,
+                                onImportModel = { importModel.launch(arrayOf("*/*")) },
+                                qualcommModelSelected = qualcommModelSelected,
+                                onSelectModelProfile = ::selectModelProfile,
+                                selectedEmbeddingDimensions = selectedEmbeddingDimensions,
+                                onCycleEmbeddingDimensions = ::cycleEmbeddingDimensions,
+                                onRunEmbeddingTest = { runEmbeddingSelfTest() },
+                                onRunNpuDiagnosticProbe = { runEmbeddingSelfTest(allowDiagnosticNpuProbe = true) },
+                                onRunAlternateBackendBenchmark = { runAlternateBackendBenchmark() },
+                                onExportNpuEvidence = { exportNpuEvidence.launch("npu-evidence.json") },
+                                onExportLogs = { exportDiagnostics.launch("mistbell-diagnostics.txt") },
+                            )
+                        }
                     } else if (chatSettingsMode) {
                         TavernBackground {
                             ChatScreen(onBack = { chatSettingsMode = false }, settingsMode = true)
@@ -301,34 +329,22 @@ class MainActivity : ComponentActivity() {
                                                 .fillMaxSize()
                                                 .background(Color.Black.copy(alpha = 0.55f)),
                                         )
-                                        DevelopmentHome(
-                                        inferenceStatus = inferenceStatus,
-                                        operationMessage = operationMessage,
-                                        operationBusy = operationBusy,
-                                        onOpenChat = { mainTab = TavernTab.CHAT },
-                                        onOpenChatSettings = { chatSettingsMode = true },
-                                        onOpenImageGeneration = { showImageGeneration = true },
-                                        onOpenCharacterLibrary = { showCharacterLibrary = true },
-                                        onOpenWorldBookLibrary = { showWorldBookLibrary = true },
-                                        onOpenLicenses = { showLicenses = true },
-                                        onDownloadModel = ::downloadEmbeddingModel,
-                                        onImportModel = { importModel.launch(arrayOf("*/*")) },
-                                        qualcommModelSelected = qualcommModelSelected,
-                                        onSelectModelProfile = ::selectModelProfile,
-                                        selectedEmbeddingDimensions = selectedEmbeddingDimensions,
-                                        onCycleEmbeddingDimensions = ::cycleEmbeddingDimensions,
-                                        onRunEmbeddingTest = { runEmbeddingSelfTest() },
-                                        onRunNpuDiagnosticProbe = {
-                                            runEmbeddingSelfTest(allowDiagnosticNpuProbe = true)
-                                        },
-                                        onRunAlternateBackendBenchmark = { runAlternateBackendBenchmark() },
-                                        onExportNpuEvidence = { exportNpuEvidence.launch("npu-evidence.json") },
-                                        onExportLogs = { exportDiagnostics.launch("mistbell-diagnostics.txt") },
-                                    )
+                                        SettingsHomeScreen(
+                                            onOpenChatSettings = { chatSettingsMode = true },
+                                            onOpenImage = { showImageGeneration = true },
+                                            onOpenCharacters = { showCharacterLibrary = true },
+                                            onOpenWorldBook = { showWorldBookLibrary = true },
+                                            onOpenLocalModel = { showLocalModel = true },
+                                            onOpenLicenses = { showLicenses = true },
+                                        )
                                     }
                                 }
                             }
-                            TavernBottomBar(selected = mainTab, onSelect = { mainTab = it })
+                            TavernBottomBar(
+                                selected = mainTab,
+                                onSelect = { mainTab = it },
+                                modifier = Modifier.navigationBarsPadding(),
+                            )
                         }
                     }
                 }

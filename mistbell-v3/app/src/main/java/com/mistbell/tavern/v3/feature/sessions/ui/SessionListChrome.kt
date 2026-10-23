@@ -100,7 +100,6 @@ private val HEADER_TITLE_LETTER_SPACING = 1.sp
 private val HEADER_SUBTITLE_TOP_PADDING = 2.dp
 private val HEADER_SUBTITLE_SIZE = 13.sp
 private val HEADER_SUBTITLE_LETTER_SPACING = 0.5.sp
-private val BACK_GLYPH_SIZE = 28.sp
 private val SEARCH_GLYPH_SIZE = 17.dp
 private val SEARCH_ICON_TINT = TAVERN_TEXT_SECONDARY.copy(alpha = 0.75f)
 private val GROUP_ACTION_HORIZONTAL_PADDING = 12.dp
@@ -110,7 +109,6 @@ private val FAB_ICON_SIZE = 20.sp
 private val FAB_LABEL_SIZE = 14.sp
 private val BACKDROP_GLOW_HEIGHT = 320.dp
 
-private const val BACK_CONTENT_DESCRIPTION = "返回"
 private const val GROUP_ACTION_CONTENT_DESCRIPTION = "新建群聊"
 private const val SEARCH_PLACEHOLDER_DESCRIPTION = "搜索（占位）"
 private const val SEARCH_STROKE_RATIO = 0.11f
@@ -121,7 +119,6 @@ private const val SEARCH_HAND_END_RATIO = 0.88f
 
 @Composable
 internal fun SessionListHeader(
-    onBack: () -> Unit,
     showGroupAction: Boolean,
     onOpenGroupDialog: () -> Unit,
 ) {
@@ -137,7 +134,6 @@ internal fun SessionListHeader(
             ),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            BackButton(onClick = onBack)
             Spacer(modifier = Modifier.width(HEADER_TITLE_GAP))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
@@ -164,31 +160,6 @@ internal fun SessionListHeader(
             }
             SearchPlaceholder()
         }
-    }
-}
-
-@Composable
-private fun BackButton(onClick: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .size(HEADER_ACTION_SIZE)
-            .clip(CircleShape)
-            .background(TAVERN_GLASS)
-            .border(HEADER_BORDER_WIDTH, TAVERN_BORDER, CircleShape)
-            .clickable(
-                onClickLabel = BACK_CONTENT_DESCRIPTION,
-                role = Role.Button,
-                onClick = onClick,
-            )
-            .semantics { contentDescription = BACK_CONTENT_DESCRIPTION },
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = "‹",
-            color = TAVERN_TEXT_PRIMARY,
-            fontSize = BACK_GLYPH_SIZE,
-            fontWeight = FontWeight.Light,
-        )
     }
 }
 

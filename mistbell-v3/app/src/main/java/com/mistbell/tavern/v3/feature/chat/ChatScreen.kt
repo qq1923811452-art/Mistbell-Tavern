@@ -42,6 +42,7 @@ import com.mistbell.tavern.v3.feature.embedding.EmbeddingGemma2TextPolicy
 import java.io.File
 import java.util.UUID
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -72,6 +73,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -211,6 +213,7 @@ fun ChatScreen(
         mutableStateOf(settings.getBoolean("memory_extraction_enabled", true))
     }
     var showPromptPreview by remember { mutableStateOf(false) }
+    var showSessionSettings by remember { mutableStateOf(false) }
     LaunchedEffect(sessionStore) {
         val current = memoryConversationId
         val existing = sessionStore.list()
@@ -254,14 +257,15 @@ fun ChatScreen(
     val history = remember { mutableStateListOf<ChatLine>() }
     val listState = rememberLazyListState()
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
-    val historyStore = remember(context, memoryScopeId) {
+    val historyScopeId = memoryConversationId.ifBlank { memoryScopeId }
+    val historyStore = remember(context, historyScopeId) {
         val legacyStore = ChatHistoryStore(
             context.applicationContext,
-            MemoryScopeFileNames.forScope(ChatHistoryStore.DEFAULT_FILE_NAME, memoryScopeId),
+            MemoryScopeFileNames.forScope(ChatHistoryStore.DEFAULT_FILE_NAME, historyScopeId),
         )
         SqliteChatHistoryRepository(
             context.applicationContext,
-            memoryScopeId,
+            historyScopeId,
             legacyStore,
         )
     }
@@ -436,6 +440,30 @@ fun ChatScreen(
         setStatus = { status = it },
     )
 
+    LaunchedEffect(historyReady, historyLoadFailed, selectedCharacterId, memoryConversationId) {
+        if (!historyReady || historyLoadFailed || history.isNotEmpty()) return@LaunchedEffect
+        val session = sessions.firstOrNull { it.id == memoryConversationId }
+        if (session != null && session.kind != SessionKind.SINGLE) return@LaunchedEffect
+        val card = characterCards.firstOrNull { it.id == selectedCharacterId }?.card
+            ?: return@LaunchedEffect
+        val greeting = card.firstMessage.trim()
+        if (greeting.isEmpty()) return@LaunchedEffect
+        val content = greeting.replace("{{char}}", card.name).replace("{{user}}", "你")
+        history.add(
+            ChatLine(
+                id = UUID.randomUUID().toString(),
+                role = "assistant",
+                content = content,
+                createdAtEpochMillis = System.currentTimeMillis(),
+                deliveryState = PersistedChatMessage.DeliveryState.COMPLETE,
+                speakerId = selectedCharacterId.takeIf(String::isNotBlank),
+                speakerName = card.name,
+            ),
+        )
+        persistHistory()
+        diagnosticStore.info("chat.greeting.inserted", "chars=${content.length}")
+    }
+
     val memoryOperationsCoordinator = remember(
         context,
         memoryCredentialStore,
@@ -465,6 +493,9 @@ fun ChatScreen(
             sessions = sessions,
             selectedSessionId = memoryConversationId,
             onSessionClick = { id ->
+                sessions.firstOrNull { it.id == id }?.roleId
+                    ?.takeIf(String::isNotBlank)
+                    ?.let { roleId -> selectedCharacterId = roleId }
                 memoryConversationId = id
                 settings.edit().putString("memory_extraction_conversation_id", id).apply()
                 diagnosticStore.info("chat.session.switched", "reason=click")
@@ -505,7 +536,6 @@ fun ChatScreen(
                     diagnosticStore.info("chat.session.pinned", "pinned=$pinned")
                 }
             },
-            onBack = { showSessionList = false },
             characters = characterCards.map { card ->
                 GroupCandidate(card.id, card.card.name)
             },
@@ -540,6 +570,33 @@ fun ChatScreen(
         return
     }
 
+    if (showSessionSettings) {
+        ChatSessionSettingsSheet(
+            characters = characterCards,
+            selectedCharacterId = selectedCharacterId,
+            messageCount = history.size,
+            onSelectCharacter = { characterId ->
+                selectedCharacterId = characterId
+                ChatCharacterSelectionCoordinator(settings).select(characterId)
+                if (memoryConversationId.isNotBlank()) {
+                    sessionStore.setRoleId(memoryConversationId, characterId)
+                    sessions = sessionStore.list()
+                }
+                showSessionSettings = false
+            },
+            onClearSession = {
+                history.clear()
+                persistHistory()
+                showSessionSettings = false
+            },
+            onOpenGlobalSettings = {
+                showSessionSettings = false
+                onOpenChatSettings()
+            },
+            onDismiss = { showSessionSettings = false },
+        )
+    }
+
     if (showPromptPreview) {
         PromptPreviewSheet(
             messages = lastPromptMessages,
@@ -554,7 +611,41 @@ fun ChatScreen(
         containerColor = Color.Transparent,
         topBar = {
             TopAppBar(
-                title = { Text("Mistbell Tavern · 聊天测试") },
+                title = {
+                    Box {
+                        TextButton(onClick = { characterMenuExpanded = true }) {
+                            Text(
+                                (selectedCharacter?.card?.name ?: "聊天") + " ▾",
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = characterMenuExpanded,
+                            onDismissRequest = { characterMenuExpanded = false },
+                        ) {
+                            characterCards.forEach { character ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            character.card.name +
+                                                if (character.id == selectedCharacterId) " ✓" else "",
+                                        )
+                                    },
+                                    onClick = {
+                                        selectedCharacterId = character.id
+                                        ChatCharacterSelectionCoordinator(settings).select(character.id)
+                                        if (memoryConversationId.isNotBlank() &&
+                                            sessionStore.setRoleId(memoryConversationId, character.id)
+                                        ) {
+                                            sessions = sessionStore.list()
+                                        }
+                                        characterMenuExpanded = false
+                                    },
+                                )
+                            }
+                        }
+                    }
+                },
                 navigationIcon = {
                     Button(onClick = onBack) { Text("返回首页") }
                 },
@@ -563,7 +654,7 @@ fun ChatScreen(
                         TextButton(onClick = { showPromptPreview = true }) { Text("☰") }
                     }
                     TextButton(onClick = { showSessionList = true }) { Text("会话") }
-                    TextButton(onClick = onOpenChatSettings) { Text("⚙") }
+                    TextButton(onClick = { showSessionSettings = true }) { Text("⚙") }
                 },
             )
         },
@@ -585,6 +676,11 @@ fun ChatScreen(
                     selectedCharacterId = characterId
                     ChatCharacterSelectionCoordinator(settings).select(characterId)
                     characterMenuExpanded = false
+                    if (memoryConversationId.isNotBlank() &&
+                        sessionStore.setRoleId(memoryConversationId, characterId)
+                    ) {
+                        sessions = sessionStore.list()
+                    }
                 },
                 maxTokensText = maxTokensText,
                 usageSummary = usageSummary,
@@ -599,6 +695,7 @@ fun ChatScreen(
                 onBaseUrlChange = { baseUrl = it },
                 onModelIdChange = { modelId = it },
                 onApiKeyChange = { apiKey = it },
+                showCharacterSection = false,
             )
 
             ChatHistoryBudgetSettingsSection(
@@ -724,12 +821,17 @@ fun ChatScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            ChatMessageComposerInput(
-                draft = chatUiState.draft,
-                enabled = !busy && !historyLoadFailed,
-                onDraftChange = chatViewModel::updateDraft,
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                ChatMessageComposerInput(
+                    draft = chatUiState.draft,
+                    enabled = !busy && !historyLoadFailed,
+                    onDraftChange = chatViewModel::updateDraft,
+                    modifier = Modifier.weight(1f),
+                )
                 Button(
                     onClick = {
                         val preparedRequest = ChatSendRequestPreflightCoordinator(
@@ -882,22 +984,6 @@ fun ChatScreen(
                 ) {
                     Text("➤", style = MaterialTheme.typography.titleLarge)
                 }
-                ChatSessionResetAction(
-                    enabled = !busy && historyReady && (history.isNotEmpty() || historyLoadFailed),
-                    historyLoadFailed = historyLoadFailed,
-                    onClick = {
-                        ChatSessionResetCoordinator(
-                            settings = context.getSharedPreferences("mistbell-v3-settings", Context.MODE_PRIVATE),
-                            clearHistory = { history.clear() },
-                            setHistoryLoadFailed = { historyLoadFailed = it },
-                            setConversationId = { memoryConversationId = it },
-                            setStatus = { status = it },
-                        ).reset(
-                            historyLoadFailed = historyLoadFailed,
-                            previousMemoryScopeId = memoryScopeId,
-                        )
-                    },
-                )
             }
             }
             Text(status, style = MaterialTheme.typography.bodySmall)
