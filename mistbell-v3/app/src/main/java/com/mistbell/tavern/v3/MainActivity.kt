@@ -1,4 +1,4 @@
-@file:Suppress("LargeClass")
+@file:Suppress("LargeClass", "MagicNumber")
 
 package com.mistbell.tavern.v3
 

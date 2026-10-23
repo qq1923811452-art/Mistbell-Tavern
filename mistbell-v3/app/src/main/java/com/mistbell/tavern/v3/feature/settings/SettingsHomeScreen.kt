@@ -82,8 +82,17 @@ private fun ContextLengthRow(value: Int, onChange: (Int) -> Unit) {
     val index = options.indexOf(value).takeIf { it >= 0 } ?: 1
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("默认上下文长度", style = MaterialTheme.typography.bodyLarge, color = Color.White, modifier = Modifier.weight(1f))
-            Text(formatTokens(options[index]), style = MaterialTheme.typography.titleMedium, color = Color(0xFFD8B4FE))
+            Text(
+                "默认上下文长度",
+                style = MaterialTheme.typography.bodyLarge,
+                color = Color.White,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                formatTokens(options[index]),
+                style = MaterialTheme.typography.titleMedium,
+                color = Color(0xFFD8B4FE),
+            )
         }
         Text("新会话的默认上下文预算", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.6f))
         Slider(
@@ -111,7 +120,12 @@ private fun SwitchRow(title: String, subtitle: String, checked: Boolean, onChang
 
 @Composable
 private fun SettingsGroup(title: String, content: @Composable () -> Unit) {
-    Text(title, style = MaterialTheme.typography.labelLarge, color = Color.White.copy(alpha = 0.75f), modifier = Modifier.padding(top = 6.dp))
+    Text(
+        title,
+        style = MaterialTheme.typography.labelLarge,
+        color = Color.White.copy(alpha = 0.75f),
+        modifier = Modifier.padding(top = 6.dp),
+    )
     Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), color = Color(0xCC140C22)) {
         Column { content() }
     }
