@@ -32,6 +32,7 @@ internal fun rememberChatSessionDocumentActions(
     history: MutableList<ChatLine>,
     conversationId: String,
     setStatus: (String) -> Unit,
+    onImported: () -> Unit = {},
 ): ChatSessionDocumentCallbacks {
     var showImportWarning by remember { mutableStateOf(false) }
 
@@ -47,6 +48,7 @@ internal fun rememberChatSessionDocumentActions(
                 historySaveRevision = historySaveRevision,
                 history = history,
                 setStatus = setStatus,
+                onImported = onImported,
             ).import(uri)
         }
     }

@@ -84,6 +84,13 @@ class SqliteChatHistoryRepository(
      * Persist only rows that changed since the last successful load/save. A single transaction
      * ensures a process interruption cannot leave a half-written batch.
      */
+    /** Deletes every stored message for this conversation scope. */
+    @Synchronized
+    fun deleteAll() {
+        store.deleteScope(scopeId)
+        cachedById = emptyMap()
+    }
+
     @Synchronized
     fun save(messages: List<PersistedChatMessage>) {
         require(messages.size <= MAX_SNAPSHOT_MESSAGES) {

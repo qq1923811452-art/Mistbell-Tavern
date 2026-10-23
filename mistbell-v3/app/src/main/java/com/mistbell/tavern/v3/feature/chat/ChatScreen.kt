@@ -344,6 +344,17 @@ fun ChatScreen(
         val startedNanos = System.nanoTime()
         val snapshot = ChatHistorySnapshotFactory.create(history)
         historySaveCoordinator.save(snapshot)
+        val preview = snapshot.lastOrNull { it.content.isNotBlank() }
+            ?.content
+            ?.trim()
+            ?.replace('\n', ' ')
+            ?.take(80)
+            .orEmpty()
+        if (memoryConversationId.isNotBlank() && preview.isNotEmpty()) {
+            if (sessionStore.touch(memoryConversationId, preview, snapshot.size)) {
+                sessions = sessionStore.list()
+            }
+        }
         val elapsedMillis = (System.nanoTime() - startedNanos) / NANOS_PER_MILLI
         diagnosticStore.info("chat.history.saved", "messages=${snapshot.size}; elapsedMs=$elapsedMillis")
     }
@@ -442,6 +453,19 @@ fun ChatScreen(
         history = history,
         conversationId = memoryConversationId,
         setStatus = { status = it },
+        onImported = {
+            val preview = history.lastOrNull { it.content.isNotBlank() }
+                ?.content
+                ?.trim()
+                ?.replace('\n', ' ')
+                ?.take(80)
+                .orEmpty()
+            if (memoryConversationId.isNotBlank() && preview.isNotEmpty()) {
+                if (sessionStore.touch(memoryConversationId, preview, history.size)) {
+                    sessions = sessionStore.list()
+                }
+            }
+        },
     )
 
     val historyLoadCoordinator = remember(historyStore, diagnosticStore) {
@@ -541,6 +565,17 @@ fun ChatScreen(
                 }
             },
             onDeleteSession = { id ->
+                runCatching {
+                    val legacy = ChatHistoryStore(
+                        context.applicationContext,
+                        MemoryScopeFileNames.forScope(ChatHistoryStore.DEFAULT_FILE_NAME, id),
+                    )
+                    SqliteChatHistoryRepository(context.applicationContext, id, legacy).use { repository ->
+                        repository.deleteAll()
+                    }
+                }.onFailure { error ->
+                    diagnosticStore.warn("chat.session.history_delete_failed", error::class.java.simpleName)
+                }
                 sessionStore.delete(id)
                 sessions = sessionStore.list()
                 diagnosticStore.info("chat.session.deleted", "remaining=${sessions.size}")
