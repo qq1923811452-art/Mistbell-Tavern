@@ -1097,7 +1097,7 @@ fun ChatScreen(
                                     indexRebuildCoordinator = memoryOperationsCoordinator.createIndexRebuildCoordinator(),
                                     setStatus = { status = it },
                                     setMemoryStatusNotice = { memoryStatusNotice = it },
-                                ).stream(client, messages, observer, maxTokensText)
+                                ).stream(client, messages, observer, effectiveMaxTokens())
                             },
                             ordinaryStream = {
                                 client.stream(
