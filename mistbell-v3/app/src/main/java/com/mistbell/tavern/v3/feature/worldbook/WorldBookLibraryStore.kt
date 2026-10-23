@@ -12,6 +12,7 @@ import java.util.UUID
 class WorldBookLibraryStore(private val directory: File) {
     private companion object {
         const val MAX_WORLDBOOK_FILE_BYTES = 16L * 1024 * 1024
+        val ID_PATTERN = Regex("[a-fA-F0-9-]{36}")
     }
 
     fun list(): List<WorldBook> {
@@ -117,9 +118,6 @@ class WorldBookLibraryStore(private val directory: File) {
             .toString(2)
     }
 
-    companion object {
-        private val ID_PATTERN = Regex("[a-fA-F0-9-]{36}")
-    }
 }
 
 

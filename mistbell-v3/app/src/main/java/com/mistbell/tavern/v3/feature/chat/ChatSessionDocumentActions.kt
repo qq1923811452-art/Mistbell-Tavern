@@ -8,6 +8,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import com.mistbell.tavern.v3.feature.sessions.SessionKind
+import com.mistbell.tavern.v3.feature.sessions.SessionParticipant
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.sync.Mutex
 import java.util.concurrent.atomic.AtomicLong

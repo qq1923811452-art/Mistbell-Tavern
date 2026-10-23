@@ -279,6 +279,31 @@ class SqliteChatStore(
         super.close()
     }
 
+    fun isLegacyImported(scopeId: String): Boolean =
+        readableDatabase.query(
+            TABLE_META,
+            arrayOf("legacy_imported"),
+            "scope_id = ?",
+            arrayOf(scopeId),
+            null,
+            null,
+            null,
+        ).use { cursor -> cursor.moveToFirst() && cursor.getInt(0) != 0 }
+
+    fun markLegacyImported(scopeId: String) {
+        validateScope(scopeId)
+        writableDatabase.insertWithOnConflict(
+            TABLE_META,
+            null,
+            ContentValues().apply {
+                put("scope_id", scopeId)
+                put("legacy_imported", 1)
+            },
+            SQLiteDatabase.CONFLICT_REPLACE,
+        )
+    }
+
+
     companion object {
         private val openStores: MutableSet<SqliteChatStore> =
             java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap())
@@ -316,31 +341,7 @@ class SqliteChatStore(
             return name
         }
 
-        fun isLegacyImported(scopeId: String): Boolean =
-        readableDatabase.query(
-            TABLE_META,
-            arrayOf("legacy_imported"),
-            "scope_id = ?",
-            arrayOf(scopeId),
-            null,
-            null,
-            null,
-        ).use { cursor -> cursor.moveToFirst() && cursor.getInt(0) != 0 }
-
-    fun markLegacyImported(scopeId: String) {
-        validateScope(scopeId)
-        writableDatabase.insertWithOnConflict(
-            TABLE_META,
-            null,
-            ContentValues().apply {
-                put("scope_id", scopeId)
-                put("legacy_imported", 1)
-            },
-            SQLiteDatabase.CONFLICT_REPLACE,
-        )
-    }
-
-    private fun createSchema(db: SQLiteDatabase) {
+        private fun createSchema(db: SQLiteDatabase) {
             db.execSQL(
                 """
                 CREATE TABLE IF NOT EXISTS $TABLE_MESSAGES (

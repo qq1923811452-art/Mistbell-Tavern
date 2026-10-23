@@ -171,7 +171,7 @@ object SessionArchiveCodec {
             id = id,
             title = title,
             messages = messages,
-            kind = parseKind(headerKind),
+            kind = headerKind,
             participants = headerParticipants,
         ).also(::validate)
     }

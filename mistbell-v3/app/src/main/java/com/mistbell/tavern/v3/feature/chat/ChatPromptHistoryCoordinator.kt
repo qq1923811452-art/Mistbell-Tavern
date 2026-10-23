@@ -22,6 +22,6 @@ internal class ChatPromptHistoryCoordinator(
         maxHistoryChars = settings.getIntCompat(
             "chat_history_max_chars",
             ConversationContextWindowBuilder.DEFAULT_MAX_HISTORY_CHARS,
-        ).coerceIn(4_000, 100_000),
+        ).coerceIn(4_000, 2_000_000),
     )
 }
