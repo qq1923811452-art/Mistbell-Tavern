@@ -52,7 +52,7 @@ class ChatConnectionTester(
                     .post(body)
                     .build()
                 client.newCall(request).execute().use { response ->
-                    val elapsed = (System.nanoTime() - started) / 1_000_000
+                    val elapsed = (System.nanoTime() - started) / NANOS_PER_MILLI
                     if (response.isSuccessful) {
                         Result(true, "连接成功（${elapsed}ms）。")
                     } else {
@@ -67,3 +67,4 @@ class ChatConnectionTester(
 
 private const val CONNECT_TIMEOUT_SECONDS = 15L
 private const val READ_TIMEOUT_SECONDS = 30L
+private const val NANOS_PER_MILLI = 1_000_000
