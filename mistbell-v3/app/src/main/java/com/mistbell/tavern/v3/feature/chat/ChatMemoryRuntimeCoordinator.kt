@@ -37,6 +37,7 @@ internal class ChatMemoryRuntimeCoordinator(
     private val setStatus: (String) -> Unit,
     private val setMemoryStatusNotice: (String) -> Unit,
 ) {
+    @Suppress("LongMethod", "CyclomaticComplexMethod", "NestedBlockDepth")
     suspend fun stream(
         client: OpenAiCompatibleChatClient,
         messages: List<PromptMessage>,
