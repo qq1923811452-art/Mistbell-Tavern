@@ -84,15 +84,6 @@ import com.mistbell.tavern.v3.ui.TavernBackground
 import com.mistbell.tavern.v3.ui.TavernBottomBar
 import com.mistbell.tavern.v3.ui.TavernTab
 
-private data class BuildStage(val title: String, val detail: String)
-
-private val initialStages = listOf(
-    BuildStage("聊天与 API 核心", "独立流式聊天客户端、API 路由、Token 用量和提示词组装已接入；仍需收尾边界场景与端到端验收。"),
-    BuildStage("世界书与角色卡", "属于独立的 PR #60 范围；本 PR 不重复实现，需以 PR #60 的实际合并与验收状态为准。"),
-    BuildStage("记忆与本地向量", "已接入按角色/会话隔离的本地文本与向量存储、检索、时间事实同步及后台索引重建；仍需完成边界测试与规模性能验收。"),
-    BuildStage("本地推理与硬件状态", "EmbeddingGemma 2 / LiteRT-LM 接入、后端状态与 Qualcomm 运行时打包流程已建立；CI 打包成功不代表最新 APK 的 CPU/GPU/NPU 真机验收完成。"),
-    BuildStage("生图、安全与备份", "独立生图 API、独立密钥输入、远程图片显式下载、本地图片库及导出已接入；完整事务式备份/恢复流程仍需收尾。"),
-)
 
 class MainActivity : ComponentActivity() {
     private lateinit var diagnostics: DiagnosticLogStore

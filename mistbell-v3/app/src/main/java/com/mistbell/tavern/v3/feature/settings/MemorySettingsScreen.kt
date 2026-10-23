@@ -35,7 +35,9 @@ fun MemorySettingsScreen(onBack: () -> Unit) {
     }
     val credentialStore = remember(context) { AndroidKeystoreMemoryCredentialStore(context) }
     val diagnosticStore = remember(context) { DiagnosticLogStore(context.filesDir) }
-    var baseUrl by remember { mutableStateOf(settings.getString("memory_api_base_url", "https://api.odys.work/v1").orEmpty()) }
+    var baseUrl by remember {
+        mutableStateOf(settings.getString("memory_api_base_url", "https://api.odys.work/v1").orEmpty())
+    }
     var modelId by remember { mutableStateOf(settings.getString("memory_model_id", "").orEmpty()) }
     var apiKey by remember { mutableStateOf("") }
     var hasSaved by remember {

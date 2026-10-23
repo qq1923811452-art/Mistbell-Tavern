@@ -82,7 +82,11 @@ fun LocalModelScreen(
             Button(onClick = onRunNpuDiagnosticProbe, enabled = !operationBusy, modifier = Modifier.fillMaxWidth()) {
                 Text("运行 NPU 输入长度矩阵")
             }
-            Button(onClick = onRunAlternateBackendBenchmark, enabled = !operationBusy, modifier = Modifier.fillMaxWidth()) {
+            Button(
+                onClick = onRunAlternateBackendBenchmark,
+                enabled = !operationBusy,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
                 Text("实验：GPU / CPU 基准")
             }
             Button(onClick = onExportNpuEvidence, modifier = Modifier.fillMaxWidth()) {
