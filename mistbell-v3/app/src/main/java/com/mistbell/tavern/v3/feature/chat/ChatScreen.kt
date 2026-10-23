@@ -212,6 +212,7 @@ fun ChatScreen(
         mutableStateOf(settings.getBoolean("memory_extraction_enabled", true))
     }
     var showPromptPreview by remember { mutableStateOf(false) }
+    var showSessionSettings by remember { mutableStateOf(false) }
     LaunchedEffect(sessionStore) {
         val current = memoryConversationId
         val existing = sessionStore.list()
@@ -569,6 +570,33 @@ fun ChatScreen(
         return
     }
 
+    if (showSessionSettings) {
+        ChatSessionSettingsSheet(
+            characters = characterCards,
+            selectedCharacterId = selectedCharacterId,
+            messageCount = history.size,
+            onSelectCharacter = { characterId ->
+                selectedCharacterId = characterId
+                ChatCharacterSelectionCoordinator(settings).select(characterId)
+                if (memoryConversationId.isNotBlank()) {
+                    sessionStore.setRoleId(memoryConversationId, characterId)
+                    sessions = sessionStore.list()
+                }
+                showSessionSettings = false
+            },
+            onClearSession = {
+                history.clear()
+                persistHistory()
+                showSessionSettings = false
+            },
+            onOpenGlobalSettings = {
+                showSessionSettings = false
+                onOpenChatSettings()
+            },
+            onDismiss = { showSessionSettings = false },
+        )
+    }
+
     if (showPromptPreview) {
         PromptPreviewSheet(
             messages = lastPromptMessages,
@@ -626,7 +654,7 @@ fun ChatScreen(
                         TextButton(onClick = { showPromptPreview = true }) { Text("☰") }
                     }
                     TextButton(onClick = { showSessionList = true }) { Text("会话") }
-                    TextButton(onClick = onOpenChatSettings) { Text("⚙") }
+                    TextButton(onClick = { showSessionSettings = true }) { Text("⚙") }
                 },
             )
         },
