@@ -1,3 +1,5 @@
+@file:Suppress("FunctionNaming", "LongMethod", "CyclomaticComplexMethod")
+
 package com.mistbell.tavern.v3.feature.chat
 
 import android.os.Handler
@@ -7,6 +9,7 @@ import android.content.Context
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.rememberCoroutineScope
@@ -46,6 +49,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -92,8 +97,6 @@ import com.mistbell.tavern.v3.feature.sessions.SessionParticipant
 import com.mistbell.tavern.v3.feature.sessions.SessionStore
 import com.mistbell.tavern.v3.feature.sessions.ui.GroupCandidate
 import com.mistbell.tavern.v3.feature.sessions.ui.SessionListScreen
-import com.mistbell.tavern.v3.ui.TavernBottomBar
-import com.mistbell.tavern.v3.ui.TavernTab
 import com.mistbell.tavern.v3.ui.findActivity
 
 
@@ -106,7 +109,11 @@ internal val CHAT_EMBEDDING_DIMENSION_OPTIONS = listOf(128, 256, 512, 768, 1024,
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ChatScreen(onBack: () -> Unit) {
+fun ChatScreen(
+    onBack: () -> Unit,
+    settingsMode: Boolean = false,
+    onOpenChatSettings: () -> Unit = {},
+) {
     val context = LocalContext.current
     val chatViewModel: ChatViewModel = viewModel()
     val chatUiState by chatViewModel.uiState.collectAsStateWithLifecycle()
@@ -197,11 +204,13 @@ fun ChatScreen(onBack: () -> Unit) {
     }
     val sessionStore = remember(context) { SessionStore(context) }
     var sessions by remember { mutableStateOf(emptyList<ChatSession>()) }
-    var showSessionList by remember { mutableStateOf(false) }
+    var showSessionList by remember { mutableStateOf(true) }
     var lastGroupSpeakerId by remember { mutableStateOf<String?>(null) }
-    var promptPreview by remember { mutableStateOf<PromptPreviewBuilder.Preview?>(null) }
+    var lastPromptMessages by remember { mutableStateOf<List<PromptMessage>>(emptyList()) }
+    var memoryExtractionEnabled by remember {
+        mutableStateOf(settings.getBoolean("memory_extraction_enabled", true))
+    }
     var showPromptPreview by remember { mutableStateOf(false) }
-    var selectedTab by remember { mutableStateOf(TavernTab.CHAT) }
     LaunchedEffect(sessionStore) {
         val current = memoryConversationId
         val existing = sessionStore.list()
@@ -349,7 +358,7 @@ fun ChatScreen(onBack: () -> Unit) {
             worldbookState = worldbookSession.activation.activationState,
             worldbookStateKey = worldbookSession.activation.stateKey,
         )
-        promptPreview = PromptPreviewBuilder.build(messages)
+        lastPromptMessages = messages
         busy = true
         status = "正在重新生成…"
         val generated = StringBuilder()
@@ -427,19 +436,6 @@ fun ChatScreen(onBack: () -> Unit) {
         setStatus = { status = it },
     )
 
-    val exportLogLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.CreateDocument("text/plain"),
-    ) { uri ->
-        if (uri != null) {
-            ChatDiagnosticExportCoordinator(
-                context = context,
-                coroutineScope = coroutineScope,
-                diagnosticStore = diagnosticStore,
-                setStatus = { status = it },
-            ).export(uri)
-        }
-    }
-
     val memoryOperationsCoordinator = remember(
         context,
         memoryCredentialStore,
@@ -462,13 +458,6 @@ fun ChatScreen(onBack: () -> Unit) {
             isChatBusy = { busy },
             setStatus = { status = it },
         )
-    }
-
-    if (showPromptPreview) {
-        promptPreview?.let { preview ->
-            PromptPreviewScreen(preview = preview, onBack = { showPromptPreview = false })
-        }
-        return
     }
 
     if (showSessionList) {
@@ -551,6 +540,16 @@ fun ChatScreen(onBack: () -> Unit) {
         return
     }
 
+    if (showPromptPreview) {
+        PromptPreviewSheet(
+            messages = lastPromptMessages,
+            usageSummary = usageSummary,
+            onDismiss = { showPromptPreview = false },
+        )
+    }
+
+    BackHandler(enabled = !showSessionList) { showSessionList = true }
+
     Scaffold(
         containerColor = Color.Transparent,
         topBar = {
@@ -560,22 +559,21 @@ fun ChatScreen(onBack: () -> Unit) {
                     Button(onClick = onBack) { Text("返回首页") }
                 },
                 actions = {
-                    if (promptPreview != null) {
-                        TextButton(onClick = { showPromptPreview = true }) { Text("预览") }
+                    if (lastPromptMessages.isNotEmpty()) {
+                        TextButton(onClick = { showPromptPreview = true }) { Text("☰") }
                     }
                     TextButton(onClick = { showSessionList = true }) { Text("会话") }
+                    TextButton(onClick = onOpenChatSettings) { Text("⚙") }
                 },
             )
-        },
-        bottomBar = {
-            TavernBottomBar(selected = selectedTab, onSelect = { selectedTab = it })
         },
     ) { padding ->
         Column(
             modifier = Modifier.fillMaxSize().padding(padding).padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            if (selectedTab == TavernTab.SETTINGS) {
+            if (settingsMode) {
+            Column(modifier = Modifier.weight(1f).verticalScroll(rememberScrollState())) {
             ChatConfigurationPanel(
                 settings = settings,
                 selectedCharacterName = selectedCharacter?.card?.name,
@@ -683,6 +681,12 @@ fun ChatScreen(onBack: () -> Unit) {
                 onSavedCredentialChange = { hasSavedMemoryCredential = it },
                 onStatusChange = { status = it },
                 onDimensionsMenuExpandedChange = { dimensionMenuExpanded = it },
+                extractionEnabled = memoryExtractionEnabled,
+                onExtractionEnabledChange = { enabled ->
+                    memoryExtractionEnabled = enabled
+                    settings.edit().putBoolean("memory_extraction_enabled", enabled).apply()
+                    status = if (enabled) "已启用记忆整理。" else "已关闭记忆整理，仅保留检索。"
+                },
                 onDimensionsSelected = { dimensions ->
                     selectedEmbeddingDimensions = dimensions
                     dimensionMenuExpanded = false
@@ -692,6 +696,7 @@ fun ChatScreen(onBack: () -> Unit) {
                     ).select(dimensions)
                 },
             )
+            }
             } else {
             ChatHistoryMessageList(
                 history = history,
@@ -712,6 +717,13 @@ fun ChatScreen(onBack: () -> Unit) {
                 },
                 onRegenerate = ::regenerateReply,
             )
+            if (usageSummary.isNotBlank()) {
+                Text(
+                    text = usageSummary,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             ChatMessageComposerInput(
                 draft = chatUiState.draft,
                 enabled = !busy && !historyLoadFailed,
@@ -786,7 +798,7 @@ fun ChatScreen(onBack: () -> Unit) {
                             worldbookState = worldbookSession.activation.activationState,
                             worldbookStateKey = worldbookSession.activation.stateKey,
                         )
-                        promptPreview = PromptPreviewBuilder.build(messages)
+                        lastPromptMessages = messages
                         val baseObserver = ChatStreamObserverCoordinator(
                             mainHandler = mainHandler,
                             history = history,
@@ -797,7 +809,12 @@ fun ChatScreen(onBack: () -> Unit) {
                             setUsageSummary = { usageSummary = it },
                             persistHistory = ::persistHistory,
                             scheduleMemoryExtraction = { providers ->
-                                memoryOperationsCoordinator.scheduleExtractionIfDue(providers, history.toList())
+                                if (memoryExtractionEnabled) {
+                                    memoryOperationsCoordinator.scheduleExtractionIfDue(
+                                        providers,
+                                        history.toList(),
+                                    )
+                                }
                             },
                         ).create(providersForRequest)
                         val observer = if (groupPrepared != null) {
@@ -863,12 +880,7 @@ fun ChatScreen(onBack: () -> Unit) {
                     },
                     enabled = !busy && historyReady && !historyLoadFailed && worldbookSession.ready,
                 ) {
-                    ChatSendActionLabel(
-                        historyReady = historyReady,
-                        historyLoadFailed = historyLoadFailed,
-                        worldbooksReady = worldbookSession.ready,
-                        busy = busy,
-                    )
+                    Text("➤", style = MaterialTheme.typography.titleLarge)
                 }
                 ChatSessionResetAction(
                     enabled = !busy && historyReady && (history.isNotEmpty() || historyLoadFailed),
@@ -885,10 +897,6 @@ fun ChatScreen(onBack: () -> Unit) {
                             previousMemoryScopeId = memoryScopeId,
                         )
                     },
-                )
-                ChatDiagnosticExportAction(
-                    enabled = !busy && historyReady,
-                    onClick = { exportLogLauncher.launch("mistbell-diagnostics.txt") },
                 )
             }
             }

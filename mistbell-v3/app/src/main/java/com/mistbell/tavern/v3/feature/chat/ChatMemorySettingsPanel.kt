@@ -1,3 +1,5 @@
+@file:Suppress("FunctionNaming", "LongParameterList", "LongMethod")
+
 package com.mistbell.tavern.v3.feature.chat
 
 import android.content.SharedPreferences
@@ -5,6 +7,7 @@ import androidx.compose.runtime.Composable
 import com.mistbell.tavern.v3.core.diagnostics.DiagnosticLogStore
 import com.mistbell.tavern.v3.core.security.AndroidKeystoreMemoryCredentialStore
 
+@Suppress("LongParameterList")
 @Composable
 internal fun ChatMemorySettingsPanel(
     settings: SharedPreferences,
@@ -23,6 +26,8 @@ internal fun ChatMemorySettingsPanel(
     onStatusChange: (String) -> Unit,
     onDimensionsMenuExpandedChange: (Boolean) -> Unit,
     onDimensionsSelected: (Int) -> Unit,
+    extractionEnabled: Boolean,
+    onExtractionEnabledChange: (Boolean) -> Unit,
 ) {
     ChatMemoryApiSettingsSection(
         settings = settings,
@@ -37,6 +42,8 @@ internal fun ChatMemorySettingsPanel(
         onApiKeyChange = onApiKeyChange,
         onSavedCredentialChange = onSavedCredentialChange,
         onStatusChange = onStatusChange,
+        extractionEnabled = extractionEnabled,
+        onExtractionEnabledChange = onExtractionEnabledChange,
     )
     ChatEmbeddingDimensionsSettingsSection(
         selectedDimensions = selectedDimensions,

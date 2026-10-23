@@ -1,7 +1,11 @@
+@file:Suppress("FunctionNaming", "LongParameterList", "LongMethod")
+
 package com.mistbell.tavern.v3.feature.chat
 
 import android.content.SharedPreferences
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.material3.Switch
+import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -18,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import com.mistbell.tavern.v3.core.diagnostics.DiagnosticLogStore
 import com.mistbell.tavern.v3.core.security.AndroidKeystoreMemoryCredentialStore
 
+@Suppress("LongParameterList", "LongMethod")
 @Composable
 internal fun ChatMemoryApiSettingsSection(
     settings: SharedPreferences,
@@ -32,6 +37,8 @@ internal fun ChatMemoryApiSettingsSection(
     onApiKeyChange: (String) -> Unit,
     onSavedCredentialChange: (Boolean) -> Unit,
     onStatusChange: (String) -> Unit,
+    extractionEnabled: Boolean,
+    onExtractionEnabledChange: (Boolean) -> Unit,
 ) {
     val credentialCoordinator = ChatMemoryCredentialCoordinator(
         settings = settings,
@@ -44,6 +51,21 @@ internal fun ChatMemoryApiSettingsSection(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text("独立记忆整理 API（可选）", style = MaterialTheme.typography.titleMedium)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("启用记忆整理", style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        "关闭后不再自动抽取事实，已有记忆仍会参与检索。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(checked = extractionEnabled, onCheckedChange = onExtractionEnabledChange)
+            }
             OutlinedTextField(
                 value = baseUrl,
                 onValueChange = {
