@@ -1,4 +1,4 @@
-@file:Suppress("FunctionNaming", "LongParameterList")
+@file:Suppress("FunctionNaming", "LongParameterList", "MagicNumber")
 
 package com.mistbell.tavern.v3.feature.settings
 
