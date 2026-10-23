@@ -70,12 +70,13 @@ class SqliteChatHistoryRepository(
     }
 
     private fun migrateLegacyScopeIfNeeded() {
-        val oldScope = legacyScopeId?.takeIf { it.isNotBlank() && it != scopeId } ?: return
-        val oldCount = runCatching { store.count(oldScope) }.getOrNull() ?: return
-        if (oldCount <= 0L) return
-        if (runCatching { store.count(scopeId) }.getOrDefault(0L) > 0L) return
-        if (store.migrateScope(oldScope, scopeId)) {
-            cachedById = null
+        val oldScope = legacyScopeId?.takeIf { it.isNotBlank() && it != scopeId }
+        if (oldScope != null) {
+            val oldCount = runCatching { store.count(oldScope) }.getOrDefault(0L)
+            val targetCount = runCatching { store.count(scopeId) }.getOrDefault(0L)
+            if (oldCount > 0L && targetCount == 0L && store.migrateScope(oldScope, scopeId)) {
+                cachedById = null
+            }
         }
     }
 

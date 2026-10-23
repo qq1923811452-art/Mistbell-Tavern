@@ -237,8 +237,10 @@ fun ChatScreen(
     }
     var summaryCharsText by remember(settings) {
         mutableStateOf(
-            settings.getIntCompat("chat_history_summary_max_chars", ConversationContextWindowBuilder.DEFAULT_SUMMARY_MAX_CHARS)
-                .coerceIn(0, 10_000).toString(),
+            settings.getIntCompat(
+                "chat_history_summary_max_chars",
+                ConversationContextWindowBuilder.DEFAULT_SUMMARY_MAX_CHARS,
+            ).coerceIn(0, 10_000).toString(),
         )
     }
     var historyCharsText by remember(settings) {

@@ -191,8 +191,10 @@ class SqliteChatStore(
         return try {
             db.execSQL(
                 "INSERT OR IGNORE INTO $TABLE_MESSAGES " +
-                    "(scope_id, id, role, content, created_at, delivery_state, speaker_id, speaker_name, variants, active_variant) " +
-                    "SELECT ?, id, role, content, created_at, delivery_state, speaker_id, speaker_name, variants, active_variant " +
+                    "(scope_id, id, role, content, created_at, delivery_state, " +
+                    "speaker_id, speaker_name, variants, active_variant) " +
+                    "SELECT ?, id, role, content, created_at, delivery_state, " +
+                    "speaker_id, speaker_name, variants, active_variant " +
                     "FROM $TABLE_MESSAGES WHERE scope_id = ?",
                 arrayOf(toScopeId, fromScopeId),
             )
@@ -223,7 +225,7 @@ class SqliteChatStore(
     }
 
     private fun values(scopeId: String, message: PersistedChatMessage) =
-        ContentValues(9).apply {
+        ContentValues(PERSISTED_COLUMN_COUNT).apply {
             put("scope_id", scopeId)
             put("id", message.id)
             put("role", message.role)
@@ -287,6 +289,7 @@ class SqliteChatStore(
         const val MAX_PAGE_SIZE = 500
         const val MAX_SCOPE_ID_CHARS = 256
         private const val TABLE_MESSAGES = "chat_messages"
+        private const val PERSISTED_COLUMN_COUNT = 10
         private val MESSAGE_COLUMNS = arrayOf(
             "id",
             "role",
