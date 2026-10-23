@@ -465,6 +465,9 @@ fun ChatScreen(
             sessions = sessions,
             selectedSessionId = memoryConversationId,
             onSessionClick = { id ->
+                sessions.firstOrNull { it.id == id }?.roleId
+                    ?.takeIf(String::isNotBlank)
+                    ?.let { roleId -> selectedCharacterId = roleId }
                 memoryConversationId = id
                 settings.edit().putString("memory_extraction_conversation_id", id).apply()
                 diagnosticStore.info("chat.session.switched", "reason=click")

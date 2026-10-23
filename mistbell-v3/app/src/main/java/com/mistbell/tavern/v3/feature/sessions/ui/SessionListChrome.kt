@@ -137,7 +137,6 @@ internal fun SessionListHeader(
             ),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            BackButton(onClick = onBack)
             Spacer(modifier = Modifier.width(HEADER_TITLE_GAP))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
