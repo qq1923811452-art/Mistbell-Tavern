@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -39,8 +40,14 @@ internal fun PromptPreviewSheet(
     val totalChars = messages.sumOf { it.content.length }
     val estimatedTokens = totalChars / CHARS_PER_TOKEN
     val fullText = messages.joinToString("\n\n") { "[${it.role}] ${it.content}" }
-    ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
+    ModalBottomSheet(onDismissRequest = onDismiss, showDragHandle = true) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.95f)
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 24.dp),
+        ) {
             Text("本次提示词", style = MaterialTheme.typography.titleLarge)
             Text(
                 "${messages.size} 条消息 · 约 $estimatedTokens tokens · 共 $totalChars 字符",
@@ -60,13 +67,13 @@ internal fun PromptPreviewSheet(
                 TextButton(onClick = { clipboard.setText(AnnotatedString(fullText)) }) { Text("复制全文") }
             }
             if (showFullText) {
-                LazyColumn(Modifier.heightIn(max = 420.dp)) {
+                LazyColumn(Modifier.weight(1f)) {
                     item {
                         Text(fullText, style = MaterialTheme.typography.bodySmall)
                     }
                 }
             } else {
-                LazyColumn(Modifier.heightIn(max = 420.dp)) {
+                LazyColumn(Modifier.weight(1f)) {
                     itemsIndexed(messages) { index, message ->
                         Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
                             Row(Modifier.fillMaxWidth()) {
