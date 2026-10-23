@@ -53,6 +53,7 @@ fun SettingsHomeScreen(
 
         SettingsGroup("🔧 AI 连接") {
             SettingsRow("当前 API 配置", apiProfileLabel, onOpenApiSettings)
+            ApiSettingsSection(onStatus = {})
             SettingsRow("Embedding API", "本地向量与检索", onOpenEmbedding)
         }
         SettingsGroup("💬 对话设置") {
