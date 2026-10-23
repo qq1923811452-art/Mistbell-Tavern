@@ -466,7 +466,13 @@ fun ChatScreen(
             ?: SessionKind.SINGLE,
         sessionParticipants = sessions.firstOrNull { it.id == memoryConversationId }?.participants
             .orEmpty(),
-        onImported = {
+        onImported = { archive ->
+            sessionStore.updateImportedMetadata(
+                id = memoryConversationId,
+                title = archive.title,
+                kind = archive.kind,
+                participants = archive.participants,
+            )
             val preview = history.lastOrNull { it.content.isNotBlank() }
                 ?.content
                 ?.trim()

@@ -17,6 +17,8 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.mistbell.tavern.v3.core.inference.InferenceBackend
+import com.mistbell.tavern.v3.core.inference.InferencePhase
 import com.mistbell.tavern.v3.core.inference.InferenceRuntimeStatus
 
 /** Compact page for the on-device embedding model and NPU diagnostics. */
@@ -56,7 +58,7 @@ fun LocalModelScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Text(inferenceStatus.toString(), style = MaterialTheme.typography.bodySmall)
+            ModelStatusBlock(inferenceStatus)
             if (operationMessage.isNotBlank()) {
                 Text(operationMessage, style = MaterialTheme.typography.bodySmall)
             }
@@ -95,6 +97,43 @@ fun LocalModelScreen(
             Button(onClick = onExportLogs, modifier = Modifier.fillMaxWidth()) {
                 Text("导出诊断日志")
             }
+        }
+    }
+}
+
+@Suppress("FunctionNaming")
+@Composable
+private fun ModelStatusBlock(status: InferenceRuntimeStatus) {
+    val backend = when (status.backend) {
+        InferenceBackend.NPU -> "NPU"
+        InferenceBackend.GPU -> "GPU"
+        InferenceBackend.CPU -> "CPU"
+        InferenceBackend.UNKNOWN -> "未验证"
+    }
+    val phase = when (status.phase) {
+        InferencePhase.NOT_INITIALIZED -> "尚未初始化"
+        InferencePhase.LOADING_MODEL -> "正在加载模型"
+        InferencePhase.INITIALIZED -> "已初始化，尚未验证真实推理"
+        InferencePhase.READY -> "已就绪"
+        InferencePhase.RUNNING -> "正在推理"
+        InferencePhase.FALLBACK -> "已回退"
+        InferencePhase.FAILED -> "初始化/推理失败"
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text("本地 Embedding / NPU 状态", style = MaterialTheme.typography.titleMedium)
+        Text("$phase · 配置后端：$backend", style = MaterialTheme.typography.bodyMedium)
+        status.modelId?.let { Text("模型：$it", style = MaterialTheme.typography.bodySmall) }
+        status.acceleratorName?.let {
+            Text("配置后端：$it", style = MaterialTheme.typography.bodySmall)
+        }
+        status.lastExecutionMillis?.let {
+            Text("最近耗时：$it ms", style = MaterialTheme.typography.bodySmall)
+        }
+        status.fallbackReason?.let {
+            Text("回退原因：$it", style = MaterialTheme.typography.bodySmall)
+        }
+        status.lastError?.let {
+            Text("错误：$it", style = MaterialTheme.typography.bodySmall)
         }
     }
 }

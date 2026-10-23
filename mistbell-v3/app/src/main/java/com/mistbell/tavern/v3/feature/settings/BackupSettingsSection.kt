@@ -51,7 +51,12 @@ fun BackupSettingsSection(onRestored: () -> Unit = {}) {
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { pendingRestore = null },
             title = { Text("恢复备份？") },
-            text = { Text("当前数据将被备份内容替换，恢复后应用会重新加载。") },
+            text = {
+                Text(
+                    "将恢复：${pendingRestore?.lastPathSegment ?: "所选备份"}\n" +
+                        "当前会话、设置和记忆数据会被备份内容替换，恢复后应用会重新加载。",
+                )
+            },
             confirmButton = {
                 androidx.compose.material3.TextButton(
                     onClick = {
