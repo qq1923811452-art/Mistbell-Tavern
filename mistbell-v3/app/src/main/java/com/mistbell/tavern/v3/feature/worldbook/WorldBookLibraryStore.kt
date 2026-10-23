@@ -10,12 +10,20 @@ import java.util.UUID
 
 /** Private-file library for worldbooks; import/export remains compatible with World Info JSON. */
 class WorldBookLibraryStore(private val directory: File) {
+    private companion object {
+        const val MAX_WORLDBOOK_FILE_BYTES = 16L * 1024 * 1024
+        val ID_PATTERN = Regex("[a-fA-F0-9-]{36}")
+    }
+
     fun list(): List<WorldBook> {
         if (!directory.exists()) return emptyList()
         return directory.listFiles { file -> file.isFile && file.extension == "json" }
             .orEmpty()
             .mapNotNull { file ->
                 runCatching {
+                    require(file.length() <= MAX_WORLDBOOK_FILE_BYTES) {
+                        "Worldbook file exceeds the size limit."
+                    }
                     val parsed = WorldBookParser.parse(
                         AtomicFile(file).openRead().use { it.readBytes().toString(Charsets.UTF_8) },
                         file.nameWithoutExtension,
@@ -110,9 +118,6 @@ class WorldBookLibraryStore(private val directory: File) {
             .toString(2)
     }
 
-    companion object {
-        private val ID_PATTERN = Regex("[a-fA-F0-9-]{36}")
-    }
 }
 
 

@@ -11,6 +11,7 @@ import android.provider.MediaStore
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import android.provider.OpenableColumns
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateContentSize
@@ -76,6 +77,7 @@ import com.mistbell.tavern.v3.feature.character.CharacterCardLibraryScreen
 import com.mistbell.tavern.v3.feature.worldbook.WorldBookLibraryScreen
 import com.mistbell.tavern.v3.feature.image.ImageGenerationScreen
 import com.mistbell.tavern.v3.feature.settings.SettingsHomeScreen
+import com.mistbell.tavern.v3.core.settings.getIntCompat
 import com.mistbell.tavern.v3.ui.TavernBackground
 import com.mistbell.tavern.v3.ui.TavernBottomBar
 import com.mistbell.tavern.v3.ui.TavernTab
@@ -136,7 +138,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         diagnostics = DiagnosticLogStore(filesDir)
         val settings = getSharedPreferences("mistbell-v3-settings", MODE_PRIVATE)
-        contextTokens = settings.getInt("chat_context_tokens", 32_000)
+        contextTokens = settings.getIntCompat("chat_context_tokens", 32_000)
         memoryEnabled = settings.getBoolean("memory_extraction_enabled", true)
         selectedEmbeddingDimensions = settings
             .getInt("embedding_output_dimensions", 768)
@@ -269,6 +271,19 @@ class MainActivity : ComponentActivity() {
             }
         }
         setContent {
+            BackHandler(
+                enabled = showLicenses || showImageGeneration || showCharacterLibrary ||
+                    showWorldBookLibrary || chatSettingsMode || showLocalModel,
+            ) {
+                when {
+                    showLicenses -> showLicenses = false
+                    showImageGeneration -> showImageGeneration = false
+                    showCharacterLibrary -> showCharacterLibrary = false
+                    showWorldBookLibrary -> showWorldBookLibrary = false
+                    chatSettingsMode -> chatSettingsMode = false
+                    showLocalModel -> showLocalModel = false
+                }
+            }
             MaterialTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
@@ -347,9 +362,9 @@ class MainActivity : ComponentActivity() {
                                                 getSharedPreferences("mistbell-v3-settings", MODE_PRIVATE)
                                                     .edit()
                                                     .putInt("chat_context_tokens", tokens)
-                                                    .putString(
+                                                    .putInt(
                                                         "chat_history_max_chars",
-                                                        (tokens * 2).coerceIn(4_000, 100_000).toString(),
+                                                        (tokens * 2).coerceIn(4_000, 2_000_000),
                                                     )
                                                     .apply()
                                                 contextTokens = tokens

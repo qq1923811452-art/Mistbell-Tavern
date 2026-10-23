@@ -29,8 +29,15 @@ internal class ChatHistorySaveCoordinator(
                 // A later UI mutation supersedes an older queued snapshot. Serialize writes and
                 // never let a delayed save replace the latest conversation state.
                 if (revision != saveRevision.get()) return@withLock
+                val startedNanos = System.nanoTime()
                 runCatching {
                     withContext(Dispatchers.IO) { historyStore.save(snapshot) }
+                }.onSuccess {
+                    val elapsed = (System.nanoTime() - startedNanos) / NANOS_PER_MILLI
+                    diagnosticStore.info(
+                        "chat.history.persisted",
+                        "messages=${snapshot.size}; elapsedMs=$elapsed",
+                    )
                 }.onFailure { error ->
                     diagnosticStore.warn(
                         "chat.history.save_failed",
@@ -41,3 +48,5 @@ internal class ChatHistorySaveCoordinator(
         }
     }
 }
+
+private const val NANOS_PER_MILLI = 1_000_000

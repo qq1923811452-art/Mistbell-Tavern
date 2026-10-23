@@ -1,4 +1,4 @@
-@file:Suppress("FunctionNaming", "LongMethod", "CyclomaticComplexMethod")
+@file:Suppress("FunctionNaming", "LongMethod", "CyclomaticComplexMethod", "MagicNumber")
 
 package com.mistbell.tavern.v3.feature.chat
 
@@ -22,6 +22,7 @@ import kotlinx.coroutines.sync.withLock
 import com.mistbell.tavern.v3.core.diagnostics.DiagnosticLogStore
 import com.mistbell.tavern.v3.core.security.AndroidKeystoreMemoryCredentialStore
 import com.mistbell.tavern.v3.core.security.ChatCredentialStore
+import com.mistbell.tavern.v3.core.settings.getIntCompat
 import com.mistbell.tavern.v3.core.memory.MemoryIndexRebuilder
 import com.mistbell.tavern.v3.core.memory.MemoryIndexRebuildResult
 import com.mistbell.tavern.v3.core.memory.EligibleConversationTurn
@@ -207,7 +208,7 @@ fun ChatScreen(
     }
     val sessionStore = remember(context) { SessionStore(context) }
     var sessions by remember { mutableStateOf(emptyList<ChatSession>()) }
-    var showSessionList by remember { mutableStateOf(true) }
+    var showSessionList by remember(settingsMode) { mutableStateOf(!settingsMode) }
     var lastGroupSpeakerId by remember { mutableStateOf<String?>(null) }
     var lastPromptMessages by remember { mutableStateOf<List<PromptMessage>>(emptyList()) }
     var memoryExtractionEnabled by remember {
@@ -230,20 +231,22 @@ fun ChatScreen(
     }
     var recentTurnsText by remember(settings) {
         mutableStateOf(
-            settings.getInt("chat_history_recent_turns", ConversationContextWindowBuilder.DEFAULT_RECENT_TURNS)
+            settings.getIntCompat("chat_history_recent_turns", ConversationContextWindowBuilder.DEFAULT_RECENT_TURNS)
                 .coerceIn(1, 100).toString(),
         )
     }
     var summaryCharsText by remember(settings) {
         mutableStateOf(
-            settings.getInt("chat_history_summary_max_chars", ConversationContextWindowBuilder.DEFAULT_SUMMARY_MAX_CHARS)
-                .coerceIn(0, 10_000).toString(),
+            settings.getIntCompat(
+                "chat_history_summary_max_chars",
+                ConversationContextWindowBuilder.DEFAULT_SUMMARY_MAX_CHARS,
+            ).coerceIn(0, 10_000).toString(),
         )
     }
     var historyCharsText by remember(settings) {
         mutableStateOf(
-            settings.getInt("chat_history_max_chars", ConversationContextWindowBuilder.DEFAULT_MAX_HISTORY_CHARS)
-                .coerceIn(4_000, 100_000).toString(),
+            settings.getIntCompat("chat_history_max_chars", ConversationContextWindowBuilder.DEFAULT_MAX_HISTORY_CHARS)
+                .coerceIn(4_000, 2_000_000).toString(),
         )
     }
     var usageSummary by remember { mutableStateOf("Token 用量：本轮尚无服务端 usage 数据") }
@@ -268,6 +271,15 @@ fun ChatScreen(
             context.applicationContext,
             historyScopeId,
             legacyStore,
+            legacyScopeId = memoryScopeId.takeIf { it.isNotBlank() && it != historyScopeId },
+            legacyFileStore = memoryScopeId
+                .takeIf { it.isNotBlank() && it != historyScopeId }
+                ?.let { scope ->
+                    ChatHistoryStore(
+                        context.applicationContext,
+                        MemoryScopeFileNames.forScope(ChatHistoryStore.DEFAULT_FILE_NAME, scope),
+                    )
+                },
         )
     }
     DisposableEffect(historyStore) {
@@ -281,11 +293,15 @@ fun ChatScreen(
     val activeWorldbookId = remember(settings) {
         settings.getString("active_worldbook_id", "") ?: ""
     }
-    val sessionWorldbookId = sessions.firstOrNull { it.id == memoryConversationId }
-        ?.worldbookId.orEmpty()
-    val effectiveWorldbookId = sessionWorldbookId.ifBlank { activeWorldbookId }
     val worldbookLibrary = remember(context) {
         WorldBookLibraryStore(File(context.filesDir, "worldbooks")).list()
+    }
+    val sessionWorldbookId = sessions.firstOrNull { it.id == memoryConversationId }
+        ?.worldbookId.orEmpty()
+    val sessionWorldbookExists = worldbookLibrary.any { it.id == sessionWorldbookId }
+    val effectiveWorldbookId = when {
+        sessionWorldbookId.isNotBlank() && sessionWorldbookExists -> sessionWorldbookId
+        else -> activeWorldbookId
     }
     val worldbookSession = rememberChatWorldBookSessionState(
         context = context,
@@ -332,8 +348,22 @@ fun ChatScreen(
         val startedNanos = System.nanoTime()
         val snapshot = ChatHistorySnapshotFactory.create(history)
         historySaveCoordinator.save(snapshot)
+        val preview = snapshot.lastOrNull { it.content.isNotBlank() }
+            ?.content
+            ?.trim()
+            ?.replace('\n', ' ')
+            ?.take(80)
+            .orEmpty()
+        if (memoryConversationId.isNotBlank() && preview.isNotEmpty()) {
+            if (sessionStore.touch(memoryConversationId, preview, snapshot.size)) {
+                sessions = sessionStore.list()
+            }
+        }
         val elapsedMillis = (System.nanoTime() - startedNanos) / NANOS_PER_MILLI
-        diagnosticStore.info("chat.history.saved", "messages=${snapshot.size}; elapsedMs=$elapsedMillis")
+        diagnosticStore.info(
+            "chat.history.scheduled",
+            "messages=${snapshot.size}; snapshotMs=$elapsedMillis",
+        )
     }
 
     @Suppress("LongMethod")
@@ -368,6 +398,7 @@ fun ChatScreen(
             localWorldbookEntries = worldbookSession.entries,
             worldbookState = worldbookSession.activation.activationState,
             worldbookStateKey = worldbookSession.activation.stateKey,
+            historyIsComplete = true,
         )
         lastPromptMessages = messages
         busy = true
@@ -430,6 +461,25 @@ fun ChatScreen(
         history = history,
         conversationId = memoryConversationId,
         setStatus = { status = it },
+        sessionTitle = sessions.firstOrNull { it.id == memoryConversationId }?.title
+            ?: "Mistbell Tavern session",
+        sessionKind = sessions.firstOrNull { it.id == memoryConversationId }?.kind
+            ?: SessionKind.SINGLE,
+        sessionParticipants = sessions.firstOrNull { it.id == memoryConversationId }?.participants
+            .orEmpty(),
+        onImported = {
+            val preview = history.lastOrNull { it.content.isNotBlank() }
+                ?.content
+                ?.trim()
+                ?.replace('\n', ' ')
+                ?.take(80)
+                .orEmpty()
+            if (memoryConversationId.isNotBlank() && preview.isNotEmpty()) {
+                if (sessionStore.touch(memoryConversationId, preview, history.size)) {
+                    sessions = sessionStore.list()
+                }
+            }
+        },
     )
 
     val historyLoadCoordinator = remember(historyStore, diagnosticStore) {
@@ -500,6 +550,10 @@ fun ChatScreen(
             sessions = sessions,
             selectedSessionId = memoryConversationId,
             onSessionClick = { id ->
+                if (busy) {
+                    status = "生成中，请先停止再切换会话。"
+                    return@SessionListScreen
+                }
                 sessions.firstOrNull { it.id == id }?.roleId
                     ?.takeIf(String::isNotBlank)
                     ?.let { roleId -> selectedCharacterId = roleId }
@@ -525,11 +579,26 @@ fun ChatScreen(
                 }
             },
             onDeleteSession = { id ->
+                runCatching {
+                    val legacy = ChatHistoryStore(
+                        context.applicationContext,
+                        MemoryScopeFileNames.forScope(ChatHistoryStore.DEFAULT_FILE_NAME, id),
+                    )
+                    SqliteChatHistoryRepository(context.applicationContext, id, legacy).use { repository ->
+                        repository.deleteAll()
+                    }
+                }.onFailure { error ->
+                    diagnosticStore.warn("chat.session.history_delete_failed", error::class.java.simpleName)
+                }
                 sessionStore.delete(id)
                 sessions = sessionStore.list()
                 diagnosticStore.info("chat.session.deleted", "remaining=${sessions.size}")
                 if (id == memoryConversationId) {
                     val next = sessions.firstOrNull()
+                        ?: runCatching { sessionStore.create(activeMemoryRoleId, "新对话") }.getOrNull()
+                            ?.also { created ->
+                                sessions = sessionStore.list()
+                            }
                     if (next != null) {
                         memoryConversationId = next.id
                         settings.edit().putString("memory_extraction_conversation_id", next.id).apply()
@@ -586,8 +655,12 @@ fun ChatScreen(
             selectedWorldbookId = sessionWorldbookId,
             onSelectWorldbook = { worldbookId ->
                 if (memoryConversationId.isNotBlank()) {
-                    sessionStore.setWorldbookId(memoryConversationId, worldbookId)
-                    sessions = sessionStore.list()
+                    if (sessionStore.setWorldbookId(memoryConversationId, worldbookId)) {
+                        sessions = sessionStore.list()
+                        status = "本会话世界书已更新。"
+                    } else {
+                        status = "世界书切换失败，请重试。"
+                    }
                 }
                 showSessionSettings = false
             },
@@ -621,7 +694,13 @@ fun ChatScreen(
         )
     }
 
-    BackHandler(enabled = !showSessionList) { showSessionList = true }
+    BackHandler(enabled = !showSessionList) {
+        if (busy) {
+            status = "生成中，请先停止再切换会话。"
+        } else {
+            showSessionList = true
+        }
+    }
 
     Scaffold(
         containerColor = Color.Transparent,
@@ -669,7 +748,15 @@ fun ChatScreen(
                     if (lastPromptMessages.isNotEmpty()) {
                         TextButton(onClick = { showPromptPreview = true }) { Text("☰") }
                     }
-                    TextButton(onClick = { showSessionList = true }) { Text("会话") }
+                    TextButton(
+                        onClick = {
+                            if (busy) {
+                                status = "生成中，请先停止再切换会话。"
+                            } else {
+                                showSessionList = true
+                            }
+                        },
+                    ) { Text("会话") }
                     TextButton(onClick = { showSessionSettings = true }) { Text("⚙") }
                 },
             )
@@ -902,7 +989,7 @@ fun ChatScreen(
                             setMemoryStatusNotice = { memoryStatusNotice = it },
                             setStatus = { status = it },
                         ).start(openingMessage, userText)
-                        val messages = groupPrepared?.messages ?: ChatTurnPromptPreparationCoordinator(
+                        val messages = ChatTurnPromptPreparationCoordinator(
                             settings = settings,
                             diagnosticStore = diagnosticStore,
                             mainHandler = mainHandler,
@@ -915,6 +1002,12 @@ fun ChatScreen(
                             localWorldbookEntries = worldbookSession.entries,
                             worldbookState = worldbookSession.activation.activationState,
                             worldbookStateKey = worldbookSession.activation.stateKey,
+                            groupContext = groupPrepared?.let { prepared ->
+                                GroupChatPromptContext(
+                                    members = groupMembers,
+                                    speakerName = prepared.speakerName,
+                                )
+                            },
                         )
                         lastPromptMessages = messages
                         val baseObserver = ChatStreamObserverCoordinator(

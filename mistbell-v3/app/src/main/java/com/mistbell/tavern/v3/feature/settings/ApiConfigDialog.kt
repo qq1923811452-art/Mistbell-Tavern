@@ -14,10 +14,13 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import com.mistbell.tavern.v3.core.network.ChatConnectionTester
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -34,7 +37,6 @@ private const val BASE_URL_MAX_LENGTH = 2048
 private const val API_KEY_MAX_LENGTH = 4096
 private const val MODEL_ID_MAX_LENGTH = 200
 private const val OPENAI_COMPATIBLE_LABEL = "OpenAI 兼容"
-private const val TEST_NOT_WIRED_MESSAGE = "连接测试尚未接入；本组件不会发起网络请求。"
 private const val FORM_FOOTNOTE =
     "记忆整理开关与 API 密钥只保留在本次对话框；ApiProfile 只保存连接参数与凭据句柄。"
 
@@ -187,8 +189,21 @@ private fun ApiConfigSecretField(
 @Suppress("FunctionNaming")
 @Composable
 private fun ApiConfigTestAction(state: ApiConfigFormState) {
+    val scope = rememberCoroutineScope()
     Column(verticalArrangement = Arrangement.spacedBy(SMALL_SPACING_DP.dp)) {
-        OutlinedButton(onClick = { state.testStatus = TEST_NOT_WIRED_MESSAGE }) {
+        OutlinedButton(
+            onClick = {
+                state.testStatus = "测试中…"
+                scope.launch {
+                    val result = ChatConnectionTester().test(
+                        baseUrl = state.baseUrl,
+                        modelId = state.modelId,
+                        apiKey = state.apiKey,
+                    )
+                    state.testStatus = result.message
+                }
+            },
+        ) {
             Text("测试连接")
         }
         if (state.testStatus.isNotBlank()) {

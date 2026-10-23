@@ -14,15 +14,24 @@ class SqliteChatHistoryRepository(
     private val scopeId: String,
     private val legacyStore: ChatHistoryStore,
     databaseName: String = SqliteChatStore.DEFAULT_DATABASE_NAME,
+    /** Older builds stored this conversation under role+conversation; migrate it on first load. */
+    private val legacyScopeId: String? = null,
+    /** JSON file used by builds that predate conversation-only scopes. */
+    private val legacyFileStore: ChatHistoryStore? = null,
 ) : Closeable {
     private val store = SqliteChatStore(context.applicationContext, databaseName)
     private var cachedById: Map<String, PersistedChatMessage>? = null
 
     @Synchronized
     fun load(): ChatHistoryLoadResult {
+        migrateLegacyScopeIfNeeded()
         val existingCount = runCatching { store.count(scopeId) }
             .getOrElse { return ChatHistoryLoadResult.Unavailable }
 
+        if (existingCount == 0L && store.isLegacyImported(scopeId)) {
+            cachedById = emptyMap()
+            return ChatHistoryLoadResult.Missing
+        }
         if (existingCount > 0L) {
             val loaded = loadAllFromSqlite()
             if (loaded !is ChatHistoryLoadResult.Loaded) return loaded
@@ -30,7 +39,11 @@ class SqliteChatHistoryRepository(
             return loaded
         }
 
-        return when (val legacy = legacyStore.load()) {
+        val fallback = when (val older = legacyFileStore?.load()) {
+            null, ChatHistoryLoadResult.Missing -> legacyStore.load()
+            else -> older
+        }
+        return when (val legacy = fallback) {
             ChatHistoryLoadResult.Missing -> {
                 cachedById = emptyMap()
                 ChatHistoryLoadResult.Missing
@@ -43,6 +56,7 @@ class SqliteChatHistoryRepository(
                         cachedById = null
                         return ChatHistoryLoadResult.Unavailable
                     }
+                    store.markLegacyImported(scopeId)
                     val migrated = loadAllFromSqlite()
                     if (migrated !is ChatHistoryLoadResult.Loaded) {
                         // The verified transaction has already committed a complete import. Keep
@@ -60,10 +74,28 @@ class SqliteChatHistoryRepository(
         }
     }
 
+    private fun migrateLegacyScopeIfNeeded() {
+        val oldScope = legacyScopeId?.takeIf { it.isNotBlank() && it != scopeId }
+        if (oldScope != null) {
+            val oldCount = runCatching { store.count(oldScope) }.getOrDefault(0L)
+            val targetCount = runCatching { store.count(scopeId) }.getOrDefault(0L)
+            if (oldCount > 0L && targetCount == 0L && store.migrateScope(oldScope, scopeId)) {
+                cachedById = null
+            }
+        }
+    }
+
     /**
      * Persist only rows that changed since the last successful load/save. A single transaction
      * ensures a process interruption cannot leave a half-written batch.
      */
+    /** Deletes every stored message for this conversation scope. */
+    @Synchronized
+    fun deleteAll() {
+        store.deleteScope(scopeId)
+        cachedById = emptyMap()
+    }
+
     @Synchronized
     fun save(messages: List<PersistedChatMessage>) {
         require(messages.size <= MAX_SNAPSHOT_MESSAGES) {

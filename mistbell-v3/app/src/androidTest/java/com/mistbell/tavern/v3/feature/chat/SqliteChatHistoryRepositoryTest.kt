@@ -49,6 +49,40 @@ class SqliteChatHistoryRepositoryTest {
         }
     }
 
+
+    @Test
+    fun clearedScopeDoesNotReimportTheLegacyJson() {
+        val suffix = UUID.randomUUID().toString()
+        val databaseName = "history-clear-$suffix.db"
+        val legacyName = "history-clear-$suffix.json"
+        val legacy = ChatHistoryStore(context, legacyName)
+        val original = listOf(message("legacy-1", "user", "do not resurrect", 10L))
+        legacy.save(original)
+
+        val first = SqliteChatHistoryRepository(context, "role/session-$suffix", legacy, databaseName)
+        try {
+            assertEquals(ChatHistoryLoadResult.Loaded(original), first.load())
+            first.deleteAll()
+        } finally {
+            first.close()
+        }
+
+        val second = SqliteChatHistoryRepository(context, "role/session-$suffix", legacy, databaseName)
+        try {
+            assertEquals(ChatHistoryLoadResult.Missing, second.load())
+            assertEquals(
+                "legacy JSON must stay available as a recovery copy",
+                ChatHistoryLoadResult.Loaded(original),
+                legacy.load(),
+            )
+        } finally {
+            second.close()
+            context.deleteDatabase(databaseName)
+            context.deleteFile(legacyName)
+            context.deleteFile("$legacyName.bak")
+        }
+    }
+
     @Test
     fun saveBeforeFirstLoadImportsLegacyHistoryBeforeWritingNewSnapshot() {
         val suffix = UUID.randomUUID().toString()

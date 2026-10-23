@@ -51,7 +51,21 @@ class ChatBackupCoordinator(
             try {
                 val input = context.contentResolver.openInputStream(source)
                     ?: error("备份文件不可读")
-                input.use { stream -> temporary.outputStream().use { stream.copyTo(it) } }
+                input.use { stream ->
+                    temporary.outputStream().use { sink ->
+                        val buffer = ByteArray(COPY_BUFFER_BYTES)
+                        var total = 0L
+                        while (true) {
+                            val read = stream.read(buffer)
+                            if (read < 0) break
+                            total += read
+                            require(total <= MAX_BACKUP_BYTES) {
+                                "备份文件超过 512 MiB 上限。"
+                            }
+                            sink.write(buffer, 0, read)
+                        }
+                    }
+                }
                 val preview = service.restore(temporary)
                 publish("已恢复 ${preview.manifest.entryCount} 项，正在重新加载")
                 mainHandler.post { onRestored() }
@@ -69,5 +83,7 @@ class ChatBackupCoordinator(
 
     companion object {
         private const val BYTES_PER_KILOBYTE = 1024L
+        private const val COPY_BUFFER_BYTES = 64 * 1024
+        private const val MAX_BACKUP_BYTES = 512L * 1024 * 1024
     }
 }

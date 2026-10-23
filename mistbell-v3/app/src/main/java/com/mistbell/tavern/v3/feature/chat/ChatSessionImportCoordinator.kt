@@ -13,6 +13,7 @@ import java.util.concurrent.atomic.AtomicLong
 /**
  * Owns the existing session archive read, validation, and atomic replacement flow.
  */
+@Suppress("LongParameterList")
 internal class ChatSessionImportCoordinator(
     private val context: Context,
     private val coroutineScope: CoroutineScope,
@@ -21,6 +22,7 @@ internal class ChatSessionImportCoordinator(
     private val historySaveRevision: AtomicLong,
     private val history: MutableList<ChatLine>,
     private val setStatus: (String) -> Unit,
+    private val onImported: () -> Unit = {},
 ) {
     fun import(uri: Uri) {
         coroutineScope.launch {
@@ -45,7 +47,17 @@ internal class ChatSessionImportCoordinator(
                 }
             }.onSuccess { archive ->
                 val importedLines = archive.messages.map { message ->
-                    ChatLine(message.id, message.role, message.content, message.createdAtEpochMillis, message.deliveryState)
+                    ChatLine(
+                        id = message.id,
+                        role = message.role,
+                        content = message.content,
+                        createdAtEpochMillis = message.createdAtEpochMillis,
+                        deliveryState = message.deliveryState,
+                        speakerId = message.speakerId,
+                        speakerName = message.speakerName,
+                        variants = message.variants,
+                        activeVariant = message.activeVariant,
+                    )
                 }
                 try {
                     historySaveMutex.withLock {
@@ -58,6 +70,7 @@ internal class ChatSessionImportCoordinator(
                         history.clear()
                         history.addAll(importedLines)
                     }
+                    onImported()
                     setStatus("已导入会话「${archive.title}」：${archive.messages.size} 条消息（已保存到本地数据库；原文件不会修改）。")
                 } catch (error: Exception) {
                     setStatus("会话导入失败，原聊天记录已保留：${error.message ?: error::class.java.simpleName}")

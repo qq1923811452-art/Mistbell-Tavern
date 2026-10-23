@@ -8,6 +8,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import com.mistbell.tavern.v3.feature.sessions.SessionKind
+import com.mistbell.tavern.v3.feature.sessions.SessionParticipant
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.sync.Mutex
 import java.util.concurrent.atomic.AtomicLong
@@ -23,6 +25,7 @@ internal data class ChatSessionDocumentCallbacks(
 )
 
 @Composable
+@Suppress("LongParameterList")
 internal fun rememberChatSessionDocumentActions(
     context: Context,
     coroutineScope: CoroutineScope,
@@ -32,6 +35,10 @@ internal fun rememberChatSessionDocumentActions(
     history: MutableList<ChatLine>,
     conversationId: String,
     setStatus: (String) -> Unit,
+    onImported: () -> Unit = {},
+    sessionTitle: String = "Mistbell Tavern session",
+    sessionKind: SessionKind = SessionKind.SINGLE,
+    sessionParticipants: List<SessionParticipant> = emptyList(),
 ): ChatSessionDocumentCallbacks {
     var showImportWarning by remember { mutableStateOf(false) }
 
@@ -47,6 +54,7 @@ internal fun rememberChatSessionDocumentActions(
                 historySaveRevision = historySaveRevision,
                 history = history,
                 setStatus = setStatus,
+                onImported = onImported,
             ).import(uri)
         }
     }
@@ -64,7 +72,11 @@ internal fun rememberChatSessionDocumentActions(
     ) { uri ->
         if (uri != null) {
             ChatSessionExportCoordinator(context, coroutineScope, setStatus)
-                .export(uri, conversationId, history, jsonLines = false)
+                .export(
+                    uri, conversationId, history, jsonLines = false,
+                    title = sessionTitle, kind = sessionKind,
+                    participants = sessionParticipants,
+                )
         }
     }
     val exportJsonlLauncher = rememberLauncherForActivityResult(
@@ -72,7 +84,11 @@ internal fun rememberChatSessionDocumentActions(
     ) { uri ->
         if (uri != null) {
             ChatSessionExportCoordinator(context, coroutineScope, setStatus)
-                .export(uri, conversationId, history, jsonLines = true)
+                .export(
+                    uri, conversationId, history, jsonLines = true,
+                    title = sessionTitle, kind = sessionKind,
+                    participants = sessionParticipants,
+                )
         }
     }
 

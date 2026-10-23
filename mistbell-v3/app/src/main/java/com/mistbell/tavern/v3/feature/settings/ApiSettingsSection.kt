@@ -5,9 +5,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import com.mistbell.tavern.v3.core.network.ChatConnectionTester
 import com.mistbell.tavern.v3.core.security.ChatCredentialStore
+import kotlinx.coroutines.launch
 
 /** Edits the single default chat API profile stored in shared preferences. */
 @Suppress("FunctionNaming")
@@ -20,11 +23,27 @@ fun ApiSettingsSection(onStatus: (String) -> Unit) {
     val credentialStore = remember(context) { ChatCredentialStore(context) }
     var profile by remember { mutableStateOf(loadProfile(context)) }
     var showDialog by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     ApiProfileCard(
         profile = profile,
         selected = true,
-        onTest = { onStatus("配置已保存；发送一条消息即可验证连接。") },
+        onTest = {
+            val apiKey = profile.handle?.let(credentialStore::resolve).orEmpty()
+            if (apiKey.isBlank()) {
+                onStatus("没有已保存的密钥，请先编辑并保存配置。")
+            } else {
+                onStatus("正在测试连接…")
+                scope.launch {
+                    val result = ChatConnectionTester().test(
+                        baseUrl = profile.baseUrl,
+                        modelId = profile.modelId,
+                        apiKey = apiKey,
+                    )
+                    onStatus(result.message)
+                }
+            }
+        },
         onClick = { showDialog = true },
         onSetDefault = {},
     )
@@ -42,6 +61,8 @@ fun ApiSettingsSection(onStatus: (String) -> Unit) {
                     .putString("chat_model_id", updated.modelId.trim())
                     .putBoolean("chat_stream_enabled", updated.stream)
                     .putBoolean("chat_thinking_enabled", updated.thinkingEnabled)
+                    .putBoolean("chat_long_context", updated.longContext)
+                    .putString("chat_profile_name", updated.name)
                     .apply()
                 prefs.edit()
                     .putString("chat_credential_handle", handle)
@@ -58,12 +79,13 @@ private fun loadProfile(context: Context): ApiProfile {
     val prefs = context.getSharedPreferences("mistbell-v3-settings", Context.MODE_PRIVATE)
     return ApiProfile(
         id = "default",
-        name = "默认配置",
-        baseUrl = prefs.getString("chat_api_base_url", "https://api.deepseek.com") ?: "",
+        name = prefs.getString("chat_profile_name", "默认配置") ?: "默认配置",
+        baseUrl = prefs.getString("chat_api_base_url", "https://api.odys.work/v1") ?: "",
         modelId = prefs.getString("chat_model_id", "") ?: "",
         handle = prefs.getString("chat_credential_handle", null),
         isDefault = true,
         stream = prefs.getBoolean("chat_stream_enabled", true),
         thinkingEnabled = prefs.getBoolean("chat_thinking_enabled", false),
+        longContext = prefs.getBoolean("chat_long_context", false),
     )
 }

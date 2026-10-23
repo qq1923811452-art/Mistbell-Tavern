@@ -2,6 +2,8 @@ package com.mistbell.tavern.v3.feature.chat
 
 import android.content.Context
 import android.net.Uri
+import com.mistbell.tavern.v3.feature.sessions.SessionKind
+import com.mistbell.tavern.v3.feature.sessions.SessionParticipant
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -15,19 +17,35 @@ internal class ChatSessionExportCoordinator(
     private val coroutineScope: CoroutineScope,
     private val setStatus: (String) -> Unit,
 ) {
+    @Suppress("LongParameterList")
     fun export(
         uri: Uri,
         conversationId: String,
         history: List<ChatLine>,
         jsonLines: Boolean,
+        title: String = "Mistbell Tavern session",
+        kind: SessionKind = SessionKind.SINGLE,
+        participants: List<SessionParticipant> = emptyList(),
     ) {
         coroutineScope.launch {
             runCatching {
                 val archive = SessionArchive(
                     id = conversationId,
-                    title = "Mistbell Tavern session",
+                    title = title,
+                    kind = kind,
+                    participants = participants,
                     messages = history.map { line ->
-                        PersistedChatMessage(line.id, line.role, line.content, line.createdAtEpochMillis, line.deliveryState)
+                        PersistedChatMessage(
+                            id = line.id,
+                            role = line.role,
+                            content = line.content,
+                            createdAtEpochMillis = line.createdAtEpochMillis,
+                            deliveryState = line.deliveryState,
+                            speakerId = line.speakerId,
+                            speakerName = line.speakerName,
+                            variants = line.variants,
+                            activeVariant = line.activeVariant,
+                        )
                     },
                 )
                 val raw = if (jsonLines) {

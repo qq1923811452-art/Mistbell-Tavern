@@ -1,3 +1,5 @@
+@file:Suppress("MagicNumber")
+
 package com.mistbell.tavern.v3.feature.chat
 
 import android.content.ContentValues
@@ -5,6 +7,7 @@ import android.content.Context
 import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
+import org.json.JSONArray
 
 /**
  * SQLite-backed incremental chat persistence. This foundation is intentionally not wired into
@@ -27,7 +30,18 @@ class SqliteChatStore(
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         if (oldVersion < 1) createSchema(db)
-        // Future schema changes must be additive and versioned here.
+        if (oldVersion < 2) {
+            db.execSQL("ALTER TABLE $TABLE_MESSAGES ADD COLUMN speaker_id TEXT")
+            db.execSQL("ALTER TABLE $TABLE_MESSAGES ADD COLUMN speaker_name TEXT")
+            db.execSQL("ALTER TABLE $TABLE_MESSAGES ADD COLUMN variants TEXT NOT NULL DEFAULT '[]'")
+            db.execSQL("ALTER TABLE $TABLE_MESSAGES ADD COLUMN active_variant INTEGER NOT NULL DEFAULT 0")
+        }
+        if (oldVersion < 3) {
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS $TABLE_META (" +
+                    "scope_id TEXT PRIMARY KEY NOT NULL, legacy_imported INTEGER NOT NULL DEFAULT 0)",
+            )
+        }
     }
 
     override fun append(scopeId: String, message: PersistedChatMessage) {
@@ -175,6 +189,33 @@ class SqliteChatStore(
         writableDatabase.delete(TABLE_MESSAGES, "scope_id = ?", arrayOf(scopeId))
     }
 
+    /** Moves every row from one scope to another; existing target rows win on ID conflicts. */
+    fun migrateScope(fromScopeId: String, toScopeId: String): Boolean {
+        if (fromScopeId == toScopeId) return false
+        validateScope(fromScopeId)
+        validateScope(toScopeId)
+        val db = writableDatabase
+        db.beginTransaction()
+        return try {
+            db.execSQL(
+                "INSERT OR IGNORE INTO $TABLE_MESSAGES " +
+                    "(scope_id, id, role, content, created_at, delivery_state, " +
+                    "speaker_id, speaker_name, variants, active_variant) " +
+                    "SELECT ?, id, role, content, created_at, delivery_state, " +
+                    "speaker_id, speaker_name, variants, active_variant " +
+                    "FROM $TABLE_MESSAGES WHERE scope_id = ?",
+                arrayOf(toScopeId, fromScopeId),
+            )
+            db.delete(TABLE_MESSAGES, "scope_id = ?", arrayOf(fromScopeId))
+            db.setTransactionSuccessful()
+            true
+        } catch (_: Exception) {
+            false
+        } finally {
+            db.endTransaction()
+        }
+    }
+
     /** Deletes only the specified message IDs within one conversation scope. */
     fun deleteMessages(scopeId: String, messageIds: Set<String>) {
         validateScope(scopeId)
@@ -192,13 +233,17 @@ class SqliteChatStore(
     }
 
     private fun values(scopeId: String, message: PersistedChatMessage) =
-        ContentValues(5).apply {
+        ContentValues(PERSISTED_COLUMN_COUNT).apply {
             put("scope_id", scopeId)
             put("id", message.id)
             put("role", message.role)
             put("content", message.content)
             put("created_at", message.createdAtEpochMillis)
             put("delivery_state", message.deliveryState.name)
+            put("speaker_id", message.speakerId)
+            put("speaker_name", message.speakerName)
+            put("variants", JSONArray(message.variants).toString())
+            put("active_variant", message.activeVariant)
         }
 
     private fun Cursor.toPersistedMessage() = PersistedChatMessage(
@@ -209,7 +254,21 @@ class SqliteChatStore(
         deliveryState = PersistedChatMessage.DeliveryState.valueOf(
             getString(getColumnIndexOrThrow("delivery_state")),
         ),
+        speakerId = getString(getColumnIndexOrThrow("speaker_id")),
+        speakerName = getString(getColumnIndexOrThrow("speaker_name")),
+        variants = parseVariants(getString(getColumnIndexOrThrow("variants"))),
+        activeVariant = getInt(getColumnIndexOrThrow("active_variant")),
     )
+
+    private fun parseVariants(raw: String?): List<String> {
+        if (raw.isNullOrBlank()) return emptyList()
+        return runCatching {
+            val array = JSONArray(raw)
+            (0 until array.length()).mapNotNull { index ->
+                array.optString(index, "").takeIf(String::isNotEmpty)
+            }
+        }.getOrDefault(emptyList())
+    }
 
     private fun validateScope(scopeId: String) {
         require(scopeId.isNotBlank() && scopeId.length <= MAX_SCOPE_ID_CHARS) {
@@ -221,6 +280,31 @@ class SqliteChatStore(
         openStores.remove(this)
         super.close()
     }
+
+    fun isLegacyImported(scopeId: String): Boolean =
+        readableDatabase.query(
+            TABLE_META,
+            arrayOf("legacy_imported"),
+            "scope_id = ?",
+            arrayOf(scopeId),
+            null,
+            null,
+            null,
+        ).use { cursor -> cursor.moveToFirst() && cursor.getInt(0) != 0 }
+
+    fun markLegacyImported(scopeId: String) {
+        validateScope(scopeId)
+        writableDatabase.insertWithOnConflict(
+            TABLE_META,
+            null,
+            ContentValues().apply {
+                put("scope_id", scopeId)
+                put("legacy_imported", 1)
+            },
+            SQLiteDatabase.CONFLICT_REPLACE,
+        )
+    }
+
 
     companion object {
         private val openStores: MutableSet<SqliteChatStore> =
@@ -234,16 +318,22 @@ class SqliteChatStore(
         }
 
         const val DEFAULT_DATABASE_NAME = "mistbell-v3-chat.db"
-        const val DATABASE_VERSION = 1
+        const val DATABASE_VERSION = 3
         const val MAX_PAGE_SIZE = 500
         const val MAX_SCOPE_ID_CHARS = 256
         private const val TABLE_MESSAGES = "chat_messages"
+        private const val TABLE_META = "scope_meta"
+        private const val PERSISTED_COLUMN_COUNT = 10
         private val MESSAGE_COLUMNS = arrayOf(
             "id",
             "role",
             "content",
             "created_at",
             "delivery_state",
+            "speaker_id",
+            "speaker_name",
+            "variants",
+            "active_variant",
         )
 
         private fun validateDatabaseName(name: String): String {
@@ -265,6 +355,10 @@ class SqliteChatStore(
                     delivery_state TEXT NOT NULL CHECK (
                         delivery_state IN ('COMPLETE', 'PENDING', 'FAILED')
                     ),
+                    speaker_id TEXT,
+                    speaker_name TEXT,
+                    variants TEXT NOT NULL DEFAULT '[]',
+                    active_variant INTEGER NOT NULL DEFAULT 0,
                     PRIMARY KEY (scope_id, id)
                 )
                 """.trimIndent(),
@@ -272,6 +366,10 @@ class SqliteChatStore(
             db.execSQL(
                 "CREATE INDEX IF NOT EXISTS index_chat_messages_scope_created_id " +
                     "ON $TABLE_MESSAGES(scope_id, created_at DESC, id DESC)",
+            )
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS $TABLE_META (" +
+                    "scope_id TEXT PRIMARY KEY NOT NULL, legacy_imported INTEGER NOT NULL DEFAULT 0)",
             )
         }
     }
