@@ -101,13 +101,8 @@ class MainActivity : ComponentActivity() {
     private var mainTab by mutableStateOf(TavernTab.CHAT)
     private var chatSettingsMode by mutableStateOf(false)
     private var showLocalModel by mutableStateOf(false)
-    private var contextTokens by mutableStateOf(
-        getSharedPreferences("mistbell-v3-settings", MODE_PRIVATE).getInt("chat_context_tokens", 32_000),
-    )
-    private var memoryEnabled by mutableStateOf(
-        getSharedPreferences("mistbell-v3-settings", MODE_PRIVATE)
-            .getBoolean("memory_extraction_enabled", true),
-    )
+    private var contextTokens by mutableStateOf(32_000)
+    private var memoryEnabled by mutableStateOf(true)
     private var showCharacterLibrary by mutableStateOf(false)
     private var showWorldBookLibrary by mutableStateOf(false)
     private val embeddingDimensionOptions = listOf(128, 256, 512, 768, 1024, 1536, 2048)
@@ -141,6 +136,8 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         diagnostics = DiagnosticLogStore(filesDir)
         val settings = getSharedPreferences("mistbell-v3-settings", MODE_PRIVATE)
+        contextTokens = settings.getInt("chat_context_tokens", 32_000)
+        memoryEnabled = settings.getBoolean("memory_extraction_enabled", true)
         selectedEmbeddingDimensions = settings
             .getInt("embedding_output_dimensions", 768)
             .takeIf { it in embeddingDimensionOptions } ?: 768
