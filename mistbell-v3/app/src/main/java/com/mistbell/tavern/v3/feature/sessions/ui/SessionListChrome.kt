@@ -1,6 +1,4 @@
-@file:Suppress("FunctionNaming")
-
-@file:Suppress("MagicNumber")
+@file:Suppress("FunctionNaming", "MagicNumber")
 
 package com.mistbell.tavern.v3.feature.sessions.ui
 
