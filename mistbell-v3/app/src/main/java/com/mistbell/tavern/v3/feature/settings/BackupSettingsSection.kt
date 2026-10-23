@@ -16,7 +16,7 @@ import com.mistbell.tavern.v3.feature.chat.ChatBackupCoordinator
 import com.mistbell.tavern.v3.feature.chat.ChatBackupSettingsSection
 
 /** Backup and restore entry point for the settings page. */
-@Suppress("FunctionNaming")
+@Suppress("FunctionNaming", "LongMethod")
 @Composable
 fun BackupSettingsSection(onRestored: () -> Unit = {}) {
     val context = LocalContext.current
