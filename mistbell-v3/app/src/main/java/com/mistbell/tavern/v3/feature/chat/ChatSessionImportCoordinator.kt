@@ -46,7 +46,17 @@ internal class ChatSessionImportCoordinator(
                 }
             }.onSuccess { archive ->
                 val importedLines = archive.messages.map { message ->
-                    ChatLine(message.id, message.role, message.content, message.createdAtEpochMillis, message.deliveryState)
+                    ChatLine(
+                        id = message.id,
+                        role = message.role,
+                        content = message.content,
+                        createdAtEpochMillis = message.createdAtEpochMillis,
+                        deliveryState = message.deliveryState,
+                        speakerId = message.speakerId,
+                        speakerName = message.speakerName,
+                        variants = message.variants,
+                        activeVariant = message.activeVariant,
+                    )
                 }
                 try {
                     historySaveMutex.withLock {

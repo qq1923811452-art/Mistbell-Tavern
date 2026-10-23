@@ -581,6 +581,10 @@ fun ChatScreen(
                 diagnosticStore.info("chat.session.deleted", "remaining=${sessions.size}")
                 if (id == memoryConversationId) {
                     val next = sessions.firstOrNull()
+                        ?: runCatching { sessionStore.create(activeMemoryRoleId, "新对话") }.getOrNull()
+                            ?.also { created ->
+                                sessions = sessionStore.list()
+                            }
                     if (next != null) {
                         memoryConversationId = next.id
                         settings.edit().putString("memory_extraction_conversation_id", next.id).apply()
@@ -637,8 +641,12 @@ fun ChatScreen(
             selectedWorldbookId = sessionWorldbookId,
             onSelectWorldbook = { worldbookId ->
                 if (memoryConversationId.isNotBlank()) {
-                    sessionStore.setWorldbookId(memoryConversationId, worldbookId)
-                    sessions = sessionStore.list()
+                    if (sessionStore.setWorldbookId(memoryConversationId, worldbookId)) {
+                        sessions = sessionStore.list()
+                        status = "本会话世界书已更新。"
+                    } else {
+                        status = "世界书切换失败，请重试。"
+                    }
                 }
                 showSessionSettings = false
             },

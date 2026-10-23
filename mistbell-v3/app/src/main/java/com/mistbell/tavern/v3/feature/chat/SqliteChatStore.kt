@@ -34,6 +34,12 @@ class SqliteChatStore(
             db.execSQL("ALTER TABLE $TABLE_MESSAGES ADD COLUMN variants TEXT NOT NULL DEFAULT '[]'")
             db.execSQL("ALTER TABLE $TABLE_MESSAGES ADD COLUMN active_variant INTEGER NOT NULL DEFAULT 0")
         }
+        if (oldVersion < 3) {
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS $TABLE_META (" +
+                    "scope_id TEXT PRIMARY KEY NOT NULL, legacy_imported INTEGER NOT NULL DEFAULT 0)",
+            )
+        }
     }
 
     override fun append(scopeId: String, message: PersistedChatMessage) {
@@ -285,10 +291,11 @@ class SqliteChatStore(
         }
 
         const val DEFAULT_DATABASE_NAME = "mistbell-v3-chat.db"
-        const val DATABASE_VERSION = 2
+        const val DATABASE_VERSION = 3
         const val MAX_PAGE_SIZE = 500
         const val MAX_SCOPE_ID_CHARS = 256
         private const val TABLE_MESSAGES = "chat_messages"
+        private const val TABLE_META = "scope_meta"
         private const val PERSISTED_COLUMN_COUNT = 10
         private val MESSAGE_COLUMNS = arrayOf(
             "id",
@@ -309,7 +316,31 @@ class SqliteChatStore(
             return name
         }
 
-        private fun createSchema(db: SQLiteDatabase) {
+        fun isLegacyImported(scopeId: String): Boolean =
+        readableDatabase.query(
+            TABLE_META,
+            arrayOf("legacy_imported"),
+            "scope_id = ?",
+            arrayOf(scopeId),
+            null,
+            null,
+            null,
+        ).use { cursor -> cursor.moveToFirst() && cursor.getInt(0) != 0 }
+
+    fun markLegacyImported(scopeId: String) {
+        validateScope(scopeId)
+        writableDatabase.insertWithOnConflict(
+            TABLE_META,
+            null,
+            ContentValues().apply {
+                put("scope_id", scopeId)
+                put("legacy_imported", 1)
+            },
+            SQLiteDatabase.CONFLICT_REPLACE,
+        )
+    }
+
+    private fun createSchema(db: SQLiteDatabase) {
             db.execSQL(
                 """
                 CREATE TABLE IF NOT EXISTS $TABLE_MESSAGES (
@@ -332,6 +363,10 @@ class SqliteChatStore(
             db.execSQL(
                 "CREATE INDEX IF NOT EXISTS index_chat_messages_scope_created_id " +
                     "ON $TABLE_MESSAGES(scope_id, created_at DESC, id DESC)",
+            )
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS $TABLE_META (" +
+                    "scope_id TEXT PRIMARY KEY NOT NULL, legacy_imported INTEGER NOT NULL DEFAULT 0)",
             )
         }
     }

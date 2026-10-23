@@ -27,7 +27,17 @@ internal class ChatSessionExportCoordinator(
                     id = conversationId,
                     title = "Mistbell Tavern session",
                     messages = history.map { line ->
-                        PersistedChatMessage(line.id, line.role, line.content, line.createdAtEpochMillis, line.deliveryState)
+                        PersistedChatMessage(
+                            id = line.id,
+                            role = line.role,
+                            content = line.content,
+                            createdAtEpochMillis = line.createdAtEpochMillis,
+                            deliveryState = line.deliveryState,
+                            speakerId = line.speakerId,
+                            speakerName = line.speakerName,
+                            variants = line.variants,
+                            activeVariant = line.activeVariant,
+                        )
                     },
                 )
                 val raw = if (jsonLines) {

@@ -28,6 +28,10 @@ class SqliteChatHistoryRepository(
         val existingCount = runCatching { store.count(scopeId) }
             .getOrElse { return ChatHistoryLoadResult.Unavailable }
 
+        if (existingCount == 0L && store.isLegacyImported(scopeId)) {
+            cachedById = emptyMap()
+            return ChatHistoryLoadResult.Missing
+        }
         if (existingCount > 0L) {
             val loaded = loadAllFromSqlite()
             if (loaded !is ChatHistoryLoadResult.Loaded) return loaded
@@ -52,6 +56,7 @@ class SqliteChatHistoryRepository(
                         cachedById = null
                         return ChatHistoryLoadResult.Unavailable
                     }
+                    store.markLegacyImported(scopeId)
                     val migrated = loadAllFromSqlite()
                     if (migrated !is ChatHistoryLoadResult.Loaded) {
                         // The verified transaction has already committed a complete import. Keep

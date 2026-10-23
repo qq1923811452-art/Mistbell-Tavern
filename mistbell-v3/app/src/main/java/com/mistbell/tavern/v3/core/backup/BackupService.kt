@@ -162,6 +162,7 @@ class BackupService(
 
     private fun applySettings(file: File): () -> Unit {
         if (!file.isFile) return {}
+        require(file.length() <= MAX_SETTINGS_BYTES) { "Backup settings file exceeds the size limit." }
         val json = JSONObject(file.readText(Charsets.UTF_8))
         val preferences = appContext.getSharedPreferences(BackupSource.SETTINGS_PREFERENCES, Context.MODE_PRIVATE)
         val previous = preferences.all
@@ -252,6 +253,7 @@ class BackupService(
     companion object {
         private const val TAG = "MistbellBackup"
         private val operationMutex = Mutex()
+        private const val MAX_SETTINGS_BYTES = 4L * 1024 * 1024
     }
 }
 
@@ -270,4 +272,5 @@ class BackupValidatorFacade {
             database.close()
         }
     }
+
 }

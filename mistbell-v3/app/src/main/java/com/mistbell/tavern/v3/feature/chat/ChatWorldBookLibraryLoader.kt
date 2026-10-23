@@ -23,6 +23,9 @@ internal class ChatWorldBookLibraryLoader(
                 file.isFile && file.extension == "json" && file.nameWithoutExtension == activeWorldbookId
             }.orEmpty().flatMap { file ->
                 runCatching {
+                    require(file.length() <= MAX_WORLDBOOK_FILE_BYTES) {
+                        "Worldbook file exceeds the size limit."
+                    }
                     WorldBookParser.parse(
                         AtomicFile(file).openRead().use { it.readBytes().toString(Charsets.UTF_8) },
                         file.nameWithoutExtension,
@@ -38,3 +41,5 @@ internal class ChatWorldBookLibraryLoader(
         }
     }
 }
+
+private const val MAX_WORLDBOOK_FILE_BYTES = 16L * 1024 * 1024

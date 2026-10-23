@@ -10,6 +10,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
+import okio.BufferedSource
 import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
@@ -86,7 +87,7 @@ class OpenAiCompatibleChatClient(
         .followRedirects(false)
         .followSslRedirects(false)
         // Some providers spend longer than OkHttp's default read timeout thinking before a token.
-        .readTimeout(0, TimeUnit.MILLISECONDS)
+        .readTimeout(READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .build()
 
     fun stream(
@@ -194,7 +195,13 @@ class OpenAiCompatibleChatClient(
                             )
                             return
                         }
-                        val payload = runCatching { opened.body?.string() }.getOrNull()
+                        val payload = runCatching {
+                            val body = opened.body ?: return@runCatching null
+                            require(body.contentLength() <= MAX_RESPONSE_BYTES || body.contentLength() == -1L) {
+                                "Chat response exceeds the size limit."
+                            }
+                            readLimitedUtf8(body.source(), MAX_RESPONSE_BYTES)
+                        }.getOrNull()
                         val message = runCatching {
                             JSONObject(payload.orEmpty())
                                 .optJSONArray("choices")
@@ -255,6 +262,9 @@ class OpenAiCompatibleChatClient(
                         val source = responseBody.source()
                         while (!source.exhausted()) {
                             val line = source.readUtf8Line() ?: break
+                            require(line.length <= MAX_SSE_LINE_CHARS) {
+                                "Streaming event exceeds the line limit."
+                            }
                             if (line.isBlank() || line.startsWith(":") || !line.startsWith("data:")) {
                                 continue
                             }
@@ -333,5 +343,22 @@ class OpenAiCompatibleChatClient(
             "model", "messages", "stream", "stream_options",
             "temperature", "max_tokens", "n", "stop",
         )
+        const val READ_TIMEOUT_SECONDS = 180L
+        const val MAX_RESPONSE_BYTES = 8L * 1024 * 1024
+        const val MAX_SSE_LINE_CHARS = 1_000_000
+        const val READ_CHUNK_BYTES = 8 * 1024
     }
+
+    private fun readLimitedUtf8(source: BufferedSource, maxBytes: Long): String {
+        val output = java.io.ByteArrayOutputStream()
+        val buffer = okio.Buffer()
+        while (true) {
+            val read = source.read(buffer, READ_CHUNK_BYTES.toLong())
+            if (read < 0) break
+            output.write(buffer.readByteArray(read))
+            require(output.size() <= maxBytes) { "Chat response exceeds the size limit." }
+        }
+        return output.toString(Charsets.UTF_8.name())
+    }
+
 }

@@ -15,6 +15,7 @@ import com.mistbell.tavern.v3.core.storage.AtomicTemporalFactStore
 import com.mistbell.tavern.v3.core.storage.MemoryScopeFileNames
 import com.mistbell.tavern.v3.feature.chat.ChatHistoryLoadResult
 import com.mistbell.tavern.v3.feature.chat.ChatHistoryStore
+import com.mistbell.tavern.v3.feature.chat.SqliteChatHistoryRepository
 import com.mistbell.tavern.v3.feature.chat.MemoryExtractionBatchInputFactory
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
@@ -56,20 +57,32 @@ class MemoryExtractionQueueWorker(
                             val baseUrl = preferences.getString("memory_api_base_url", null)
                                 ?.trim()?.takeIf(String::isNotEmpty)
                                 ?: error("Memory extraction endpoint is no longer configured.")
-                            // Extraction jobs are conversation-scoped. Read the same history file
-                            // that ChatScreen persists for this job instead of the legacy default file.
-                            val historyStore = ChatHistoryStore(
+                            // Chat history now lives in SQLite. The repository still migrates a
+                            // legacy JSON file once if the conversation has not been opened since
+                            // the upgrade, so background extraction reads the same source as chat.
+                            val historyRepository = SqliteChatHistoryRepository(
                                 applicationContext,
-                                MemoryScopeFileNames.forScope(
-                                    ChatHistoryStore.DEFAULT_FILE_NAME,
-                                    job.conversationId,
+                                job.conversationId,
+                                ChatHistoryStore(
+                                    applicationContext,
+                                    MemoryScopeFileNames.forScope(
+                                        ChatHistoryStore.DEFAULT_FILE_NAME,
+                                        job.conversationId,
+                                    ),
                                 ),
                             )
-                            val history = when (val loaded = historyStore.load()) {
-                                is ChatHistoryLoadResult.Loaded -> loaded.messages
-                                ChatHistoryLoadResult.Missing -> error("Persisted source chat history is missing.")
-                                ChatHistoryLoadResult.Corrupt -> error("Persisted source chat history is corrupt.")
-                                ChatHistoryLoadResult.Unavailable -> throw MemoryExtractionQueueRunner.RetryableInputException()
+                            val history = try {
+                                when (val loaded = historyRepository.load()) {
+                                    is ChatHistoryLoadResult.Loaded -> loaded.messages
+                                    ChatHistoryLoadResult.Missing ->
+                                        error("Persisted source chat history is missing.")
+                                    ChatHistoryLoadResult.Corrupt ->
+                                        error("Persisted source chat history is corrupt.")
+                                    ChatHistoryLoadResult.Unavailable ->
+                                        throw MemoryExtractionQueueRunner.RetryableInputException()
+                                }
+                            } finally {
+                                historyRepository.close()
                             }
                             val input = inputFactory.create(job, history)
                             val profile = ProviderProfile(

@@ -128,6 +128,8 @@ object SessionArchiveCodec {
             id = session.optString("id", "").ifBlank { UUID.randomUUID().toString() },
             title = session.optString("title", "Imported session").ifBlank { "Imported session" },
             messages = messages,
+            kind = parseKind(session.optString("kind", "single")),
+            participants = parseParticipants(session.optJSONArray("participants")),
         )
         validate(archive)
         return archive
@@ -137,6 +139,8 @@ object SessionArchiveCodec {
         if (raw.length > MAX_IMPORT_BYTES) return null
         var id = UUID.randomUUID().toString()
         var title = "Imported session"
+        var headerKind = SessionKind.SINGLE
+        var headerParticipants: List<SessionParticipant> = emptyList()
         val messages = mutableListOf<PersistedChatMessage>()
         var hasSessionHeader = false
         raw.lineSequence().forEachIndexed { lineIndex, rawLine ->
@@ -152,6 +156,8 @@ object SessionArchiveCodec {
                 if (session != null) {
                     id = session.optString("id", id).ifBlank { id }
                     title = session.optString("title", session.optString("name", title)).ifBlank { title }
+                    headerKind = parseKind(session.optString("kind", "single"))
+                    headerParticipants = parseParticipants(session.optJSONArray("participants"))
                 }
                 return@forEachIndexed
             }
@@ -161,7 +167,13 @@ object SessionArchiveCodec {
         // An exported header-only archive is a valid empty session. Reject non-empty
         // JSONL that contains neither a session header nor any message records.
         if (messages.isEmpty() && raw.isNotBlank() && !hasSessionHeader) return null
-        return SessionArchive(id, title, messages).also(::validate)
+        return SessionArchive(
+            id = id,
+            title = title,
+            messages = messages,
+            kind = parseKind(headerKind),
+            participants = headerParticipants,
+        ).also(::validate)
     }
 
     private fun sessionJson(archive: SessionArchive): JSONObject = JSONObject()
@@ -206,7 +218,28 @@ object SessionArchiveCodec {
         return PersistedChatMessage(
             id = item.optString("id", "").ifBlank { "imported-" + index + "-" + UUID.randomUUID() },
             role = role, content = content, createdAtEpochMillis = timestamp, deliveryState = state,
+            speakerId = item.optString("speaker_id", "").takeIf(String::isNotBlank),
+            speakerName = item.optString("speaker_name", "").takeIf(String::isNotBlank),
+            variants = item.optJSONArray("variants")?.let { array ->
+                (0 until array.length()).mapNotNull { i ->
+                    array.optString(i, "").takeIf(String::isNotEmpty)
+                }
+            }.orEmpty(),
+            activeVariant = item.optInt("active_variant", 0),
         )
+    }
+
+    private fun parseKind(raw: String): SessionKind =
+        if (raw.equals("group", ignoreCase = true)) SessionKind.GROUP else SessionKind.SINGLE
+
+    private fun parseParticipants(array: JSONArray?): List<SessionParticipant> {
+        if (array == null) return emptyList()
+        return (0 until array.length()).mapNotNull { index ->
+            val item = array.optJSONObject(index) ?: return@mapNotNull null
+            val participantId = item.optString("id", "").trim()
+            val name = item.optString("name", "").trim()
+            if (participantId.isEmpty() || name.isEmpty()) null else SessionParticipant(participantId, name)
+        }
     }
 
     private fun parseTimestamp(raw: String?): Long {
