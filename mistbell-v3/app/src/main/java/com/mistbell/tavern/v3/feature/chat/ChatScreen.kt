@@ -72,6 +72,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -733,12 +734,17 @@ fun ChatScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            ChatMessageComposerInput(
-                draft = chatUiState.draft,
-                enabled = !busy && !historyLoadFailed,
-                onDraftChange = chatViewModel::updateDraft,
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                ChatMessageComposerInput(
+                    draft = chatUiState.draft,
+                    enabled = !busy && !historyLoadFailed,
+                    onDraftChange = chatViewModel::updateDraft,
+                    modifier = Modifier.weight(1f),
+                )
                 Button(
                     onClick = {
                         val preparedRequest = ChatSendRequestPreflightCoordinator(
@@ -891,22 +897,6 @@ fun ChatScreen(
                 ) {
                     Text("➤", style = MaterialTheme.typography.titleLarge)
                 }
-                ChatSessionResetAction(
-                    enabled = !busy && historyReady && (history.isNotEmpty() || historyLoadFailed),
-                    historyLoadFailed = historyLoadFailed,
-                    onClick = {
-                        ChatSessionResetCoordinator(
-                            settings = context.getSharedPreferences("mistbell-v3-settings", Context.MODE_PRIVATE),
-                            clearHistory = { history.clear() },
-                            setHistoryLoadFailed = { historyLoadFailed = it },
-                            setConversationId = { memoryConversationId = it },
-                            setStatus = { status = it },
-                        ).reset(
-                            historyLoadFailed = historyLoadFailed,
-                            previousMemoryScopeId = memoryScopeId,
-                        )
-                    },
-                )
             }
             }
             Text(status, style = MaterialTheme.typography.bodySmall)

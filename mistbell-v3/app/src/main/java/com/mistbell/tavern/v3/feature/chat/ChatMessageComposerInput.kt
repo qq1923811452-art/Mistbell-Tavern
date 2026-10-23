@@ -11,14 +11,15 @@ internal fun ChatMessageComposerInput(
     draft: String,
     enabled: Boolean,
     onDraftChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     OutlinedTextField(
         value = draft,
         onValueChange = onDraftChange,
         label = { Text("输入消息") },
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         enabled = enabled,
-        minLines = 2,
+        minLines = 1,
         maxLines = 4,
     )
 }
