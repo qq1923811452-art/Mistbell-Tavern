@@ -11,6 +11,7 @@ import android.provider.MediaStore
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import android.provider.OpenableColumns
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateContentSize
@@ -270,6 +271,19 @@ class MainActivity : ComponentActivity() {
             }
         }
         setContent {
+            BackHandler(
+                enabled = showLicenses || showImageGeneration || showCharacterLibrary ||
+                    showWorldBookLibrary || chatSettingsMode || showLocalModel,
+            ) {
+                when {
+                    showLicenses -> showLicenses = false
+                    showImageGeneration -> showImageGeneration = false
+                    showCharacterLibrary -> showCharacterLibrary = false
+                    showWorldBookLibrary -> showWorldBookLibrary = false
+                    chatSettingsMode -> chatSettingsMode = false
+                    showLocalModel -> showLocalModel = false
+                }
+            }
             MaterialTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
@@ -350,7 +364,7 @@ class MainActivity : ComponentActivity() {
                                                     .putInt("chat_context_tokens", tokens)
                                                     .putInt(
                                                         "chat_history_max_chars",
-                                                        (tokens * 2).coerceIn(4_000, 100_000),
+                                                        (tokens * 2).coerceIn(4_000, 2_000_000),
                                                     )
                                                     .apply()
                                                 contextTokens = tokens

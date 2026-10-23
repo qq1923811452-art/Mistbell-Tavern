@@ -208,7 +208,7 @@ fun ChatScreen(
     }
     val sessionStore = remember(context) { SessionStore(context) }
     var sessions by remember { mutableStateOf(emptyList<ChatSession>()) }
-    var showSessionList by remember { mutableStateOf(true) }
+    var showSessionList by remember(settingsMode) { mutableStateOf(!settingsMode) }
     var lastGroupSpeakerId by remember { mutableStateOf<String?>(null) }
     var lastPromptMessages by remember { mutableStateOf<List<PromptMessage>>(emptyList()) }
     var memoryExtractionEnabled by remember {
@@ -246,7 +246,7 @@ fun ChatScreen(
     var historyCharsText by remember(settings) {
         mutableStateOf(
             settings.getIntCompat("chat_history_max_chars", ConversationContextWindowBuilder.DEFAULT_MAX_HISTORY_CHARS)
-                .coerceIn(4_000, 100_000).toString(),
+                .coerceIn(4_000, 2_000_000).toString(),
         )
     }
     var usageSummary by remember { mutableStateOf("Token 用量：本轮尚无服务端 usage 数据") }
@@ -360,7 +360,10 @@ fun ChatScreen(
             }
         }
         val elapsedMillis = (System.nanoTime() - startedNanos) / NANOS_PER_MILLI
-        diagnosticStore.info("chat.history.saved", "messages=${snapshot.size}; elapsedMs=$elapsedMillis")
+        diagnosticStore.info(
+            "chat.history.scheduled",
+            "messages=${snapshot.size}; snapshotMs=$elapsedMillis",
+        )
     }
 
     @Suppress("LongMethod")
@@ -395,6 +398,7 @@ fun ChatScreen(
             localWorldbookEntries = worldbookSession.entries,
             worldbookState = worldbookSession.activation.activationState,
             worldbookStateKey = worldbookSession.activation.stateKey,
+            historyIsComplete = true,
         )
         lastPromptMessages = messages
         busy = true
@@ -985,7 +989,7 @@ fun ChatScreen(
                             setMemoryStatusNotice = { memoryStatusNotice = it },
                             setStatus = { status = it },
                         ).start(openingMessage, userText)
-                        val messages = groupPrepared?.messages ?: ChatTurnPromptPreparationCoordinator(
+                        val messages = ChatTurnPromptPreparationCoordinator(
                             settings = settings,
                             diagnosticStore = diagnosticStore,
                             mainHandler = mainHandler,
@@ -998,6 +1002,12 @@ fun ChatScreen(
                             localWorldbookEntries = worldbookSession.entries,
                             worldbookState = worldbookSession.activation.activationState,
                             worldbookStateKey = worldbookSession.activation.stateKey,
+                            groupContext = groupPrepared?.let { prepared ->
+                                GroupChatPromptContext(
+                                    members = groupMembers,
+                                    speakerName = prepared.speakerName,
+                                )
+                            },
                         )
                         lastPromptMessages = messages
                         val baseObserver = ChatStreamObserverCoordinator(

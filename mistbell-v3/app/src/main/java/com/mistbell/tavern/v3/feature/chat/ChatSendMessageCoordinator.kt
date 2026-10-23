@@ -29,8 +29,10 @@ internal class ChatSendMessageCoordinator(
         worldbookState: WorldBookActivationState,
         worldbookStateKey: String,
         onBudgetExceeded: (Int) -> Unit,
+        historyIsComplete: Boolean = false,
     ): ChatSendMessagePreparation {
-        val completeHistory = history.dropLast(2).mapNotNull { line ->
+        val completedLines = if (historyIsComplete) history else history.dropLast(2)
+        val completeHistory = completedLines.mapNotNull { line ->
             if (line.content.isBlank()) {
                 null
             } else {
