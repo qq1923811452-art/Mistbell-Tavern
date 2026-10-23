@@ -32,6 +32,9 @@ internal fun ChatSessionSettingsSheet(
     onSelectWorldbook: (String) -> Unit,
     onSelectCharacter: (String) -> Unit,
     onClearSession: () -> Unit,
+    onImportSession: () -> Unit,
+    onExportJson: () -> Unit,
+    onExportJsonl: () -> Unit,
     onOpenGlobalSettings: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -100,8 +103,13 @@ internal fun ChatSessionSettingsSheet(
                 }
             }
             Row(Modifier.fillMaxWidth().padding(top = 12.dp)) {
+                TextButton(onClick = onImportSession) { Text("导入会话") }
+                TextButton(onClick = onExportJson) { Text("导出 JSON") }
+                TextButton(onClick = onExportJsonl) { Text("导出 JSONL") }
+            }
+            Row(Modifier.fillMaxWidth()) {
                 TextButton(onClick = onClearSession) { Text("清空本会话") }
-                TextButton(onClick = onOpenGlobalSettings) { Text("API 与生成设置") }
+                TextButton(onClick = onOpenGlobalSettings) { Text("设置") }
             }
         }
     }

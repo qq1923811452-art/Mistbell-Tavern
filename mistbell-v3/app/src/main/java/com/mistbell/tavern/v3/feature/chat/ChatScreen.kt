@@ -116,7 +116,6 @@ internal val CHAT_EMBEDDING_DIMENSION_OPTIONS = listOf(128, 256, 512, 768, 1024,
 fun ChatScreen(
     onBack: () -> Unit,
     settingsMode: Boolean = false,
-    onOpenChatSettings: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val chatViewModel: ChatViewModel = viewModel()
@@ -678,9 +677,21 @@ fun ChatScreen(
                 persistHistory()
                 showSessionSettings = false
             },
+            onImportSession = {
+                showSessionSettings = false
+                sessionDocumentActions.onImportSession()
+            },
+            onExportJson = {
+                showSessionSettings = false
+                sessionDocumentActions.onExportJson()
+            },
+            onExportJsonl = {
+                showSessionSettings = false
+                sessionDocumentActions.onExportJsonl()
+            },
             onOpenGlobalSettings = {
                 showSessionSettings = false
-                onOpenChatSettings()
+                onBack()
             },
             onDismiss = { showSessionSettings = false },
         )

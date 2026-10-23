@@ -27,14 +27,12 @@ import androidx.compose.ui.unit.dp
 @Suppress("FunctionNaming", "LongParameterList")
 @Composable
 fun SettingsHomeScreen(
-    apiProfileLabel: String,
     contextTokens: Int,
     memoryEnabled: Boolean,
     onContextTokensChange: (Int) -> Unit,
     onMemoryEnabledChange: (Boolean) -> Unit,
-    onOpenApiSettings: () -> Unit,
     onOpenEmbedding: () -> Unit,
-    onOpenChatSettings: () -> Unit,
+    onOpenMemorySettings: () -> Unit,
     onOpenImage: () -> Unit,
     onOpenCharacters: () -> Unit,
     onOpenWorldBook: () -> Unit,
@@ -52,16 +50,16 @@ fun SettingsHomeScreen(
         Text("偏好与配置", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.7f))
 
         SettingsGroup("🔧 AI 连接") {
-            SettingsRow("当前 API 配置", apiProfileLabel, onOpenApiSettings)
             ApiSettingsSection(onStatus = {})
             SettingsRow("Embedding API", "本地向量与检索", onOpenEmbedding)
         }
         SettingsGroup("💬 对话设置") {
             ContextLengthRow(contextTokens, onContextTokensChange)
-            SettingsRow("聊天与生成", "流式、思考、导入导出、备份", onOpenChatSettings)
+            BackupSettingsSection()
         }
         SettingsGroup("🧠 记忆") {
             SwitchRow("启用记忆整理", "抽取事实；关闭后只保留检索", memoryEnabled, onMemoryEnabledChange)
+            SettingsRow("记忆整理 API", "独立端点、模型与密钥", onOpenMemorySettings)
         }
         SettingsGroup("🎨 内容") {
             SettingsRow("角色卡管理", "导入、编辑、删除", onOpenCharacters)
