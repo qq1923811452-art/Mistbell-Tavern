@@ -40,7 +40,7 @@ internal fun PromptPreviewSheet(
     val totalChars = messages.sumOf { it.content.length }
     val estimatedTokens = totalChars / CHARS_PER_TOKEN
     val fullText = messages.joinToString("\n\n") { "[${it.role}] ${it.content}" }
-    ModalBottomSheet(onDismissRequest = onDismiss, showDragHandle = true) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
             Modifier
                 .fillMaxWidth()
