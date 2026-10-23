@@ -1,5 +1,6 @@
 package com.mistbell.tavern.v3.feature.settings
 
+import android.app.Activity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.Text
@@ -18,6 +19,7 @@ import com.mistbell.tavern.v3.feature.chat.ChatBackupSettingsSection
 @Composable
 fun BackupSettingsSection(onRestored: () -> Unit = {}) {
     val context = LocalContext.current
+    val activity = context as? Activity
     val scope = rememberCoroutineScope()
     var status by remember { mutableStateOf("") }
     var pendingRestore by remember { mutableStateOf<android.net.Uri?>(null) }
@@ -26,7 +28,10 @@ fun BackupSettingsSection(onRestored: () -> Unit = {}) {
             context = context,
             scope = scope,
             onStatus = { status = it },
-            onRestored = onRestored,
+            onRestored = {
+                onRestored()
+                activity?.recreate()
+            },
         )
     }
     val exportLauncher = rememberLauncherForActivityResult(

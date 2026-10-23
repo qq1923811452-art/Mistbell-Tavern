@@ -13,14 +13,21 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 
 /** Compact settings hub modelled on the 2.x layout: groups of one-line destinations. */
@@ -31,6 +38,8 @@ fun SettingsHomeScreen(
     memoryEnabled: Boolean,
     onContextTokensChange: (Int) -> Unit,
     onMemoryEnabledChange: (Boolean) -> Unit,
+    maxOutputTokens: Int,
+    onMaxOutputTokensChange: (Int) -> Unit,
     onOpenEmbedding: () -> Unit,
     onOpenMemorySettings: () -> Unit,
     onOpenImage: () -> Unit,
@@ -54,6 +63,7 @@ fun SettingsHomeScreen(
             SettingsRow("Embedding API", "本地向量与检索", onOpenEmbedding)
         }
         SettingsGroup("💬 对话设置") {
+            MaxOutputTokensRow(maxOutputTokens, onMaxOutputTokensChange)
             ContextLengthRow(contextTokens, onContextTokensChange)
             BackupSettingsSection()
         }
@@ -148,4 +158,31 @@ private fun formatTokens(tokens: Int): String = when {
     tokens >= 1_000_000 -> "1M"
     tokens >= 1_000 -> "${tokens / 1_000}K"
     else -> tokens.toString()
+}
+
+@Suppress("FunctionNaming")
+@Composable
+private fun MaxOutputTokensRow(value: Int, onChange: (Int) -> Unit) {
+    var text by remember(value) { mutableStateOf(value.toString()) }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text("最大输出 token", style = MaterialTheme.typography.bodyLarge)
+            Text("过小会导致回答被截断", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.65f))
+        }
+        OutlinedTextField(
+            value = text,
+            onValueChange = { raw ->
+                val digits = raw.filter(Char::isDigit).take(6)
+                text = digits
+                digits.toIntOrNull()?.takeIf { it in 1..200_000 }?.let(onChange)
+            },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            modifier = Modifier.padding(start = 12.dp),
+        )
+    }
 }
