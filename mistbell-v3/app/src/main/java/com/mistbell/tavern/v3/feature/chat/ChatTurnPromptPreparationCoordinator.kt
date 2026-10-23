@@ -20,6 +20,7 @@ internal class ChatTurnPromptPreparationCoordinator(
     private val mainHandler: Handler,
     private val setStatus: (String) -> Unit,
 ) {
+    @Suppress("LongParameterList")
     fun prepare(
         history: List<ChatLine>,
         userText: String,

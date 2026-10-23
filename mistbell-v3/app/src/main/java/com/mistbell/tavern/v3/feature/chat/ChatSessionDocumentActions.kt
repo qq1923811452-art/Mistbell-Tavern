@@ -25,6 +25,7 @@ internal data class ChatSessionDocumentCallbacks(
 )
 
 @Composable
+@Suppress("LongParameterList")
 internal fun rememberChatSessionDocumentActions(
     context: Context,
     coroutineScope: CoroutineScope,

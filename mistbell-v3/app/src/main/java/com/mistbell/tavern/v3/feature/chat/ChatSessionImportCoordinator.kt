@@ -13,6 +13,7 @@ import java.util.concurrent.atomic.AtomicLong
 /**
  * Owns the existing session archive read, validation, and atomic replacement flow.
  */
+@Suppress("LongParameterList")
 internal class ChatSessionImportCoordinator(
     private val context: Context,
     private val coroutineScope: CoroutineScope,

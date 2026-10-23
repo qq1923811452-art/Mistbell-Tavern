@@ -20,6 +20,7 @@ internal class ChatSendMessageCoordinator(
     private val settings: SharedPreferences,
     private val diagnosticStore: DiagnosticLogStore,
 ) {
+    @Suppress("LongParameterList")
     fun prepare(
         history: List<ChatLine>,
         userText: String,

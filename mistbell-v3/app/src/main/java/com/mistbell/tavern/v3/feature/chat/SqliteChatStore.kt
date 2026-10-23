@@ -1,3 +1,5 @@
+@file:Suppress("MagicNumber")
+
 package com.mistbell.tavern.v3.feature.chat
 
 import android.content.ContentValues

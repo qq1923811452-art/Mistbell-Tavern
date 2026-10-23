@@ -12,8 +12,8 @@ import org.json.JSONObject
 /** Sends one minimal chat completion to verify endpoint, model and key together. */
 class ChatConnectionTester(
     private val client: OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
+        .connectTimeout(CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .readTimeout(READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .followRedirects(false)
         .build(),
 ) {
@@ -64,3 +64,6 @@ class ChatConnectionTester(
             }
         }
 }
+
+private const val CONNECT_TIMEOUT_SECONDS = 15L
+private const val READ_TIMEOUT_SECONDS = 30L

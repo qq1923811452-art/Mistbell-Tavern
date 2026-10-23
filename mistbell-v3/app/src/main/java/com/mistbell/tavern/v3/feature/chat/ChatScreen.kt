@@ -1,4 +1,4 @@
-@file:Suppress("FunctionNaming", "LongMethod", "CyclomaticComplexMethod")
+@file:Suppress("FunctionNaming", "LongMethod", "CyclomaticComplexMethod", "MagicNumber")
 
 package com.mistbell.tavern.v3.feature.chat
 
