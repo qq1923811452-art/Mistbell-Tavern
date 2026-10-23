@@ -1,6 +1,7 @@
 package com.mistbell.tavern.v3.feature.chat
 
 import android.content.SharedPreferences
+import com.mistbell.tavern.v3.core.settings.getIntCompat
 
 /**
  * Owns the existing preference-backed conversation history window construction.
@@ -10,15 +11,15 @@ internal class ChatPromptHistoryCoordinator(
 ) {
     fun build(history: List<PromptMessage>) = ConversationContextWindowBuilder.build(
         history = history,
-        recentTurns = settings.getInt(
+        recentTurns = settings.getIntCompat(
             "chat_history_recent_turns",
             ConversationContextWindowBuilder.DEFAULT_RECENT_TURNS,
         ).coerceIn(1, 100),
-        summaryMaxChars = settings.getInt(
+        summaryMaxChars = settings.getIntCompat(
             "chat_history_summary_max_chars",
             ConversationContextWindowBuilder.DEFAULT_SUMMARY_MAX_CHARS,
         ).coerceIn(0, 10_000),
-        maxHistoryChars = settings.getInt(
+        maxHistoryChars = settings.getIntCompat(
             "chat_history_max_chars",
             ConversationContextWindowBuilder.DEFAULT_MAX_HISTORY_CHARS,
         ).coerceIn(4_000, 100_000),

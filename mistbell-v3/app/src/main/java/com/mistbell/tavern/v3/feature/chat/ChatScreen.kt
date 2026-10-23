@@ -22,6 +22,7 @@ import kotlinx.coroutines.sync.withLock
 import com.mistbell.tavern.v3.core.diagnostics.DiagnosticLogStore
 import com.mistbell.tavern.v3.core.security.AndroidKeystoreMemoryCredentialStore
 import com.mistbell.tavern.v3.core.security.ChatCredentialStore
+import com.mistbell.tavern.v3.core.settings.getIntCompat
 import com.mistbell.tavern.v3.core.memory.MemoryIndexRebuilder
 import com.mistbell.tavern.v3.core.memory.MemoryIndexRebuildResult
 import com.mistbell.tavern.v3.core.memory.EligibleConversationTurn
@@ -230,19 +231,19 @@ fun ChatScreen(
     }
     var recentTurnsText by remember(settings) {
         mutableStateOf(
-            settings.getInt("chat_history_recent_turns", ConversationContextWindowBuilder.DEFAULT_RECENT_TURNS)
+            settings.getIntCompat("chat_history_recent_turns", ConversationContextWindowBuilder.DEFAULT_RECENT_TURNS)
                 .coerceIn(1, 100).toString(),
         )
     }
     var summaryCharsText by remember(settings) {
         mutableStateOf(
-            settings.getInt("chat_history_summary_max_chars", ConversationContextWindowBuilder.DEFAULT_SUMMARY_MAX_CHARS)
+            settings.getIntCompat("chat_history_summary_max_chars", ConversationContextWindowBuilder.DEFAULT_SUMMARY_MAX_CHARS)
                 .coerceIn(0, 10_000).toString(),
         )
     }
     var historyCharsText by remember(settings) {
         mutableStateOf(
-            settings.getInt("chat_history_max_chars", ConversationContextWindowBuilder.DEFAULT_MAX_HISTORY_CHARS)
+            settings.getIntCompat("chat_history_max_chars", ConversationContextWindowBuilder.DEFAULT_MAX_HISTORY_CHARS)
                 .coerceIn(4_000, 100_000).toString(),
         )
     }
@@ -268,6 +269,15 @@ fun ChatScreen(
             context.applicationContext,
             historyScopeId,
             legacyStore,
+            legacyScopeId = memoryScopeId.takeIf { it.isNotBlank() && it != historyScopeId },
+            legacyFileStore = memoryScopeId
+                .takeIf { it.isNotBlank() && it != historyScopeId }
+                ?.let { scope ->
+                    ChatHistoryStore(
+                        context.applicationContext,
+                        MemoryScopeFileNames.forScope(ChatHistoryStore.DEFAULT_FILE_NAME, scope),
+                    )
+                },
         )
     }
     DisposableEffect(historyStore) {
@@ -500,6 +510,10 @@ fun ChatScreen(
             sessions = sessions,
             selectedSessionId = memoryConversationId,
             onSessionClick = { id ->
+                if (busy) {
+                    status = "生成中，请先停止再切换会话。"
+                    return@SessionListScreen
+                }
                 sessions.firstOrNull { it.id == id }?.roleId
                     ?.takeIf(String::isNotBlank)
                     ?.let { roleId -> selectedCharacterId = roleId }
@@ -621,7 +635,13 @@ fun ChatScreen(
         )
     }
 
-    BackHandler(enabled = !showSessionList) { showSessionList = true }
+    BackHandler(enabled = !showSessionList) {
+        if (busy) {
+            status = "生成中，请先停止再切换会话。"
+        } else {
+            showSessionList = true
+        }
+    }
 
     Scaffold(
         containerColor = Color.Transparent,
@@ -669,7 +689,15 @@ fun ChatScreen(
                     if (lastPromptMessages.isNotEmpty()) {
                         TextButton(onClick = { showPromptPreview = true }) { Text("☰") }
                     }
-                    TextButton(onClick = { showSessionList = true }) { Text("会话") }
+                    TextButton(
+                        onClick = {
+                            if (busy) {
+                                status = "生成中，请先停止再切换会话。"
+                            } else {
+                                showSessionList = true
+                            }
+                        },
+                    ) { Text("会话") }
                     TextButton(onClick = { showSessionSettings = true }) { Text("⚙") }
                 },
             )

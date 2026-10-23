@@ -14,12 +14,17 @@ class SqliteChatHistoryRepository(
     private val scopeId: String,
     private val legacyStore: ChatHistoryStore,
     databaseName: String = SqliteChatStore.DEFAULT_DATABASE_NAME,
+    /** Older builds stored this conversation under role+conversation; migrate it on first load. */
+    private val legacyScopeId: String? = null,
+    /** JSON file used by builds that predate conversation-only scopes. */
+    private val legacyFileStore: ChatHistoryStore? = null,
 ) : Closeable {
     private val store = SqliteChatStore(context.applicationContext, databaseName)
     private var cachedById: Map<String, PersistedChatMessage>? = null
 
     @Synchronized
     fun load(): ChatHistoryLoadResult {
+        migrateLegacyScopeIfNeeded()
         val existingCount = runCatching { store.count(scopeId) }
             .getOrElse { return ChatHistoryLoadResult.Unavailable }
 
@@ -30,7 +35,11 @@ class SqliteChatHistoryRepository(
             return loaded
         }
 
-        return when (val legacy = legacyStore.load()) {
+        val fallback = when (val older = legacyFileStore?.load()) {
+            null, ChatHistoryLoadResult.Missing -> legacyStore.load()
+            else -> older
+        }
+        return when (val legacy = fallback) {
             ChatHistoryLoadResult.Missing -> {
                 cachedById = emptyMap()
                 ChatHistoryLoadResult.Missing
@@ -57,6 +66,16 @@ class SqliteChatHistoryRepository(
                     ChatHistoryLoadResult.Unavailable
                 }
             }
+        }
+    }
+
+    private fun migrateLegacyScopeIfNeeded() {
+        val oldScope = legacyScopeId?.takeIf { it.isNotBlank() && it != scopeId } ?: return
+        val oldCount = runCatching { store.count(oldScope) }.getOrNull() ?: return
+        if (oldCount <= 0L) return
+        if (runCatching { store.count(scopeId) }.getOrDefault(0L) > 0L) return
+        if (store.migrateScope(oldScope, scopeId)) {
+            cachedById = null
         }
     }
 
