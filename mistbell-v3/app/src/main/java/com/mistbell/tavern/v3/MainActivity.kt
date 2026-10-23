@@ -101,6 +101,13 @@ class MainActivity : ComponentActivity() {
     private var mainTab by mutableStateOf(TavernTab.CHAT)
     private var chatSettingsMode by mutableStateOf(false)
     private var showLocalModel by mutableStateOf(false)
+    private var contextTokens by mutableStateOf(
+        getSharedPreferences("mistbell-v3-settings", MODE_PRIVATE).getInt("chat_context_tokens", 32_000),
+    )
+    private var memoryEnabled by mutableStateOf(
+        getSharedPreferences("mistbell-v3-settings", MODE_PRIVATE)
+            .getBoolean("memory_extraction_enabled", true),
+    )
     private var showCharacterLibrary by mutableStateOf(false)
     private var showWorldBookLibrary by mutableStateOf(false)
     private val embeddingDimensionOptions = listOf(128, 256, 512, 768, 1024, 1536, 2048)
@@ -330,6 +337,35 @@ class MainActivity : ComponentActivity() {
                                                 .background(Color.Black.copy(alpha = 0.55f)),
                                         )
                                         SettingsHomeScreen(
+                                            apiProfileLabel = runCatching {
+                                                val prefs = getSharedPreferences("mistbell-v3-settings", MODE_PRIVATE)
+                                                val model = prefs.getString("chat_model_id", "").orEmpty()
+                                                val url = prefs.getString("chat_api_base_url", "").orEmpty()
+                                                listOf(model, url).filter { it.isNotBlank() }
+                                                    .joinToString(" · ").ifBlank { "未配置" }
+                                            }.getOrDefault("未配置"),
+                                            contextTokens = contextTokens,
+                                            memoryEnabled = memoryEnabled,
+                                            onContextTokensChange = { tokens ->
+                                                getSharedPreferences("mistbell-v3-settings", MODE_PRIVATE)
+                                                    .edit()
+                                                    .putInt("chat_context_tokens", tokens)
+                                                    .putString(
+                                                        "chat_history_max_chars",
+                                                        (tokens * 2).coerceIn(4_000, 100_000).toString(),
+                                                    )
+                                                    .apply()
+                                                contextTokens = tokens
+                                            },
+                                            onMemoryEnabledChange = { enabled ->
+                                                getSharedPreferences("mistbell-v3-settings", MODE_PRIVATE)
+                                                    .edit()
+                                                    .putBoolean("memory_extraction_enabled", enabled)
+                                                    .apply()
+                                                memoryEnabled = enabled
+                                            },
+                                            onOpenApiSettings = { chatSettingsMode = true },
+                                            onOpenEmbedding = { chatSettingsMode = true },
                                             onOpenChatSettings = { chatSettingsMode = true },
                                             onOpenImage = { showImageGeneration = true },
                                             onOpenCharacters = { showCharacterLibrary = true },
