@@ -280,7 +280,10 @@ class MainActivity : ComponentActivity() {
                             Box(Modifier.weight(1f)) {
                                 when (mainTab) {
                                     TavernTab.CHAT -> TavernBackground {
-                                        ChatScreen(onBack = { mainTab = TavernTab.SETTINGS })
+                                        ChatScreen(
+                                            onBack = { mainTab = TavernTab.SETTINGS },
+                                            onOpenChatSettings = { chatSettingsMode = true },
+                                        )
                                     }
                                     TavernTab.SETTINGS -> Box(Modifier.fillMaxSize()) {
                                         Image(

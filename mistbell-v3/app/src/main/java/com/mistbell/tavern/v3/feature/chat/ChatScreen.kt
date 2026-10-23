@@ -107,7 +107,11 @@ internal val CHAT_EMBEDDING_DIMENSION_OPTIONS = listOf(128, 256, 512, 768, 1024,
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ChatScreen(onBack: () -> Unit, settingsMode: Boolean = false) {
+fun ChatScreen(
+    onBack: () -> Unit,
+    settingsMode: Boolean = false,
+    onOpenChatSettings: () -> Unit = {},
+) {
     val context = LocalContext.current
     val chatViewModel: ChatViewModel = viewModel()
     val chatUiState by chatViewModel.uiState.collectAsStateWithLifecycle()
@@ -352,7 +356,7 @@ fun ChatScreen(onBack: () -> Unit, settingsMode: Boolean = false) {
             worldbookState = worldbookSession.activation.activationState,
             worldbookStateKey = worldbookSession.activation.stateKey,
         )
-        promptPreview = PromptPreviewBuilder.build(messages)
+        lastPromptMessages = messages
         busy = true
         status = "正在重新生成…"
         val generated = StringBuilder()
@@ -467,13 +471,6 @@ fun ChatScreen(onBack: () -> Unit, settingsMode: Boolean = false) {
         )
     }
 
-    if (showPromptPreview) {
-        promptPreview?.let { preview ->
-            PromptPreviewScreen(preview = preview, onBack = { showPromptPreview = false })
-        }
-        return
-    }
-
     if (showSessionList) {
         SessionListScreen(
             sessions = sessions,
@@ -554,6 +551,14 @@ fun ChatScreen(onBack: () -> Unit, settingsMode: Boolean = false) {
         return
     }
 
+    if (showPromptPreview) {
+        PromptPreviewSheet(
+            messages = lastPromptMessages,
+            usageSummary = usageSummary,
+            onDismiss = { showPromptPreview = false },
+        )
+    }
+
     BackHandler(enabled = !showSessionList) { showSessionList = true }
 
     Scaffold(
@@ -565,10 +570,11 @@ fun ChatScreen(onBack: () -> Unit, settingsMode: Boolean = false) {
                     Button(onClick = onBack) { Text("返回首页") }
                 },
                 actions = {
-                    if (promptPreview != null) {
-                        TextButton(onClick = { showPromptPreview = true }) { Text("预览") }
+                    if (lastPromptMessages.isNotEmpty()) {
+                        TextButton(onClick = { showPromptPreview = true }) { Text("☰") }
                     }
                     TextButton(onClick = { showSessionList = true }) { Text("会话") }
+                    TextButton(onClick = onOpenChatSettings) { Text("⚙") }
                 },
             )
         },
@@ -803,7 +809,7 @@ fun ChatScreen(onBack: () -> Unit, settingsMode: Boolean = false) {
                             worldbookState = worldbookSession.activation.activationState,
                             worldbookStateKey = worldbookSession.activation.stateKey,
                         )
-                        promptPreview = PromptPreviewBuilder.build(messages)
+                        lastPromptMessages = messages
                         val baseObserver = ChatStreamObserverCoordinator(
                             mainHandler = mainHandler,
                             history = history,
