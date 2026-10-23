@@ -25,7 +25,7 @@ import com.mistbell.tavern.v3.core.security.AndroidKeystoreMemoryCredentialStore
 import com.mistbell.tavern.v3.feature.chat.ChatMemoryApiSettingsSection
 
 /** Memory extraction endpoint and credential, independent from the chat API. */
-@Suppress("FunctionNaming")
+@Suppress("FunctionNaming", "LongMethod")
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MemorySettingsScreen(onBack: () -> Unit) {
