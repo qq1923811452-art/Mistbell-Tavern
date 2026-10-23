@@ -12,7 +12,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import com.mistbell.tavern.v3.feature.chat.ChatBackupCoordinator
 import com.mistbell.tavern.v3.feature.chat.ChatBackupSettingsSection
-import androidx.compose.runtime.LaunchedEffect
 
 /** Backup and restore entry point for the settings page. */
 @Suppress("FunctionNaming")
