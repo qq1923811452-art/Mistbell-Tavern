@@ -6,6 +6,7 @@ import kotlinx.coroutines.launch
 import com.mistbell.tavern.v3.core.diagnostics.DiagnosticLogStore
 
 /** Runs memory-aware streaming and preserves the existing ordinary-chat fallback behavior. */
+@Suppress("LongParameterList")
 internal class ChatSendStreamFallbackCoordinator(
     private val coroutineScope: CoroutineScope,
     private val diagnosticStore: DiagnosticLogStore,
