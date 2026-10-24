@@ -84,6 +84,7 @@ class BackupArchiveWriter {
         }
     }
 
+    @Suppress("ThrowsCount")
     private fun writeEntry(zip: ZipOutputStream, file: File, entry: BackupEntry) {
         zip.putNextEntry(ZipEntry(entry.path))
         val digest = MessageDigest.getInstance("SHA-256")
