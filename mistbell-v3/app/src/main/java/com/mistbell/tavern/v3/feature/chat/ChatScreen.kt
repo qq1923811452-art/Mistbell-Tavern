@@ -13,6 +13,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import com.mistbell.tavern.v3.core.diagnostics.DiagnosticLogStore
@@ -992,9 +993,12 @@ fun ChatScreen(
                                 setMemoryStatusNotice = { memoryStatusNotice = it },
                                 setStatus = { status = it },
                             ).start(openingMessage, userText)
+                            diagnosticStore.info("chat.send.started", "conversation=${requestConversationId.take(8)}")
                             val assistantMessageId = history.lastOrNull { it.role == "assistant" }?.id.orEmpty()
                             val requestHistory = history.toList()
+                            diagnosticStore.info("chat.send.prepare.begin", "history=${requestHistory.size}")
                             val messages = try {
+                                withTimeoutOrNull(PROMPT_PREPARE_TIMEOUT_MS) {
                                 withContext(Dispatchers.Default) {
                                     ChatTurnPromptPreparationCoordinator(
                                         settings = settings,
@@ -1017,6 +1021,7 @@ fun ChatScreen(
                                         },
                                     )
                                 }
+                                }
                             } catch (error: Exception) {
                                 if (ownsSendRequest()) {
                                     busy = false
@@ -1024,6 +1029,14 @@ fun ChatScreen(
                                 }
                                 return@launch
                             }
+                            if (messages == null) {
+                                if (ownsSendRequest()) {
+                                    busy = false
+                                    status = "提示词准备超时，请重试。"
+                                }
+                                return@launch
+                            }
+                            diagnosticStore.info("chat.send.prepare.done", "messages=${messages.size}")
                             if (!ownsSendRequest() || memoryConversationId != requestConversationId) {
                                 if (ownsSendRequest()) {
                                     busy = false
@@ -1149,3 +1162,4 @@ fun ChatScreen(
 }
 
 private const val NANOS_PER_MILLI = 1_000_000
+private const val PROMPT_PREPARE_TIMEOUT_MS = 30_000L
