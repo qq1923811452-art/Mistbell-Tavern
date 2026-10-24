@@ -78,6 +78,7 @@ internal val CHAT_EMBEDDING_DIMENSION_OPTIONS = listOf(128, 256, 512, 768, 1024,
 @Composable
 fun ChatScreen(
     onBack: () -> Unit,
+    onSessionListVisibilityChange: (Boolean) -> Unit = {},
 ) {
     val context = LocalContext.current
     val chatViewModel: ChatViewModel = viewModel()
@@ -150,6 +151,7 @@ fun ChatScreen(
     val sessionStore = remember(context) { SessionStore(context) }
     var sessions by remember { mutableStateOf(emptyList<ChatSession>()) }
     var showSessionList by remember { mutableStateOf(true) }
+    LaunchedEffect(showSessionList) { onSessionListVisibilityChange(showSessionList) }
     var lastGroupSpeakerId by remember { mutableStateOf<String?>(null) }
     var lastPromptMessages by remember { mutableStateOf<List<PromptMessage>>(emptyList()) }
     var memoryExtractionEnabled by remember {
