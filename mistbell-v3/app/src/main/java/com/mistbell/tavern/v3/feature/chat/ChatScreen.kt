@@ -1087,6 +1087,10 @@ fun ChatScreen(
                                 setBusy = { busy = it },
                                 setStatus = { status = it },
                                 persistHistory = ::persistHistory,
+                                isCurrentRequest = {
+                                    ownsSendRequest() &&
+                                        memoryConversationId == requestConversationId
+                                },
                             ).launch(
                                 memoryStream = {
                                     ChatMemoryRuntimeCoordinator(
