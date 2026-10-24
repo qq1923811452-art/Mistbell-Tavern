@@ -170,7 +170,7 @@ private fun ChatBubble(
     ) {
         Text(
             text = messageText(line = line, busy = busy),
-            style = MaterialTheme.typography.bodyMedium.copy(fontSize = 16.sp),
+            style = MaterialTheme.typography.bodyMedium.copy(fontSize = 15.sp),
             color = BUBBLE_TEXT_COLOR,
         )
         MessageActions(
