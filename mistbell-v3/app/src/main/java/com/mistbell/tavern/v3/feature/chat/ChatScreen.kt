@@ -115,6 +115,7 @@ fun ChatScreen(
         }
     }
     var busy by remember { mutableStateOf(false) }
+    val requestGeneration = remember { java.util.concurrent.atomic.AtomicLong(0L) }
     var memoryBaseUrl by remember(settings) {
         mutableStateOf(settings.getString("memory_api_base_url", "https://api.odys.work/v1") ?: "https://api.odys.work/v1")
     }
@@ -373,6 +374,8 @@ fun ChatScreen(
             status = "无法重新生成：找不到对应的用户消息。"
             return
         }
+        val requestToken = requestGeneration.incrementAndGet()
+        fun ownsRequest(): Boolean = requestGeneration.get() == requestToken
         val requestConversationId = memoryConversationId
         val requestMemoryScopeId = memoryScopeId
         val requestCharacterId = selectedCharacterId
@@ -417,9 +420,11 @@ fun ChatScreen(
                         historyIsComplete = true,
                     )
                 }
-                if (memoryConversationId != requestConversationId) {
-                    busy = false
-                    status = "会话已切换，重新生成已取消。"
+                if (memoryConversationId != requestConversationId || !ownsRequest()) {
+                    if (ownsRequest()) {
+                        busy = false
+                        status = "会话已切换，重新生成已取消。"
+                    }
                     return@launch
                 }
                 lastPromptMessages = messages
@@ -433,7 +438,7 @@ fun ChatScreen(
 
                     override fun onUsage(usage: ChatTokenUsage) {
                         mainHandler.post {
-                            if (memoryConversationId != requestConversationId) return@post
+                            if (!ownsRequest() || memoryConversationId != requestConversationId) return@post
                             val summary = formatUsageSummary(usage)
                             usageSummary = summary
                             saveUsageSummary(requestConversationId, summary)
@@ -442,7 +447,7 @@ fun ChatScreen(
 
                     override fun onComplete() {
                         mainHandler.post {
-                            if (memoryConversationId != requestConversationId) return@post
+                            if (!ownsRequest() || memoryConversationId != requestConversationId) return@post
                             val index = history.indexOfFirst { it.id == targetMessageId }
                             val replacement = if (index >= 0) {
                                 val line = history[index]
@@ -475,7 +480,7 @@ fun ChatScreen(
 
                     override fun onFailure(failure: ChatStreamFailure) {
                         mainHandler.post {
-                            if (memoryConversationId != requestConversationId) return@post
+                            if (!ownsRequest() || memoryConversationId != requestConversationId) return@post
                             busy = false
                             status = "重新生成失败：${failure.safeMessage}"
                         }
@@ -492,8 +497,10 @@ fun ChatScreen(
                     setMemoryStatusNotice = { memoryStatusNotice = it },
                 ).stream(configuration.client, messages, observer, effectiveMaxTokens())
             } catch (error: Exception) {
-                busy = false
-                status = "重新生成准备失败：${error.message ?: error.javaClass.simpleName}"
+                if (ownsRequest()) {
+                    busy = false
+                    status = "重新生成准备失败：${error.message ?: error.javaClass.simpleName}"
+                }
             }
         }
     }
@@ -911,6 +918,7 @@ fun ChatScreen(
                 Button(
                     onClick = {
                         coroutineScope.launch {
+                            requestGeneration.incrementAndGet()
                             val requestConversationId = memoryConversationId
                             val requestMemoryScopeId = memoryScopeId
                             val requestCharacterId = selectedCharacterId
