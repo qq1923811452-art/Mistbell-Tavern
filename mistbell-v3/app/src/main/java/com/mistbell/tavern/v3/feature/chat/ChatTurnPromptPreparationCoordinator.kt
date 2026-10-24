@@ -34,6 +34,10 @@ internal class ChatTurnPromptPreparationCoordinator(
     ): List<PromptMessage> {
         val startedNanos = System.nanoTime()
         val selectedCard = characterCards.firstOrNull { it.id == selectedCharacterId }?.card
+        val formatStarted = System.nanoTime()
+        val characterDefinition = selectedCard?.let(CharacterDefinitionCache::format)
+        val formatMs = (System.nanoTime() - formatStarted) / NANOS_PER_MILLI
+        val prepareStarted = System.nanoTime()
         val messages = ChatSendMessageCoordinator(
             settings = settings,
             diagnosticStore = diagnosticStore,
@@ -41,7 +45,7 @@ internal class ChatTurnPromptPreparationCoordinator(
             history = history,
             userText = userText,
             selectedCard = selectedCard,
-            characterDefinition = selectedCard?.let(CharacterDefinitionCache::format),
+            characterDefinition = characterDefinition,
             localEntries = localWorldbookEntries,
             worldbookState = worldbookState,
             worldbookStateKey = worldbookStateKey,
@@ -57,11 +61,13 @@ internal class ChatTurnPromptPreparationCoordinator(
         } else {
             labelGroupMessages(messages, history, historyIsComplete, groupContext)
         }
+        val prepareMs = (System.nanoTime() - prepareStarted) / NANOS_PER_MILLI
         val elapsedMillis = (System.nanoTime() - startedNanos) / NANOS_PER_MILLI
         val promptChars = finalMessages.sumOf { it.content.length }
         diagnosticStore.info(
             "chat.prompt.assembled",
-            "messages=${finalMessages.size}; promptChars=$promptChars; elapsedMs=$elapsedMillis",
+            "messages=${finalMessages.size}; promptChars=$promptChars; elapsedMs=$elapsedMillis; " +
+                "formatMs=$formatMs; prepareMs=$prepareMs",
         )
         return finalMessages
     }
