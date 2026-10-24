@@ -6,6 +6,17 @@ import org.junit.Test
 
 class HistoryDeletionGuardTest {
     @Test
+    fun repeatedDeletesOfSameScopeKeepGuardActiveUntilAllEnd() {
+        val guard = HistoryDeletionGuard()
+        guard.begin("a")
+        guard.begin("a")
+        guard.end("a")
+        assertTrue(guard.isDeleting("a"))
+        guard.end("a")
+        assertFalse(guard.isDeleting("a"))
+    }
+
+    @Test
     fun concurrentDeletesDoNotClearEachOther() {
         val guard = HistoryDeletionGuard()
         guard.begin("a")
