@@ -166,7 +166,7 @@ private fun formatTokens(tokens: Int): String = when {
 private fun MaxOutputTokensRow(value: Int, onChange: (Int) -> Unit) {
     var text by remember(value) { mutableStateOf(value.toString()) }
     val parsed = text.toIntOrNull()
-    val invalid = parsed == null || parsed !in 1..200_000
+    val invalid = text.length !in 1..6 || parsed == null || parsed !in 1..200_000
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -179,7 +179,7 @@ private fun MaxOutputTokensRow(value: Int, onChange: (Int) -> Unit) {
         OutlinedTextField(
             value = text,
             onValueChange = { raw ->
-                text = raw.take(12)
+                text = raw
                 raw.toIntOrNull()?.takeIf { it in 1..200_000 }?.let(onChange)
             },
             singleLine = true,

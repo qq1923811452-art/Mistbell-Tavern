@@ -3,6 +3,7 @@ package com.mistbell.tavern.v3.core.backup
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
+import java.security.MessageDigest
 import java.time.Instant
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
@@ -85,6 +86,7 @@ class BackupArchiveWriter {
 
     private fun writeEntry(zip: ZipOutputStream, file: File, entry: BackupEntry) {
         zip.putNextEntry(ZipEntry(entry.path))
+        val digest = MessageDigest.getInstance("SHA-256")
         file.inputStream().buffered().use { input ->
             val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
             var written = 0L
@@ -95,9 +97,14 @@ class BackupArchiveWriter {
                 if (written > entry.size || written > BackupValidator.MAX_ENTRY_BYTES) {
                     throw IOException("Backup source changed while being archived.")
                 }
+                digest.update(buffer, 0, count)
                 zip.write(buffer, 0, count)
             }
             if (written != entry.size) throw IOException("Backup source changed while being archived.")
+        }
+        val actual = digest.digest().joinToString("") { byte -> "%02x".format(byte) }
+        if (!actual.equals(entry.sha256, ignoreCase = true)) {
+            throw IOException("Backup source changed while being archived.")
         }
         zip.closeEntry()
     }
@@ -106,10 +113,17 @@ class BackupArchiveWriter {
         require(partial.length() <= BackupValidator.MAX_ARCHIVE_BYTES) {
             "Backup archive exceeds 512 MiB."
         }
-        if (destination.exists() && !destination.delete()) {
+        val previous = File(destination.path + ".bak")
+        previous.delete()
+        val hadPrevious = destination.exists()
+        if (hadPrevious && !destination.renameTo(previous)) {
             throw IOException("Existing backup could not be replaced.")
         }
-        if (!partial.renameTo(destination)) throw IOException("Backup archive could not be finalized.")
+        if (!partial.renameTo(destination)) {
+            if (hadPrevious) previous.renameTo(destination)
+            throw IOException("Backup archive could not be finalized.")
+        }
+        previous.delete()
     }
 
     companion object {
