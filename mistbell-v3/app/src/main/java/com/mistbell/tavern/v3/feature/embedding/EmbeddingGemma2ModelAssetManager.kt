@@ -26,6 +26,8 @@ data class DownloadedEmbeddingModel(
 class EmbeddingGemma2ModelAssetManager(
     private val modelDirectory: File,
     private val preferQualcommSm8650Model: Boolean = false,
+    /** Allows a portable .litertlm bundle whose checksum is not the published one. */
+    private val allowCustomModel: Boolean = false,
 ) {
     private val selectedModelFileName = if (preferQualcommSm8650Model) {
         QUALCOMM_SM8650_MODEL_FILE_NAME
@@ -202,6 +204,12 @@ class EmbeddingGemma2ModelAssetManager(
                 check(importedBytes > 0L) { "Selected model file is empty." }
                 val sha256 = digest.digest().toHex()
                 val isQualcommModel = sha256.equals(QUALCOMM_SM8650_MODEL_SHA256, ignoreCase = true)
+                if (!preferQualcommSm8650Model && !allowCustomModel) {
+                    require(sha256.equals(PORTABLE_MODEL_SHA256, ignoreCase = true)) {
+                        "The selected model does not match the published EmbeddingGemma 2 checksum. " +
+                            "Enable custom-model import only if you trust this file."
+                    }
+                }
                 require(isQualcommModel == preferQualcommSm8650Model) {
                     if (preferQualcommSm8650Model) {
                         "The selected runtime profile requires the published Qualcomm SM8650 model bundle."
