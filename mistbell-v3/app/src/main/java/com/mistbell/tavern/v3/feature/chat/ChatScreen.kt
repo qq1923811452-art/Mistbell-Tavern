@@ -325,6 +325,32 @@ fun ChatScreen(
         )
     }
 
+    val memoryOperationsCoordinator = remember(
+        context,
+        memoryCredentialStore,
+        historyStore,
+        historySaveMutex,
+        coroutineScope,
+        diagnosticStore,
+        memoryScopeId,
+        conversationHistoryScope,
+    ) {
+        ChatMemoryOperationsCoordinator(
+            context = context,
+            memoryCredentialStore = memoryCredentialStore,
+            historyStore = historyStore,
+            historySaveMutex = historySaveMutex,
+            coroutineScope = coroutineScope,
+            diagnosticStore = diagnosticStore,
+            memoryScopeId = memoryScopeId,
+            historyScopeId = conversationHistoryScope,
+            isIndexRebuildInFlight = { memoryIndexRebuildInFlight },
+            setIndexRebuildInFlight = { memoryIndexRebuildInFlight = it },
+            isChatBusy = { busy },
+            setStatus = { status = it },
+        )
+    }
+
     @Suppress("LongMethod")
     fun regenerateReply(targetMessageId: String) {
         val plan = RegeneratePlanner.plan(history.toList(), targetMessageId)
@@ -344,7 +370,7 @@ fun ChatScreen(
                 memoryBaseUrl = "",
                 memoryModelId = "",
                 memoryApiKey = "",
-            ) ?: return
+            ) ?: return@launch
             val messages = withContext(Dispatchers.Default) {
                 ChatTurnPromptPreparationCoordinator(
                     settings = settings,
@@ -500,31 +526,6 @@ fun ChatScreen(
             ?: "Token 用量：本轮尚无服务端 usage 数据"
     }
 
-    val memoryOperationsCoordinator = remember(
-        context,
-        memoryCredentialStore,
-        historyStore,
-        historySaveMutex,
-        coroutineScope,
-        diagnosticStore,
-        memoryScopeId,
-        conversationHistoryScope,
-    ) {
-        ChatMemoryOperationsCoordinator(
-            context = context,
-            memoryCredentialStore = memoryCredentialStore,
-            historyStore = historyStore,
-            historySaveMutex = historySaveMutex,
-            coroutineScope = coroutineScope,
-            diagnosticStore = diagnosticStore,
-            memoryScopeId = memoryScopeId,
-            historyScopeId = conversationHistoryScope,
-            isIndexRebuildInFlight = { memoryIndexRebuildInFlight },
-            setIndexRebuildInFlight = { memoryIndexRebuildInFlight = it },
-            isChatBusy = { busy },
-            setStatus = { status = it },
-        )
-    }
 
     if (showSessionList) {
         SessionListScreen(
@@ -869,7 +870,7 @@ fun ChatScreen(
                                 memoryBaseUrl = memoryBaseUrl,
                                 memoryModelId = memoryModelId,
                                 memoryApiKey = memoryApiKey,
-                            ) ?: return@Button
+                            ) ?: return@launch
                             val userText = preparedRequest.userText
                             val providersForRequest = preparedRequest.providers
                             val client = preparedRequest.client
