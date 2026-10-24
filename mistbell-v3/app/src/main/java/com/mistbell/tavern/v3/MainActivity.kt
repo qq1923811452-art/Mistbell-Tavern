@@ -362,11 +362,13 @@ class MainActivity : ComponentActivity() {
                                     }
                                 }
                             }
-                            TavernBottomBar(
-                                selected = mainTab,
-                                onSelect = { mainTab = it },
-                                modifier = Modifier.navigationBarsPadding(),
-                            )
+                            if (mainTab != TavernTab.CHAT) {
+                                TavernBottomBar(
+                                    selected = mainTab,
+                                    onSelect = { mainTab = it },
+                                    modifier = Modifier.navigationBarsPadding(),
+                                )
+                            }
                         }
                     }
                 }

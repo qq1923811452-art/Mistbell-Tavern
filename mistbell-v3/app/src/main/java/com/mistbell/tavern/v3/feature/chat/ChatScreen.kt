@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
@@ -904,16 +905,14 @@ fun ChatScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
+            Box(modifier = Modifier.fillMaxWidth()) {
                 ChatMessageComposerInput(
                     draft = chatUiState.draft,
                     enabled = !busy && !historyLoadFailed,
                     onDraftChange = chatViewModel::updateDraft,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(end = 56.dp),
                 )
                 Button(
                     onClick = {
@@ -1118,12 +1117,18 @@ fun ChatScreen(
                             )
                         }
                     },
-                    enabled = !busy && historyReady && !historyLoadFailed && worldbookSession.ready,
+                    enabled = !busy && historyReady && !historyLoadFailed &&
+                        worldbookSession.ready && chatUiState.draft.isNotBlank(),
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .padding(end = 4.dp)
+                        .size(48.dp),
+                    shape = androidx.compose.foundation.shape.CircleShape,
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
                 ) {
-                    Text("➤", style = MaterialTheme.typography.titleLarge)
+                    Text("➤", style = MaterialTheme.typography.titleMedium)
                 }
             }
-            Text(status, style = MaterialTheme.typography.bodySmall)
         }
     }
 }
