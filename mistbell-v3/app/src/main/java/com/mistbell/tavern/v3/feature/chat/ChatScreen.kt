@@ -332,83 +332,88 @@ fun ChatScreen(
             status = "无法重新生成：找不到对应的用户消息。"
             return
         }
-        val configuration = ChatRequestClientCoordinator(
-            memoryCredentialStore = memoryCredentialStore,
-            settings = settings,
-            setStatus = { status = it },
-        ).create(
-            baseUrl = baseUrl,
-            modelId = modelId,
-            apiKey = apiKey,
-            memoryBaseUrl = "",
-            memoryModelId = "",
-            memoryApiKey = "",
-        ) ?: return
-        val messages = ChatTurnPromptPreparationCoordinator(
-            settings = settings,
-            diagnosticStore = diagnosticStore,
-            mainHandler = mainHandler,
-            setStatus = { status = it },
-        ).prepare(
-            history = plan.prefixHistory,
-            userText = plan.userText,
-            characterCards = characterCards,
-            selectedCharacterId = selectedCharacterId,
-            localWorldbookEntries = worldbookSession.entries,
-            worldbookState = worldbookSession.activation.activationState,
-            worldbookStateKey = worldbookSession.activation.stateKey,
-            historyIsComplete = true,
-        )
-        lastPromptMessages = messages
-        busy = true
-        status = "正在重新生成…"
-        val generated = StringBuilder()
-        val observer = object : ChatStreamObserver {
-            override fun onDelta(text: String) {
-                generated.append(text)
+        coroutineScope.launch {
+            val configuration = ChatRequestClientCoordinator(
+                memoryCredentialStore = memoryCredentialStore,
+                settings = settings,
+                setStatus = { status = it },
+            ).create(
+                baseUrl = baseUrl,
+                modelId = modelId,
+                apiKey = apiKey,
+                memoryBaseUrl = "",
+                memoryModelId = "",
+                memoryApiKey = "",
+            ) ?: return
+            val messages = withContext(Dispatchers.Default) {
+                ChatTurnPromptPreparationCoordinator(
+                    settings = settings,
+                    diagnosticStore = diagnosticStore,
+                    mainHandler = mainHandler,
+                    setStatus = { status = it },
+                ).prepare(
+                    history = plan.prefixHistory,
+                    userText = plan.userText,
+                    characterCards = characterCards,
+                    selectedCharacterId = selectedCharacterId,
+                    localWorldbookEntries = worldbookSession.entries,
+                    worldbookState = worldbookSession.activation.activationState,
+                    worldbookStateKey = worldbookSession.activation.stateKey,
+                    historyIsComplete = true,
+                )
             }
+            lastPromptMessages = messages
+            busy = true
+            status = "正在重新生成…"
+            val generated = StringBuilder()
+            val observer = object : ChatStreamObserver {
+                override fun onDelta(text: String) {
+                    generated.append(text)
+                }
 
-            override fun onComplete() {
-                mainHandler.post {
-                    val index = history.indexOfFirst { it.id == targetMessageId }
-                    val replacement = if (index >= 0) {
-                        val line = history[index]
-                        val base = line.variants.ifEmpty { listOf(line.content) }
-                        val variants = MessageVariants.append(base, generated.toString())
-                        if (variants !== base) {
-                            history[index] = line.copy(
-                                content = variants.last(),
-                                activeVariant = variants.lastIndex,
-                                variants = variants,
-                            )
-                            persistHistory()
-                            diagnosticStore.info("chat.regenerate.completed", "variants=${variants.size}")
+                override fun onComplete() {
+                    mainHandler.post {
+                        val index = history.indexOfFirst { it.id == targetMessageId }
+                        val replacement = if (index >= 0) {
+                            val line = history[index]
+                            val base = line.variants.ifEmpty { listOf(line.content) }
+                            val variants = MessageVariants.append(base, generated.toString())
+                            if (variants !== base) {
+                                history[index] = line.copy(
+                                    content = variants.last(),
+                                    activeVariant = variants.lastIndex,
+                                    variants = variants,
+                                )
+                                persistHistory()
+                                diagnosticStore.info("chat.regenerate.completed", "variants=${variants.size}")
+                            }
+                            true
+                        } else {
+                            false
                         }
-                        true
-                    } else {
-                        false
+                        busy = false
+                        status = if (replacement) "已生成新版本。" else "生成完成，但目标消息已不存在。"
                     }
-                    busy = false
-                    status = if (replacement) "已生成新版本。" else "生成完成，但目标消息已不存在。"
                 }
-            }
 
-            override fun onFailure(failure: ChatStreamFailure) {
-                mainHandler.post {
-                    busy = false
-                    status = "重新生成失败：${failure.safeMessage}"
+                override fun onFailure(failure: ChatStreamFailure) {
+                    mainHandler.post {
+                        busy = false
+                        status = "重新生成失败：${failure.safeMessage}"
+                    }
                 }
             }
+            ChatMemoryRuntimeCoordinator(
+                context = context,
+                mainHandler = mainHandler,
+                diagnosticStore = diagnosticStore,
+                memoryScopeId = memoryScopeId,
+                memoryConversationId = memoryConversationId,
+                indexRebuildCoordinator = memoryOperationsCoordinator.createIndexRebuildCoordinator(),
+                setStatus = { status = it },
+                setMemoryStatusNotice = { memoryStatusNotice = it },
+            ).stream(configuration.client, messages, observer, effectiveMaxTokens())
         }
-        configuration.client.stream(
-            messages,
-            observer,
-            ChatGenerationOptions(
-                maxTokens = effectiveMaxTokens(),
-                stream = chatGenerationPreferences.streamEnabled,
-                thinkingEnabled = chatGenerationPreferences.thinkingEnabled,
-            ),
-        )
     }
 
     val sessionDocumentActions = rememberChatSessionDocumentActions(
@@ -848,160 +853,171 @@ fun ChatScreen(
                 )
                 Button(
                     onClick = {
-                        val preparedRequest = ChatSendRequestPreflightCoordinator(
-                            memoryCredentialStore = memoryCredentialStore,
-                            settings = settings,
-                            setStatus = { status = it },
-                        ).prepare(
-                            userText = chatViewModel.uiState.value.draft,
-                            busy = busy,
-                            worldbooksReady = worldbookSession.ready,
-                            baseUrl = baseUrl,
-                            modelId = modelId,
-                            apiKey = apiKey,
-                            memoryBaseUrl = memoryBaseUrl,
-                            memoryModelId = memoryModelId,
-                            memoryApiKey = memoryApiKey,
-                        ) ?: return@Button
-                        val userText = preparedRequest.userText
-                        val providersForRequest = preparedRequest.providers
-                        val client = preparedRequest.client
-                        val openingMessage = characterCards.firstOrNull { it.id == selectedCharacterId }
-                            ?.card?.firstMessage?.trim().orEmpty()
-                        val historyBeforeTurn = history.toList()
-                        val currentSession = sessions.firstOrNull { it.id == memoryConversationId }
-                        val groupMembers = currentSession?.participants
-                            ?.map { GroupPromptAssembler.Member(it.id, it.name, "") }
-                            .orEmpty()
-                        val isGroupTurn = currentSession?.kind == SessionKind.GROUP &&
-                            groupMembers.isNotEmpty()
-                        val groupPrepared = if (isGroupTurn) {
-                            val cardDefinition = characterCards
-                                .firstOrNull { it.id == selectedCharacterId }
-                                ?.card
-                                ?.let(ChatCharacterPromptFormatter::format)
-                                ?.takeIf(String::isNotBlank)
-                                ?: "You are taking part in a multi-character roleplay."
-                            GroupChatSendPlanner.prepare(
-                                stableSystemPrefix = cardDefinition,
-                                members = groupMembers,
-                                history = historyBeforeTurn,
-                                draft = userText,
-                                lastSpeakerId = lastGroupSpeakerId,
-                            )
-                        } else {
-                            null
-                        }
-                        ChatSendTurnStartCoordinator(
-                            history = history,
-                            persistHistory = ::persistHistory,
-                            clearDraft = chatViewModel::clearDraft,
-                            setBusy = { busy = it },
-                            setMemoryStatusNotice = { memoryStatusNotice = it },
-                            setStatus = { status = it },
-                        ).start(openingMessage, userText)
-                        val messages = ChatTurnPromptPreparationCoordinator(
-                            settings = settings,
-                            diagnosticStore = diagnosticStore,
-                            mainHandler = mainHandler,
-                            setStatus = { status = it },
-                        ).prepare(
-                            history = history,
-                            userText = userText,
-                            characterCards = characterCards,
-                            selectedCharacterId = selectedCharacterId,
-                            localWorldbookEntries = worldbookSession.entries,
-                            worldbookState = worldbookSession.activation.activationState,
-                            worldbookStateKey = worldbookSession.activation.stateKey,
-                            groupContext = groupPrepared?.let { prepared ->
-                                GroupChatPromptContext(
+                        coroutineScope.launch {
+                            val requestConversationId = memoryConversationId
+                            val preparedRequest = ChatSendRequestPreflightCoordinator(
+                                memoryCredentialStore = memoryCredentialStore,
+                                settings = settings,
+                                setStatus = { status = it },
+                            ).prepare(
+                                userText = chatViewModel.uiState.value.draft,
+                                busy = busy,
+                                worldbooksReady = worldbookSession.ready,
+                                baseUrl = baseUrl,
+                                modelId = modelId,
+                                apiKey = apiKey,
+                                memoryBaseUrl = memoryBaseUrl,
+                                memoryModelId = memoryModelId,
+                                memoryApiKey = memoryApiKey,
+                            ) ?: return@Button
+                            val userText = preparedRequest.userText
+                            val providersForRequest = preparedRequest.providers
+                            val client = preparedRequest.client
+                            val openingMessage = characterCards.firstOrNull { it.id == selectedCharacterId }
+                                ?.card?.firstMessage?.trim().orEmpty()
+                            val historyBeforeTurn = history.toList()
+                            val currentSession = sessions.firstOrNull { it.id == memoryConversationId }
+                            val groupMembers = currentSession?.participants
+                                ?.map { GroupPromptAssembler.Member(it.id, it.name, "") }
+                                .orEmpty()
+                            val isGroupTurn = currentSession?.kind == SessionKind.GROUP &&
+                                groupMembers.isNotEmpty()
+                            val groupPrepared = if (isGroupTurn) {
+                                val cardDefinition = characterCards
+                                    .firstOrNull { it.id == selectedCharacterId }
+                                    ?.card
+                                    ?.let(ChatCharacterPromptFormatter::format)
+                                    ?.takeIf(String::isNotBlank)
+                                    ?: "You are taking part in a multi-character roleplay."
+                                GroupChatSendPlanner.prepare(
+                                    stableSystemPrefix = cardDefinition,
                                     members = groupMembers,
-                                    speakerName = prepared.speakerName,
+                                    history = historyBeforeTurn,
+                                    draft = userText,
+                                    lastSpeakerId = lastGroupSpeakerId,
                                 )
-                            },
-                        )
-                        lastPromptMessages = messages
-                        savePromptSnapshot(memoryConversationId, messages)
-                        val baseObserver = ChatStreamObserverCoordinator(
-                            mainHandler = mainHandler,
-                            history = history,
-                            diagnosticStore = diagnosticStore,
-                            setBusy = { busy = it },
-                            setStatus = { status = it },
-                            memoryStatusNotice = { memoryStatusNotice },
-                            setUsageSummary = {
-                                usageSummary = it
-                                saveUsageSummary(memoryConversationId, it)
-                            },
-                            persistHistory = ::persistHistory,
-                            scheduleMemoryExtraction = { providers ->
-                                if (memoryExtractionEnabled) {
-                                    memoryOperationsCoordinator.scheduleExtractionIfDue(
-                                        providers,
-                                        history.toList(),
-                                    )
-                                }
-                            },
-                        ).create(providersForRequest)
-                        val observer = if (groupPrepared != null) {
-                            object : ChatStreamObserver {
-                                override fun onDelta(text: String) = baseObserver.onDelta(text)
-
-                                override fun onUsage(usage: ChatTokenUsage) = baseObserver.onUsage(usage)
-
-                                override fun onFailure(failure: ChatStreamFailure) =
-                                    baseObserver.onFailure(failure)
-
-                                override fun onComplete() {
-                                    mainHandler.post {
-                                        val index = history.indexOfLast { it.role == "assistant" }
-                                        if (index >= 0) {
-                                            history[index] = history[index].copy(
-                                                speakerId = groupPrepared.speakerId,
-                                                speakerName = groupPrepared.speakerName,
-                                            )
-                                        }
-                                        lastGroupSpeakerId = groupPrepared.speakerId
-                                        persistHistory()
-                                    }
-                                    baseObserver.onComplete()
-                                }
+                            } else {
+                                null
                             }
-                        } else {
-                            baseObserver
-                        }
-                        ChatSendStreamFallbackCoordinator(
-                            coroutineScope = coroutineScope,
-                            diagnosticStore = diagnosticStore,
-                            history = history,
-                            setBusy = { busy = it },
-                            setStatus = { status = it },
-                            persistHistory = ::persistHistory,
-                        ).launch(
-                            memoryStream = {
-                                ChatMemoryRuntimeCoordinator(
-                                    context = context,
-                                    mainHandler = mainHandler,
+                            ChatSendTurnStartCoordinator(
+                                history = history,
+                                persistHistory = ::persistHistory,
+                                clearDraft = chatViewModel::clearDraft,
+                                setBusy = { busy = it },
+                                setMemoryStatusNotice = { memoryStatusNotice = it },
+                                setStatus = { status = it },
+                            ).start(openingMessage, userText)
+                            val assistantMessageId = history.lastOrNull { it.role == "assistant" }?.id.orEmpty()
+                            val messages = withContext(Dispatchers.Default) {
+                                ChatTurnPromptPreparationCoordinator(
+                                    settings = settings,
                                     diagnosticStore = diagnosticStore,
-                                    memoryScopeId = memoryScopeId,
-                                    memoryConversationId = memoryConversationId,
-                                    indexRebuildCoordinator = memoryOperationsCoordinator.createIndexRebuildCoordinator(),
+                                    mainHandler = mainHandler,
                                     setStatus = { status = it },
-                                    setMemoryStatusNotice = { memoryStatusNotice = it },
-                                ).stream(client, messages, observer, effectiveMaxTokens())
-                            },
-                            ordinaryStream = {
-                                client.stream(
-                                    messages,
-                                    observer,
-                                    ChatGenerationOptions(
-                                        maxTokens = effectiveMaxTokens(),
-                                        stream = chatGenerationPreferences.streamEnabled,
-                                        thinkingEnabled = chatGenerationPreferences.thinkingEnabled,
-                                    ),
+                                ).prepare(
+                                    history = history,
+                                    userText = userText,
+                                    characterCards = characterCards,
+                                    selectedCharacterId = selectedCharacterId,
+                                    localWorldbookEntries = worldbookSession.entries,
+                                    worldbookState = worldbookSession.activation.activationState,
+                                    worldbookStateKey = worldbookSession.activation.stateKey,
+                                    groupContext = groupPrepared?.let { prepared ->
+                                        GroupChatPromptContext(
+                                            members = groupMembers,
+                                            speakerName = prepared.speakerName,
+                                        )
+                                    },
                                 )
-                            },
+                            }
+                            lastPromptMessages = messages
+                            savePromptSnapshot(memoryConversationId, messages)
+                            val baseObserver = ChatStreamObserverCoordinator(
+                                mainHandler = mainHandler,
+                                history = history,
+                                diagnosticStore = diagnosticStore,
+                                setBusy = { busy = it },
+                                setStatus = { status = it },
+                                memoryStatusNotice = { memoryStatusNotice },
+                                setUsageSummary = {
+                                    usageSummary = it
+                                    saveUsageSummary(memoryConversationId, it)
+                                },
+                                persistHistory = ::persistHistory,
+                                scheduleMemoryExtraction = { providers ->
+                                    if (memoryExtractionEnabled) {
+                                        memoryOperationsCoordinator.scheduleExtractionIfDue(
+                                            providers,
+                                            history.toList(),
+                                        )
+                                    }
+                                },
+                            ).create(
+                            providersForRequest = providersForRequest,
+                            conversationId = requestConversationId,
+                            assistantMessageId = assistantMessageId,
+                            isCurrentConversation = { memoryConversationId == requestConversationId },
                         )
+                            val observer = if (groupPrepared != null) {
+                                object : ChatStreamObserver {
+                                    override fun onDelta(text: String) = baseObserver.onDelta(text)
+
+                                    override fun onUsage(usage: ChatTokenUsage) = baseObserver.onUsage(usage)
+
+                                    override fun onFailure(failure: ChatStreamFailure) =
+                                        baseObserver.onFailure(failure)
+
+                                    override fun onComplete() {
+                                        mainHandler.post {
+                                            val index = history.indexOfLast { it.role == "assistant" }
+                                            if (index >= 0) {
+                                                history[index] = history[index].copy(
+                                                    speakerId = groupPrepared.speakerId,
+                                                    speakerName = groupPrepared.speakerName,
+                                                )
+                                            }
+                                            lastGroupSpeakerId = groupPrepared.speakerId
+                                            persistHistory()
+                                        }
+                                        baseObserver.onComplete()
+                                    }
+                                }
+                            } else {
+                                baseObserver
+                            }
+                            ChatSendStreamFallbackCoordinator(
+                                coroutineScope = coroutineScope,
+                                diagnosticStore = diagnosticStore,
+                                history = history,
+                                setBusy = { busy = it },
+                                setStatus = { status = it },
+                                persistHistory = ::persistHistory,
+                            ).launch(
+                                memoryStream = {
+                                    ChatMemoryRuntimeCoordinator(
+                                        context = context,
+                                        mainHandler = mainHandler,
+                                        diagnosticStore = diagnosticStore,
+                                        memoryScopeId = memoryScopeId,
+                                        memoryConversationId = memoryConversationId,
+                                        indexRebuildCoordinator = memoryOperationsCoordinator.createIndexRebuildCoordinator(),
+                                        setStatus = { status = it },
+                                        setMemoryStatusNotice = { memoryStatusNotice = it },
+                                    ).stream(client, messages, observer, effectiveMaxTokens())
+                                },
+                                ordinaryStream = {
+                                    client.stream(
+                                        messages,
+                                        observer,
+                                        ChatGenerationOptions(
+                                            maxTokens = effectiveMaxTokens(),
+                                            stream = chatGenerationPreferences.streamEnabled,
+                                            thinkingEnabled = chatGenerationPreferences.thinkingEnabled,
+                                        ),
+                                    )
+                                },
+                            )
+                        }
                     },
                     enabled = !busy && historyReady && !historyLoadFailed && worldbookSession.ready,
                 ) {
