@@ -116,7 +116,6 @@ internal val CHAT_EMBEDDING_DIMENSION_OPTIONS = listOf(128, 256, 512, 768, 1024,
 fun ChatScreen(
     onBack: () -> Unit,
     settingsMode: Boolean = false,
-    onOpenChatSettings: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val chatViewModel: ChatViewModel = viewModel()
@@ -344,6 +343,10 @@ fun ChatScreen(
         )
     }
 
+    fun effectiveMaxTokens(): Int =
+        settings.getInt("chat_max_tokens", maxTokensText.toIntOrNull() ?: 4096)
+            .coerceIn(1, 200_000)
+
     fun persistHistory() {
         val startedNanos = System.nanoTime()
         val snapshot = ChatHistorySnapshotFactory.create(history)
@@ -445,7 +448,7 @@ fun ChatScreen(
             messages,
             observer,
             ChatGenerationOptions(
-                maxTokens = maxTokensText.toIntOrNull()?.takeIf { it in 1..200_000 } ?: 4096,
+                maxTokens = effectiveMaxTokens(),
                 stream = chatGenerationPreferences.streamEnabled,
                 thinkingEnabled = chatGenerationPreferences.thinkingEnabled,
             ),
@@ -467,7 +470,16 @@ fun ChatScreen(
             ?: SessionKind.SINGLE,
         sessionParticipants = sessions.firstOrNull { it.id == memoryConversationId }?.participants
             .orEmpty(),
-        onImported = {
+        onImported = { archive ->
+            val metadataUpdated = sessionStore.updateImportedMetadata(
+                id = memoryConversationId,
+                title = archive.title,
+                kind = archive.kind,
+                participants = archive.participants,
+            )
+            if (!metadataUpdated) {
+                status = "会话已导入，但列表标题/类型未能同步，请重新打开应用检查。"
+            }
             val preview = history.lastOrNull { it.content.isNotBlank() }
                 ?.content
                 ?.trim()
@@ -678,9 +690,21 @@ fun ChatScreen(
                 persistHistory()
                 showSessionSettings = false
             },
+            onImportSession = {
+                showSessionSettings = false
+                sessionDocumentActions.onImportSession()
+            },
+            onExportJson = {
+                showSessionSettings = false
+                sessionDocumentActions.onExportJson()
+            },
+            onExportJsonl = {
+                showSessionSettings = false
+                sessionDocumentActions.onExportJsonl()
+            },
             onOpenGlobalSettings = {
                 showSessionSettings = false
-                onOpenChatSettings()
+                onBack()
             },
             onDismiss = { showSessionSettings = false },
         )
@@ -1073,15 +1097,14 @@ fun ChatScreen(
                                     indexRebuildCoordinator = memoryOperationsCoordinator.createIndexRebuildCoordinator(),
                                     setStatus = { status = it },
                                     setMemoryStatusNotice = { memoryStatusNotice = it },
-                                ).stream(client, messages, observer, maxTokensText)
+                                ).stream(client, messages, observer, effectiveMaxTokens())
                             },
                             ordinaryStream = {
                                 client.stream(
                                     messages,
                                     observer,
                                     ChatGenerationOptions(
-                                        maxTokens = maxTokensText.toIntOrNull()
-                                            ?.takeIf { it in 1..200_000 } ?: 4096,
+                                        maxTokens = effectiveMaxTokens(),
                                         stream = chatGenerationPreferences.streamEnabled,
                                         thinkingEnabled = chatGenerationPreferences.thinkingEnabled,
                                     ),

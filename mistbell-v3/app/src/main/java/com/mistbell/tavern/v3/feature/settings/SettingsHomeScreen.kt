@@ -9,32 +9,40 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 
 /** Compact settings hub modelled on the 2.x layout: groups of one-line destinations. */
 @Suppress("FunctionNaming", "LongParameterList")
 @Composable
 fun SettingsHomeScreen(
-    apiProfileLabel: String,
     contextTokens: Int,
     memoryEnabled: Boolean,
     onContextTokensChange: (Int) -> Unit,
     onMemoryEnabledChange: (Boolean) -> Unit,
-    onOpenApiSettings: () -> Unit,
+    maxOutputTokens: Int,
+    onMaxOutputTokensChange: (Int) -> Unit,
     onOpenEmbedding: () -> Unit,
-    onOpenChatSettings: () -> Unit,
+    onOpenMemorySettings: () -> Unit,
     onOpenImage: () -> Unit,
     onOpenCharacters: () -> Unit,
     onOpenWorldBook: () -> Unit,
@@ -52,16 +60,17 @@ fun SettingsHomeScreen(
         Text("偏好与配置", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.7f))
 
         SettingsGroup("🔧 AI 连接") {
-            SettingsRow("当前 API 配置", apiProfileLabel, onOpenApiSettings)
             ApiSettingsSection(onStatus = {})
             SettingsRow("Embedding API", "本地向量与检索", onOpenEmbedding)
         }
         SettingsGroup("💬 对话设置") {
+            MaxOutputTokensRow(maxOutputTokens, onMaxOutputTokensChange)
             ContextLengthRow(contextTokens, onContextTokensChange)
-            SettingsRow("聊天与生成", "流式、思考、导入导出、备份", onOpenChatSettings)
+            BackupSettingsSection()
         }
         SettingsGroup("🧠 记忆") {
             SwitchRow("启用记忆整理", "抽取事实；关闭后只保留检索", memoryEnabled, onMemoryEnabledChange)
+            SettingsRow("记忆整理 API", "独立端点、模型与密钥", onOpenMemorySettings)
         }
         SettingsGroup("🎨 内容") {
             SettingsRow("角色卡管理", "导入、编辑、删除", onOpenCharacters)
@@ -150,4 +159,44 @@ private fun formatTokens(tokens: Int): String = when {
     tokens >= 1_000_000 -> "1M"
     tokens >= 1_000 -> "${tokens / 1_000}K"
     else -> tokens.toString()
+}
+
+@Suppress("FunctionNaming")
+@Composable
+private fun MaxOutputTokensRow(value: Int, onChange: (Int) -> Unit) {
+    var text by remember(value) { mutableStateOf(value.toString()) }
+    val parsed = text.toIntOrNull()
+    val invalid = text.length !in 1..6 ||
+        text.any { it !in '0'..'9' } ||
+        parsed == null ||
+        parsed !in 1..200_000
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text("最大输出 token", style = MaterialTheme.typography.bodyLarge)
+            Text("过小会导致回答被截断", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.65f))
+        }
+        OutlinedTextField(
+            value = text,
+            onValueChange = { raw ->
+                text = raw
+                if (raw.all { it in '0'..'9' }) {
+                    raw.toIntOrNull()?.takeIf { it in 1..200_000 }?.let(onChange)
+                }
+            },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            isError = invalid,
+            supportingText = {
+                Text(
+                    if (invalid) "请输入纯数字 1–200000，当前输入不会保存" else "实际生效：$value",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            },
+            modifier = Modifier.padding(start = 12.dp).width(150.dp),
+        )
+    }
 }

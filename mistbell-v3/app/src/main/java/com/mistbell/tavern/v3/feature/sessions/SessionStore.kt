@@ -141,6 +141,27 @@ class SessionStore(
         ) > 0
     }
 
+    fun updateImportedMetadata(
+        id: String,
+        title: String,
+        kind: SessionKind,
+        participants: List<SessionParticipant>,
+    ): Boolean {
+        val normalized = title.trim().take(MAX_TITLE_CHARS)
+        if (id.isBlank() || normalized.isEmpty()) return false
+        return writableDatabase.update(
+            TABLE,
+            ContentValues().apply {
+                put(COLUMN_TITLE, normalized)
+                put(COLUMN_KIND, kind.name.lowercase())
+                put(COLUMN_PARTICIPANTS, encodeParticipants(participants))
+                put(COLUMN_UPDATED_AT, System.currentTimeMillis())
+            },
+            "$COLUMN_ID = ?",
+            arrayOf(id),
+        ) > 0
+    }
+
     fun setWorldbookId(id: String, worldbookId: String): Boolean =
         writableDatabase.update(
             TABLE,
