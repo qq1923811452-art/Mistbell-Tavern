@@ -35,7 +35,7 @@ class EmbeddingGemma2ModelAssetManagerTest {
         val directory = kotlin.io.path.createTempDirectory(prefix = "embedding-model-import-test").toFile()
         try {
             val bytes = "local-litertlm-bundle".toByteArray()
-            val manager = EmbeddingGemma2ModelAssetManager(directory)
+            val manager = EmbeddingGemma2ModelAssetManager(directory, allowCustomModel = true)
             val imported = manager.importModel(
                 "embeddinggemma-2-740m.litertlm",
                 ByteArrayInputStream(bytes),
@@ -136,7 +136,7 @@ class EmbeddingGemma2ModelAssetManagerTest {
     fun cancelledImportRemovesTemporaryFilesAndReleasesTransferLock(): Unit = runBlocking {
         val directory = kotlin.io.path.createTempDirectory(prefix = "embedding-model-cancel-test").toFile()
         try {
-            val manager = EmbeddingGemma2ModelAssetManager(directory)
+            val manager = EmbeddingGemma2ModelAssetManager(directory, allowCustomModel = true)
             val largeBytes = ByteArray(2 * 1024 * 1024) { (it % 251).toByte() }
             lateinit var importJob: Job
 
