@@ -18,19 +18,28 @@ internal class ChatStreamObserverCoordinator(
     private val persistHistory: () -> Unit,
     private val scheduleMemoryExtraction: (ProviderProfileSet) -> Unit,
 ) {
-    fun create(providersForRequest: ProviderProfileSet): ChatStreamObserver =
+    fun create(
+        providersForRequest: ProviderProfileSet,
+        conversationId: String,
+        assistantMessageId: String,
+        isCurrentRequest: () -> Boolean,
+    ): ChatStreamObserver =
         object : ChatStreamObserver {
-            override fun onDelta(text: String) {
+            private fun updateAssistant(transform: (ChatLine) -> ChatLine) {
                 mainHandler.post {
-                    val last = history.lastOrNull()
-                    if (last?.role == "assistant") {
-                        history[history.lastIndex] = last.copy(content = last.content + text)
-                    }
+                    if (!isCurrentRequest() || conversationId.isBlank()) return@post
+                    val index = history.indexOfFirst { it.id == assistantMessageId }
+                    if (index >= 0) history[index] = transform(history[index])
                 }
+            }
+
+            override fun onDelta(text: String) {
+                updateAssistant { line -> line.copy(content = line.content + text) }
             }
 
             override fun onUsage(usage: ChatTokenUsage) {
                 mainHandler.post {
+                    if (!isCurrentRequest()) return@post
                     val cached = usage.cachedPromptTokens
                     val cacheRatio = if (cached != null && usage.promptTokens > 0) {
                         "（${cached * PERCENT / usage.promptTokens}%）"
@@ -52,15 +61,16 @@ internal class ChatStreamObserverCoordinator(
 
             override fun onComplete() {
                 mainHandler.post {
+                    if (!isCurrentRequest()) return@post
                     setBusy(false)
                     setStatus(if (memoryStatusNotice().isBlank()) {
                         "回复完成。"
                     } else {
                         "回复完成。${memoryStatusNotice()}"
                     })
-                    val last = history.lastOrNull()
-                    if (last?.role == "assistant") {
-                        history[history.lastIndex] = last.copy(
+                    val index = history.indexOfFirst { it.id == assistantMessageId }
+                    if (index >= 0) {
+                        history[index] = history[index].copy(
                             deliveryState = PersistedChatMessage.DeliveryState.COMPLETE,
                         )
                     }
@@ -71,12 +81,13 @@ internal class ChatStreamObserverCoordinator(
 
             override fun onFailure(failure: ChatStreamFailure) {
                 mainHandler.post {
+                    if (!isCurrentRequest()) return@post
                     setBusy(false)
                     setStatus(failure.safeMessage)
-                    val last = history.lastOrNull()
-                    if (last?.role == "assistant") {
-                        history[history.lastIndex] = last.copy(
-                            content = last.content.ifBlank { failure.safeMessage },
+                    val index = history.indexOfFirst { it.id == assistantMessageId }
+                    if (index >= 0) {
+                        history[index] = history[index].copy(
+                            content = history[index].content.ifBlank { failure.safeMessage },
                             deliveryState = PersistedChatMessage.DeliveryState.FAILED,
                         )
                     }

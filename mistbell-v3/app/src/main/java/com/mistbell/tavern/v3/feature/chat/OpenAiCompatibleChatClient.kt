@@ -222,6 +222,27 @@ class OpenAiCompatibleChatClient(
                         }
                         val content = message.optString("content")
                         if (content.isNotEmpty()) observer.onDelta(content)
+                        runCatching {
+                            JSONObject(payload.orEmpty()).optJSONObject("usage")
+                        }.getOrNull()?.let { usage ->
+                            val promptTokens = usage.optInt("prompt_tokens", 0).coerceAtLeast(0)
+                            val completionTokens = usage.optInt("completion_tokens", 0).coerceAtLeast(0)
+                            val totalTokens = usage.optInt("total_tokens", 0)
+                                .coerceAtLeast(promptTokens + completionTokens)
+                            val cached = usage.optJSONObject("prompt_tokens_details")
+                                ?.optInt("cached_tokens", 0)
+                                ?.coerceAtLeast(0)
+                            if (promptTokens > 0 || completionTokens > 0) {
+                                observer.onUsage(
+                                    ChatTokenUsage(
+                                        promptTokens = promptTokens,
+                                        completionTokens = completionTokens,
+                                        totalTokens = totalTokens,
+                                        cachedPromptTokens = cached,
+                                    ),
+                                )
+                            }
+                        }
                         observer.onComplete()
                     }
                 }

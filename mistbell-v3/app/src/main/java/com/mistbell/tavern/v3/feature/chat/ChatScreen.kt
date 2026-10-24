@@ -1,4 +1,4 @@
-@file:Suppress("FunctionNaming", "LongMethod", "CyclomaticComplexMethod", "MagicNumber")
+@file:Suppress("FunctionNaming", "LongMethod", "CyclomaticComplexMethod", "MagicNumber", "TooGenericExceptionCaught")
 
 package com.mistbell.tavern.v3.feature.chat
 
@@ -21,6 +21,8 @@ import com.mistbell.tavern.v3.core.security.ChatCredentialStore
 import com.mistbell.tavern.v3.core.storage.MemoryScopeFileNames
 import java.io.File
 import java.util.UUID
+import org.json.JSONArray
+import org.json.JSONObject
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -113,6 +115,7 @@ fun ChatScreen(
         }
     }
     var busy by remember { mutableStateOf(false) }
+    val requestGeneration = remember { java.util.concurrent.atomic.AtomicLong(0L) }
     var memoryBaseUrl by remember(settings) {
         mutableStateOf(settings.getString("memory_api_base_url", "https://api.odys.work/v1") ?: "https://api.odys.work/v1")
     }
@@ -148,6 +151,7 @@ fun ChatScreen(
         mutableStateOf(settings.getBoolean("memory_extraction_enabled", true))
     }
     var showPromptPreview by remember { mutableStateOf(false) }
+    var showCreateSession by remember { mutableStateOf(false) }
     var showSessionSettings by remember { mutableStateOf(false) }
     LaunchedEffect(sessionStore) {
         val current = memoryConversationId
@@ -250,6 +254,59 @@ fun ChatScreen(
         )
     }
 
+    fun savePromptSnapshot(conversationId: String, messages: List<PromptMessage>) {
+        if (conversationId.isBlank()) return
+        val encoded = JSONArray().apply {
+            messages.forEach { message ->
+                put(JSONObject().put("role", message.role.name).put("content", message.content))
+            }
+        }.toString()
+        settings.edit().putString("chat_last_prompt_$conversationId", encoded).apply()
+    }
+
+    fun loadPromptSnapshot(conversationId: String): List<PromptMessage> {
+        val raw = if (conversationId.isBlank()) {
+            null
+        } else {
+            settings.getString("chat_last_prompt_$conversationId", null)
+        }
+        return raw?.let { encoded ->
+            runCatching {
+                val array = JSONArray(encoded)
+                (0 until array.length()).mapNotNull { index ->
+                    val item = array.optJSONObject(index) ?: return@mapNotNull null
+                    val role = runCatching { PromptRole.valueOf(item.optString("role")) }.getOrNull()
+                        ?: return@mapNotNull null
+                    PromptMessage(role, item.optString("content"))
+                }
+            }.getOrDefault(emptyList())
+        } ?: emptyList()
+    }
+
+    fun clearPromptSnapshot(conversationId: String = memoryConversationId) {
+        if (conversationId.isNotBlank()) {
+            settings.edit().remove("chat_last_prompt_$conversationId").apply()
+        }
+        lastPromptMessages = emptyList()
+    }
+
+    fun formatUsageSummary(usage: ChatTokenUsage): String {
+        val cached = usage.cachedPromptTokens
+        val cacheRatio = if (cached != null && usage.promptTokens > 0) {
+            "（${cached * 100 / usage.promptTokens}%）"
+        } else {
+            ""
+        }
+        return "Token 用量：输入 ${usage.promptTokens} · 缓存 ${cached?.toString() ?: "未知"}$cacheRatio" +
+            " · 输出 ${usage.completionTokens} · 合计 ${usage.totalTokens}"
+    }
+
+    fun saveUsageSummary(conversationId: String, summary: String) {
+        if (conversationId.isNotBlank()) {
+            settings.edit().putString("chat_usage_$conversationId", summary).apply()
+        }
+    }
+
     fun effectiveMaxTokens(): Int =
         settings.getInt("chat_max_tokens", maxTokensText.toIntOrNull() ?: 4096)
             .coerceIn(1, 200_000)
@@ -280,90 +337,172 @@ fun ChatScreen(
         )
     }
 
-    @Suppress("LongMethod")
+    val memoryOperationsCoordinator = remember(
+        context,
+        memoryCredentialStore,
+        historyStore,
+        historySaveMutex,
+        coroutineScope,
+        diagnosticStore,
+        memoryScopeId,
+        conversationHistoryScope,
+    ) {
+        ChatMemoryOperationsCoordinator(
+            context = context,
+            memoryCredentialStore = memoryCredentialStore,
+            historyStore = historyStore,
+            historySaveMutex = historySaveMutex,
+            coroutineScope = coroutineScope,
+            diagnosticStore = diagnosticStore,
+            memoryScopeId = memoryScopeId,
+            historyScopeId = conversationHistoryScope,
+            isIndexRebuildInFlight = { memoryIndexRebuildInFlight },
+            setIndexRebuildInFlight = { memoryIndexRebuildInFlight = it },
+            isChatBusy = { busy },
+            setStatus = { status = it },
+        )
+    }
+
+    @Suppress("LongMethod", "TooGenericExceptionCaught")
     fun regenerateReply(targetMessageId: String) {
+        if (busy) {
+            status = "生成中，请先等待当前回复完成。"
+            return
+        }
         val plan = RegeneratePlanner.plan(history.toList(), targetMessageId)
         if (plan == null) {
             status = "无法重新生成：找不到对应的用户消息。"
             return
         }
-        val configuration = ChatRequestClientCoordinator(
-            memoryCredentialStore = memoryCredentialStore,
-            settings = settings,
-            setStatus = { status = it },
-        ).create(
-            baseUrl = baseUrl,
-            modelId = modelId,
-            apiKey = apiKey,
-            memoryBaseUrl = "",
-            memoryModelId = "",
-            memoryApiKey = "",
-        ) ?: return
-        val messages = ChatTurnPromptPreparationCoordinator(
-            settings = settings,
-            diagnosticStore = diagnosticStore,
-            mainHandler = mainHandler,
-            setStatus = { status = it },
-        ).prepare(
-            history = plan.prefixHistory,
-            userText = plan.userText,
-            characterCards = characterCards,
-            selectedCharacterId = selectedCharacterId,
-            localWorldbookEntries = worldbookSession.entries,
-            worldbookState = worldbookSession.activation.activationState,
-            worldbookStateKey = worldbookSession.activation.stateKey,
-            historyIsComplete = true,
-        )
-        lastPromptMessages = messages
+        val requestToken = requestGeneration.incrementAndGet()
+        fun ownsRequest(): Boolean = requestGeneration.get() == requestToken
+        val requestConversationId = memoryConversationId
+        val requestMemoryScopeId = memoryScopeId
+        val requestCharacterId = selectedCharacterId
+        val requestWorldbookEntries = worldbookSession.entries
+        val requestWorldbookState = worldbookSession.activation.activationState
+        val requestWorldbookStateKey = worldbookSession.activation.stateKey
         busy = true
-        status = "正在重新生成…"
-        val generated = StringBuilder()
-        val observer = object : ChatStreamObserver {
-            override fun onDelta(text: String) {
-                generated.append(text)
-            }
-
-            override fun onComplete() {
-                mainHandler.post {
-                    val index = history.indexOfFirst { it.id == targetMessageId }
-                    val replacement = if (index >= 0) {
-                        val line = history[index]
-                        val base = line.variants.ifEmpty { listOf(line.content) }
-                        val variants = MessageVariants.append(base, generated.toString())
-                        if (variants !== base) {
-                            history[index] = line.copy(
-                                content = variants.last(),
-                                activeVariant = variants.lastIndex,
-                                variants = variants,
-                            )
-                            persistHistory()
-                            diagnosticStore.info("chat.regenerate.completed", "variants=${variants.size}")
-                        }
-                        true
-                    } else {
-                        false
-                    }
+        status = "正在准备重新生成…"
+        coroutineScope.launch {
+            try {
+                val configuration = ChatRequestClientCoordinator(
+                    memoryCredentialStore = memoryCredentialStore,
+                    settings = settings,
+                    setStatus = { status = it },
+                ).create(
+                    baseUrl = baseUrl,
+                    modelId = modelId,
+                    apiKey = apiKey,
+                    memoryBaseUrl = "",
+                    memoryModelId = "",
+                    memoryApiKey = "",
+                )
+                if (configuration == null) {
                     busy = false
-                    status = if (replacement) "已生成新版本。" else "生成完成，但目标消息已不存在。"
+                    status = "重新生成失败：API 配置不完整。"
+                    return@launch
                 }
-            }
+                val messages = withContext(Dispatchers.Default) {
+                    ChatTurnPromptPreparationCoordinator(
+                        settings = settings,
+                        diagnosticStore = diagnosticStore,
+                        mainHandler = mainHandler,
+                        setStatus = { status = it },
+                    ).prepare(
+                        history = plan.prefixHistory,
+                        userText = plan.userText,
+                        characterCards = characterCards,
+                        selectedCharacterId = requestCharacterId,
+                        localWorldbookEntries = requestWorldbookEntries,
+                        worldbookState = requestWorldbookState,
+                        worldbookStateKey = requestWorldbookStateKey,
+                        historyIsComplete = true,
+                    )
+                }
+                if (memoryConversationId != requestConversationId || !ownsRequest()) {
+                    if (ownsRequest()) {
+                        busy = false
+                        status = "会话已切换，重新生成已取消。"
+                    }
+                    return@launch
+                }
+                lastPromptMessages = messages
+                savePromptSnapshot(requestConversationId, messages)
+                status = "正在重新生成…"
+                val generated = StringBuilder()
+                val observer = object : ChatStreamObserver {
+                    override fun onDelta(text: String) {
+                        generated.append(text)
+                    }
 
-            override fun onFailure(failure: ChatStreamFailure) {
-                mainHandler.post {
+                    override fun onUsage(usage: ChatTokenUsage) {
+                        mainHandler.post {
+                            if (!ownsRequest() || memoryConversationId != requestConversationId) return@post
+                            val summary = formatUsageSummary(usage)
+                            usageSummary = summary
+                            saveUsageSummary(requestConversationId, summary)
+                        }
+                    }
+
+                    override fun onComplete() {
+                        mainHandler.post {
+                            if (!ownsRequest() || memoryConversationId != requestConversationId) return@post
+                            val index = history.indexOfFirst { it.id == targetMessageId }
+                            val replacement = if (index >= 0) {
+                                val line = history[index]
+                                val base = line.variants.ifEmpty { listOf(line.content) }
+                                val variants = MessageVariants.append(base, generated.toString())
+                                if (variants !== base) {
+                                    history[index] = line.copy(
+                                        content = variants.last(),
+                                        activeVariant = variants.lastIndex,
+                                        variants = variants,
+                                    )
+                                    persistHistory()
+                                    diagnosticStore.info(
+                                        "chat.regenerate.completed",
+                                        "variants=${variants.size}",
+                                    )
+                                }
+                                true
+                            } else {
+                                false
+                            }
+                            busy = false
+                            status = if (replacement) {
+                                "已生成新版本。"
+                            } else {
+                                "生成完成，但目标消息已不存在。"
+                            }
+                        }
+                    }
+
+                    override fun onFailure(failure: ChatStreamFailure) {
+                        mainHandler.post {
+                            if (!ownsRequest() || memoryConversationId != requestConversationId) return@post
+                            busy = false
+                            status = "重新生成失败：${failure.safeMessage}"
+                        }
+                    }
+                }
+                ChatMemoryRuntimeCoordinator(
+                    context = context,
+                    mainHandler = mainHandler,
+                    diagnosticStore = diagnosticStore,
+                    memoryScopeId = requestMemoryScopeId,
+                    memoryConversationId = requestConversationId,
+                    indexRebuildCoordinator = memoryOperationsCoordinator.createIndexRebuildCoordinator(),
+                    setStatus = { status = it },
+                    setMemoryStatusNotice = { memoryStatusNotice = it },
+                ).stream(configuration.client, messages, observer, effectiveMaxTokens())
+            } catch (error: Exception) {
+                if (ownsRequest()) {
                     busy = false
-                    status = "重新生成失败：${failure.safeMessage}"
+                    status = "重新生成准备失败：${error.message ?: error.javaClass.simpleName}"
                 }
             }
         }
-        configuration.client.stream(
-            messages,
-            observer,
-            ChatGenerationOptions(
-                maxTokens = effectiveMaxTokens(),
-                stream = chatGenerationPreferences.streamEnabled,
-                thinkingEnabled = chatGenerationPreferences.thinkingEnabled,
-            ),
-        )
     }
 
     val sessionDocumentActions = rememberChatSessionDocumentActions(
@@ -444,31 +583,12 @@ fun ChatScreen(
         diagnosticStore.info("chat.greeting.inserted", "chars=${content.length}")
     }
 
-    val memoryOperationsCoordinator = remember(
-        context,
-        memoryCredentialStore,
-        historyStore,
-        historySaveMutex,
-        coroutineScope,
-        diagnosticStore,
-        memoryScopeId,
-        conversationHistoryScope,
-    ) {
-        ChatMemoryOperationsCoordinator(
-            context = context,
-            memoryCredentialStore = memoryCredentialStore,
-            historyStore = historyStore,
-            historySaveMutex = historySaveMutex,
-            coroutineScope = coroutineScope,
-            diagnosticStore = diagnosticStore,
-            memoryScopeId = memoryScopeId,
-            historyScopeId = conversationHistoryScope,
-            isIndexRebuildInFlight = { memoryIndexRebuildInFlight },
-            setIndexRebuildInFlight = { memoryIndexRebuildInFlight = it },
-            isChatBusy = { busy },
-            setStatus = { status = it },
-        )
+    LaunchedEffect(memoryConversationId) {
+        lastPromptMessages = loadPromptSnapshot(memoryConversationId)
+        usageSummary = settings.getString("chat_usage_$memoryConversationId", null)
+            ?: "Token 用量：本轮尚无服务端 usage 数据"
     }
+
 
     if (showSessionList) {
         SessionListScreen(
@@ -484,19 +604,15 @@ fun ChatScreen(
                     ?.let { roleId -> selectedCharacterId = roleId }
                 memoryConversationId = id
                 settings.edit().putString("memory_extraction_conversation_id", id).apply()
+                lastGroupSpeakerId = null
+                chatViewModel.clearDraft()
+                lastPromptMessages = loadPromptSnapshot(id)
+                usageSummary = settings.getString("chat_usage_$id", null)
+                    ?: "Token 用量：本轮尚无服务端 usage 数据"
                 diagnosticStore.info("chat.session.switched", "reason=click")
                 showSessionList = false
             },
-            onCreateSession = {
-                val created = runCatching { sessionStore.create(activeMemoryRoleId, "新对话") }.getOrNull()
-                if (created != null) {
-                    memoryConversationId = created.id
-                    settings.edit().putString("memory_extraction_conversation_id", created.id).apply()
-                    sessions = sessionStore.list()
-                    diagnosticStore.info("chat.session.created", "sessions=${sessions.size}")
-                }
-                showSessionList = false
-            },
+            onCreateSession = { showCreateSession = true },
             onRenameSession = { id, title ->
                 if (sessionStore.rename(id, title)) {
                     sessions = sessionStore.list()
@@ -605,6 +721,7 @@ fun ChatScreen(
                 if (memoryConversationId.isNotBlank()) {
                     if (sessionStore.setWorldbookId(memoryConversationId, worldbookId)) {
                         sessions = sessionStore.list()
+                        clearPromptSnapshot()
                         status = "本会话世界书已更新。"
                     } else {
                         status = "世界书切换失败，请重试。"
@@ -619,6 +736,7 @@ fun ChatScreen(
                     sessionStore.setRoleId(memoryConversationId, characterId)
                     sessions = sessionStore.list()
                 }
+                clearPromptSnapshot()
                 showSessionSettings = false
             },
             onClearSession = {
@@ -651,6 +769,38 @@ fun ChatScreen(
             messages = lastPromptMessages,
             usageSummary = usageSummary,
             onDismiss = { showPromptPreview = false },
+        )
+    }
+
+    if (showCreateSession) {
+        CreateSessionDialog(
+            characters = characterCards,
+            worldbooks = worldbookLibrary.map { it.id to it.name },
+            initialRoleId = selectedCharacterId,
+            onDismiss = { showCreateSession = false },
+            onConfirm = { roleId, worldbookId ->
+                val created = runCatching {
+                    sessionStore.create(
+                        roleId = roleId.ifBlank { activeMemoryRoleId },
+                        title = "新对话",
+                        worldbookId = worldbookId,
+                    )
+                }.getOrNull()
+                if (created != null) {
+                    selectedCharacterId = roleId.ifBlank { activeMemoryRoleId }
+                    sessionStore.setRoleId(created.id, selectedCharacterId)
+                    memoryConversationId = created.id
+                    settings.edit().putString("memory_extraction_conversation_id", created.id).apply()
+                    sessions = sessionStore.list()
+                    lastPromptMessages = emptyList()
+                    lastGroupSpeakerId = null
+                    chatViewModel.clearDraft()
+                    usageSummary = "Token 用量：本轮尚无服务端 usage 数据"
+                    diagnosticStore.info("chat.session.created", "sessions=${sessions.size}")
+                }
+                showCreateSession = false
+                showSessionList = false
+            },
         )
     }
 
@@ -694,6 +844,7 @@ fun ChatScreen(
                                         ) {
                                             sessions = sessionStore.list()
                                         }
+                                        clearPromptSnapshot()
                                         characterMenuExpanded = false
                                     },
                                 )
@@ -766,156 +917,206 @@ fun ChatScreen(
                 )
                 Button(
                     onClick = {
-                        val preparedRequest = ChatSendRequestPreflightCoordinator(
-                            memoryCredentialStore = memoryCredentialStore,
-                            settings = settings,
-                            setStatus = { status = it },
-                        ).prepare(
-                            userText = chatViewModel.uiState.value.draft,
-                            busy = busy,
-                            worldbooksReady = worldbookSession.ready,
-                            baseUrl = baseUrl,
-                            modelId = modelId,
-                            apiKey = apiKey,
-                            memoryBaseUrl = memoryBaseUrl,
-                            memoryModelId = memoryModelId,
-                            memoryApiKey = memoryApiKey,
-                        ) ?: return@Button
-                        val userText = preparedRequest.userText
-                        val providersForRequest = preparedRequest.providers
-                        val client = preparedRequest.client
-                        val openingMessage = characterCards.firstOrNull { it.id == selectedCharacterId }
-                            ?.card?.firstMessage?.trim().orEmpty()
-                        val historyBeforeTurn = history.toList()
-                        val currentSession = sessions.firstOrNull { it.id == memoryConversationId }
-                        val groupMembers = currentSession?.participants
-                            ?.map { GroupPromptAssembler.Member(it.id, it.name, "") }
-                            .orEmpty()
-                        val isGroupTurn = currentSession?.kind == SessionKind.GROUP &&
-                            groupMembers.isNotEmpty()
-                        val groupPrepared = if (isGroupTurn) {
-                            val cardDefinition = characterCards
-                                .firstOrNull { it.id == selectedCharacterId }
-                                ?.card
-                                ?.let(ChatCharacterPromptFormatter::format)
-                                ?.takeIf(String::isNotBlank)
-                                ?: "You are taking part in a multi-character roleplay."
-                            GroupChatSendPlanner.prepare(
-                                stableSystemPrefix = cardDefinition,
-                                members = groupMembers,
-                                history = historyBeforeTurn,
-                                draft = userText,
-                                lastSpeakerId = lastGroupSpeakerId,
-                            )
-                        } else {
-                            null
-                        }
-                        ChatSendTurnStartCoordinator(
-                            history = history,
-                            persistHistory = ::persistHistory,
-                            clearDraft = chatViewModel::clearDraft,
-                            setBusy = { busy = it },
-                            setMemoryStatusNotice = { memoryStatusNotice = it },
-                            setStatus = { status = it },
-                        ).start(openingMessage, userText)
-                        val messages = ChatTurnPromptPreparationCoordinator(
-                            settings = settings,
-                            diagnosticStore = diagnosticStore,
-                            mainHandler = mainHandler,
-                            setStatus = { status = it },
-                        ).prepare(
-                            history = history,
-                            userText = userText,
-                            characterCards = characterCards,
-                            selectedCharacterId = selectedCharacterId,
-                            localWorldbookEntries = worldbookSession.entries,
-                            worldbookState = worldbookSession.activation.activationState,
-                            worldbookStateKey = worldbookSession.activation.stateKey,
-                            groupContext = groupPrepared?.let { prepared ->
-                                GroupChatPromptContext(
+                        coroutineScope.launch {
+                            val requestToken = requestGeneration.incrementAndGet()
+                            fun ownsSendRequest(): Boolean = requestGeneration.get() == requestToken
+                            val requestConversationId = memoryConversationId
+                            val requestMemoryScopeId = memoryScopeId
+                            val requestCharacterId = selectedCharacterId
+                            val requestWorldbookEntries = worldbookSession.entries
+                            val requestWorldbookState = worldbookSession.activation.activationState
+                            val requestWorldbookStateKey = worldbookSession.activation.stateKey
+                            val preparedRequest = ChatSendRequestPreflightCoordinator(
+                                memoryCredentialStore = memoryCredentialStore,
+                                settings = settings,
+                                setStatus = { status = it },
+                            ).prepare(
+                                userText = chatViewModel.uiState.value.draft,
+                                busy = busy,
+                                worldbooksReady = worldbookSession.ready,
+                                baseUrl = baseUrl,
+                                modelId = modelId,
+                                apiKey = apiKey,
+                                memoryBaseUrl = memoryBaseUrl,
+                                memoryModelId = memoryModelId,
+                                memoryApiKey = memoryApiKey,
+                            ) ?: return@launch
+                            val userText = preparedRequest.userText
+                            val providersForRequest = preparedRequest.providers
+                            val client = preparedRequest.client
+                            val openingMessage = characterCards.firstOrNull { it.id == selectedCharacterId }
+                                ?.card?.firstMessage?.trim().orEmpty()
+                            val historyBeforeTurn = history.toList()
+                            val currentSession = sessions.firstOrNull { it.id == memoryConversationId }
+                            val groupMembers = currentSession?.participants
+                                ?.map { GroupPromptAssembler.Member(it.id, it.name, "") }
+                                .orEmpty()
+                            val isGroupTurn = currentSession?.kind == SessionKind.GROUP &&
+                                groupMembers.isNotEmpty()
+                            val groupPrepared = if (isGroupTurn) {
+                                val cardDefinition = characterCards
+                                    .firstOrNull { it.id == selectedCharacterId }
+                                    ?.card
+                                    ?.let(ChatCharacterPromptFormatter::format)
+                                    ?.takeIf(String::isNotBlank)
+                                    ?: "You are taking part in a multi-character roleplay."
+                                GroupChatSendPlanner.prepare(
+                                    stableSystemPrefix = cardDefinition,
                                     members = groupMembers,
-                                    speakerName = prepared.speakerName,
+                                    history = historyBeforeTurn,
+                                    draft = userText,
+                                    lastSpeakerId = lastGroupSpeakerId,
                                 )
-                            },
-                        )
-                        lastPromptMessages = messages
-                        val baseObserver = ChatStreamObserverCoordinator(
-                            mainHandler = mainHandler,
-                            history = history,
-                            diagnosticStore = diagnosticStore,
-                            setBusy = { busy = it },
-                            setStatus = { status = it },
-                            memoryStatusNotice = { memoryStatusNotice },
-                            setUsageSummary = { usageSummary = it },
-                            persistHistory = ::persistHistory,
-                            scheduleMemoryExtraction = { providers ->
-                                if (memoryExtractionEnabled) {
-                                    memoryOperationsCoordinator.scheduleExtractionIfDue(
-                                        providers,
-                                        history.toList(),
+                            } else {
+                                null
+                            }
+                            ChatSendTurnStartCoordinator(
+                                history = history,
+                                persistHistory = ::persistHistory,
+                                clearDraft = chatViewModel::clearDraft,
+                                setBusy = { busy = it },
+                                setMemoryStatusNotice = { memoryStatusNotice = it },
+                                setStatus = { status = it },
+                            ).start(openingMessage, userText)
+                            val assistantMessageId = history.lastOrNull { it.role == "assistant" }?.id.orEmpty()
+                            val requestHistory = history.toList()
+                            val messages = try {
+                                withContext(Dispatchers.Default) {
+                                    ChatTurnPromptPreparationCoordinator(
+                                        settings = settings,
+                                        diagnosticStore = diagnosticStore,
+                                        mainHandler = mainHandler,
+                                        setStatus = { status = it },
+                                    ).prepare(
+                                        history = requestHistory,
+                                        userText = userText,
+                                        characterCards = characterCards,
+                                        selectedCharacterId = requestCharacterId,
+                                        localWorldbookEntries = requestWorldbookEntries,
+                                        worldbookState = requestWorldbookState,
+                                        worldbookStateKey = requestWorldbookStateKey,
+                                        groupContext = groupPrepared?.let { prepared ->
+                                            GroupChatPromptContext(
+                                                members = groupMembers,
+                                                speakerName = prepared.speakerName,
+                                            )
+                                        },
                                     )
                                 }
-                            },
-                        ).create(providersForRequest)
-                        val observer = if (groupPrepared != null) {
-                            object : ChatStreamObserver {
-                                override fun onDelta(text: String) = baseObserver.onDelta(text)
-
-                                override fun onUsage(usage: ChatTokenUsage) = baseObserver.onUsage(usage)
-
-                                override fun onFailure(failure: ChatStreamFailure) =
-                                    baseObserver.onFailure(failure)
-
-                                override fun onComplete() {
-                                    mainHandler.post {
-                                        val index = history.indexOfLast { it.role == "assistant" }
-                                        if (index >= 0) {
-                                            history[index] = history[index].copy(
-                                                speakerId = groupPrepared.speakerId,
-                                                speakerName = groupPrepared.speakerName,
-                                            )
-                                        }
-                                        lastGroupSpeakerId = groupPrepared.speakerId
-                                        persistHistory()
-                                    }
-                                    baseObserver.onComplete()
+                            } catch (error: Exception) {
+                                if (ownsSendRequest()) {
+                                    busy = false
+                                    status = "提示词准备失败：${error.message ?: error.javaClass.simpleName}"
                                 }
+                                return@launch
                             }
-                        } else {
-                            baseObserver
-                        }
-                        ChatSendStreamFallbackCoordinator(
-                            coroutineScope = coroutineScope,
-                            diagnosticStore = diagnosticStore,
-                            history = history,
-                            setBusy = { busy = it },
-                            setStatus = { status = it },
-                            persistHistory = ::persistHistory,
-                        ).launch(
-                            memoryStream = {
-                                ChatMemoryRuntimeCoordinator(
-                                    context = context,
-                                    mainHandler = mainHandler,
-                                    diagnosticStore = diagnosticStore,
-                                    memoryScopeId = memoryScopeId,
-                                    memoryConversationId = memoryConversationId,
-                                    indexRebuildCoordinator = memoryOperationsCoordinator.createIndexRebuildCoordinator(),
-                                    setStatus = { status = it },
-                                    setMemoryStatusNotice = { memoryStatusNotice = it },
-                                ).stream(client, messages, observer, effectiveMaxTokens())
-                            },
-                            ordinaryStream = {
-                                client.stream(
-                                    messages,
-                                    observer,
-                                    ChatGenerationOptions(
-                                        maxTokens = effectiveMaxTokens(),
-                                        stream = chatGenerationPreferences.streamEnabled,
-                                        thinkingEnabled = chatGenerationPreferences.thinkingEnabled,
-                                    ),
-                                )
+                            if (!ownsSendRequest() || memoryConversationId != requestConversationId) {
+                                if (ownsSendRequest()) {
+                                    busy = false
+                                    status = "会话已切换，本次发送已取消。"
+                                }
+                                return@launch
+                            }
+                            lastPromptMessages = messages
+                            savePromptSnapshot(requestConversationId, messages)
+                            val baseObserver = ChatStreamObserverCoordinator(
+                                mainHandler = mainHandler,
+                                history = history,
+                                diagnosticStore = diagnosticStore,
+                                setBusy = { busy = it },
+                                setStatus = { status = it },
+                                memoryStatusNotice = { memoryStatusNotice },
+                                setUsageSummary = {
+                                    usageSummary = it
+                                    saveUsageSummary(requestConversationId, it)
+                                },
+                                persistHistory = ::persistHistory,
+                                scheduleMemoryExtraction = { providers ->
+                                    if (memoryExtractionEnabled) {
+                                        memoryOperationsCoordinator.scheduleExtractionIfDue(
+                                            providers,
+                                            history.toList(),
+                                        )
+                                    }
+                                },
+                            ).create(
+                            providersForRequest = providersForRequest,
+                            conversationId = requestConversationId,
+                            assistantMessageId = assistantMessageId,
+                            isCurrentRequest = {
+                                requestGeneration.get() == requestToken &&
+                                    memoryConversationId == requestConversationId
                             },
                         )
+                            val observer = if (groupPrepared != null) {
+                                object : ChatStreamObserver {
+                                    override fun onDelta(text: String) = baseObserver.onDelta(text)
+
+                                    override fun onUsage(usage: ChatTokenUsage) = baseObserver.onUsage(usage)
+
+                                    override fun onFailure(failure: ChatStreamFailure) =
+                                        baseObserver.onFailure(failure)
+
+                                    override fun onComplete() {
+                                        mainHandler.post {
+                                            if (!ownsSendRequest() ||
+                                                memoryConversationId != requestConversationId
+                                            ) {
+                                                return@post
+                                            }
+                                            val index = history.indexOfFirst { it.id == assistantMessageId }
+                                            if (index >= 0) {
+                                                history[index] = history[index].copy(
+                                                    speakerId = groupPrepared.speakerId,
+                                                    speakerName = groupPrepared.speakerName,
+                                                )
+                                            }
+                                            lastGroupSpeakerId = groupPrepared.speakerId
+                                            persistHistory()
+                                        }
+                                        baseObserver.onComplete()
+                                    }
+                                }
+                            } else {
+                                baseObserver
+                            }
+                            ChatSendStreamFallbackCoordinator(
+                                coroutineScope = coroutineScope,
+                                diagnosticStore = diagnosticStore,
+                                history = history,
+                                setBusy = { busy = it },
+                                setStatus = { status = it },
+                                persistHistory = ::persistHistory,
+                                isCurrentRequest = {
+                                    ownsSendRequest() &&
+                                        memoryConversationId == requestConversationId
+                                },
+                            ).launch(
+                                memoryStream = {
+                                    ChatMemoryRuntimeCoordinator(
+                                        context = context,
+                                        mainHandler = mainHandler,
+                                        diagnosticStore = diagnosticStore,
+                                        memoryScopeId = requestMemoryScopeId,
+                                        memoryConversationId = requestConversationId,
+                                        indexRebuildCoordinator = memoryOperationsCoordinator.createIndexRebuildCoordinator(),
+                                        setStatus = { status = it },
+                                        setMemoryStatusNotice = { memoryStatusNotice = it },
+                                    ).stream(client, messages, observer, effectiveMaxTokens())
+                                },
+                                ordinaryStream = {
+                                    client.stream(
+                                        messages,
+                                        observer,
+                                        ChatGenerationOptions(
+                                            maxTokens = effectiveMaxTokens(),
+                                            stream = chatGenerationPreferences.streamEnabled,
+                                            thinkingEnabled = chatGenerationPreferences.thinkingEnabled,
+                                        ),
+                                    )
+                                },
+                            )
+                        }
                     },
                     enabled = !busy && historyReady && !historyLoadFailed && worldbookSession.ready,
                 ) {
