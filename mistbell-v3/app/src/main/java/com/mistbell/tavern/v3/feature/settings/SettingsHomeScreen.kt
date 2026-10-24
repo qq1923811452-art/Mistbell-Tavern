@@ -179,7 +179,7 @@ private fun MaxOutputTokensRow(value: Int, onChange: (Int) -> Unit) {
         OutlinedTextField(
             value = text,
             onValueChange = { raw ->
-                val digits = raw.filter(Char::isDigit).take(6)
+                val digits = raw.filter(Char::isDigit)
                 text = digits
                 digits.toIntOrNull()?.takeIf { it in 1..200_000 }?.let(onChange)
             },
