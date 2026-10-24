@@ -54,6 +54,7 @@ val modelAssets = EmbeddingGemma2ModelAssetManager(
         "embedding_qualcomm_sm8650_model",
         false,
     ),
+    allowCustomModel = embeddingSettings.getBoolean("embedding_allow_custom_model", false),
 )
 val installedModelResult = runCatching {
     withContext(Dispatchers.IO) { modelAssets.verifyInstalled() }

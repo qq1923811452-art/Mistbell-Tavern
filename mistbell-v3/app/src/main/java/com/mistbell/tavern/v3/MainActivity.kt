@@ -75,6 +75,7 @@ class MainActivity : ComponentActivity() {
     private var contextTokens by mutableStateOf(32_000)
     private var memoryEnabled by mutableStateOf(true)
     private var maxOutputTokens by mutableStateOf(4096)
+    private var allowCustomModel by mutableStateOf(false)
     private var showCharacterLibrary by mutableStateOf(false)
     private var showWorldBookLibrary by mutableStateOf(false)
     private val embeddingDimensionOptions = listOf(128, 256, 512, 768, 1024, 1536, 2048)
@@ -102,6 +103,7 @@ class MainActivity : ComponentActivity() {
         EmbeddingGemma2ModelAssetManager(
             modelDirectory = File(filesDir, "models"),
             preferQualcommSm8650Model = qualcomm,
+            allowCustomModel = allowCustomModel,
         )
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -111,6 +113,7 @@ class MainActivity : ComponentActivity() {
         contextTokens = settings.getIntCompat("chat_context_tokens", 32_000)
         memoryEnabled = settings.getBoolean("memory_extraction_enabled", true)
         maxOutputTokens = settings.getInt("chat_max_tokens", 4096).coerceIn(1, 200_000)
+        allowCustomModel = settings.getBoolean("embedding_allow_custom_model", false)
         selectedEmbeddingDimensions = settings
             .getInt("embedding_output_dimensions", 768)
             .takeIf { it in embeddingDimensionOptions } ?: 768
@@ -277,6 +280,14 @@ class MainActivity : ComponentActivity() {
                             operationBusy = operationBusy,
                             qualcommModelSelected = qualcommModelSelected,
                             selectedEmbeddingDimensions = selectedEmbeddingDimensions,
+                            allowCustomModel = allowCustomModel,
+                            onAllowCustomModelChange = { allowed ->
+                                allowCustomModel = allowed
+                                getSharedPreferences("mistbell-v3-settings", MODE_PRIVATE)
+                                    .edit()
+                                    .putBoolean("embedding_allow_custom_model", allowed)
+                                    .apply()
+                            },
                             onSelectModelProfile = ::selectModelProfile,
                             onCycleEmbeddingDimensions = ::cycleEmbeddingDimensions,
                             onDownloadModel = ::downloadEmbeddingModel,

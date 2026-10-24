@@ -56,7 +56,10 @@ class EmbeddingGemma2ModelAssetManagerTest {
         try {
             val bytes = "local-litertlm-bundle".toByteArray()
             val source = File(publicDirectory, "embeddinggemma-2-740m.litertlm").apply { writeBytes(bytes) }
-            val imported = EmbeddingGemma2ModelAssetManager(appDirectory).importModel(
+            val imported = EmbeddingGemma2ModelAssetManager(
+                appDirectory,
+                allowCustomModel = true,
+            ).importModel(
                 source.name,
                 source.inputStream(),
             )
@@ -88,6 +91,25 @@ class EmbeddingGemma2ModelAssetManagerTest {
             directory.deleteRecursively()
         }
     }
+    @Test
+    fun rejectsNonOfficialPortableModelUnlessCustomImportIsAllowed(): Unit = runBlocking {
+        val directory = kotlin.io.path.createTempDirectory(prefix = "embedding-model-policy").toFile()
+        try {
+            val source = File(directory, "embeddinggemma-2-740m.litertlm")
+                .apply { writeBytes("custom-bundle".toByteArray()) }
+            assertThrows(IllegalArgumentException::class.java) {
+                runBlocking {
+                    EmbeddingGemma2ModelAssetManager(directory).importModel(
+                        source.name,
+                        source.inputStream(),
+                    )
+                }
+            }
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
     @Test
     fun rejectsInstalledModelWhenBytesChangeAfterDownload(): Unit = runBlocking {
         val directory = kotlin.io.path.createTempDirectory(prefix = "embedding-model-test").toFile()

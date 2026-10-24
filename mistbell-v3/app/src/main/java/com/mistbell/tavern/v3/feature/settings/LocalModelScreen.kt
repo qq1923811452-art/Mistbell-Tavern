@@ -2,6 +2,7 @@ package com.mistbell.tavern.v3.feature.settings
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -11,10 +12,12 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.Switch
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.mistbell.tavern.v3.core.inference.BackendEvidence
@@ -32,6 +35,8 @@ fun LocalModelScreen(
     operationBusy: Boolean,
     qualcommModelSelected: Boolean,
     selectedEmbeddingDimensions: Int,
+    allowCustomModel: Boolean,
+    onAllowCustomModelChange: (Boolean) -> Unit,
     onSelectModelProfile: (Boolean) -> Unit,
     onCycleEmbeddingDimensions: () -> Unit,
     onDownloadModel: () -> Unit,
