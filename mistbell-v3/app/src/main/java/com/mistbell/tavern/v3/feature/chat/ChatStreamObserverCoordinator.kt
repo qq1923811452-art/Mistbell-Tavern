@@ -38,8 +38,8 @@ internal class ChatStreamObserverCoordinator(
             }
 
             override fun onUsage(usage: ChatTokenUsage) {
-                if (!isCurrentConversation()) return
                 mainHandler.post {
+                    if (!isCurrentConversation()) return@post
                     val cached = usage.cachedPromptTokens
                     val cacheRatio = if (cached != null && usage.promptTokens > 0) {
                         "（${cached * PERCENT / usage.promptTokens}%）"

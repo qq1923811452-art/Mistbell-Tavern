@@ -971,27 +971,38 @@ fun ChatScreen(
                             ).start(openingMessage, userText)
                             val assistantMessageId = history.lastOrNull { it.role == "assistant" }?.id.orEmpty()
                             val requestHistory = history.toList()
-                            val messages = withContext(Dispatchers.Default) {
-                                ChatTurnPromptPreparationCoordinator(
-                                    settings = settings,
-                                    diagnosticStore = diagnosticStore,
-                                    mainHandler = mainHandler,
-                                    setStatus = { status = it },
-                                ).prepare(
-                                    history = requestHistory,
-                                    userText = userText,
-                                    characterCards = characterCards,
-                                    selectedCharacterId = requestCharacterId,
-                                    localWorldbookEntries = requestWorldbookEntries,
-                                    worldbookState = requestWorldbookState,
-                                    worldbookStateKey = requestWorldbookStateKey,
-                                    groupContext = groupPrepared?.let { prepared ->
-                                        GroupChatPromptContext(
-                                            members = groupMembers,
-                                            speakerName = prepared.speakerName,
-                                        )
-                                    },
-                                )
+                            val messages = try {
+                                withContext(Dispatchers.Default) {
+                                    ChatTurnPromptPreparationCoordinator(
+                                        settings = settings,
+                                        diagnosticStore = diagnosticStore,
+                                        mainHandler = mainHandler,
+                                        setStatus = { status = it },
+                                    ).prepare(
+                                        history = requestHistory,
+                                        userText = userText,
+                                        characterCards = characterCards,
+                                        selectedCharacterId = requestCharacterId,
+                                        localWorldbookEntries = requestWorldbookEntries,
+                                        worldbookState = requestWorldbookState,
+                                        worldbookStateKey = requestWorldbookStateKey,
+                                        groupContext = groupPrepared?.let { prepared ->
+                                            GroupChatPromptContext(
+                                                members = groupMembers,
+                                                speakerName = prepared.speakerName,
+                                            )
+                                        },
+                                    )
+                                }
+                            } catch (error: Exception) {
+                                busy = false
+                                status = "提示词准备失败：${error.message ?: error.javaClass.simpleName}"
+                                return@launch
+                            }
+                            if (memoryConversationId != requestConversationId) {
+                                busy = false
+                                status = "会话已切换，本次发送已取消。"
+                                return@launch
                             }
                             lastPromptMessages = messages
                             savePromptSnapshot(requestConversationId, messages)
