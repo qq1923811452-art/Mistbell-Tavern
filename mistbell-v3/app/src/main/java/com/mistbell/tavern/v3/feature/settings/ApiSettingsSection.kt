@@ -9,6 +9,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import com.mistbell.tavern.v3.core.network.ChatConnectionTester
+import com.mistbell.tavern.v3.feature.chat.ThinkingModeTemplates
 import com.mistbell.tavern.v3.core.security.ChatCredentialStore
 import kotlinx.coroutines.launch
 
@@ -64,12 +65,23 @@ fun ApiSettingsSection(onStatus: (String) -> Unit) {
                     .putBoolean("chat_long_context", updated.longContext)
                     .putString("chat_profile_name", updated.name)
                     .apply()
+                val template = if (updated.thinkingEnabled) {
+                    ThinkingModeTemplates.enabled(updated.baseUrl)
+                } else {
+                    ThinkingModeTemplates.disabled(updated.baseUrl)
+                }
                 prefs.edit()
                     .putString("chat_credential_handle", handle)
                     .apply()
                 profile = updated.copy(handle = handle)
                 showDialog = false
-                onStatus("API 配置已保存。")
+                onStatus(
+                    if (template == null) {
+                        "API 配置已保存；该服务商没有内置思考参数，思考开关不会改变请求。"
+                    } else {
+                        "API 配置已保存。"
+                    },
+                )
             },
         )
     }

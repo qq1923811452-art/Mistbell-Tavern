@@ -150,12 +150,15 @@ class OpenAiCompatibleChatClient(
                 if (options.includeUsage && options.stream) {
                     payload.put("stream_options", JSONObject().put("include_usage", true))
                 }
-                if (options.thinkingEnabled) {
-                    profile.thinkingBodyTemplate?.let { template ->
-                        runCatching { JSONObject(template) }.getOrNull()?.let { extra ->
-                            extra.keys().forEach { key ->
-                                if (key !in CONTROLLED_REQUEST_KEYS) payload.put(key, extra.opt(key))
-                            }
+                val thinkingTemplate = if (options.thinkingEnabled) {
+                    profile.thinkingBodyTemplate
+                } else {
+                    profile.thinkingDisabledBody
+                }
+                thinkingTemplate?.let { template ->
+                    runCatching { JSONObject(template) }.getOrNull()?.let { extra ->
+                        extra.keys().forEach { key ->
+                            if (key !in CONTROLLED_REQUEST_KEYS) payload.put(key, extra.opt(key))
                         }
                     }
                 }
