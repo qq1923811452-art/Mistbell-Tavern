@@ -60,16 +60,29 @@ class MemoryExtractionQueueWorker(
                             // Chat history now lives in SQLite. The repository still migrates a
                             // legacy JSON file once if the conversation has not been opened since
                             // the upgrade, so background extraction reads the same source as chat.
+                            val historyScopeId = job.historyScopeId
+                            val legacyScopeId = job.conversationId
+                                .takeIf { it.isNotBlank() && it != historyScopeId }
                             val historyRepository = SqliteChatHistoryRepository(
                                 applicationContext,
-                                job.conversationId,
+                                historyScopeId,
                                 ChatHistoryStore(
                                     applicationContext,
                                     MemoryScopeFileNames.forScope(
                                         ChatHistoryStore.DEFAULT_FILE_NAME,
-                                        job.conversationId,
+                                        historyScopeId,
                                     ),
                                 ),
+                                legacyScopeId = legacyScopeId,
+                                legacyFileStore = legacyScopeId?.let { scope ->
+                                    ChatHistoryStore(
+                                        applicationContext,
+                                        MemoryScopeFileNames.forScope(
+                                            ChatHistoryStore.DEFAULT_FILE_NAME,
+                                            scope,
+                                        ),
+                                    )
+                                },
                             )
                             val history = try {
                                 when (val loaded = historyRepository.load()) {

@@ -261,19 +261,19 @@ fun ChatScreen(
     val history = remember { mutableStateListOf<ChatLine>() }
     val listState = rememberLazyListState()
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
-    val historyScopeId = memoryConversationId.ifBlank { memoryScopeId }
-    val historyStore = remember(context, historyScopeId) {
+    val conversationHistoryScope = memoryConversationId.ifBlank { memoryScopeId }
+    val historyStore = remember(context, conversationHistoryScope) {
         val legacyStore = ChatHistoryStore(
             context.applicationContext,
-            MemoryScopeFileNames.forScope(ChatHistoryStore.DEFAULT_FILE_NAME, historyScopeId),
+            MemoryScopeFileNames.forScope(ChatHistoryStore.DEFAULT_FILE_NAME, conversationHistoryScope),
         )
         SqliteChatHistoryRepository(
             context.applicationContext,
-            historyScopeId,
+            conversationHistoryScope,
             legacyStore,
-            legacyScopeId = memoryScopeId.takeIf { it.isNotBlank() && it != historyScopeId },
+            legacyScopeId = memoryScopeId.takeIf { it.isNotBlank() && it != conversationHistoryScope },
             legacyFileStore = memoryScopeId
-                .takeIf { it.isNotBlank() && it != historyScopeId }
+                .takeIf { it.isNotBlank() && it != conversationHistoryScope }
                 ?.let { scope ->
                     ChatHistoryStore(
                         context.applicationContext,
@@ -474,7 +474,7 @@ fun ChatScreen(
                 ?.replace('\n', ' ')
                 ?.take(80)
                 .orEmpty()
-            if (memoryConversationId.isNotBlank() && preview.isNotEmpty()) {
+            if (memoryConversationId.isNotBlank()) {
                 if (sessionStore.touch(memoryConversationId, preview, history.size)) {
                     sessions = sessionStore.list()
                 }
@@ -529,6 +529,7 @@ fun ChatScreen(
         coroutineScope,
         diagnosticStore,
         memoryScopeId,
+        conversationHistoryScope,
     ) {
         ChatMemoryOperationsCoordinator(
             context = context,
@@ -538,6 +539,7 @@ fun ChatScreen(
             coroutineScope = coroutineScope,
             diagnosticStore = diagnosticStore,
             memoryScopeId = memoryScopeId,
+            historyScopeId = conversationHistoryScope,
             isIndexRebuildInFlight = { memoryIndexRebuildInFlight },
             setIndexRebuildInFlight = { memoryIndexRebuildInFlight = it },
             isChatBusy = { busy },
@@ -579,30 +581,44 @@ fun ChatScreen(
                 }
             },
             onDeleteSession = { id ->
-                runCatching {
-                    val legacy = ChatHistoryStore(
-                        context.applicationContext,
-                        MemoryScopeFileNames.forScope(ChatHistoryStore.DEFAULT_FILE_NAME, id),
-                    )
-                    SqliteChatHistoryRepository(context.applicationContext, id, legacy).use { repository ->
-                        repository.deleteAll()
-                    }
-                }.onFailure { error ->
-                    diagnosticStore.warn("chat.session.history_delete_failed", error::class.java.simpleName)
-                }
-                sessionStore.delete(id)
-                sessions = sessionStore.list()
-                diagnosticStore.info("chat.session.deleted", "remaining=${sessions.size}")
-                if (id == memoryConversationId) {
-                    val next = sessions.firstOrNull()
-                        ?: runCatching { sessionStore.create(activeMemoryRoleId, "新对话") }.getOrNull()
-                            ?.also { created ->
-                                sessions = sessionStore.list()
+                coroutineScope.launch {
+                    val isCurrent = id == conversationHistoryScope
+                    if (isCurrent) historySaveRevision.incrementAndGet()
+                    runCatching {
+                        if (isCurrent) {
+                            historySaveMutex.withLock {
+                                withContext(Dispatchers.IO) { historyStore.deleteAll() }
                             }
-                    if (next != null) {
-                        memoryConversationId = next.id
-                        settings.edit().putString("memory_extraction_conversation_id", next.id).apply()
-                        diagnosticStore.info("chat.session.switched", "reason=delete_fallback")
+                        } else {
+                            val legacy = ChatHistoryStore(
+                                context.applicationContext,
+                                MemoryScopeFileNames.forScope(ChatHistoryStore.DEFAULT_FILE_NAME, id),
+                            )
+                            SqliteChatHistoryRepository(context.applicationContext, id, legacy)
+                                .use { repository -> repository.deleteAll() }
+                        }
+                    }.onFailure { error ->
+                        diagnosticStore.warn(
+                            "chat.session.history_delete_failed",
+                            error::class.java.simpleName,
+                        )
+                    }
+                    if (isCurrent) history.clear()
+                    sessionStore.delete(id)
+                    sessions = sessionStore.list()
+                    diagnosticStore.info("chat.session.deleted", "remaining=${sessions.size}")
+                    if (id == memoryConversationId) {
+                        val next = sessions.firstOrNull()
+                            ?: runCatching { sessionStore.create(activeMemoryRoleId, "新对话") }
+                                .getOrNull()
+                                ?.also {
+                                    sessions = sessionStore.list()
+                                }
+                        if (next != null) {
+                            memoryConversationId = next.id
+                            settings.edit().putString("memory_extraction_conversation_id", next.id).apply()
+                            diagnosticStore.info("chat.session.switched", "reason=delete_fallback")
+                        }
                     }
                 }
             },

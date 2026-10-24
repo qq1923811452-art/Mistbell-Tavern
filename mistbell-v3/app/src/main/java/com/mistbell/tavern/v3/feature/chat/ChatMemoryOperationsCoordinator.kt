@@ -25,6 +25,7 @@ internal class ChatMemoryOperationsCoordinator(
     private val coroutineScope: CoroutineScope,
     private val diagnosticStore: DiagnosticLogStore,
     private val memoryScopeId: String,
+    private val historyScopeId: String,
     private val isIndexRebuildInFlight: () -> Boolean,
     private val setIndexRebuildInFlight: (Boolean) -> Unit,
     private val isChatBusy: () -> Boolean,
@@ -60,6 +61,7 @@ internal class ChatMemoryOperationsCoordinator(
             coroutineScope = coroutineScope,
             diagnosticStore = diagnosticStore,
             memoryScopeId = memoryScopeId,
+            historyScopeId = historyScopeId,
             setStatus = setStatus,
         ).schedule(providers, history)
     }

@@ -29,6 +29,7 @@ internal class ChatMemoryExtractionSchedulingCoordinator(
     private val coroutineScope: CoroutineScope,
     private val diagnosticStore: DiagnosticLogStore,
     private val memoryScopeId: String,
+    private val historyScopeId: String,
     private val setStatus: (String) -> Unit,
 ) {
     fun schedule(providers: ProviderProfileSet, history: List<ChatLine>) {
@@ -70,6 +71,7 @@ internal class ChatMemoryExtractionSchedulingCoordinator(
                 MemoryExtractionJob(
                     id = stableId,
                     conversationId = conversationId,
+                    historyScopeId = historyScopeId,
                     turnIds = turnIds,
                     providerProfileId = profile.id,
                     credentialHandle = credentialHandle,

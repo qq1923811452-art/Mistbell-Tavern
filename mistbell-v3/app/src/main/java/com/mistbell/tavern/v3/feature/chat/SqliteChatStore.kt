@@ -207,6 +207,15 @@ class SqliteChatStore(
                 arrayOf(toScopeId, fromScopeId),
             )
             db.delete(TABLE_MESSAGES, "scope_id = ?", arrayOf(fromScopeId))
+            db.insertWithOnConflict(
+                TABLE_META,
+                null,
+                ContentValues().apply {
+                    put("scope_id", toScopeId)
+                    put("legacy_imported", 1)
+                },
+                SQLiteDatabase.CONFLICT_REPLACE,
+            )
             db.setTransactionSuccessful()
             true
         } catch (_: Exception) {
