@@ -912,6 +912,11 @@ fun ChatScreen(
                     onClick = {
                         coroutineScope.launch {
                             val requestConversationId = memoryConversationId
+                            val requestMemoryScopeId = memoryScopeId
+                            val requestCharacterId = selectedCharacterId
+                            val requestWorldbookEntries = worldbookSession.entries
+                            val requestWorldbookState = worldbookSession.activation.activationState
+                            val requestWorldbookStateKey = worldbookSession.activation.stateKey
                             val preparedRequest = ChatSendRequestPreflightCoordinator(
                                 memoryCredentialStore = memoryCredentialStore,
                                 settings = settings,
@@ -965,6 +970,7 @@ fun ChatScreen(
                                 setStatus = { status = it },
                             ).start(openingMessage, userText)
                             val assistantMessageId = history.lastOrNull { it.role == "assistant" }?.id.orEmpty()
+                            val requestHistory = history.toList()
                             val messages = withContext(Dispatchers.Default) {
                                 ChatTurnPromptPreparationCoordinator(
                                     settings = settings,
@@ -972,13 +978,13 @@ fun ChatScreen(
                                     mainHandler = mainHandler,
                                     setStatus = { status = it },
                                 ).prepare(
-                                    history = history,
+                                    history = requestHistory,
                                     userText = userText,
                                     characterCards = characterCards,
-                                    selectedCharacterId = selectedCharacterId,
-                                    localWorldbookEntries = worldbookSession.entries,
-                                    worldbookState = worldbookSession.activation.activationState,
-                                    worldbookStateKey = worldbookSession.activation.stateKey,
+                                    selectedCharacterId = requestCharacterId,
+                                    localWorldbookEntries = requestWorldbookEntries,
+                                    worldbookState = requestWorldbookState,
+                                    worldbookStateKey = requestWorldbookStateKey,
                                     groupContext = groupPrepared?.let { prepared ->
                                         GroupChatPromptContext(
                                             members = groupMembers,
@@ -988,7 +994,7 @@ fun ChatScreen(
                                 )
                             }
                             lastPromptMessages = messages
-                            savePromptSnapshot(memoryConversationId, messages)
+                            savePromptSnapshot(requestConversationId, messages)
                             val baseObserver = ChatStreamObserverCoordinator(
                                 mainHandler = mainHandler,
                                 history = history,
@@ -998,7 +1004,7 @@ fun ChatScreen(
                                 memoryStatusNotice = { memoryStatusNotice },
                                 setUsageSummary = {
                                     usageSummary = it
-                                    saveUsageSummary(memoryConversationId, it)
+                                    saveUsageSummary(requestConversationId, it)
                                 },
                                 persistHistory = ::persistHistory,
                                 scheduleMemoryExtraction = { providers ->
@@ -1026,7 +1032,8 @@ fun ChatScreen(
 
                                     override fun onComplete() {
                                         mainHandler.post {
-                                            val index = history.indexOfLast { it.role == "assistant" }
+                                            if (memoryConversationId != requestConversationId) return@post
+                                            val index = history.indexOfFirst { it.id == assistantMessageId }
                                             if (index >= 0) {
                                                 history[index] = history[index].copy(
                                                     speakerId = groupPrepared.speakerId,
@@ -1055,8 +1062,8 @@ fun ChatScreen(
                                         context = context,
                                         mainHandler = mainHandler,
                                         diagnosticStore = diagnosticStore,
-                                        memoryScopeId = memoryScopeId,
-                                        memoryConversationId = memoryConversationId,
+                                        memoryScopeId = requestMemoryScopeId,
+                                        memoryConversationId = requestConversationId,
                                         indexRebuildCoordinator = memoryOperationsCoordinator.createIndexRebuildCoordinator(),
                                         setStatus = { status = it },
                                         setMemoryStatusNotice = { memoryStatusNotice = it },
