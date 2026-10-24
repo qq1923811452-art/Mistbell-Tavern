@@ -224,6 +224,7 @@ fun ChatScreen(
         sessions = sessionStore.list()
     }
     var memoryIndexRebuildInFlight by remember { mutableStateOf(false) }
+    var deletingConversationId by remember { mutableStateOf<String?>(null) }
     var memoryStatusNotice by remember { mutableStateOf("") }
     var maxTokensText by remember(settings) {
         mutableStateOf(settings.getInt("chat_max_tokens", 4096).coerceIn(1, 200_000).toString())
@@ -348,6 +349,10 @@ fun ChatScreen(
             .coerceIn(1, 200_000)
 
     fun persistHistory() {
+        if (deletingConversationId == memoryConversationId) {
+            status = "正在删除会话，暂不保存历史。"
+            return
+        }
         val startedNanos = System.nanoTime()
         val snapshot = ChatHistorySnapshotFactory.create(history)
         historySaveCoordinator.save(snapshot)
@@ -593,44 +598,49 @@ fun ChatScreen(
                 }
             },
             onDeleteSession = { id ->
+                deletingConversationId = id
                 coroutineScope.launch {
-                    val isCurrent = id == conversationHistoryScope
-                    if (isCurrent) historySaveRevision.incrementAndGet()
-                    runCatching {
-                        if (isCurrent) {
-                            historySaveMutex.withLock {
-                                withContext(Dispatchers.IO) { historyStore.deleteAll() }
-                            }
-                        } else {
-                            val legacy = ChatHistoryStore(
-                                context.applicationContext,
-                                MemoryScopeFileNames.forScope(ChatHistoryStore.DEFAULT_FILE_NAME, id),
-                            )
-                            SqliteChatHistoryRepository(context.applicationContext, id, legacy)
-                                .use { repository -> repository.deleteAll() }
-                        }
-                    }.onFailure { error ->
-                        diagnosticStore.warn(
-                            "chat.session.history_delete_failed",
-                            error::class.java.simpleName,
-                        )
-                    }
-                    if (isCurrent) history.clear()
-                    sessionStore.delete(id)
-                    sessions = sessionStore.list()
-                    diagnosticStore.info("chat.session.deleted", "remaining=${sessions.size}")
-                    if (id == memoryConversationId) {
-                        val next = sessions.firstOrNull()
-                            ?: runCatching { sessionStore.create(activeMemoryRoleId, "新对话") }
-                                .getOrNull()
-                                ?.also {
-                                    sessions = sessionStore.list()
+                    try {
+                        val isCurrent = id == conversationHistoryScope
+                        if (isCurrent) historySaveRevision.incrementAndGet()
+                        runCatching {
+                            if (isCurrent) {
+                                historySaveMutex.withLock {
+                                    withContext(Dispatchers.IO) { historyStore.deleteAll() }
                                 }
-                        if (next != null) {
-                            memoryConversationId = next.id
-                            settings.edit().putString("memory_extraction_conversation_id", next.id).apply()
-                            diagnosticStore.info("chat.session.switched", "reason=delete_fallback")
+                            } else {
+                                val legacy = ChatHistoryStore(
+                                    context.applicationContext,
+                                    MemoryScopeFileNames.forScope(ChatHistoryStore.DEFAULT_FILE_NAME, id),
+                                )
+                                SqliteChatHistoryRepository(context.applicationContext, id, legacy)
+                                    .use { repository -> repository.deleteAll() }
+                            }
+                        }.onFailure { error ->
+                            diagnosticStore.warn(
+                                "chat.session.history_delete_failed",
+                                error::class.java.simpleName,
+                            )
                         }
+                        if (isCurrent) history.clear()
+                        sessionStore.delete(id)
+                        sessions = sessionStore.list()
+                        diagnosticStore.info("chat.session.deleted", "remaining=${sessions.size}")
+                        if (id == memoryConversationId) {
+                            val next = sessions.firstOrNull()
+                                ?: runCatching { sessionStore.create(activeMemoryRoleId, "新对话") }
+                                    .getOrNull()
+                                    ?.also {
+                                        sessions = sessionStore.list()
+                                    }
+                            if (next != null) {
+                                memoryConversationId = next.id
+                                settings.edit().putString("memory_extraction_conversation_id", next.id).apply()
+                                diagnosticStore.info("chat.session.switched", "reason=delete_fallback")
+                            }
+                        }
+                    } finally {
+                        deletingConversationId = null
                     }
                 }
             },
