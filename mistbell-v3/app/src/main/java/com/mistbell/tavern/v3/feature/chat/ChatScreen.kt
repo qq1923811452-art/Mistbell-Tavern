@@ -264,17 +264,22 @@ fun ChatScreen(
     }
 
     fun loadPromptSnapshot(conversationId: String): List<PromptMessage> {
-        if (conversationId.isBlank()) return emptyList()
-        val raw = settings.getString("chat_last_prompt_$conversationId", null) ?: return emptyList()
-        return runCatching {
-            val array = JSONArray(raw)
-            (0 until array.length()).mapNotNull { index ->
-                val item = array.optJSONObject(index) ?: return@mapNotNull null
-                val role = runCatching { PromptRole.valueOf(item.optString("role")) }.getOrNull()
-                    ?: return@mapNotNull null
-                PromptMessage(role, item.optString("content"))
-            }
-        }.getOrDefault(emptyList())
+        val raw = if (conversationId.isBlank()) {
+            null
+        } else {
+            settings.getString("chat_last_prompt_$conversationId", null)
+        }
+        return raw?.let { encoded ->
+            runCatching {
+                val array = JSONArray(encoded)
+                (0 until array.length()).mapNotNull { index ->
+                    val item = array.optJSONObject(index) ?: return@mapNotNull null
+                    val role = runCatching { PromptRole.valueOf(item.optString("role")) }.getOrNull()
+                        ?: return@mapNotNull null
+                    PromptMessage(role, item.optString("content"))
+                }
+            }.getOrDefault(emptyList())
+        } ?: emptyList()
     }
 
     fun clearPromptSnapshot(conversationId: String = memoryConversationId) {
@@ -530,6 +535,8 @@ fun ChatScreen(
                     ?.let { roleId -> selectedCharacterId = roleId }
                 memoryConversationId = id
                 settings.edit().putString("memory_extraction_conversation_id", id).apply()
+                lastGroupSpeakerId = null
+                chatViewModel.clearDraft()
                 lastPromptMessages = loadPromptSnapshot(id)
                 usageSummary = settings.getString("chat_usage_$id", null)
                     ?: "Token 用量：本轮尚无服务端 usage 数据"
@@ -717,6 +724,8 @@ fun ChatScreen(
                     settings.edit().putString("memory_extraction_conversation_id", created.id).apply()
                     sessions = sessionStore.list()
                     lastPromptMessages = emptyList()
+                    lastGroupSpeakerId = null
+                    chatViewModel.clearDraft()
                     usageSummary = "Token 用量：本轮尚无服务端 usage 数据"
                     diagnosticStore.info("chat.session.created", "sessions=${sessions.size}")
                 }
