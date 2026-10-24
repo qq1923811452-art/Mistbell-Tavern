@@ -362,7 +362,7 @@ fun ChatScreen(
         )
     }
 
-    @Suppress("LongMethod")
+    @Suppress("LongMethod", "TooGenericExceptionCaught")
     fun regenerateReply(targetMessageId: String) {
         if (busy) {
             status = "生成中，请先等待当前回复完成。"
