@@ -13,40 +13,18 @@ import androidx.activity.result.contract.ActivityResultContracts
 import android.provider.OpenableColumns
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import android.widget.Toast
 import java.io.File
 import java.io.FileInputStream
@@ -59,14 +37,12 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import com.mistbell.tavern.v3.core.inference.BackendEvidence
 import com.mistbell.tavern.v3.feature.embedding.EmbeddingGemma2ModelAssetManager
 import com.mistbell.tavern.v3.feature.embedding.DownloadedEmbeddingModel
 import com.mistbell.tavern.v3.feature.embedding.EmbeddingGemma2RuntimeAdapter
 import com.mistbell.tavern.v3.feature.embedding.LiteRtLmEmbeddingGemma2Engine
 import com.mistbell.tavern.v3.feature.embedding.EmbeddingEngineProcessHolder
 import com.mistbell.tavern.v3.feature.embedding.EmbeddingEngineProcessHolder.CloseReason
-import com.mistbell.tavern.v3.feature.embedding.EmbeddingVectorCache
 import com.mistbell.tavern.v3.core.diagnostics.DiagnosticLogStore
 import com.mistbell.tavern.v3.core.inference.InferenceBackend
 import com.mistbell.tavern.v3.core.inference.InferencePhase
@@ -76,21 +52,14 @@ import com.mistbell.tavern.v3.feature.chat.ChatScreen
 import com.mistbell.tavern.v3.feature.character.CharacterCardLibraryScreen
 import com.mistbell.tavern.v3.feature.worldbook.WorldBookLibraryScreen
 import com.mistbell.tavern.v3.feature.image.ImageGenerationScreen
+import com.mistbell.tavern.v3.feature.settings.LocalModelScreen
+import com.mistbell.tavern.v3.feature.settings.MemorySettingsScreen
 import com.mistbell.tavern.v3.feature.settings.SettingsHomeScreen
 import com.mistbell.tavern.v3.core.settings.getIntCompat
 import com.mistbell.tavern.v3.ui.TavernBackground
 import com.mistbell.tavern.v3.ui.TavernBottomBar
 import com.mistbell.tavern.v3.ui.TavernTab
 
-private data class BuildStage(val title: String, val detail: String)
-
-private val initialStages = listOf(
-    BuildStage("聊天与 API 核心", "独立流式聊天客户端、API 路由、Token 用量和提示词组装已接入；仍需收尾边界场景与端到端验收。"),
-    BuildStage("世界书与角色卡", "属于独立的 PR #60 范围；本 PR 不重复实现，需以 PR #60 的实际合并与验收状态为准。"),
-    BuildStage("记忆与本地向量", "已接入按角色/会话隔离的本地文本与向量存储、检索、时间事实同步及后台索引重建；仍需完成边界测试与规模性能验收。"),
-    BuildStage("本地推理与硬件状态", "EmbeddingGemma 2 / LiteRT-LM 接入、后端状态与 Qualcomm 运行时打包流程已建立；CI 打包成功不代表最新 APK 的 CPU/GPU/NPU 真机验收完成。"),
-    BuildStage("生图、安全与备份", "独立生图 API、独立密钥输入、远程图片显式下载、本地图片库及导出已接入；完整事务式备份/恢复流程仍需收尾。"),
-)
 
 class MainActivity : ComponentActivity() {
     private lateinit var diagnostics: DiagnosticLogStore
@@ -101,10 +70,11 @@ class MainActivity : ComponentActivity() {
     private var showImageGeneration by mutableStateOf(false)
     private var showLicenses by mutableStateOf(false)
     private var mainTab by mutableStateOf(TavernTab.CHAT)
-    private var chatSettingsMode by mutableStateOf(false)
     private var showLocalModel by mutableStateOf(false)
+    private var showMemorySettings by mutableStateOf(false)
     private var contextTokens by mutableStateOf(32_000)
     private var memoryEnabled by mutableStateOf(true)
+    private var maxOutputTokens by mutableStateOf(4096)
     private var showCharacterLibrary by mutableStateOf(false)
     private var showWorldBookLibrary by mutableStateOf(false)
     private val embeddingDimensionOptions = listOf(128, 256, 512, 768, 1024, 1536, 2048)
@@ -140,6 +110,7 @@ class MainActivity : ComponentActivity() {
         val settings = getSharedPreferences("mistbell-v3-settings", MODE_PRIVATE)
         contextTokens = settings.getIntCompat("chat_context_tokens", 32_000)
         memoryEnabled = settings.getBoolean("memory_extraction_enabled", true)
+        maxOutputTokens = settings.getInt("chat_max_tokens", 4096).coerceIn(1, 200_000)
         selectedEmbeddingDimensions = settings
             .getInt("embedding_output_dimensions", 768)
             .takeIf { it in embeddingDimensionOptions } ?: 768
@@ -273,14 +244,14 @@ class MainActivity : ComponentActivity() {
         setContent {
             BackHandler(
                 enabled = showLicenses || showImageGeneration || showCharacterLibrary ||
-                    showWorldBookLibrary || chatSettingsMode || showLocalModel,
+                    showWorldBookLibrary || showLocalModel || showMemorySettings,
             ) {
                 when {
                     showLicenses -> showLicenses = false
                     showImageGeneration -> showImageGeneration = false
                     showCharacterLibrary -> showCharacterLibrary = false
                     showWorldBookLibrary -> showWorldBookLibrary = false
-                    chatSettingsMode -> chatSettingsMode = false
+                    showMemorySettings -> showMemorySettings = false
                     showLocalModel -> showLocalModel = false
                 }
             }
@@ -297,35 +268,26 @@ class MainActivity : ComponentActivity() {
                         CharacterCardLibraryScreen(onBack = { showCharacterLibrary = false })
                     } else if (showWorldBookLibrary) {
                         WorldBookLibraryScreen(onBack = { showWorldBookLibrary = false })
+                    } else if (showMemorySettings) {
+                        MemorySettingsScreen(onBack = { showMemorySettings = false })
                     } else if (showLocalModel) {
-                        TavernBackground {
-                            DevelopmentHome(
-                                inferenceStatus = inferenceStatus,
-                                operationMessage = operationMessage,
-                                operationBusy = operationBusy,
-                                onOpenChat = { showLocalModel = false; mainTab = TavernTab.CHAT },
-                                onOpenChatSettings = { showLocalModel = false; chatSettingsMode = true },
-                                onOpenImageGeneration = { showLocalModel = false; showImageGeneration = true },
-                                onOpenCharacterLibrary = { showLocalModel = false; showCharacterLibrary = true },
-                                onOpenWorldBookLibrary = { showLocalModel = false; showWorldBookLibrary = true },
-                                onOpenLicenses = { showLicenses = true },
-                                onDownloadModel = ::downloadEmbeddingModel,
-                                onImportModel = { importModel.launch(arrayOf("*/*")) },
-                                qualcommModelSelected = qualcommModelSelected,
-                                onSelectModelProfile = ::selectModelProfile,
-                                selectedEmbeddingDimensions = selectedEmbeddingDimensions,
-                                onCycleEmbeddingDimensions = ::cycleEmbeddingDimensions,
-                                onRunEmbeddingTest = { runEmbeddingSelfTest() },
-                                onRunNpuDiagnosticProbe = { runEmbeddingSelfTest(allowDiagnosticNpuProbe = true) },
-                                onRunAlternateBackendBenchmark = { runAlternateBackendBenchmark() },
-                                onExportNpuEvidence = { exportNpuEvidence.launch("npu-evidence.json") },
-                                onExportLogs = { exportDiagnostics.launch("mistbell-diagnostics.txt") },
-                            )
-                        }
-                    } else if (chatSettingsMode) {
-                        TavernBackground {
-                            ChatScreen(onBack = { chatSettingsMode = false }, settingsMode = true)
-                        }
+                        LocalModelScreen(
+                            inferenceStatus = inferenceStatus,
+                            operationMessage = operationMessage,
+                            operationBusy = operationBusy,
+                            qualcommModelSelected = qualcommModelSelected,
+                            selectedEmbeddingDimensions = selectedEmbeddingDimensions,
+                            onSelectModelProfile = ::selectModelProfile,
+                            onCycleEmbeddingDimensions = ::cycleEmbeddingDimensions,
+                            onDownloadModel = ::downloadEmbeddingModel,
+                            onImportModel = { importModel.launch(arrayOf("*/*")) },
+                            onRunEmbeddingTest = { runEmbeddingSelfTest() },
+                            onRunNpuDiagnosticProbe = { runEmbeddingSelfTest(allowDiagnosticNpuProbe = true) },
+                            onRunAlternateBackendBenchmark = { runAlternateBackendBenchmark() },
+                            onExportNpuEvidence = { exportNpuEvidence.launch("npu-evidence.json") },
+                            onExportLogs = { exportDiagnostics.launch("mistbell-diagnostics.txt") },
+                            onBack = { showLocalModel = false },
+                        )
                     } else {
                         Column(Modifier.fillMaxSize()) {
                             Box(Modifier.weight(1f)) {
@@ -333,7 +295,6 @@ class MainActivity : ComponentActivity() {
                                     TavernTab.CHAT -> TavernBackground {
                                         ChatScreen(
                                             onBack = { mainTab = TavernTab.SETTINGS },
-                                            onOpenChatSettings = { chatSettingsMode = true },
                                         )
                                     }
                                     TavernTab.SETTINGS -> Box(Modifier.fillMaxSize()) {
@@ -349,15 +310,16 @@ class MainActivity : ComponentActivity() {
                                                 .background(Color.Black.copy(alpha = 0.55f)),
                                         )
                                         SettingsHomeScreen(
-                                            apiProfileLabel = runCatching {
-                                                val prefs = getSharedPreferences("mistbell-v3-settings", MODE_PRIVATE)
-                                                val model = prefs.getString("chat_model_id", "").orEmpty()
-                                                val url = prefs.getString("chat_api_base_url", "").orEmpty()
-                                                listOf(model, url).filter { it.isNotBlank() }
-                                                    .joinToString(" · ").ifBlank { "未配置" }
-                                            }.getOrDefault("未配置"),
                                             contextTokens = contextTokens,
                                             memoryEnabled = memoryEnabled,
+                                            maxOutputTokens = maxOutputTokens,
+                                            onMaxOutputTokensChange = { tokens ->
+                                                maxOutputTokens = tokens
+                                                getSharedPreferences("mistbell-v3-settings", MODE_PRIVATE)
+                                                    .edit()
+                                                    .putInt("chat_max_tokens", tokens)
+                                                    .apply()
+                                            },
                                             onContextTokensChange = { tokens ->
                                                 getSharedPreferences("mistbell-v3-settings", MODE_PRIVATE)
                                                     .edit()
@@ -376,9 +338,8 @@ class MainActivity : ComponentActivity() {
                                                     .apply()
                                                 memoryEnabled = enabled
                                             },
-                                            onOpenApiSettings = { chatSettingsMode = true },
-                                            onOpenEmbedding = { chatSettingsMode = true },
-                                            onOpenChatSettings = { chatSettingsMode = true },
+                                            onOpenEmbedding = { showLocalModel = true },
+                                            onOpenMemorySettings = { showMemorySettings = true },
                                             onOpenImage = { showImageGeneration = true },
                                             onOpenCharacters = { showCharacterLibrary = true },
                                             onOpenWorldBook = { showWorldBookLibrary = true },
@@ -783,278 +744,5 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         // Process-scoped embedding engines intentionally survive Activity destruction.
         super.onDestroy()
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-@Suppress("LongParameterList", "LongMethod", "FunctionNaming")
-private fun DevelopmentHome(
-    inferenceStatus: InferenceRuntimeStatus,
-    operationMessage: String,
-    operationBusy: Boolean,
-    onOpenChat: () -> Unit,
-    onOpenChatSettings: () -> Unit,
-    onOpenImageGeneration: () -> Unit,
-    onOpenCharacterLibrary: () -> Unit,
-    onOpenWorldBookLibrary: () -> Unit,
-    onOpenLicenses: () -> Unit,
-    onDownloadModel: () -> Unit,
-    onImportModel: () -> Unit,
-    qualcommModelSelected: Boolean,
-    onSelectModelProfile: (Boolean) -> Unit,
-    selectedEmbeddingDimensions: Int,
-    onCycleEmbeddingDimensions: () -> Unit,
-    onRunEmbeddingTest: () -> Unit,
-    onRunNpuDiagnosticProbe: () -> Unit,
-    onRunAlternateBackendBenchmark: () -> Unit,
-    onExportNpuEvidence: () -> Unit,
-    onExportLogs: () -> Unit,
-) {
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                actions = {
-                    TextButton(onClick = onOpenLicenses) { Text("许可") }
-                },
-                title = {
-                    Column {
-                        Text("Mistbell Tavern 3.0")
-                        Text(
-                            text = "全新实现 · 开发基线",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                },
-            )
-        },
-    ) { innerPadding ->
-        LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(innerPadding),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            item {
-                Text("复用 2.9 成熟交互，重接 3.0 数据层", style = MaterialTheme.typography.headlineSmall)
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    text = "沿用 2.9 已验证的界面交互模式，逐步接入 3.0 独立存储与业务逻辑。状态只反映已实现与已验证的内容，不把计划或依赖安装视为功能完成。",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            item { InferenceStatusCard(inferenceStatus) }
-            item {
-                Card(modifier = Modifier.fillMaxWidth().animateContentSize(animationSpec = tween(durationMillis = 240, easing = FastOutSlowInEasing))) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text("聊天与 API", style = MaterialTheme.typography.titleMedium)
-                        Spacer(Modifier.height(6.dp))
-                        Text("进入独立聊天测试页面，配置 OpenAI 兼容 API 并验证流式回复。API 密钥仅保存在当前页面的内存状态中。", style = MaterialTheme.typography.bodyMedium)
-                        Spacer(Modifier.height(10.dp))
-                        Button(onClick = onOpenChat, modifier = Modifier.fillMaxWidth()) {
-                            Text("进入聊天")
-                        }
-                        Spacer(Modifier.height(8.dp))
-                        Button(onClick = onOpenChatSettings, modifier = Modifier.fillMaxWidth()) {
-                            Text("聊天 API 与生成设置")
-                        }
-                    }
-                }
-            }
-            item {
-                Card(modifier = Modifier.fillMaxWidth().animateContentSize(animationSpec = tween(durationMillis = 240, easing = FastOutSlowInEasing))) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text("图片生成与本地图片库", style = MaterialTheme.typography.titleMedium)
-                        Spacer(Modifier.height(6.dp))
-                        Text("使用独立图片 API Key 生成图片，并将内联图片安全保存到应用私有目录；远程图片只有在你明确点击下载后才会获取。", style = MaterialTheme.typography.bodyMedium)
-                        Spacer(Modifier.height(10.dp))
-                        Button(onClick = onOpenImageGeneration, modifier = Modifier.fillMaxWidth()) {
-                            Text("进入图片生成与导出")
-                        }
-                    }
-                }
-            }
-            item {
-                Card(modifier = Modifier.fillMaxWidth().animateContentSize(animationSpec = tween(durationMillis = 240, easing = FastOutSlowInEasing))) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text("角色卡管理", style = MaterialTheme.typography.titleMedium)
-                        Spacer(Modifier.height(6.dp))
-                        Text("从本机角色库新建、编辑、删除角色卡；支持导入和导出 SillyTavern JSON。PNG/CHARX 容器导入及聊天会话绑定将在后续接线。", style = MaterialTheme.typography.bodyMedium)
-                        Spacer(Modifier.height(10.dp))
-                        Button(onClick = onOpenCharacterLibrary, modifier = Modifier.fillMaxWidth()) {
-                            Text("进入角色管理")
-                        }
-                    }
-                }
-            }
-            item {
-                Card(modifier = Modifier.fillMaxWidth().animateContentSize(animationSpec = tween(durationMillis = 240, easing = FastOutSlowInEasing))) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text("世界书管理", style = MaterialTheme.typography.titleMedium)
-                        Spacer(Modifier.height(6.dp))
-                        Text("复用 2.9 的世界书列表和条目管理交互，支持本地保存、启停、编辑及 World Info JSON 导入导出。", style = MaterialTheme.typography.bodyMedium)
-                        Spacer(Modifier.height(10.dp))
-                        Button(onClick = onOpenWorldBookLibrary, modifier = Modifier.fillMaxWidth()) {
-                            Text("进入世界书管理")
-                        }
-                    }
-                }
-            }
-            item {
-                Card(modifier = Modifier.fillMaxWidth().animateContentSize(animationSpec = tween(durationMillis = 240, easing = FastOutSlowInEasing))) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text("本地模型与实测", style = MaterialTheme.typography.titleMedium)
-                        Spacer(Modifier.height(6.dp))
-                        Text("运行副本：软件内部私有目录。联网下载会另备份到 Download/向量模型，重装后可从文件导入；本地导入不会另建公共副本。", style = MaterialTheme.typography.bodyMedium)
-                        Spacer(Modifier.height(4.dp))
-                        Text("请选择要下载的模型版本：", style = MaterialTheme.typography.bodyMedium)
-                        Spacer(Modifier.height(6.dp))
-                        Button(
-                            onClick = { onSelectModelProfile(false) },
-                            enabled = !operationBusy,
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Text(if (!qualcommModelSelected) "✓ 已选：通用版（约 485 MB）" else "选择通用版（约 485 MB）")
-                        }
-                        Spacer(Modifier.height(6.dp))
-                        Button(
-                            onClick = { onSelectModelProfile(true) },
-                            enabled = !operationBusy,
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Text(if (qualcommModelSelected) "✓ 已选：Qualcomm SM8650 专用版（约 563 MB）" else "选择 Qualcomm SM8650 专用版（约 563 MB）")
-                        }
-                        Text(
-                            "专用版针对骁龙 8 Gen 3/SM8650；NPU 是否可用仍取决于 APK 中的运行库与真机验证。联网下载会保留内部运行副本和公共目录备份；从文件导入只复制到内部目录。",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        Text("向量维度档位：${selectedEmbeddingDimensions} 维", style = MaterialTheme.typography.bodyMedium)
-                        Spacer(Modifier.height(6.dp))
-                        Button(onClick = onCycleEmbeddingDimensions, enabled = !operationBusy, modifier = Modifier.fillMaxWidth()) {
-                            Text("切换向量维度（128 → 256 → 512 → 768 → 1024 → 1536 → 2048）")
-                        }
-                        Text("EmbeddingGemma 2 原生最高为 768 维，768 档可直接使用；1024 / 1536 / 2048 档为未来兼容更高维模型预留，当前选择这些档位时会明确提示模型不兼容，不会伪造高维向量。设置保存在本机；更换维度后需要重建旧向量索引。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Spacer(Modifier.height(6.dp))
-                        AnimatedContent(targetState = operationMessage, label = "operation-message") { message ->
-                            Text(message, style = MaterialTheme.typography.bodyMedium)
-                        }
-                        Spacer(Modifier.height(10.dp))
-                        Button(onClick = onDownloadModel, enabled = !operationBusy, modifier = Modifier.fillMaxWidth()) {
-                            Text("下载 / 重新下载 EmbeddingGemma 2 模型")
-                        }
-                        Spacer(Modifier.height(8.dp))
-                        Button(onClick = onImportModel, enabled = !operationBusy, modifier = Modifier.fillMaxWidth()) {
-                            Text("从文件导入 .litertlm 模型")
-                        }
-                        Spacer(Modifier.height(8.dp))
-                        Button(onClick = onRunEmbeddingTest, enabled = !operationBusy, modifier = Modifier.fillMaxWidth()) {
-                            Text("初始化后执行真实向量测试")
-                        }
-                        if (qualcommModelSelected) {
-                            Spacer(Modifier.height(8.dp))
-                            Text("仅供开发诊断：将尝试初始化 Qualcomm NPU，不会把运行库标记为已验证，也不会自动启用聊天生产路径。若 SDK/ABI 不兼容，可能失败；失败日志可用于定位。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Spacer(Modifier.height(6.dp))
-                            Button(onClick = onRunNpuDiagnosticProbe, enabled = !operationBusy, modifier = Modifier.fillMaxWidth()) {
-                                Text("运行 NPU 输入长度矩阵（7 档并生成证据）")
-                            }
-                            Spacer(Modifier.height(6.dp))
-                            Button(onClick = onRunAlternateBackendBenchmark, enabled = !operationBusy, modifier = Modifier.fillMaxWidth()) {
-                                Text("实验：同一 Qualcomm 模型 GPU / CPU 基准")
-                            }
-                        }
-                    }
-                }
-            }
-            item {
-                Card(modifier = Modifier.fillMaxWidth().animateContentSize(animationSpec = tween(durationMillis = 240, easing = FastOutSlowInEasing))) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text("诊断与故障排查", style = MaterialTheme.typography.titleMedium)
-                        Spacer(Modifier.height(6.dp))
-                        Text(
-                            "导出的日志包含运行阶段、后端初始化结果、错误摘要和耗时；不会主动记录聊天正文、提示词或 API 密钥。",
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                        Spacer(Modifier.height(10.dp))
-                        Button(onClick = onExportLogs, enabled = !operationBusy, modifier = Modifier.fillMaxWidth()) {
-                            Text("导出诊断日志")
-                        }
-                        Spacer(Modifier.height(8.dp))
-                        Button(onClick = onExportNpuEvidence, enabled = !operationBusy, modifier = Modifier.fillMaxWidth()) {
-                            Text("导出最新 NPU 证据 JSON")
-                        }
-                    }
-                }
-            }
-            items(initialStages, key = BuildStage::title) { stage ->
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainer,
-                    ),
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text(stage.title, style = MaterialTheme.typography.titleMedium)
-                        Spacer(Modifier.height(6.dp))
-                        Text(stage.detail, style = MaterialTheme.typography.bodyMedium)
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun InferenceStatusCard(status: InferenceRuntimeStatus) {
-    val backendLabel = when (status.backend) {
-        InferenceBackend.NPU -> "NPU"
-        InferenceBackend.GPU -> "GPU"
-        InferenceBackend.CPU -> "CPU"
-        InferenceBackend.UNKNOWN -> "未验证"
-    }
-    val phaseLabel = when (status.phase) {
-        InferencePhase.NOT_INITIALIZED -> "尚未初始化"
-        InferencePhase.LOADING_MODEL -> "正在加载模型"
-        InferencePhase.INITIALIZED -> "已初始化，尚未验证真实推理"
-        InferencePhase.READY -> "已就绪"
-        InferencePhase.RUNNING -> "正在推理"
-        InferencePhase.FALLBACK -> "已回退"
-        InferencePhase.FAILED -> "初始化/推理失败"
-    }
-    Card(
-        modifier = Modifier.fillMaxWidth().animateContentSize(animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing)),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.secondaryContainer,
-        ),
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text("本地 Embedding / NPU 状态", style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.height(6.dp))
-            Text("$phaseLabel · 配置后端：$backendLabel", style = MaterialTheme.typography.bodyMedium)
-            val details = listOfNotNull(
-                "NPU 运行时已验证（7/7、运行时加载与推理成功；未独立证明 DSP 执行）"
-                    .takeIf { status.backend == InferenceBackend.NPU && status.backendEvidence == BackendEvidence.RUNTIME_REPORTED },
-                status.modelId?.let { "模型：$it" },
-                status.acceleratorName?.let { "配置后端：$it" },
-                status.backendEvidence.takeIf { it != BackendEvidence.NOT_AVAILABLE }?.let { "硬件证据：${when (it) { BackendEvidence.NOT_AVAILABLE -> "无"; BackendEvidence.CONFIGURED_ONLY -> "仅配置成功，未独立确认实际硬件调用"; BackendEvidence.RUNTIME_REPORTED -> "NPU 运行时已验证（7/7、运行时加载与推理成功；未独立证明 DSP 执行）"; BackendEvidence.DEVICE_VERIFIED -> "设备实测确认（需独立硬件执行证据）" }}" },
-                status.lastExecutionMillis?.let { "最近耗时：$it ms" },
-                status.fallbackReason?.let { "回退原因：$it" },
-                status.lastError?.let { "错误：$it" },
-            )
-            details.forEach { detail ->
-                Spacer(Modifier.height(4.dp))
-                Text(detail, style = MaterialTheme.typography.bodySmall)
-            }
-            if (status.phase == InferencePhase.NOT_INITIALIZED) {
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "当前没有运行中的推理后端；不会虚报 NPU 已调用。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
     }
 }

@@ -35,7 +35,7 @@ internal fun rememberChatSessionDocumentActions(
     history: MutableList<ChatLine>,
     conversationId: String,
     setStatus: (String) -> Unit,
-    onImported: () -> Unit = {},
+    onImported: (SessionArchive) -> Unit = {},
     sessionTitle: String = "Mistbell Tavern session",
     sessionKind: SessionKind = SessionKind.SINGLE,
     sessionParticipants: List<SessionParticipant> = emptyList(),

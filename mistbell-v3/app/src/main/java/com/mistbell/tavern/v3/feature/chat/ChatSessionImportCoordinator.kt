@@ -22,7 +22,7 @@ internal class ChatSessionImportCoordinator(
     private val historySaveRevision: AtomicLong,
     private val history: MutableList<ChatLine>,
     private val setStatus: (String) -> Unit,
-    private val onImported: () -> Unit = {},
+    private val onImported: (SessionArchive) -> Unit = {},
 ) {
     fun import(uri: Uri) {
         coroutineScope.launch {
@@ -70,7 +70,7 @@ internal class ChatSessionImportCoordinator(
                         history.clear()
                         history.addAll(importedLines)
                     }
-                    onImported()
+                    onImported(archive)
                     setStatus("已导入会话「${archive.title}」：${archive.messages.size} 条消息（已保存到本地数据库；原文件不会修改）。")
                 } catch (error: Exception) {
                     setStatus("会话导入失败，原聊天记录已保留：${error.message ?: error::class.java.simpleName}")

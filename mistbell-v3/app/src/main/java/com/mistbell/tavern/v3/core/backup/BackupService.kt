@@ -127,20 +127,21 @@ class BackupService(
             val staged = File(extracted.stagingDirectory, relative)
             replacements[staged] = File(appContext.filesDir, name)
         }
-        appContext.filesDir.listFiles().orEmpty()
-            .filter { it.isFile && BackupSource.isMemoryFileName(it.name) }
-            .filterNot { it.name in archivePaths.map { path -> path.substringAfter("memory/") } }
-            .forEach { removals += it }
+        // Files that the archive does not contain are left untouched: an incomplete or older
+        // backup must never erase memory that is still on the device.
 
         listOf("worldbooks", "characters", "generated-images").forEach { name ->
             // Older or partial archives may not contain every optional directory. Do not
             // replace a user's existing directory with an empty staging directory in that case.
+            val stagedDirectory = File(extracted.stagingDirectory, name)
             if (archivePaths.any { path -> path.startsWith("$name/") }) {
-                val stagedDirectory = File(extracted.stagingDirectory, name)
-                if (!stagedDirectory.exists() && !stagedDirectory.mkdirs()) {
-                    throw IOException("Restore staging directory could not be created.")
-                }
-                replacements[stagedDirectory] = File(appContext.filesDir, name)
+                // Replace only the files present in the archive; keep anything it does not list.
+                stagedDirectory.walkTopDown()
+                    .filter { it.isFile }
+                    .forEach { stagedFile ->
+                        val relative = stagedFile.relativeTo(stagedDirectory).path
+                        replacements[stagedFile] = File(File(appContext.filesDir, name), relative)
+                    }
             }
         }
 
@@ -149,8 +150,9 @@ class BackupService(
             val stagedDatabase = File(extracted.stagingDirectory, name)
             if (archivePaths.contains(name)) {
                 replacements[stagedDatabase] = databaseFile
-            } else {
-                removals += databaseFile
+            } else if (databaseFile.exists()) {
+                // A partial or older archive must never delete a database that is not in it.
+                require(false) { "备份不包含 $name，已取消恢复以保护现有数据。" }
             }
             // A WAL or SHM from the previous database must never be replayed against the restored DB.
             removals += File(databaseFile.path + "-wal")

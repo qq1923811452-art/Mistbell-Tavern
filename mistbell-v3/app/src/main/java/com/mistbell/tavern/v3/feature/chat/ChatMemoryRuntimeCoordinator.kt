@@ -37,11 +37,12 @@ internal class ChatMemoryRuntimeCoordinator(
     private val setStatus: (String) -> Unit,
     private val setMemoryStatusNotice: (String) -> Unit,
 ) {
+    @Suppress("LongMethod", "CyclomaticComplexMethod", "NestedBlockDepth")
     suspend fun stream(
         client: OpenAiCompatibleChatClient,
         messages: List<PromptMessage>,
         observer: ChatStreamObserver,
-        maxTokensText: String,
+        maxTokens: Int,
     ) {
 val generationSwitches = context.getSharedPreferences("mistbell-v3-settings", Context.MODE_PRIVATE)
 val streamEnabled = generationSwitches.getBoolean("chat_stream_enabled", true)
@@ -83,7 +84,7 @@ if (installedModel == null || configuredDimensions !in CHAT_EMBEDDING_DIMENSION_
         messages,
         observer,
         ChatGenerationOptions(
-            maxTokens = maxTokensText.toIntOrNull()?.takeIf { it in 1..200_000 } ?: 4096,
+            maxTokens = maxTokens,
             stream = streamEnabled,
             thinkingEnabled = thinkingEnabled,
         ),
@@ -281,7 +282,7 @@ if (installedModel == null || configuredDimensions !in CHAT_EMBEDDING_DIMENSION_
         messages,
         observer,
         ChatGenerationOptions(
-            maxTokens = maxTokensText.toIntOrNull()?.takeIf { it in 1..200_000 } ?: 4096,
+            maxTokens = maxTokens,
             stream = streamEnabled,
             thinkingEnabled = thinkingEnabled,
         ),
