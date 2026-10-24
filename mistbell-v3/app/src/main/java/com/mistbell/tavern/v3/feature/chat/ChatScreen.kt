@@ -120,6 +120,22 @@ fun ChatScreen(
         mutableStateOf(settings.getString("memory_model_id", "") ?: "")
     }
     var memoryApiKey by remember { mutableStateOf("") }
+    var historyReady by remember { mutableStateOf(false) }
+    var historyLoadFailed by remember { mutableStateOf(false) }
+    var status by remember { mutableStateOf("填写模型 ID 和 API 配置后即可测试聊天。") }
+    var memoryConversationId by remember(settings) {
+        mutableStateOf(
+            settings.getString("memory_extraction_conversation_id", null)
+                ?.takeIf(String::isNotBlank)
+                ?: UUID.randomUUID().toString().also { generated ->
+                    settings.edit().putString("memory_extraction_conversation_id", generated).apply()
+                },
+        )
+    }
+    var selectedCharacterId by remember(settings) {
+        mutableStateOf(settings.getString("active_character_id", "") ?: "")
+    }
+    val activeMemoryRoleId = selectedCharacterId.takeIf(String::isNotBlank) ?: "default-character"
     val memoryScopeId = remember(activeMemoryRoleId, memoryConversationId) {
         MemoryScopeId.forRoleAndConversation(activeMemoryRoleId, memoryConversationId)
     }
