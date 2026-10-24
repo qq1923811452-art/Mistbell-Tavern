@@ -17,6 +17,7 @@ import com.mistbell.tavern.v3.core.model.ProviderProfileSet
  * This class intentionally delegates persistence, extraction, and index-building work to the
  * existing specialized coordinators; it only wires the shared screen lifecycle dependencies.
  */
+@Suppress("LongParameterList")
 internal class ChatMemoryOperationsCoordinator(
     private val context: Context,
     private val memoryCredentialStore: AndroidKeystoreMemoryCredentialStore,
