@@ -1,4 +1,4 @@
-@file:Suppress("FunctionNaming", "LongMethod", "CyclomaticComplexMethod", "MagicNumber")
+@file:Suppress("FunctionNaming", "LongMethod", "CyclomaticComplexMethod", "MagicNumber, "TooGenericExceptionCaught")
 
 package com.mistbell.tavern.v3.feature.chat
 
