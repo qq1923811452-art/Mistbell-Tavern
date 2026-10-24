@@ -14,7 +14,7 @@ import com.mistbell.tavern.v3.core.security.ChatCredentialStore
 import kotlinx.coroutines.launch
 
 /** Edits the single default chat API profile stored in shared preferences. */
-@Suppress("FunctionNaming")
+@Suppress("FunctionNaming", "LongMethod")
 @Composable
 fun ApiSettingsSection(onStatus: (String) -> Unit) {
     val context = LocalContext.current
