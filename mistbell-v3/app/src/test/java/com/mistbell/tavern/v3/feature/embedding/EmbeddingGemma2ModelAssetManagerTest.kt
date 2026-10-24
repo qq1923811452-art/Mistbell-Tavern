@@ -92,6 +92,23 @@ class EmbeddingGemma2ModelAssetManagerTest {
         }
     }
     @Test
+    fun importedCustomModelStillVerifiesAfterTheSwitchIsClosed(): Unit = runBlocking {
+        val directory = kotlin.io.path.createTempDirectory(prefix = "embedding-model-custom-load").toFile()
+        try {
+            val source = File(directory, "embeddinggemma-2-740m.litertlm")
+                .apply { writeBytes("custom-bundle".toByteArray()) }
+            EmbeddingGemma2ModelAssetManager(directory, allowCustomModel = true).importModel(
+                source.name,
+                source.inputStream(),
+            )
+            val verified = EmbeddingGemma2ModelAssetManager(directory).verifyInstalled()
+            assertEquals("custom-bundle".length.toLong(), verified!!.sizeBytes)
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
     fun rejectsNonOfficialPortableModelUnlessCustomImportIsAllowed(): Unit = runBlocking {
         val directory = kotlin.io.path.createTempDirectory(prefix = "embedding-model-policy").toFile()
         try {

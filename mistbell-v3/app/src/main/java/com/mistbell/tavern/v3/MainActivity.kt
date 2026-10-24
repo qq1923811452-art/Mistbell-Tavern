@@ -163,7 +163,9 @@ class MainActivity : ComponentActivity() {
                         val input = withContext(Dispatchers.IO) { contentResolver.openInputStream(uri) }
                             ?: error("所选文件无法打开。")
                         operationMessage = "正在验证并复制到软件内部目录……"
-                        val imported = modelAssets.importModel(sourceName, input) { bytes, _ ->
+                        // Read the current opt-in state at import time, not the startup manager.
+                        val importAssets = createModelAssetManager(qualcommModelSelected)
+                        val imported = importAssets.importModel(sourceName, input) { bytes, _ ->
                             runOnUiThread { operationMessage = "模型导入中：${bytes / (1024 * 1024)} MiB" }
                         }
                         EmbeddingEngineProcessHolder.close(CloseReason.MODEL_CHANGED)
