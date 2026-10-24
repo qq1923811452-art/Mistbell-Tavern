@@ -918,7 +918,8 @@ fun ChatScreen(
                 Button(
                     onClick = {
                         coroutineScope.launch {
-                            requestGeneration.incrementAndGet()
+                            val requestToken = requestGeneration.incrementAndGet()
+                            fun ownsSendRequest(): Boolean = requestGeneration.get() == requestToken
                             val requestConversationId = memoryConversationId
                             val requestMemoryScopeId = memoryScopeId
                             val requestCharacterId = selectedCharacterId
@@ -1003,13 +1004,17 @@ fun ChatScreen(
                                     )
                                 }
                             } catch (error: Exception) {
-                                busy = false
-                                status = "提示词准备失败：${error.message ?: error.javaClass.simpleName}"
+                                if (ownsSendRequest()) {
+                                    busy = false
+                                    status = "提示词准备失败：${error.message ?: error.javaClass.simpleName}"
+                                }
                                 return@launch
                             }
-                            if (memoryConversationId != requestConversationId) {
-                                busy = false
-                                status = "会话已切换，本次发送已取消。"
+                            if (!ownsSendRequest() || memoryConversationId != requestConversationId) {
+                                if (ownsSendRequest()) {
+                                    busy = false
+                                    status = "会话已切换，本次发送已取消。"
+                                }
                                 return@launch
                             }
                             lastPromptMessages = messages
@@ -1038,7 +1043,10 @@ fun ChatScreen(
                             providersForRequest = providersForRequest,
                             conversationId = requestConversationId,
                             assistantMessageId = assistantMessageId,
-                            isCurrentConversation = { memoryConversationId == requestConversationId },
+                            isCurrentRequest = {
+                                requestGeneration.get() == requestToken &&
+                                    memoryConversationId == requestConversationId
+                            },
                         )
                             val observer = if (groupPrepared != null) {
                                 object : ChatStreamObserver {
@@ -1051,7 +1059,11 @@ fun ChatScreen(
 
                                     override fun onComplete() {
                                         mainHandler.post {
-                                            if (memoryConversationId != requestConversationId) return@post
+                                            if (!ownsSendRequest() ||
+                                                memoryConversationId != requestConversationId
+                                            ) {
+                                                return@post
+                                            }
                                             val index = history.indexOfFirst { it.id == assistantMessageId }
                                             if (index >= 0) {
                                                 history[index] = history[index].copy(

@@ -22,12 +22,12 @@ internal class ChatStreamObserverCoordinator(
         providersForRequest: ProviderProfileSet,
         conversationId: String,
         assistantMessageId: String,
-        isCurrentConversation: () -> Boolean,
+        isCurrentRequest: () -> Boolean,
     ): ChatStreamObserver =
         object : ChatStreamObserver {
             private fun updateAssistant(transform: (ChatLine) -> ChatLine) {
                 mainHandler.post {
-                    if (!isCurrentConversation() || conversationId.isBlank()) return@post
+                    if (!isCurrentRequest() || conversationId.isBlank()) return@post
                     val index = history.indexOfFirst { it.id == assistantMessageId }
                     if (index >= 0) history[index] = transform(history[index])
                 }
@@ -39,7 +39,7 @@ internal class ChatStreamObserverCoordinator(
 
             override fun onUsage(usage: ChatTokenUsage) {
                 mainHandler.post {
-                    if (!isCurrentConversation()) return@post
+                    if (!isCurrentRequest()) return@post
                     val cached = usage.cachedPromptTokens
                     val cacheRatio = if (cached != null && usage.promptTokens > 0) {
                         "（${cached * PERCENT / usage.promptTokens}%）"
@@ -61,7 +61,7 @@ internal class ChatStreamObserverCoordinator(
 
             override fun onComplete() {
                 mainHandler.post {
-                    if (!isCurrentConversation()) return@post
+                    if (!isCurrentRequest()) return@post
                     setBusy(false)
                     setStatus(if (memoryStatusNotice().isBlank()) {
                         "回复完成。"
@@ -81,7 +81,7 @@ internal class ChatStreamObserverCoordinator(
 
             override fun onFailure(failure: ChatStreamFailure) {
                 mainHandler.post {
-                    if (!isCurrentConversation()) return@post
+                    if (!isCurrentRequest()) return@post
                     setBusy(false)
                     setStatus(failure.safeMessage)
                     val index = history.indexOfFirst { it.id == assistantMessageId }
