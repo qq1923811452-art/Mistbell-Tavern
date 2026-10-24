@@ -11,6 +11,7 @@ internal object ThinkingModeTemplates {
 
     fun disabled(baseUrl: String): String? = select(baseUrl, enabled = false)
 
+    @Suppress("CyclomaticComplexMethod")
     private fun select(baseUrl: String, enabled: Boolean): String? {
         val url = baseUrl.lowercase()
         return when {
