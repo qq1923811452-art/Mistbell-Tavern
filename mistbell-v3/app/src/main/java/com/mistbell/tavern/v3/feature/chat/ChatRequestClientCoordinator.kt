@@ -27,12 +27,21 @@ internal class ChatRequestClientCoordinator(
         memoryModelId: String,
         memoryApiKey: String,
     ): ChatRequestClientConfiguration? {
+        val trimmedBaseUrl = baseUrl.trim()
+        val enabledTemplate = settings.getString("chat_thinking_template", null)
+            ?.takeIf(String::isNotBlank)
+            ?: ThinkingModeTemplates.enabled(trimmedBaseUrl, modelId.trim())
+        val disabledTemplate = settings.getString("chat_thinking_disabled_template", null)
+            ?.takeIf(String::isNotBlank)
+            ?: ThinkingModeTemplates.disabled(trimmedBaseUrl, modelId.trim())
         val profile = ProviderProfile(
             id = "session-chat",
             kind = ProviderKind.CHAT,
-            baseUrl = baseUrl.trim(),
+            baseUrl = trimmedBaseUrl,
             modelId = modelId.trim(),
             credentialHandle = if (apiKey.isBlank()) null else "session-chat-key",
+            thinkingBodyTemplate = enabledTemplate,
+            thinkingDisabledBody = disabledTemplate,
         )
         val secretForThisRequest = apiKey
         val memorySecretForThisRequest = memoryApiKey

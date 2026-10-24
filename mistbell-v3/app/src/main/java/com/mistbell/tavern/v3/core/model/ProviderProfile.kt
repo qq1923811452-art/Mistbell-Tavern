@@ -23,6 +23,8 @@ data class ProviderProfile(
     val supportsStreaming: Boolean = true,
     /** JSON merged into the request body when thinking mode is enabled for this profile. */
     val thinkingBodyTemplate: String? = null,
+    /** JSON merged into the request body when thinking mode is explicitly disabled. */
+    val thinkingDisabledBody: String? = null,
 )
 
 class ProviderProfileSet(

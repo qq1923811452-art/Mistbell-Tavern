@@ -64,6 +64,40 @@ class OpenAiCompatibleChatClientTest {
         assertEquals("Hi", payload.getJSONArray("messages").getJSONObject(0).getString("content"))
     }
 
+
+    @Test
+    fun appliesTheDisabledThinkingTemplateWhenThinkingIsOff() {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody("data: [DONE]\n\n"),
+        )
+        server.start()
+        val profile = ProviderProfile(
+            id = "chat",
+            kind = ProviderKind.CHAT,
+            baseUrl = server.url("/v1").toString().trimEnd('/'),
+            modelId = "chat-model",
+            credentialHandle = "chat-secret",
+            thinkingBodyTemplate = "{\"enable_thinking\":true}",
+            thinkingDisabledBody = "{\"enable_thinking\":false}",
+        )
+        val client = OpenAiCompatibleChatClient(
+            providers = ProviderProfileSet(listOf(profile), mapOf(ProviderKind.CHAT to profile.id)),
+            credentials = CredentialResolver { "test-chat-key" },
+            client = OkHttpClient(),
+        )
+        client.stream(
+            listOf(PromptMessage(PromptRole.USER, "Hi")),
+            RecordingObserver(),
+            ChatGenerationOptions(thinkingEnabled = false),
+        )
+        val payload = JSONObject(server.takeRequest(1, TimeUnit.SECONDS)!!.body.readUtf8())
+        assertTrue(payload.has("enable_thinking"))
+        assertEquals(false, payload.getBoolean("enable_thinking"))
+    }
+
     @Test
     fun remoteProviderWithoutCredentialIsRejectedBeforeNetworkRequest() {
         server.start()
