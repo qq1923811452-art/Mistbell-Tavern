@@ -57,6 +57,7 @@ class WorldbookPlanner(
         val turn = state?.advanceTurn() ?: 0
         val ordered = entries.filterNot(WorldbookEntry::disabled).sortedBy(WorldbookEntry::order)
         var corpus = buildCorpus(scanText, recentTexts, limits.maxScanDepth)
+        var loweredCorpus = corpus.lowercase()
         val activated = linkedMapOf<String, ActivatedWorldbookEntry>()
         val activatedGroups = mutableSetOf<String>()
         val droppedByBudget = linkedSetOf<String>()
@@ -86,10 +87,14 @@ class WorldbookPlanner(
         corpus += ordered
             .filter { it.constant && it.recursive && it.id in activated }
             .joinToString(separator = "\n") { it.content }
+        loweredCorpus = corpus.lowercase()
 
         var recursionDepth = 0
         while (true) {
-            val candidates = ordered.filter { entry -> isCandidate(entry, corpus, turn, state, activated.keys) }
+            val passLoweredCorpus = loweredCorpus
+            val candidates = ordered.filter { entry ->
+                isCandidate(entry, corpus, passLoweredCorpus, turn, state, activated.keys)
+            }
             if (candidates.isEmpty()) break
             val newlyActivated = mutableListOf<WorldbookEntry>()
             val groupsClaimedThisPass = mutableSetOf<String>()
@@ -100,7 +105,7 @@ class WorldbookPlanner(
                 }
                 val carried = isCarriedBySticky(entry, turn, state)
                 val delayedDue = (state?.delayedUntilTurn?.get(entry.id) ?: Int.MAX_VALUE) <= turn
-                val matched = matchingKeys(entry.keys, corpus)
+                val matched = matchingKeys(entry.keys, corpus, loweredCorpus)
                 if (!carried && !delayedDue && !entry.constant && entry.delay > 0 &&
                     state != null && entry.id !in state.delayedUntilTurn
                 ) {
@@ -115,6 +120,7 @@ class WorldbookPlanner(
                 .joinToString(separator = "\n") { it.content }
             if (recursiveContent.isBlank()) break
             corpus += "\n" + recursiveContent
+            loweredCorpus = corpus.lowercase()
             recursionDepth += 1
         }
 
@@ -126,22 +132,34 @@ class WorldbookPlanner(
         recentTexts.takeLast(maxScanDepth.coerceAtLeast(0)).forEach(::appendLine)
     }
 
-    fun matchingKeys(keys: List<String>, text: String): List<String> {
-        val haystack = text.lowercase()
+    fun matchingKeys(keys: List<String>, text: String): List<String> =
+        matchingKeys(keys, text, text.lowercase())
+
+    private fun matchingKeys(
+        keys: List<String>,
+        text: String,
+        loweredText: String,
+    ): List<String> {
+        val haystack = loweredText
         return keys.filter { key ->
             val lowered = key.lowercase()
             when {
-                key.length > 2 && key.startsWith("/") && key.endsWith("/") ->
-                    runCatching {
-                        Regex(key.substring(1, key.length - 1), RegexOption.IGNORE_CASE).containsMatchIn(text)
-                    }.getOrElse { haystack.contains(lowered) }
+                key.length > 2 && key.startsWith("/") && key.endsWith("/") -> {
+                    val expression = key.substring(1, key.length - 1)
+                    val regex = regexCache.getOrPut("raw:$expression") {
+                        runCatching { Regex(expression, RegexOption.IGNORE_CASE) }.getOrNull()
+                    }
+                    regex?.containsMatchIn(text) ?: haystack.contains(lowered)
+                }
 
                 lowered.contains('*') -> {
                     val expression = lowered.split('*').joinToString(".*") { Regex.escape(it) }
-                    runCatching {
-                        Regex(expression, setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
-                            .containsMatchIn(haystack)
-                    }.getOrElse { haystack.contains(lowered.replace("*", "")) }
+                    val regex = regexCache.getOrPut("wild:$expression") {
+                        runCatching {
+                            Regex(expression, setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
+                        }.getOrNull()
+                    }
+                    regex?.containsMatchIn(haystack) ?: haystack.contains(lowered.replace("*", ""))
                 }
 
                 else -> haystack.contains(lowered)
@@ -164,6 +182,7 @@ class WorldbookPlanner(
     private fun isCandidate(
         entry: WorldbookEntry,
         corpus: String,
+        loweredCorpus: String,
         turn: Int,
         state: WorldbookActivationState?,
         activatedIds: Set<String>,
@@ -173,9 +192,11 @@ class WorldbookPlanner(
         val delayedUntil = state?.delayedUntilTurn?.get(entry.id) ?: Int.MAX_VALUE
         val delayedDue = delayedUntil <= turn
         val delayPending = (state?.delayedUntilTurn?.get(entry.id) ?: Int.MIN_VALUE) > turn
-        val primaryMatch = entry.keys.isNotEmpty() && matchingKeys(entry.keys, corpus).isNotEmpty()
+        val primaryMatch = entry.keys.isNotEmpty() &&
+            matchingKeys(entry.keys, corpus, loweredCorpus).isNotEmpty()
         val secondaryMatch = !entry.requireSecondaryMatch ||
-            (entry.secondaryKeys.isNotEmpty() && matchingKeys(entry.secondaryKeys, corpus).isNotEmpty())
+            (entry.secondaryKeys.isNotEmpty() &&
+                matchingKeys(entry.secondaryKeys, corpus, loweredCorpus).isNotEmpty())
         val matchesNow = primaryMatch && secondaryMatch
         val lastActivated = state?.lastActivatedTurn?.get(entry.id) ?: Int.MIN_VALUE
         val cooldownOk = carried || delayedDue || entry.constant ||
@@ -201,5 +222,9 @@ class WorldbookPlanner(
         const val DEFAULT_SCAN_DEPTH = 3
         const val DEFAULT_RECURSIVE_DEPTH = 4
         const val MAX_DEPTH = 10
+
+        private val regexCache =
+            java.util.concurrent.ConcurrentHashMap<String, Regex?>(MAX_REGEX_CACHE_ENTRIES)
+        private const val MAX_REGEX_CACHE_ENTRIES = 256
     }
 }
