@@ -151,9 +151,7 @@ class BackupService(
                 replacements[stagedDatabase] = databaseFile
             } else if (databaseFile.exists()) {
                 // A partial or older archive must never delete a database that is not in it.
-                throw IllegalArgumentException(
-                    "备份不包含 $name，已取消恢复以保护现有数据。",
-                )
+                require(false) { "备份不包含 $name，已取消恢复以保护现有数据。" }
             }
             // A WAL or SHM from the previous database must never be replayed against the restored DB.
             removals += File(databaseFile.path + "-wal")
