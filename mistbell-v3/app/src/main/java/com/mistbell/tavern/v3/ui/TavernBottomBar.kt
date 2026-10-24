@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -28,29 +30,31 @@ fun TavernBottomBar(
         color = Color.Black.copy(alpha = 0.35f),
         contentColor = MaterialTheme.colorScheme.onSurface,
     ) {
-        Row(modifier = Modifier.fillMaxWidth().height(56.dp)) {
-            TavernTab.entries.forEach { tab ->
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(56.dp)
-                        .clickable { onSelect(tab) }
-                        .padding(vertical = 8.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = when (tab) {
-                            TavernTab.CHAT -> "聊天"
-                            TavernTab.SETTINGS -> "设置"
-                        },
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = if (tab == selected) FontWeight.Bold else FontWeight.Normal,
-                        color = if (tab == selected) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        },
-                    )
+        Column(modifier = Modifier.navigationBarsPadding()) {
+            Row(modifier = Modifier.fillMaxWidth().height(56.dp)) {
+                TavernTab.entries.forEach { tab ->
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(56.dp)
+                            .clickable { onSelect(tab) }
+                            .padding(vertical = 8.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = when (tab) {
+                                TavernTab.CHAT -> "聊天"
+                                TavernTab.SETTINGS -> "设置"
+                            },
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = if (tab == selected) FontWeight.Bold else FontWeight.Normal,
+                            color = if (tab == selected) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                        )
+                    }
                 }
             }
         }
