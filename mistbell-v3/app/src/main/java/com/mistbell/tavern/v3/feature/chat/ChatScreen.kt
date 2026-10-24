@@ -21,6 +21,8 @@ import com.mistbell.tavern.v3.core.security.ChatCredentialStore
 import com.mistbell.tavern.v3.core.storage.MemoryScopeFileNames
 import java.io.File
 import java.util.UUID
+import org.json.JSONArray
+import org.json.JSONObject
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -148,6 +150,7 @@ fun ChatScreen(
         mutableStateOf(settings.getBoolean("memory_extraction_enabled", true))
     }
     var showPromptPreview by remember { mutableStateOf(false) }
+    var showCreateSession by remember { mutableStateOf(false) }
     var showSessionSettings by remember { mutableStateOf(false) }
     LaunchedEffect(sessionStore) {
         val current = memoryConversationId
@@ -248,6 +251,43 @@ fun ChatScreen(
             saveRevision = historySaveRevision,
             diagnosticStore = diagnosticStore,
         )
+    }
+
+    fun savePromptSnapshot(conversationId: String, messages: List<PromptMessage>) {
+        if (conversationId.isBlank()) return
+        val encoded = JSONArray().apply {
+            messages.forEach { message ->
+                put(JSONObject().put("role", message.role.name).put("content", message.content))
+            }
+        }.toString()
+        settings.edit().putString("chat_last_prompt_$conversationId", encoded).apply()
+    }
+
+    fun loadPromptSnapshot(conversationId: String): List<PromptMessage> {
+        if (conversationId.isBlank()) return emptyList()
+        val raw = settings.getString("chat_last_prompt_$conversationId", null) ?: return emptyList()
+        return runCatching {
+            val array = JSONArray(raw)
+            (0 until array.length()).mapNotNull { index ->
+                val item = array.optJSONObject(index) ?: return@mapNotNull null
+                val role = runCatching { PromptRole.valueOf(item.optString("role")) }.getOrNull()
+                    ?: return@mapNotNull null
+                PromptMessage(role, item.optString("content"))
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    fun clearPromptSnapshot(conversationId: String = memoryConversationId) {
+        if (conversationId.isNotBlank()) {
+            settings.edit().remove("chat_last_prompt_$conversationId").apply()
+        }
+        lastPromptMessages = emptyList()
+    }
+
+    fun saveUsageSummary(conversationId: String, summary: String) {
+        if (conversationId.isNotBlank()) {
+            settings.edit().putString("chat_usage_$conversationId", summary).apply()
+        }
     }
 
     fun effectiveMaxTokens(): Int =
@@ -444,6 +484,12 @@ fun ChatScreen(
         diagnosticStore.info("chat.greeting.inserted", "chars=${content.length}")
     }
 
+    LaunchedEffect(memoryConversationId) {
+        lastPromptMessages = loadPromptSnapshot(memoryConversationId)
+        usageSummary = settings.getString("chat_usage_$memoryConversationId", null)
+            ?: "Token 用量：本轮尚无服务端 usage 数据"
+    }
+
     val memoryOperationsCoordinator = remember(
         context,
         memoryCredentialStore,
@@ -484,19 +530,13 @@ fun ChatScreen(
                     ?.let { roleId -> selectedCharacterId = roleId }
                 memoryConversationId = id
                 settings.edit().putString("memory_extraction_conversation_id", id).apply()
+                lastPromptMessages = loadPromptSnapshot(id)
+                usageSummary = settings.getString("chat_usage_$id", null)
+                    ?: "Token 用量：本轮尚无服务端 usage 数据"
                 diagnosticStore.info("chat.session.switched", "reason=click")
                 showSessionList = false
             },
-            onCreateSession = {
-                val created = runCatching { sessionStore.create(activeMemoryRoleId, "新对话") }.getOrNull()
-                if (created != null) {
-                    memoryConversationId = created.id
-                    settings.edit().putString("memory_extraction_conversation_id", created.id).apply()
-                    sessions = sessionStore.list()
-                    diagnosticStore.info("chat.session.created", "sessions=${sessions.size}")
-                }
-                showSessionList = false
-            },
+            onCreateSession = { showCreateSession = true },
             onRenameSession = { id, title ->
                 if (sessionStore.rename(id, title)) {
                     sessions = sessionStore.list()
@@ -605,6 +645,7 @@ fun ChatScreen(
                 if (memoryConversationId.isNotBlank()) {
                     if (sessionStore.setWorldbookId(memoryConversationId, worldbookId)) {
                         sessions = sessionStore.list()
+                        clearPromptSnapshot()
                         status = "本会话世界书已更新。"
                     } else {
                         status = "世界书切换失败，请重试。"
@@ -619,6 +660,7 @@ fun ChatScreen(
                     sessionStore.setRoleId(memoryConversationId, characterId)
                     sessions = sessionStore.list()
                 }
+                clearPromptSnapshot()
                 showSessionSettings = false
             },
             onClearSession = {
@@ -651,6 +693,36 @@ fun ChatScreen(
             messages = lastPromptMessages,
             usageSummary = usageSummary,
             onDismiss = { showPromptPreview = false },
+        )
+    }
+
+    if (showCreateSession) {
+        CreateSessionDialog(
+            characters = characterCards,
+            worldbooks = worldbookLibrary.map { it.id to it.name },
+            initialRoleId = selectedCharacterId,
+            onDismiss = { showCreateSession = false },
+            onConfirm = { roleId, worldbookId ->
+                val created = runCatching {
+                    sessionStore.create(
+                        roleId = roleId.ifBlank { activeMemoryRoleId },
+                        title = "新对话",
+                        worldbookId = worldbookId,
+                    )
+                }.getOrNull()
+                if (created != null) {
+                    selectedCharacterId = roleId.ifBlank { activeMemoryRoleId }
+                    sessionStore.setRoleId(created.id, selectedCharacterId)
+                    memoryConversationId = created.id
+                    settings.edit().putString("memory_extraction_conversation_id", created.id).apply()
+                    sessions = sessionStore.list()
+                    lastPromptMessages = emptyList()
+                    usageSummary = "Token 用量：本轮尚无服务端 usage 数据"
+                    diagnosticStore.info("chat.session.created", "sessions=${sessions.size}")
+                }
+                showCreateSession = false
+                showSessionList = false
+            },
         )
     }
 
@@ -694,6 +766,7 @@ fun ChatScreen(
                                         ) {
                                             sessions = sessionStore.list()
                                         }
+                                        clearPromptSnapshot()
                                         characterMenuExpanded = false
                                     },
                                 )
@@ -839,6 +912,7 @@ fun ChatScreen(
                             },
                         )
                         lastPromptMessages = messages
+                        savePromptSnapshot(memoryConversationId, messages)
                         val baseObserver = ChatStreamObserverCoordinator(
                             mainHandler = mainHandler,
                             history = history,
@@ -846,7 +920,10 @@ fun ChatScreen(
                             setBusy = { busy = it },
                             setStatus = { status = it },
                             memoryStatusNotice = { memoryStatusNotice },
-                            setUsageSummary = { usageSummary = it },
+                            setUsageSummary = {
+                                usageSummary = it
+                                saveUsageSummary(memoryConversationId, it)
+                            },
                             persistHistory = ::persistHistory,
                             scheduleMemoryExtraction = { providers ->
                                 if (memoryExtractionEnabled) {
