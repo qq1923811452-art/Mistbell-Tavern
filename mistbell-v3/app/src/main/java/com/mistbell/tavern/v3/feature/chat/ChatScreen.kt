@@ -224,7 +224,7 @@ fun ChatScreen(
         sessions = sessionStore.list()
     }
     var memoryIndexRebuildInFlight by remember { mutableStateOf(false) }
-    var deletingConversationId by remember { mutableStateOf<String?>(null) }
+    val historyDeletionGuard = remember { HistoryDeletionGuard() }
     var memoryStatusNotice by remember { mutableStateOf("") }
     var maxTokensText by remember(settings) {
         mutableStateOf(settings.getInt("chat_max_tokens", 4096).coerceIn(1, 200_000).toString())
@@ -349,7 +349,7 @@ fun ChatScreen(
             .coerceIn(1, 200_000)
 
     fun persistHistory() {
-        if (deletingConversationId == memoryConversationId) {
+        if (historyDeletionGuard.isDeleting(memoryConversationId)) {
             status = "正在删除会话，暂不保存历史。"
             return
         }
@@ -598,12 +598,12 @@ fun ChatScreen(
                 }
             },
             onDeleteSession = { id ->
-                deletingConversationId = id
+                historyDeletionGuard.begin(id)
                 coroutineScope.launch {
                     try {
                         val isCurrent = id == conversationHistoryScope
                         if (isCurrent) historySaveRevision.incrementAndGet()
-                        runCatching {
+                        val historyDeleted = runCatching {
                             if (isCurrent) {
                                 historySaveMutex.withLock {
                                     withContext(Dispatchers.IO) { historyStore.deleteAll() }
@@ -621,8 +621,12 @@ fun ChatScreen(
                                 "chat.session.history_delete_failed",
                                 error::class.java.simpleName,
                             )
+                        }.isSuccess
+                        if (!historyDeleted) {
+                            status = "删除会话失败：聊天记录未能清除，请重试。"
+                            return@launch
                         }
-                        if (isCurrent) history.clear()
+                        if (isCurrent && memoryConversationId == id) history.clear()
                         sessionStore.delete(id)
                         sessions = sessionStore.list()
                         diagnosticStore.info("chat.session.deleted", "remaining=${sessions.size}")
@@ -640,7 +644,7 @@ fun ChatScreen(
                             }
                         }
                     } finally {
-                        deletingConversationId = null
+                        historyDeletionGuard.end(id)
                     }
                 }
             },
