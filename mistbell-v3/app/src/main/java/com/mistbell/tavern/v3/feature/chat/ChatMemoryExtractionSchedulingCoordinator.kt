@@ -21,6 +21,7 @@ import java.util.UUID
 /**
  * Owns the existing turn batching and durable enqueue flow for memory extraction.
  */
+@Suppress("LongParameterList")
 internal class ChatMemoryExtractionSchedulingCoordinator(
     private val context: Context,
     private val memoryCredentialStore: AndroidKeystoreMemoryCredentialStore,
@@ -29,6 +30,7 @@ internal class ChatMemoryExtractionSchedulingCoordinator(
     private val coroutineScope: CoroutineScope,
     private val diagnosticStore: DiagnosticLogStore,
     private val memoryScopeId: String,
+    private val historyScopeId: String,
     private val setStatus: (String) -> Unit,
 ) {
     fun schedule(providers: ProviderProfileSet, history: List<ChatLine>) {
@@ -70,6 +72,7 @@ internal class ChatMemoryExtractionSchedulingCoordinator(
                 MemoryExtractionJob(
                     id = stableId,
                     conversationId = conversationId,
+                    historyScopeId = historyScopeId,
                     turnIds = turnIds,
                     providerProfileId = profile.id,
                     credentialHandle = credentialHandle,

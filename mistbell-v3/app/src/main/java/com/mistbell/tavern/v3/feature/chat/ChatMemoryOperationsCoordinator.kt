@@ -17,6 +17,7 @@ import com.mistbell.tavern.v3.core.model.ProviderProfileSet
  * This class intentionally delegates persistence, extraction, and index-building work to the
  * existing specialized coordinators; it only wires the shared screen lifecycle dependencies.
  */
+@Suppress("LongParameterList")
 internal class ChatMemoryOperationsCoordinator(
     private val context: Context,
     private val memoryCredentialStore: AndroidKeystoreMemoryCredentialStore,
@@ -25,6 +26,7 @@ internal class ChatMemoryOperationsCoordinator(
     private val coroutineScope: CoroutineScope,
     private val diagnosticStore: DiagnosticLogStore,
     private val memoryScopeId: String,
+    private val historyScopeId: String,
     private val isIndexRebuildInFlight: () -> Boolean,
     private val setIndexRebuildInFlight: (Boolean) -> Unit,
     private val isChatBusy: () -> Boolean,
@@ -60,6 +62,7 @@ internal class ChatMemoryOperationsCoordinator(
             coroutineScope = coroutineScope,
             diagnosticStore = diagnosticStore,
             memoryScopeId = memoryScopeId,
+            historyScopeId = historyScopeId,
             setStatus = setStatus,
         ).schedule(providers, history)
     }

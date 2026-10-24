@@ -4,6 +4,8 @@ package com.mistbell.tavern.v3.feature.memory
 data class MemoryExtractionJob(
     val id: String,
     val conversationId: String,
+    /** Conversation-only SQLite scope; older jobs fall back to [conversationId]. */
+    val historyScopeId: String = conversationId,
     val turnIds: List<String>,
     val providerProfileId: String,
     val credentialHandle: String?,
@@ -18,6 +20,7 @@ data class MemoryExtractionJob(
     init {
         require(id.isNotBlank() && id.length <= 256)
         require(conversationId.isNotBlank() && conversationId.length <= 256)
+        require(historyScopeId.isNotBlank() && historyScopeId.length <= 256)
         require(turnIds.isNotEmpty() && turnIds.size <= 20)
         require(turnIds.all { it.isNotBlank() && it.length <= 256 })
         require(turnIds.distinct().size == turnIds.size)

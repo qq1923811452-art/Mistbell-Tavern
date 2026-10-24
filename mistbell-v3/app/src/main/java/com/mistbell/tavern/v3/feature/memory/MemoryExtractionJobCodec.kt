@@ -22,6 +22,7 @@ object MemoryExtractionJobCodec {
                         JSONObject()
                             .put("id", job.id)
                             .put("conversation", job.conversationId)
+                            .put("history_scope", job.historyScopeId)
                             .put("turns", JSONArray(job.turnIds))
                             .put("provider", job.providerProfileId)
                             .put("credential_handle", job.credentialHandle)
@@ -59,6 +60,8 @@ object MemoryExtractionJobCodec {
             MemoryExtractionJob(
                 id = item.getString("id"),
                 conversationId = item.getString("conversation"),
+                historyScopeId = item.optionalNonBlankString("history_scope")
+                    ?: item.getString("conversation"),
                 turnIds = (0 until turns.length()).map(turns::getString),
                 providerProfileId = item.getString("provider"),
                 credentialHandle = item.optionalNonBlankString("credential_handle"),
