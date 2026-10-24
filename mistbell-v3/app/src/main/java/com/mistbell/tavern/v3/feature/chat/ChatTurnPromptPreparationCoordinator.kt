@@ -41,7 +41,7 @@ internal class ChatTurnPromptPreparationCoordinator(
             history = history,
             userText = userText,
             selectedCard = selectedCard,
-            characterDefinition = selectedCard?.let(ChatCharacterPromptFormatter::format),
+            characterDefinition = selectedCard?.let(CharacterDefinitionCache::format),
             localEntries = localWorldbookEntries,
             worldbookState = worldbookState,
             worldbookStateKey = worldbookStateKey,
@@ -95,3 +95,18 @@ internal class ChatTurnPromptPreparationCoordinator(
 }
 
 private const val NANOS_PER_MILLI = 1_000_000
+
+/** Formats a card once; the formatted definition is stable between turns. */
+private object CharacterDefinitionCache {
+    private var cachedCard: com.mistbell.tavern.v3.feature.character.CharacterCard? = null
+    private var cachedDefinition: String = ""
+
+    @Synchronized
+    fun format(card: com.mistbell.tavern.v3.feature.character.CharacterCard): String {
+        if (cachedCard == card) return cachedDefinition
+        val formatted = ChatCharacterPromptFormatter.format(card)
+        cachedCard = card
+        cachedDefinition = formatted
+        return formatted
+    }
+}
