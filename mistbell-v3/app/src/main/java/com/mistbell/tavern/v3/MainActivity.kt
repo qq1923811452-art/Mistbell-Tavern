@@ -72,6 +72,7 @@ class MainActivity : ComponentActivity() {
     private var mainTab by mutableStateOf(TavernTab.CHAT)
     private var showLocalModel by mutableStateOf(false)
     private var showMemorySettings by mutableStateOf(false)
+    private var sessionListVisible by mutableStateOf(true)
     private var contextTokens by mutableStateOf(32_000)
     private var memoryEnabled by mutableStateOf(true)
     private var maxOutputTokens by mutableStateOf(4096)
@@ -308,6 +309,9 @@ class MainActivity : ComponentActivity() {
                                     TavernTab.CHAT -> TavernBackground {
                                         ChatScreen(
                                             onBack = { mainTab = TavernTab.SETTINGS },
+                                            onSessionListVisibilityChange = { visible ->
+                                                sessionListVisible = visible
+                                            },
                                         )
                                     }
                                     TavernTab.SETTINGS -> Box(Modifier.fillMaxSize()) {
@@ -362,7 +366,7 @@ class MainActivity : ComponentActivity() {
                                     }
                                 }
                             }
-                            if (mainTab != TavernTab.CHAT) {
+                            if (mainTab != TavernTab.CHAT || sessionListVisible) {
                                 TavernBottomBar(
                                     selected = mainTab,
                                     onSelect = { mainTab = it },
