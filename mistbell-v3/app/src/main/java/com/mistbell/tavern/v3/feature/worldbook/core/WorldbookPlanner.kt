@@ -179,6 +179,7 @@ class WorldbookPlanner(
         activated.sumOf { it.entry.content.length }
 
     @Suppress("CyclomaticComplexMethod", "ComplexCondition")
+    @Suppress("LongParameterList")
     private fun isCandidate(
         entry: WorldbookEntry,
         corpus: String,
