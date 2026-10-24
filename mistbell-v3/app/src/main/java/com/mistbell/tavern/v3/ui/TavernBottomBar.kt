@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -28,6 +30,7 @@ fun TavernBottomBar(
         color = Color.Black.copy(alpha = 0.35f),
         contentColor = MaterialTheme.colorScheme.onSurface,
     ) {
+        Column(modifier = Modifier.navigationBarsPadding()) {
         Row(modifier = Modifier.fillMaxWidth().height(56.dp)) {
             TavernTab.entries.forEach { tab ->
                 Box(
@@ -53,6 +56,7 @@ fun TavernBottomBar(
                     )
                 }
             }
+        }
         }
     }
 }

@@ -366,7 +366,6 @@ class MainActivity : ComponentActivity() {
                                 TavernBottomBar(
                                     selected = mainTab,
                                     onSelect = { mainTab = it },
-                                    modifier = Modifier.navigationBarsPadding(),
                                 )
                             }
                         }
