@@ -597,6 +597,38 @@ fun ChatScreen(
     }
 
 
+    if (showCreateSession) {
+        CreateSessionDialog(
+            characters = characterCards,
+            worldbooks = worldbookLibrary.map { it.id to it.name },
+            initialRoleId = selectedCharacterId,
+            onDismiss = { showCreateSession = false },
+            onConfirm = { roleId, worldbookId ->
+                val created = runCatching {
+                    sessionStore.create(
+                        roleId = roleId.ifBlank { activeMemoryRoleId },
+                        title = "新对话",
+                        worldbookId = worldbookId,
+                    )
+                }.getOrNull()
+                if (created != null) {
+                    selectedCharacterId = roleId.ifBlank { activeMemoryRoleId }
+                    sessionStore.setRoleId(created.id, selectedCharacterId)
+                    memoryConversationId = created.id
+                    settings.edit().putString("memory_extraction_conversation_id", created.id).apply()
+                    sessions = sessionStore.list()
+                    lastPromptMessages = emptyList()
+                    lastGroupSpeakerId = null
+                    chatViewModel.clearDraft()
+                    usageSummary = "Token 用量：本轮尚无服务端 usage 数据"
+                    diagnosticStore.info("chat.session.created", "sessions=${sessions.size}")
+                }
+                showCreateSession = false
+                showSessionList = false
+            },
+        )
+    }
+
     if (showSessionList) {
         SessionListScreen(
             sessions = sessions,
@@ -779,37 +811,6 @@ fun ChatScreen(
         )
     }
 
-    if (showCreateSession) {
-        CreateSessionDialog(
-            characters = characterCards,
-            worldbooks = worldbookLibrary.map { it.id to it.name },
-            initialRoleId = selectedCharacterId,
-            onDismiss = { showCreateSession = false },
-            onConfirm = { roleId, worldbookId ->
-                val created = runCatching {
-                    sessionStore.create(
-                        roleId = roleId.ifBlank { activeMemoryRoleId },
-                        title = "新对话",
-                        worldbookId = worldbookId,
-                    )
-                }.getOrNull()
-                if (created != null) {
-                    selectedCharacterId = roleId.ifBlank { activeMemoryRoleId }
-                    sessionStore.setRoleId(created.id, selectedCharacterId)
-                    memoryConversationId = created.id
-                    settings.edit().putString("memory_extraction_conversation_id", created.id).apply()
-                    sessions = sessionStore.list()
-                    lastPromptMessages = emptyList()
-                    lastGroupSpeakerId = null
-                    chatViewModel.clearDraft()
-                    usageSummary = "Token 用量：本轮尚无服务端 usage 数据"
-                    diagnosticStore.info("chat.session.created", "sessions=${sessions.size}")
-                }
-                showCreateSession = false
-                showSessionList = false
-            },
-        )
-    }
 
     BackHandler(enabled = !showSessionList) {
         if (busy) {
