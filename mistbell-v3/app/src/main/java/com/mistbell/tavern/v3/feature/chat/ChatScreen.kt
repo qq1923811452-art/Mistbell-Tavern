@@ -9,8 +9,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -20,8 +18,6 @@ import kotlinx.coroutines.sync.withLock
 import com.mistbell.tavern.v3.core.diagnostics.DiagnosticLogStore
 import com.mistbell.tavern.v3.core.security.AndroidKeystoreMemoryCredentialStore
 import com.mistbell.tavern.v3.core.security.ChatCredentialStore
-import com.mistbell.tavern.v3.core.settings.getIntCompat
-import com.mistbell.tavern.v3.core.storage.MemoryScopeId
 import com.mistbell.tavern.v3.core.storage.MemoryScopeFileNames
 import java.io.File
 import java.util.UUID
@@ -54,14 +50,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.mistbell.tavern.v3.core.storage.MemoryScopeId
 import com.mistbell.tavern.v3.feature.sessions.ChatSession
+import com.mistbell.tavern.v3.feature.sessions.SessionStore
 import com.mistbell.tavern.v3.feature.sessions.SessionKind
 import com.mistbell.tavern.v3.feature.sessions.SessionParticipant
-import com.mistbell.tavern.v3.feature.sessions.SessionStore
 import com.mistbell.tavern.v3.feature.sessions.ui.GroupCandidate
 import com.mistbell.tavern.v3.feature.sessions.ui.SessionListScreen
 import com.mistbell.tavern.v3.feature.worldbook.WorldBookLibraryStore
-import com.mistbell.tavern.v3.ui.findActivity
 
 
 
@@ -117,19 +113,6 @@ fun ChatScreen(
         }
     }
     var busy by remember { mutableStateOf(false) }
-    var backupStatus by remember { mutableStateOf("") }
-    val backupCoroutineScope = rememberCoroutineScope()
-    val backupCoordinator = remember(context) {
-        ChatBackupCoordinator(context, backupCoroutineScope, { backupStatus = it }) {
-            context.findActivity()?.recreate()
-        }
-    }
-    val exportBackupLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.CreateDocument("application/zip"),
-    ) { uri -> if (uri != null) backupCoordinator.export(uri) }
-    val restoreBackupLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocument(),
-    ) { uri -> if (uri != null && !busy) backupCoordinator.restore(uri) }
     var memoryBaseUrl by remember(settings) {
         mutableStateOf(settings.getString("memory_api_base_url", "https://api.odys.work/v1") ?: "https://api.odys.work/v1")
     }
@@ -137,30 +120,6 @@ fun ChatScreen(
         mutableStateOf(settings.getString("memory_model_id", "") ?: "")
     }
     var memoryApiKey by remember { mutableStateOf("") }
-    var hasSavedMemoryCredential by remember(settings) {
-        mutableStateOf(
-            settings.getString("memory_api_credential_handle", null)?.let { handle ->
-                runCatching { AndroidKeystoreMemoryCredentialStore(context.applicationContext).contains(handle) }
-                    .getOrDefault(false)
-            } ?: false,
-        )
-    }
-    var historyReady by remember { mutableStateOf(false) }
-    var historyLoadFailed by remember { mutableStateOf(false) }
-    var status by remember { mutableStateOf("填写模型 ID 和 API 配置后即可测试聊天。") }
-    var memoryConversationId by remember(settings) {
-        mutableStateOf(
-            settings.getString("memory_extraction_conversation_id", null)
-                ?.takeIf(String::isNotBlank)
-                ?: UUID.randomUUID().toString().also { generated ->
-                    settings.edit().putString("memory_extraction_conversation_id", generated).apply()
-                },
-        )
-    }
-    var selectedCharacterId by remember(settings) {
-        mutableStateOf(settings.getString("active_character_id", "") ?: "")
-    }
-    val activeMemoryRoleId = selectedCharacterId.takeIf(String::isNotBlank) ?: "default-character"
     val memoryScopeId = remember(activeMemoryRoleId, memoryConversationId) {
         MemoryScopeId.forRoleAndConversation(activeMemoryRoleId, memoryConversationId)
     }
@@ -188,35 +147,7 @@ fun ChatScreen(
     var maxTokensText by remember(settings) {
         mutableStateOf(settings.getInt("chat_max_tokens", 4096).coerceIn(1, 200_000).toString())
     }
-    var recentTurnsText by remember(settings) {
-        mutableStateOf(
-            settings.getIntCompat("chat_history_recent_turns", ConversationContextWindowBuilder.DEFAULT_RECENT_TURNS)
-                .coerceIn(1, 100).toString(),
-        )
-    }
-    var summaryCharsText by remember(settings) {
-        mutableStateOf(
-            settings.getIntCompat(
-                "chat_history_summary_max_chars",
-                ConversationContextWindowBuilder.DEFAULT_SUMMARY_MAX_CHARS,
-            ).coerceIn(0, 10_000).toString(),
-        )
-    }
-    var historyCharsText by remember(settings) {
-        mutableStateOf(
-            settings.getIntCompat("chat_history_max_chars", ConversationContextWindowBuilder.DEFAULT_MAX_HISTORY_CHARS)
-                .coerceIn(4_000, 2_000_000).toString(),
-        )
-    }
     var usageSummary by remember { mutableStateOf("Token 用量：本轮尚无服务端 usage 数据") }
-    var selectedEmbeddingDimensions by remember(context) {
-        mutableStateOf(
-            context.getSharedPreferences("mistbell-v3-settings", Context.MODE_PRIVATE)
-                .getInt("embedding_output_dimensions", 768)
-                .takeIf { it in CHAT_EMBEDDING_DIMENSION_OPTIONS } ?: 768,
-        )
-    }
-    var dimensionMenuExpanded by remember { mutableStateOf(false) }
     val history = remember { mutableStateListOf<ChatLine>() }
     val listState = rememberLazyListState()
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
