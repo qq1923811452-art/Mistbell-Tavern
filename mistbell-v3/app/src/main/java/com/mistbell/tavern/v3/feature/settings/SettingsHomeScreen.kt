@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -164,6 +165,8 @@ private fun formatTokens(tokens: Int): String = when {
 @Composable
 private fun MaxOutputTokensRow(value: Int, onChange: (Int) -> Unit) {
     var text by remember(value) { mutableStateOf(value.toString()) }
+    val parsed = text.toIntOrNull()
+    val invalid = parsed == null || parsed !in 1..200_000
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -182,7 +185,14 @@ private fun MaxOutputTokensRow(value: Int, onChange: (Int) -> Unit) {
             },
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            modifier = Modifier.padding(start = 12.dp),
+            isError = invalid,
+            supportingText = {
+                Text(
+                    if (invalid) "范围 1–200000，当前输入不会保存" else "实际生效：$value",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            },
+            modifier = Modifier.padding(start = 12.dp).width(150.dp),
         )
     }
 }
