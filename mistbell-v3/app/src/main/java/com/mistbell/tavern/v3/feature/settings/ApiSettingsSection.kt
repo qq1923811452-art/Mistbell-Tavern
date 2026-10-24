@@ -66,9 +66,9 @@ fun ApiSettingsSection(onStatus: (String) -> Unit) {
                     .putString("chat_profile_name", updated.name)
                     .apply()
                 val template = if (updated.thinkingEnabled) {
-                    ThinkingModeTemplates.enabled(updated.baseUrl)
+                    ThinkingModeTemplates.enabled(updated.baseUrl, updated.modelId)
                 } else {
-                    ThinkingModeTemplates.disabled(updated.baseUrl)
+                    ThinkingModeTemplates.disabled(updated.baseUrl, updated.modelId)
                 }
                 prefs.edit()
                     .putString("chat_credential_handle", handle)

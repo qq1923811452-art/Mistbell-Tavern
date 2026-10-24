@@ -30,10 +30,10 @@ internal class ChatRequestClientCoordinator(
         val trimmedBaseUrl = baseUrl.trim()
         val enabledTemplate = settings.getString("chat_thinking_template", null)
             ?.takeIf(String::isNotBlank)
-            ?: ThinkingModeTemplates.enabled(trimmedBaseUrl)
+            ?: ThinkingModeTemplates.enabled(trimmedBaseUrl, modelId.trim())
         val disabledTemplate = settings.getString("chat_thinking_disabled_template", null)
             ?.takeIf(String::isNotBlank)
-            ?: ThinkingModeTemplates.disabled(trimmedBaseUrl)
+            ?: ThinkingModeTemplates.disabled(trimmedBaseUrl, modelId.trim())
         val profile = ProviderProfile(
             id = "session-chat",
             kind = ProviderKind.CHAT,
