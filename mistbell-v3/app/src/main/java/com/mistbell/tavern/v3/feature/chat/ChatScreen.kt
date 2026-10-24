@@ -780,68 +780,6 @@ fun ChatScreen(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
 
-                        val handle = runCatching { chatCredentialStore.save(apiKey) }.getOrNull()
-                        if (handle != null) {
-                            chatGenerationPreferences.setCredentialHandle(handle)
-                            hasSavedChatCredential = true
-                            chatSettingsStatus = "已加密保存"
-                        } else {
-                            chatSettingsStatus = "保存失败"
-                        }
-                    }
-                },
-                onDeleteCredential = {
-                    chatGenerationPreferences.credentialHandle?.let { handle ->
-                        runCatching { chatCredentialStore.delete(handle) }
-                    }
-                    chatGenerationPreferences.setCredentialHandle(null)
-                    apiKey = ""
-                    hasSavedChatCredential = false
-                    chatSettingsStatus = "已删除已保存密钥"
-                },
-                onStreamChange = { enabled ->
-                    streamEnabled = enabled
-                    chatGenerationPreferences.setStreamEnabled(enabled)
-                },
-                onThinkingChange = { enabled ->
-                    thinkingEnabled = enabled
-                    chatGenerationPreferences.setThinkingEnabled(enabled)
-                },
-            )
-
-            ChatMemorySettingsPanel(
-                settings = settings,
-                baseUrl = memoryBaseUrl,
-                modelId = memoryModelId,
-                apiKey = memoryApiKey,
-                hasSavedCredential = hasSavedMemoryCredential,
-                credentialStore = memoryCredentialStore,
-                diagnosticStore = diagnosticStore,
-                selectedDimensions = selectedEmbeddingDimensions,
-                dimensionMenuExpanded = dimensionMenuExpanded,
-                onBaseUrlChange = { memoryBaseUrl = it },
-                onModelIdChange = { memoryModelId = it },
-                onApiKeyChange = { memoryApiKey = it },
-                onSavedCredentialChange = { hasSavedMemoryCredential = it },
-                onStatusChange = { status = it },
-                onDimensionsMenuExpandedChange = { dimensionMenuExpanded = it },
-                extractionEnabled = memoryExtractionEnabled,
-                onExtractionEnabledChange = { enabled ->
-                    memoryExtractionEnabled = enabled
-                    settings.edit().putBoolean("memory_extraction_enabled", enabled).apply()
-                    status = if (enabled) "已启用记忆整理。" else "已关闭记忆整理，仅保留检索。"
-                },
-                onDimensionsSelected = { dimensions ->
-                    selectedEmbeddingDimensions = dimensions
-                    dimensionMenuExpanded = false
-                    status = ChatEmbeddingDimensionsSelectionCoordinator(
-                        settings = settings,
-                        diagnosticStore = diagnosticStore,
-                    ).select(dimensions)
-                },
-            )
-            }
-            } else {
             ChatHistoryMessageList(
                 history = history,
                 busy = busy,
