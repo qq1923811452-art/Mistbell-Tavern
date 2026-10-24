@@ -289,6 +289,17 @@ fun ChatScreen(
         lastPromptMessages = emptyList()
     }
 
+    fun formatUsageSummary(usage: ChatTokenUsage): String {
+        val cached = usage.cachedPromptTokens
+        val cacheRatio = if (cached != null && usage.promptTokens > 0) {
+            "（${cached * 100 / usage.promptTokens}%）"
+        } else {
+            ""
+        }
+        return "Token 用量：输入 ${usage.promptTokens} · 缓存 ${cached?.toString() ?: "未知"}$cacheRatio" +
+            " · 输出 ${usage.completionTokens} · 合计 ${usage.totalTokens}"
+    }
+
     fun saveUsageSummary(conversationId: String, summary: String) {
         if (conversationId.isNotBlank()) {
             settings.edit().putString("chat_usage_$conversationId", summary).apply()
@@ -353,92 +364,137 @@ fun ChatScreen(
 
     @Suppress("LongMethod")
     fun regenerateReply(targetMessageId: String) {
+        if (busy) {
+            status = "生成中，请先等待当前回复完成。"
+            return
+        }
         val plan = RegeneratePlanner.plan(history.toList(), targetMessageId)
         if (plan == null) {
             status = "无法重新生成：找不到对应的用户消息。"
             return
         }
+        val requestConversationId = memoryConversationId
+        val requestMemoryScopeId = memoryScopeId
+        val requestCharacterId = selectedCharacterId
+        val requestWorldbookEntries = worldbookSession.entries
+        val requestWorldbookState = worldbookSession.activation.activationState
+        val requestWorldbookStateKey = worldbookSession.activation.stateKey
+        busy = true
+        status = "正在准备重新生成…"
         coroutineScope.launch {
-            val configuration = ChatRequestClientCoordinator(
-                memoryCredentialStore = memoryCredentialStore,
-                settings = settings,
-                setStatus = { status = it },
-            ).create(
-                baseUrl = baseUrl,
-                modelId = modelId,
-                apiKey = apiKey,
-                memoryBaseUrl = "",
-                memoryModelId = "",
-                memoryApiKey = "",
-            ) ?: return@launch
-            val messages = withContext(Dispatchers.Default) {
-                ChatTurnPromptPreparationCoordinator(
+            try {
+                val configuration = ChatRequestClientCoordinator(
+                    memoryCredentialStore = memoryCredentialStore,
                     settings = settings,
-                    diagnosticStore = diagnosticStore,
-                    mainHandler = mainHandler,
                     setStatus = { status = it },
-                ).prepare(
-                    history = plan.prefixHistory,
-                    userText = plan.userText,
-                    characterCards = characterCards,
-                    selectedCharacterId = selectedCharacterId,
-                    localWorldbookEntries = worldbookSession.entries,
-                    worldbookState = worldbookSession.activation.activationState,
-                    worldbookStateKey = worldbookSession.activation.stateKey,
-                    historyIsComplete = true,
+                ).create(
+                    baseUrl = baseUrl,
+                    modelId = modelId,
+                    apiKey = apiKey,
+                    memoryBaseUrl = "",
+                    memoryModelId = "",
+                    memoryApiKey = "",
                 )
-            }
-            lastPromptMessages = messages
-            busy = true
-            status = "正在重新生成…"
-            val generated = StringBuilder()
-            val observer = object : ChatStreamObserver {
-                override fun onDelta(text: String) {
-                    generated.append(text)
+                if (configuration == null) {
+                    busy = false
+                    status = "重新生成失败：API 配置不完整。"
+                    return@launch
                 }
+                val messages = withContext(Dispatchers.Default) {
+                    ChatTurnPromptPreparationCoordinator(
+                        settings = settings,
+                        diagnosticStore = diagnosticStore,
+                        mainHandler = mainHandler,
+                        setStatus = { status = it },
+                    ).prepare(
+                        history = plan.prefixHistory,
+                        userText = plan.userText,
+                        characterCards = characterCards,
+                        selectedCharacterId = requestCharacterId,
+                        localWorldbookEntries = requestWorldbookEntries,
+                        worldbookState = requestWorldbookState,
+                        worldbookStateKey = requestWorldbookStateKey,
+                        historyIsComplete = true,
+                    )
+                }
+                if (memoryConversationId != requestConversationId) {
+                    busy = false
+                    status = "会话已切换，重新生成已取消。"
+                    return@launch
+                }
+                lastPromptMessages = messages
+                savePromptSnapshot(requestConversationId, messages)
+                status = "正在重新生成…"
+                val generated = StringBuilder()
+                val observer = object : ChatStreamObserver {
+                    override fun onDelta(text: String) {
+                        generated.append(text)
+                    }
 
-                override fun onComplete() {
-                    mainHandler.post {
-                        val index = history.indexOfFirst { it.id == targetMessageId }
-                        val replacement = if (index >= 0) {
-                            val line = history[index]
-                            val base = line.variants.ifEmpty { listOf(line.content) }
-                            val variants = MessageVariants.append(base, generated.toString())
-                            if (variants !== base) {
-                                history[index] = line.copy(
-                                    content = variants.last(),
-                                    activeVariant = variants.lastIndex,
-                                    variants = variants,
-                                )
-                                persistHistory()
-                                diagnosticStore.info("chat.regenerate.completed", "variants=${variants.size}")
-                            }
-                            true
-                        } else {
-                            false
+                    override fun onUsage(usage: ChatTokenUsage) {
+                        mainHandler.post {
+                            if (memoryConversationId != requestConversationId) return@post
+                            val summary = formatUsageSummary(usage)
+                            usageSummary = summary
+                            saveUsageSummary(requestConversationId, summary)
                         }
-                        busy = false
-                        status = if (replacement) "已生成新版本。" else "生成完成，但目标消息已不存在。"
                     }
-                }
 
-                override fun onFailure(failure: ChatStreamFailure) {
-                    mainHandler.post {
-                        busy = false
-                        status = "重新生成失败：${failure.safeMessage}"
+                    override fun onComplete() {
+                        mainHandler.post {
+                            if (memoryConversationId != requestConversationId) return@post
+                            val index = history.indexOfFirst { it.id == targetMessageId }
+                            val replacement = if (index >= 0) {
+                                val line = history[index]
+                                val base = line.variants.ifEmpty { listOf(line.content) }
+                                val variants = MessageVariants.append(base, generated.toString())
+                                if (variants !== base) {
+                                    history[index] = line.copy(
+                                        content = variants.last(),
+                                        activeVariant = variants.lastIndex,
+                                        variants = variants,
+                                    )
+                                    persistHistory()
+                                    diagnosticStore.info(
+                                        "chat.regenerate.completed",
+                                        "variants=${variants.size}",
+                                    )
+                                }
+                                true
+                            } else {
+                                false
+                            }
+                            busy = false
+                            status = if (replacement) {
+                                "已生成新版本。"
+                            } else {
+                                "生成完成，但目标消息已不存在。"
+                            }
+                        }
+                    }
+
+                    override fun onFailure(failure: ChatStreamFailure) {
+                        mainHandler.post {
+                            if (memoryConversationId != requestConversationId) return@post
+                            busy = false
+                            status = "重新生成失败：${failure.safeMessage}"
+                        }
                     }
                 }
+                ChatMemoryRuntimeCoordinator(
+                    context = context,
+                    mainHandler = mainHandler,
+                    diagnosticStore = diagnosticStore,
+                    memoryScopeId = requestMemoryScopeId,
+                    memoryConversationId = requestConversationId,
+                    indexRebuildCoordinator = memoryOperationsCoordinator.createIndexRebuildCoordinator(),
+                    setStatus = { status = it },
+                    setMemoryStatusNotice = { memoryStatusNotice = it },
+                ).stream(configuration.client, messages, observer, effectiveMaxTokens())
+            } catch (error: Exception) {
+                busy = false
+                status = "重新生成准备失败：${error.message ?: error.javaClass.simpleName}"
             }
-            ChatMemoryRuntimeCoordinator(
-                context = context,
-                mainHandler = mainHandler,
-                diagnosticStore = diagnosticStore,
-                memoryScopeId = memoryScopeId,
-                memoryConversationId = memoryConversationId,
-                indexRebuildCoordinator = memoryOperationsCoordinator.createIndexRebuildCoordinator(),
-                setStatus = { status = it },
-                setMemoryStatusNotice = { memoryStatusNotice = it },
-            ).stream(configuration.client, messages, observer, effectiveMaxTokens())
         }
     }
 
