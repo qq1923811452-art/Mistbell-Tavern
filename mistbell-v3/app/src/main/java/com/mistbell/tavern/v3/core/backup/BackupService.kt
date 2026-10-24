@@ -127,10 +127,8 @@ class BackupService(
             val staged = File(extracted.stagingDirectory, relative)
             replacements[staged] = File(appContext.filesDir, name)
         }
-        appContext.filesDir.listFiles().orEmpty()
-            .filter { it.isFile && BackupSource.isMemoryFileName(it.name) }
-            .filterNot { it.name in archivePaths.map { path -> path.substringAfter("memory/") } }
-            .forEach { removals += it }
+        // Files that the archive does not contain are left untouched: an incomplete or older
+        // backup must never erase memory that is still on the device.
 
         listOf("worldbooks", "characters", "generated-images").forEach { name ->
             // Older or partial archives may not contain every optional directory. Do not

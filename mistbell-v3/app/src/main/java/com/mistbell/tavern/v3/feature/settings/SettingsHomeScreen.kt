@@ -179,16 +179,15 @@ private fun MaxOutputTokensRow(value: Int, onChange: (Int) -> Unit) {
         OutlinedTextField(
             value = text,
             onValueChange = { raw ->
-                val digits = raw.filter(Char::isDigit)
-                text = digits
-                digits.toIntOrNull()?.takeIf { it in 1..200_000 }?.let(onChange)
+                text = raw.take(12)
+                raw.toIntOrNull()?.takeIf { it in 1..200_000 }?.let(onChange)
             },
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             isError = invalid,
             supportingText = {
                 Text(
-                    if (invalid) "范围 1–200000，当前输入不会保存" else "实际生效：$value",
+                    if (invalid) "请输入纯数字 1–200000，当前输入不会保存" else "实际生效：$value",
                     style = MaterialTheme.typography.bodySmall,
                 )
             },
