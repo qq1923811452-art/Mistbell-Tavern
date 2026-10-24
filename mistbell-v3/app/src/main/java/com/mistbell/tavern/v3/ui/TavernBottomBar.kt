@@ -31,32 +31,32 @@ fun TavernBottomBar(
         contentColor = MaterialTheme.colorScheme.onSurface,
     ) {
         Column(modifier = Modifier.navigationBarsPadding()) {
-        Row(modifier = Modifier.fillMaxWidth().height(56.dp)) {
-            TavernTab.entries.forEach { tab ->
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(56.dp)
-                        .clickable { onSelect(tab) }
-                        .padding(vertical = 8.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = when (tab) {
-                            TavernTab.CHAT -> "聊天"
-                            TavernTab.SETTINGS -> "设置"
-                        },
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = if (tab == selected) FontWeight.Bold else FontWeight.Normal,
-                        color = if (tab == selected) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        },
-                    )
+            Row(modifier = Modifier.fillMaxWidth().height(56.dp)) {
+                TavernTab.entries.forEach { tab ->
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(56.dp)
+                            .clickable { onSelect(tab) }
+                            .padding(vertical = 8.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = when (tab) {
+                                TavernTab.CHAT -> "聊天"
+                                TavernTab.SETTINGS -> "设置"
+                            },
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = if (tab == selected) FontWeight.Bold else FontWeight.Normal,
+                            color = if (tab == selected) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                        )
+                    }
                 }
             }
-        }
         }
     }
 }
