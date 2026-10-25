@@ -457,8 +457,9 @@ class OpenAiCompatibleChatClient(
                 ?: error.optString("type").takeIf(String::isNotBlank)
             is String -> error.takeIf(String::isNotBlank)
             else -> null
-        } ?: return "Chat provider returned an error without a message."
-        return message.take(MAX_ERROR_MESSAGE_CHARS)
+        }
+        return (message ?: "Chat provider returned an error without a message.")
+            .take(MAX_ERROR_MESSAGE_CHARS)
     }
 
     /**
