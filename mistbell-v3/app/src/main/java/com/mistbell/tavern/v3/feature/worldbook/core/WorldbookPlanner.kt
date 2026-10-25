@@ -223,12 +223,14 @@ class WorldbookPlanner(
         const val DEFAULT_RECURSIVE_DEPTH = 4
         const val MAX_DEPTH = 10
 
-        private val regexCache = object : LinkedHashMap<String, Regex?>(16, 0.75f, true) {
+        private val regexCache = object : LinkedHashMap<String, Regex?>(CACHE_INITIAL_CAPACITY, CACHE_LOAD_FACTOR, true) {
             override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Regex?>?): Boolean =
                 size > MAX_REGEX_CACHE_ENTRIES
         }
         private val regexCacheLock = Any()
         private const val MAX_REGEX_CACHE_ENTRIES = 256
+        private const val CACHE_INITIAL_CAPACITY = 16
+        private const val CACHE_LOAD_FACTOR = 0.75f
 
         private fun cachedRegex(key: String, create: () -> Regex?): Regex? =
             synchronized(regexCacheLock) {
