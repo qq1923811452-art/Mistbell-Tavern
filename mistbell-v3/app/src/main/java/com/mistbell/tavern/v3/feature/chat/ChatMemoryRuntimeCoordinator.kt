@@ -43,6 +43,7 @@ internal class ChatMemoryRuntimeCoordinator(
         messages: List<PromptMessage>,
         observer: ChatStreamObserver,
         maxTokens: Int,
+        memoryQuery: String? = null,
     ) {
 val generationSwitches = context.getSharedPreferences("mistbell-v3-settings", Context.MODE_PRIVATE)
 val streamEnabled = generationSwitches.getBoolean("chat_stream_enabled", true)
@@ -287,6 +288,7 @@ if (installedModel == null || configuredDimensions !in CHAT_EMBEDDING_DIMENSION_
             stream = streamEnabled,
             thinkingEnabled = thinkingEnabled,
         ),
+        memoryQuery = memoryQuery,
     )
         }
     }

@@ -130,19 +130,5 @@ object PromptAssembler {
         if (contents.isNotEmpty()) add("$label:\n" + contents.joinToString("\n\n"))
     }
 
-    /**
-     * Returns the latest user turn without the post-history instruction block.
-     *
-     * Memory retrieval must query the user's actual text: the post-history block is a stable
-     * character directive and would otherwise pollute embedding similarity for every turn.
-     */
-    fun memoryQuery(messages: List<PromptMessage>): String? {
-        val content = messages.lastOrNull { it.role == PromptRole.USER }?.content?.trim() ?: return null
-        val marker = "\n\n$POST_HISTORY_HEADER\n"
-        val cutoff = content.lastIndexOf(marker)
-        val query = if (cutoff >= 0) content.substring(0, cutoff) else content
-        return query.trim().takeIf(String::isNotEmpty)
-    }
-
     const val POST_HISTORY_HEADER = "Post-history instructions:"
 }

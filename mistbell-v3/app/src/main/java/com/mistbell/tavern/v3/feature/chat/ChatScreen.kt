@@ -512,7 +512,13 @@ fun ChatScreen(
                     indexRebuildCoordinator = memoryOperationsCoordinator.createIndexRebuildCoordinator(),
                     setStatus = { status = it },
                     setMemoryStatusNotice = { memoryStatusNotice = it },
-                ).stream(configuration.client, messages, observer, effectiveMaxTokens())
+                ).stream(
+                    configuration.client,
+                    messages,
+                    observer,
+                    effectiveMaxTokens(),
+                    memoryQuery = plan.userText,
+                )
             } catch (error: Exception) {
                 if (ownsRequest()) {
                     busy = false
@@ -1142,7 +1148,13 @@ fun ChatScreen(
                                         indexRebuildCoordinator = memoryOperationsCoordinator.createIndexRebuildCoordinator(),
                                         setStatus = { status = it },
                                         setMemoryStatusNotice = { memoryStatusNotice = it },
-                                    ).stream(client, messages, observer, effectiveMaxTokens())
+                                    ).stream(
+                                        client,
+                                        messages,
+                                        observer,
+                                        effectiveMaxTokens(),
+                                        memoryQuery = userText,
+                                    )
                                 },
                                 ordinaryStream = {
                                     client.stream(

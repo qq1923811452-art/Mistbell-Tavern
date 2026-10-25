@@ -351,34 +351,6 @@ class PromptAssemblerTest {
     }
 
     @Test
-    fun memoryQueryExcludesPostHistoryInstructionsButKeepsTheUserTurn() {
-        val messages = PromptAssembler.assemble(
-            PromptAssemblyInput(
-                stableSystemPrefix = "Stable rules",
-                worldbookEntries = listOf(entry("lore", "Library lore.")),
-                latestUserMessage = "Where is the library?",
-                postHistoryInstructions = "Stay in character.",
-            ),
-        )
-
-        val query = PromptAssembler.memoryQuery(messages)
-
-        assertTrue(query!!.contains("Where is the library?"))
-        assertTrue(query.contains("Library lore."))
-        assertFalse(query.contains("Stay in character."))
-    }
-
-    @Test
-    fun memoryQueryFallsBackToTheWholeUserTurnWithoutPostHistory() {
-        val messages = listOf(
-            PromptMessage(PromptRole.SYSTEM, "Stable rules"),
-            PromptMessage(PromptRole.USER, "Plain question"),
-        )
-
-        assertEquals("Plain question", PromptAssembler.memoryQuery(messages))
-    }
-
-    @Test
     fun blankPostHistoryInstructionsAreNotAppended() {
         val messages = PromptAssembler.assemble(
             PromptAssemblyInput(
