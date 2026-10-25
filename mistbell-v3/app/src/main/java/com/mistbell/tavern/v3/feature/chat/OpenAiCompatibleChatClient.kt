@@ -61,11 +61,16 @@ data class ChatGenerationOptions(
     }
 }
 
+/** Why the provider stopped sending tokens. */
+enum class ChatFinishReason { STOP, LENGTH, OTHER, EOF }
+
 interface ChatStreamObserver {
     fun onDelta(text: String)
     fun onComplete()
     fun onFailure(failure: ChatStreamFailure)
     fun onUsage(usage: ChatTokenUsage) = Unit
+    /** Reports the provider's finish reason before [onComplete]. */
+    fun onFinish(reason: ChatFinishReason) = Unit
 }
 
 class ChatClientConfigurationException(message: String) : IllegalStateException(message)
@@ -284,6 +289,8 @@ class OpenAiCompatibleChatClient(
                     }
                     try {
                         val source = responseBody.source()
+                        var sawDone = false
+                        var finishReason: String? = null
                         while (!source.exhausted()) {
                             val line = source.readUtf8Line() ?: break
                             require(line.length <= MAX_SSE_LINE_CHARS) {
@@ -293,7 +300,10 @@ class OpenAiCompatibleChatClient(
                                 continue
                             }
                             val eventData = line.removePrefix("data:").trimStart()
-                            if (eventData == "[DONE]") break
+                            if (eventData == "[DONE]") {
+                                sawDone = true
+                                break
+                            }
                             val event = try {
                                 JSONObject(eventData)
                             } catch (_: JSONException) {
@@ -335,10 +345,22 @@ class OpenAiCompatibleChatClient(
                                 }
                             }
                             val choices = event.optJSONArray("choices") ?: continue
-                            val delta = choices.optJSONObject(0)?.optJSONObject("delta") ?: continue
+                            val choice = choices.optJSONObject(0) ?: continue
+                            choice.optString("finish_reason")
+                                .takeIf { it.isNotBlank() && it != "null" }
+                                ?.let { finishReason = it }
+                            val delta = choice.optJSONObject("delta") ?: continue
                             val content = delta.opt("content")
                             if (content is String && content.isNotEmpty()) observer.onDelta(content)
                         }
+                        val reason = when {
+                            finishReason.equals("length", ignoreCase = true) -> ChatFinishReason.LENGTH
+                            sawDone || finishReason.equals("stop", ignoreCase = true) ||
+                                finishReason.equals("end_turn", ignoreCase = true) -> ChatFinishReason.STOP
+                            finishReason != null -> ChatFinishReason.OTHER
+                            else -> ChatFinishReason.EOF
+                        }
+                        observer.onFinish(reason)
                         observer.onComplete()
                     } catch (_: IOException) {
                         observer.onFailure(

@@ -25,6 +25,8 @@ internal class ChatStreamObserverCoordinator(
         isCurrentRequest: () -> Boolean,
     ): ChatStreamObserver =
         object : ChatStreamObserver {
+            @Volatile private var lastFinishReason: ChatFinishReason? = null
+
             private fun updateAssistant(transform: (ChatLine) -> ChatLine) {
                 mainHandler.post {
                     if (!isCurrentRequest() || conversationId.isBlank()) return@post
@@ -59,14 +61,25 @@ internal class ChatStreamObserverCoordinator(
                 )
             }
 
+            override fun onFinish(reason: ChatFinishReason) {
+                lastFinishReason = reason
+                diagnosticStore.info("chat.stream.finished", "reason=${reason.name}")
+            }
+
             override fun onComplete() {
                 mainHandler.post {
                     if (!isCurrentRequest()) return@post
                     setBusy(false)
+                    val base = when (lastFinishReason) {
+                        ChatFinishReason.LENGTH -> "回复达到输出上限，已被截断。"
+                        ChatFinishReason.EOF -> "回复提前结束：未收到完成标记。"
+                        ChatFinishReason.OTHER -> "回复已结束：服务商返回了未知结束原因。"
+                        else -> "回复完成。"
+                    }
                     setStatus(if (memoryStatusNotice().isBlank()) {
-                        "回复完成。"
+                        base
                     } else {
-                        "回复完成。${memoryStatusNotice()}"
+                        "$base${memoryStatusNotice()}"
                     })
                     val index = history.indexOfFirst { it.id == assistantMessageId }
                     if (index >= 0) {

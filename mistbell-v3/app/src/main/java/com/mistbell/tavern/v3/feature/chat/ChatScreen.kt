@@ -439,9 +439,15 @@ fun ChatScreen(
                 savePromptSnapshot(requestConversationId, messages)
                 status = "正在重新生成…"
                 val generated = StringBuilder()
+                var regenerateFinishReason: ChatFinishReason? = null
                 val observer = object : ChatStreamObserver {
                     override fun onDelta(text: String) {
                         generated.append(text)
+                    }
+
+                    override fun onFinish(reason: ChatFinishReason) {
+                        regenerateFinishReason = reason
+                        diagnosticStore.info("chat.stream.finished", "reason=${reason.name}; regenerate=true")
                     }
 
                     override fun onUsage(usage: ChatTokenUsage) {
@@ -478,10 +484,13 @@ fun ChatScreen(
                                 false
                             }
                             busy = false
-                            status = if (replacement) {
-                                "已生成新版本。"
-                            } else {
-                                "生成完成，但目标消息已不存在。"
+                            status = when {
+                                !replacement -> "生成完成，但目标消息已不存在。"
+                                regenerateFinishReason == ChatFinishReason.LENGTH ->
+                                    "已生成新版本，但达到输出上限。"
+                                regenerateFinishReason == ChatFinishReason.EOF ->
+                                    "已生成新版本，但响应提前结束。"
+                                else -> "已生成新版本。"
                             }
                         }
                     }
@@ -1081,6 +1090,9 @@ fun ChatScreen(
                                     override fun onDelta(text: String) = baseObserver.onDelta(text)
 
                                     override fun onUsage(usage: ChatTokenUsage) = baseObserver.onUsage(usage)
+
+                                    override fun onFinish(reason: ChatFinishReason) =
+                                        baseObserver.onFinish(reason)
 
                                     override fun onFailure(failure: ChatStreamFailure) =
                                         baseObserver.onFailure(failure)
