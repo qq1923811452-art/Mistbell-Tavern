@@ -138,6 +138,44 @@ class GroupPromptAssemblerTest {
         assertEquals("[露娜]", label(speakerName = "露娜", content = "  \n "))
     }
 
+    @Test
+    fun labelHistoryAssistantMessagesSkipsSyntheticDepthInsertions() {
+        val messages = listOf(
+            PromptMessage(PromptRole.SYSTEM, "Rules"),
+            PromptMessage(PromptRole.ASSISTANT, "Lore aside.", synthetic = true),
+            PromptMessage(PromptRole.USER, "Earlier question"),
+            PromptMessage(PromptRole.ASSISTANT, "Earlier answer"),
+            PromptMessage(PromptRole.USER, "Latest question"),
+        )
+
+        val labelled = GroupPromptAssembler.labelHistoryAssistantMessages(
+            messages,
+            assistantNames = listOf("露娜"),
+        )
+
+        assertEquals("Lore aside.", labelled[1].content)
+        assertEquals("[露娜] Earlier answer", labelled[3].content)
+    }
+
+    @Test
+    fun labelHistoryAssistantMessagesConsumesNamesInHistoryOrder() {
+        val messages = listOf(
+            PromptMessage(PromptRole.SYSTEM, "Rules"),
+            PromptMessage(PromptRole.ASSISTANT, "First"),
+            PromptMessage(PromptRole.USER, "Question"),
+            PromptMessage(PromptRole.ASSISTANT, "Second"),
+            PromptMessage(PromptRole.USER, "Latest"),
+        )
+
+        val labelled = GroupPromptAssembler.labelHistoryAssistantMessages(
+            messages,
+            assistantNames = listOf("露娜", "Bob"),
+        )
+
+        assertEquals("[露娜] First", labelled[1].content)
+        assertEquals("[Bob] Second", labelled[3].content)
+    }
+
     private fun member(id: String, name: String, brief: String = "") =
         GroupPromptAssembler.Member(id = id, name = name, brief = brief)
 

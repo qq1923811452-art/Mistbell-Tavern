@@ -41,6 +41,7 @@ class MemoryAwareChatRequestTest {
         )
         server.start()
         val memoryText = MemoryTextRecord("fact-1", "The user prefers concise answers.")
+        var capturedQuery: String? = null
         val snapshot = VectorSnapshot(
             modelId = "local-test-model",
             dimensions = 2,
@@ -50,7 +51,10 @@ class MemoryAwareChatRequestTest {
         )
         val context = VectorMemoryContextService(
             snapshots = VectorSnapshotProvider { VectorSnapshotReadResult.Loaded(snapshot) },
-            embeddings = QueryEmbeddingProvider { listOf(1f, 0f) },
+            embeddings = QueryEmbeddingProvider {
+                capturedQuery = it
+                listOf(1f, 0f)
+            },
             textProvider = MemoryTextProvider { listOf(memoryText) },
             minimumScore = 0.5,
         )
@@ -74,7 +78,10 @@ class MemoryAwareChatRequestTest {
             PromptMessage(PromptRole.SYSTEM, "Stable instructions."),
             PromptMessage(PromptRole.USER, "Earlier question"),
             PromptMessage(PromptRole.ASSISTANT, "Earlier answer"),
-            PromptMessage(PromptRole.USER, "What response style do I prefer?"),
+            PromptMessage(
+                PromptRole.USER,
+                "What response style do I prefer?\n\nPost-history instructions:\nStay in character.",
+            ),
         )
         val observer = RecordingObserver()
 
@@ -82,6 +89,11 @@ class MemoryAwareChatRequestTest {
 
         assertTrue(observer.finished.await(5, TimeUnit.SECONDS))
         assertEquals(null, observer.failure)
+        assertTrue(capturedQuery!!.contains("What response style do I prefer?"))
+        assertTrue(
+            "Memory retrieval must not embed the character's post-history instructions.",
+            !capturedQuery!!.contains("Stay in character."),
+        )
         val captured = server.takeRequest(1, TimeUnit.SECONDS)!!
         val messages = JSONObject(captured.body.readUtf8()).getJSONArray("messages")
         assertEquals(4, messages.length())
@@ -90,7 +102,7 @@ class MemoryAwareChatRequestTest {
         assertEquals("user", messages.getJSONObject(3).getString("role"))
         val tail = messages.getJSONObject(3).getString("content")
         assertTrue(tail.contains("The user prefers concise answers."))
-        assertTrue(tail.trimEnd().endsWith("What response style do I prefer?"))
+        assertTrue(tail.trimEnd().endsWith("Post-history instructions:\nStay in character."))
         assertEquals(4, history.size)
         assertEquals("Earlier answer", history[2].content)
     }

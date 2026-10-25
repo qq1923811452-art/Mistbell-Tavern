@@ -262,6 +262,137 @@ class PromptAssemblerTest {
     }
 
     @Test
+    fun constantEntriesOutsideTheSystemPrefixStayInTheDynamicContext() {
+        val entries = listOf(
+            entry(
+                "an-before",
+                "Constant author note.",
+                constant = true,
+                position = WorldBookPlacement.POSITION_AN_BEFORE,
+            ),
+            entry(
+                "em-after",
+                "Constant example after.",
+                constant = true,
+                position = WorldBookPlacement.POSITION_EM_AFTER,
+            ),
+        )
+
+        val messages = PromptAssembler.assemble(
+            PromptAssemblyInput(
+                stableSystemPrefix = "Stable rules",
+                worldbookEntries = entries,
+                latestUserMessage = "Hi",
+            ),
+        )
+
+        val system = messages.first()
+        val tail = messages.last()
+        assertEquals(PromptRole.SYSTEM, system.role)
+        assertEquals(PromptRole.USER, tail.role)
+        entries.forEach { entry ->
+            assertTrue(
+                "Before/after-system constants must not leak into the stable prefix.",
+                !system.content.contains(entry.content),
+            )
+            assertEquals(1, tail.content.split(entry.content).size - 1)
+        }
+    }
+
+    @Test
+    fun disabledConstantEntryIsNotInjected() {
+        val disabled = WorldBookEntry(
+            id = "disabled",
+            bookId = "book",
+            content = "Disabled lore.",
+            constant = true,
+            disable = true,
+        )
+
+        val messages = PromptAssembler.assemble(
+            PromptAssemblyInput(
+                stableSystemPrefix = "Stable rules",
+                worldbookEntries = listOf(disabled),
+                latestUserMessage = "Hi",
+            ),
+        )
+
+        assertTrue(messages.none { it.content.contains("Disabled lore.") })
+    }
+
+    @Test
+    fun depthAssistantInsertionIsMarkedSynthetic() {
+        val depthEntry = WorldBookEntry(
+            id = "depth-assistant",
+            bookId = "book",
+            content = "Lore aside.",
+            constant = true,
+            insertPosition = WorldBookPlacement.POSITION_DEPTH,
+            depth = 1,
+            depthRole = WorldBookPlacement.DEPTH_ROLE_ASSISTANT,
+        )
+
+        val messages = PromptAssembler.assemble(
+            PromptAssemblyInput(
+                stableSystemPrefix = "Stable rules",
+                worldbookEntries = listOf(depthEntry),
+                conversationHistory = listOf(
+                    PromptMessage(PromptRole.USER, "Earlier"),
+                    PromptMessage(PromptRole.ASSISTANT, "Earlier reply"),
+                ),
+                latestUserMessage = "Hi",
+            ),
+        )
+
+        val inserted = messages.single { it.content == "Lore aside." }
+        assertEquals(PromptRole.ASSISTANT, inserted.role)
+        assertTrue(inserted.synthetic)
+        assertFalse(messages.single { it.content == "Earlier reply" }.synthetic)
+    }
+
+    @Test
+    fun memoryQueryExcludesPostHistoryInstructionsButKeepsTheUserTurn() {
+        val messages = PromptAssembler.assemble(
+            PromptAssemblyInput(
+                stableSystemPrefix = "Stable rules",
+                worldbookEntries = listOf(entry("lore", "Library lore.")),
+                latestUserMessage = "Where is the library?",
+                postHistoryInstructions = "Stay in character.",
+            ),
+        )
+
+        val query = PromptAssembler.memoryQuery(messages)
+
+        assertTrue(query!!.contains("Where is the library?"))
+        assertTrue(query.contains("Library lore."))
+        assertFalse(query.contains("Stay in character."))
+    }
+
+    @Test
+    fun memoryQueryFallsBackToTheWholeUserTurnWithoutPostHistory() {
+        val messages = listOf(
+            PromptMessage(PromptRole.SYSTEM, "Stable rules"),
+            PromptMessage(PromptRole.USER, "Plain question"),
+        )
+
+        assertEquals("Plain question", PromptAssembler.memoryQuery(messages))
+    }
+
+    @Test
+    fun blankPostHistoryInstructionsAreNotAppended() {
+        val messages = PromptAssembler.assemble(
+            PromptAssemblyInput(
+                stableSystemPrefix = "Stable rules",
+                latestUserMessage = "Hi",
+                postHistoryInstructions = "   ",
+            ),
+        )
+
+        assertEquals("Hi", messages.last().content)
+        assertFalse(messages.last().content.contains(PromptAssembler.POST_HISTORY_HEADER))
+    }
+
+    @Test
     fun blankDynamicEntriesAreFilteredWithoutCreatingEmptyMessages() {
         val messages = PromptAssembler.assemble(
             PromptAssemblyInput(

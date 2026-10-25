@@ -83,19 +83,13 @@ internal class ChatTurnPromptPreparationCoordinator(
         val assistantNames = completed
             .filter { it.role == "assistant" && it.content.isNotBlank() }
             .map { it.speakerName }
-        var assistantIndex = 0
         val block = GroupPromptAssembler.systemBlock(context.members, context.speakerName)
-        return messages.map { message ->
-            when (message.role) {
-                PromptRole.SYSTEM -> message.copy(content = message.content + "\n\n" + block)
-                PromptRole.ASSISTANT -> {
-                    val name = assistantNames.getOrNull(assistantIndex)
-                    assistantIndex += 1
-                    message.copy(
-                        content = GroupPromptAssembler.labelAssistantContent(name, message.content),
-                    )
-                }
-                else -> message
+        val labelled = GroupPromptAssembler.labelHistoryAssistantMessages(messages, assistantNames)
+        return labelled.map { message ->
+            if (message.role == PromptRole.SYSTEM) {
+                message.copy(content = message.content + "\n\n" + block)
+            } else {
+                message
             }
         }
     }

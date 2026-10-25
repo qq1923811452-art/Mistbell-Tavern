@@ -6,7 +6,15 @@ import com.mistbell.tavern.v3.feature.worldbook.WorldBookPlacement
 /** A deterministic prompt layout with exactly one system message. */
 enum class PromptRole { SYSTEM, USER, ASSISTANT }
 
-data class PromptMessage(val role: PromptRole, val content: String) {
+data class PromptMessage(
+    val role: PromptRole,
+    val content: String,
+    /**
+     * True for context derived by the assembler (for example a worldbook depth insertion).
+     * Group-chat speaker labelling must not treat such messages as real history.
+     */
+    val synthetic: Boolean = false,
+) {
     init {
         require(role == PromptRole.SYSTEM || content.isNotBlank()) {
             "User and assistant prompt message content must not be blank."
@@ -85,7 +93,7 @@ object PromptAssembler {
         val userContent = input.postHistoryInstructions
             ?.trim()
             ?.takeIf(String::isNotEmpty)
-            ?.let { "$latestUserContent\n\nPost-history instructions:\n$it" }
+            ?.let { "$latestUserContent\n\n$POST_HISTORY_HEADER\n$it" }
             ?: latestUserContent
         val history = input.conversationHistory
         val depthInsertions = plan.byDepth.entries
@@ -100,7 +108,8 @@ object PromptAssembler {
                 } else {
                     PromptRole.ASSISTANT
                 }
-                (history.size - key.first).coerceIn(0, history.size) to PromptMessage(role, content)
+                val insertIndex = (history.size - key.first).coerceIn(0, history.size)
+                insertIndex to PromptMessage(role, content, synthetic = true)
             }
             .groupBy({ it.first }, { it.second })
 
@@ -120,4 +129,20 @@ object PromptAssembler {
         }
         if (contents.isNotEmpty()) add("$label:\n" + contents.joinToString("\n\n"))
     }
+
+    /**
+     * Returns the latest user turn without the post-history instruction block.
+     *
+     * Memory retrieval must query the user's actual text: the post-history block is a stable
+     * character directive and would otherwise pollute embedding similarity for every turn.
+     */
+    fun memoryQuery(messages: List<PromptMessage>): String? {
+        val content = messages.lastOrNull { it.role == PromptRole.USER }?.content?.trim() ?: return null
+        val marker = "\n\n$POST_HISTORY_HEADER\n"
+        val cutoff = content.lastIndexOf(marker)
+        val query = if (cutoff >= 0) content.substring(0, cutoff) else content
+        return query.trim().takeIf(String::isNotEmpty)
+    }
+
+    const val POST_HISTORY_HEADER = "Post-history instructions:"
 }

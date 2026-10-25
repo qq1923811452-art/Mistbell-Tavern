@@ -24,7 +24,7 @@ class MemoryAwareChatRequest(
         observer: ChatStreamObserver,
         options: ChatGenerationOptions = ChatGenerationOptions(),
     ): Call {
-        val latestUserMessage = messages.lastOrNull { it.role == PromptRole.USER }?.content
+        val latestUserMessage = PromptAssembler.memoryQuery(messages)
         val memoryResult = if (latestUserMessage.isNullOrBlank()) {
             VectorMemoryContextResult.NoRelevantMemories
         } else {
