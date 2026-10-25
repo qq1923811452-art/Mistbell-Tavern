@@ -99,6 +99,123 @@ class OpenAiCompatibleChatClientTest {
     }
 
     @Test
+    fun reportsLengthWhenTheProviderStopsAtTheTokenLimit() {
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody(
+                    "data: {\"choices\":[{\"delta\":{\"content\":\"part\"},\"finish_reason\":null}]}\n\n" +
+                        "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"length\"}]}\n\n",
+                ),
+        )
+        server.start()
+        val observer = RecordingObserver()
+        clientFor(server, apiKey = "key").stream(
+            listOf(PromptMessage(PromptRole.USER, "Hi")),
+            observer,
+            ChatGenerationOptions(),
+        )
+        assertTrue(observer.finished.await(5, TimeUnit.SECONDS))
+        assertEquals(ChatFinishReason.LENGTH, observer.finishReason)
+    }
+
+    @Test
+    fun reportsStopWhenFinishReasonArrivesWithoutDone() {
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody("data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n"),
+        )
+        server.start()
+        val observer = RecordingObserver()
+        clientFor(server, apiKey = "key").stream(
+            listOf(PromptMessage(PromptRole.USER, "Hi")),
+            observer,
+            ChatGenerationOptions(),
+        )
+        assertTrue(observer.finished.await(5, TimeUnit.SECONDS))
+        assertEquals(ChatFinishReason.STOP, observer.finishReason)
+    }
+
+    @Test
+    fun keepsUnknownFinishReasonEvenWhenDoneFollows() {
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody(
+                    "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"content_filter\"}]}\n\n" +
+                        "data: [DONE]\n\n",
+                ),
+        )
+        server.start()
+        val observer = RecordingObserver()
+        clientFor(server, apiKey = "key").stream(
+            listOf(PromptMessage(PromptRole.USER, "Hi")),
+            observer,
+            ChatGenerationOptions(),
+        )
+        assertTrue(observer.finished.await(5, TimeUnit.SECONDS))
+        assertEquals(ChatFinishReason.OTHER, observer.finishReason)
+    }
+
+    @Test
+    fun keepsLengthEvenWhenDoneFollows() {
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody(
+                    "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"length\"}]}\n\n" +
+                        "data: [DONE]\n\n",
+                ),
+        )
+        server.start()
+        val observer = RecordingObserver()
+        clientFor(server, apiKey = "key").stream(
+            listOf(PromptMessage(PromptRole.USER, "Hi")),
+            observer,
+            ChatGenerationOptions(),
+        )
+        assertTrue(observer.finished.await(5, TimeUnit.SECONDS))
+        assertEquals(ChatFinishReason.LENGTH, observer.finishReason)
+    }
+
+    @Test
+    fun treatsDoneWithoutFinishReasonAsStop() {
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody("data: [DONE]\n\n"),
+        )
+        server.start()
+        val observer = RecordingObserver()
+        clientFor(server, apiKey = "key").stream(
+            listOf(PromptMessage(PromptRole.USER, "Hi")),
+            observer,
+            ChatGenerationOptions(),
+        )
+        assertTrue(observer.finished.await(5, TimeUnit.SECONDS))
+        assertEquals(ChatFinishReason.STOP, observer.finishReason)
+    }
+
+    @Test
+    fun reportsEofWhenNeitherDoneNorFinishReasonArrives() {
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody("data: {\"choices\":[{\"delta\":{\"content\":\"partial\"}}]}\n\n"),
+        )
+        server.start()
+        val observer = RecordingObserver()
+        clientFor(server, apiKey = "key").stream(
+            listOf(PromptMessage(PromptRole.USER, "Hi")),
+            observer,
+            ChatGenerationOptions(),
+        )
+        assertTrue(observer.finished.await(5, TimeUnit.SECONDS))
+        assertEquals(ChatFinishReason.EOF, observer.finishReason)
+    }
+
+    @Test
     fun remoteProviderWithoutCredentialIsRejectedBeforeNetworkRequest() {
         server.start()
         val profile = ProviderProfile(
@@ -174,6 +291,7 @@ class OpenAiCompatibleChatClientTest {
         val finished = CountDownLatch(1)
         @Volatile var failure: ChatStreamFailure? = null
         @Volatile var usage: ChatTokenUsage? = null
+        @Volatile var finishReason: ChatFinishReason? = null
 
         override fun onDelta(text: String) {
             output.append(text)
@@ -185,6 +303,10 @@ class OpenAiCompatibleChatClientTest {
 
         override fun onUsage(usage: ChatTokenUsage) {
             this.usage = usage
+        }
+
+        override fun onFinish(reason: ChatFinishReason) {
+            finishReason = reason
         }
 
         override fun onFailure(failure: ChatStreamFailure) {
