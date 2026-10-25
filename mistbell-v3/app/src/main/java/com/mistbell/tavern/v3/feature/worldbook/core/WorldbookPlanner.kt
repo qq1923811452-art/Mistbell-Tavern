@@ -233,8 +233,19 @@ class WorldbookPlanner(
         }
         private val regexCacheLock = Any()
         private const val MAX_REGEX_CACHE_ENTRIES = 256
+        internal const val MAX_REGEX_CACHE_ENTRIES_FOR_TEST = MAX_REGEX_CACHE_ENTRIES
         private const val CACHE_INITIAL_CAPACITY = 16
         private const val CACHE_LOAD_FACTOR = 0.75f
+
+        internal fun regexCacheSizeForTest(): Int =
+            synchronized(regexCacheLock) { regexCache.size }
+
+        internal fun regexCacheContainsForTest(key: String): Boolean =
+            synchronized(regexCacheLock) { regexCache.containsKey(key) }
+
+        internal fun clearRegexCacheForTest() {
+            synchronized(regexCacheLock) { regexCache.clear() }
+        }
 
         private fun cachedRegex(key: String, create: () -> Regex?): Regex? =
             synchronized(regexCacheLock) {
