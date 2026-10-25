@@ -146,7 +146,7 @@ class WorldbookPlanner(
             when {
                 key.length > 2 && key.startsWith("/") && key.endsWith("/") -> {
                     val expression = key.substring(1, key.length - 1)
-                    val regex = regexCache.getOrPut("raw:$expression") {
+                    val regex = cachedRegex("raw:$expression") {
                         runCatching { Regex(expression, RegexOption.IGNORE_CASE) }.getOrNull()
                     }
                     regex?.containsMatchIn(text) ?: haystack.contains(lowered)
@@ -154,7 +154,7 @@ class WorldbookPlanner(
 
                 lowered.contains('*') -> {
                     val expression = lowered.split('*').joinToString(".*") { Regex.escape(it) }
-                    val regex = regexCache.getOrPut("wild:$expression") {
+                    val regex = cachedRegex("wild:$expression") {
                         runCatching {
                             Regex(expression, setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
                         }.getOrNull()
@@ -223,8 +223,20 @@ class WorldbookPlanner(
         const val DEFAULT_RECURSIVE_DEPTH = 4
         const val MAX_DEPTH = 10
 
-        private val regexCache =
-            java.util.concurrent.ConcurrentHashMap<String, Regex?>(MAX_REGEX_CACHE_ENTRIES)
+        private val regexCache = object : LinkedHashMap<String, Regex?>(16, 0.75f, true) {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Regex?>?): Boolean =
+                size > MAX_REGEX_CACHE_ENTRIES
+        }
+        private val regexCacheLock = Any()
         private const val MAX_REGEX_CACHE_ENTRIES = 256
+
+        private fun cachedRegex(key: String, create: () -> Regex?): Regex? =
+            synchronized(regexCacheLock) {
+                if (regexCache.containsKey(key)) {
+                    regexCache[key]
+                } else {
+                    create().also { regexCache[key] = it }
+                }
+            }
     }
 }
