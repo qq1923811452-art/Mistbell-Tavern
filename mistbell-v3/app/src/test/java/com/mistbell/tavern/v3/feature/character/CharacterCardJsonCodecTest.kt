@@ -53,7 +53,8 @@ class CharacterCardJsonCodecTest {
         )
 
         assertEquals(
-            "Name: Mira\n\nDescription: A mage\n\nPersonality: Curious\n\nExample dialogue:\nExample: The mage smiles.\n\nSystem instructions: Be kind",
+            "Name: Mira\n\nDescription: A mage\n\nPersonality: Curious\n\n" +
+                "Example dialogue:\nExample: The mage smiles.\n\nSystem instructions: Be kind",
             card.stableDefinition(),
         )
         assertTrue(!card.stableDefinition().contains("volatile opening"))
