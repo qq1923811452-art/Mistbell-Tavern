@@ -30,14 +30,17 @@ class WorldbookPlannerRegexCacheTest {
     @Test
     fun recentlyUsedEntrySurvivesEviction() {
         planner.matchingKeys(listOf("/keep-me/"), "keep-me")
-        repeat(WorldbookPlanner.MAX_REGEX_CACHE_ENTRIES_FOR_TEST) { index ->
+        // Fill the remaining 255 slots so the cache is exactly full.
+        repeat(WorldbookPlanner.MAX_REGEX_CACHE_ENTRIES_FOR_TEST - 1) { index ->
             planner.matchingKeys(listOf("filler$index*"), "filler$index")
         }
-        // Touch the first entry so it becomes the most recently used.
+        assertTrue(WorldbookPlanner.regexCacheContainsForTest("raw:keep-me"))
+        // Refresh keep-me to most recently used, then force one eviction.
         planner.matchingKeys(listOf("/keep-me/"), "keep-me")
         planner.matchingKeys(listOf("one-more*"), "one more")
         assertTrue(WorldbookPlanner.regexCacheContainsForTest("raw:keep-me"))
         assertFalse(WorldbookPlanner.regexCacheContainsForTest("wild:filler0.*"))
+        assertTrue(WorldbookPlanner.regexCacheSizeForTest() <= WorldbookPlanner.MAX_REGEX_CACHE_ENTRIES_FOR_TEST)
     }
 
     @Test
@@ -49,20 +52,31 @@ class WorldbookPlannerRegexCacheTest {
     @Test
     fun concurrentLookupsDoNotCorruptTheCache() {
         val pool = Executors.newFixedThreadPool(8)
-        val start = CountDownLatch(1)
-        val done = CountDownLatch(8)
-        repeat(8) { worker ->
-            pool.execute {
-                start.await()
-                repeat(200) { index ->
-                    planner.matchingKeys(listOf("/shared$worker-$index/"), "shared$worker-$index")
+        val failure = java.util.concurrent.atomic.AtomicReference<Throwable?>()
+        try {
+            val start = CountDownLatch(1)
+            val done = CountDownLatch(8)
+            repeat(8) { worker ->
+                pool.execute {
+                    try {
+                        start.await()
+                        repeat(200) { index ->
+                            planner.matchingKeys(listOf("/shared$worker-$index/"), "shared$worker-$index")
+                        }
+                    } catch (error: Throwable) {
+                        failure.compareAndSet(null, error)
+                    } finally {
+                        done.countDown()
+                    }
                 }
-                done.countDown()
             }
+            start.countDown()
+            assertTrue(done.await(30, TimeUnit.SECONDS))
+        } finally {
+            pool.shutdown()
+            pool.awaitTermination(10, TimeUnit.SECONDS)
         }
-        start.countDown()
-        assertTrue(done.await(30, TimeUnit.SECONDS))
-        pool.shutdown()
+        failure.get()?.let { throw AssertionError("worker failed", it) }
         assertTrue(WorldbookPlanner.regexCacheSizeForTest() <= WorldbookPlanner.MAX_REGEX_CACHE_ENTRIES_FOR_TEST)
     }
 }
