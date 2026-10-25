@@ -355,9 +355,10 @@ class OpenAiCompatibleChatClient(
                         }
                         val reason = when {
                             finishReason.equals("length", ignoreCase = true) -> ChatFinishReason.LENGTH
-                            sawDone || finishReason.equals("stop", ignoreCase = true) ||
+                            finishReason.equals("stop", ignoreCase = true) ||
                                 finishReason.equals("end_turn", ignoreCase = true) -> ChatFinishReason.STOP
                             finishReason != null -> ChatFinishReason.OTHER
+                            sawDone -> ChatFinishReason.STOP
                             else -> ChatFinishReason.EOF
                         }
                         observer.onFinish(reason)

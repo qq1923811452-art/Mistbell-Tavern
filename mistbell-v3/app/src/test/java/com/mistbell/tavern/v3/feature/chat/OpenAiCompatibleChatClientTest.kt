@@ -138,6 +138,66 @@ class OpenAiCompatibleChatClientTest {
     }
 
     @Test
+    fun keepsUnknownFinishReasonEvenWhenDoneFollows() {
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody(
+                    "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"content_filter\"}]}\n\n" +
+                        "data: [DONE]\n\n",
+                ),
+        )
+        server.start()
+        val observer = RecordingObserver()
+        clientFor(server, apiKey = "key").stream(
+            listOf(PromptMessage(PromptRole.USER, "Hi")),
+            observer,
+            ChatGenerationOptions(),
+        )
+        assertTrue(observer.finished.await(5, TimeUnit.SECONDS))
+        assertEquals(ChatFinishReason.OTHER, observer.finishReason)
+    }
+
+    @Test
+    fun keepsLengthEvenWhenDoneFollows() {
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody(
+                    "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"length\"}]}\n\n" +
+                        "data: [DONE]\n\n",
+                ),
+        )
+        server.start()
+        val observer = RecordingObserver()
+        clientFor(server, apiKey = "key").stream(
+            listOf(PromptMessage(PromptRole.USER, "Hi")),
+            observer,
+            ChatGenerationOptions(),
+        )
+        assertTrue(observer.finished.await(5, TimeUnit.SECONDS))
+        assertEquals(ChatFinishReason.LENGTH, observer.finishReason)
+    }
+
+    @Test
+    fun treatsDoneWithoutFinishReasonAsStop() {
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody("data: [DONE]\n\n"),
+        )
+        server.start()
+        val observer = RecordingObserver()
+        clientFor(server, apiKey = "key").stream(
+            listOf(PromptMessage(PromptRole.USER, "Hi")),
+            observer,
+            ChatGenerationOptions(),
+        )
+        assertTrue(observer.finished.await(5, TimeUnit.SECONDS))
+        assertEquals(ChatFinishReason.STOP, observer.finishReason)
+    }
+
+    @Test
     fun reportsEofWhenNeitherDoneNorFinishReasonArrives() {
         server.enqueue(
             MockResponse()
