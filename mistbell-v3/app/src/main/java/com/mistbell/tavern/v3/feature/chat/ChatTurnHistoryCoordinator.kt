@@ -11,28 +11,37 @@ internal class ChatTurnHistoryCoordinator {
         openingMessage: String,
         userText: String,
     ) {
+        // Chat history is persisted and reloaded ordered by (createdAt, id). IDs are random UUIDs,
+        // so two messages created in the same millisecond can swap places after a restart. Keep
+        // timestamps strictly increasing within the turn (and after the previous message) so the
+        // user message always stays ahead of its assistant reply.
+        var nextTimestamp = maxOf(
+            System.currentTimeMillis(),
+            (history.lastOrNull()?.createdAtEpochMillis ?: 0L) + 1L,
+        )
         if (history.isEmpty() && openingMessage.isNotBlank()) {
             history += ChatLine(
                 id = UUID.randomUUID().toString(),
                 role = "assistant",
                 content = openingMessage,
-                createdAtEpochMillis = System.currentTimeMillis(),
+                createdAtEpochMillis = nextTimestamp,
                 deliveryState = PersistedChatMessage.DeliveryState.COMPLETE,
             )
+            nextTimestamp += 1L
         }
-        val now = System.currentTimeMillis()
         history += ChatLine(
             id = UUID.randomUUID().toString(),
             role = "user",
             content = userText,
-            createdAtEpochMillis = now,
+            createdAtEpochMillis = nextTimestamp,
             deliveryState = PersistedChatMessage.DeliveryState.COMPLETE,
         )
+        nextTimestamp += 1L
         history += ChatLine(
             id = UUID.randomUUID().toString(),
             role = "assistant",
             content = "",
-            createdAtEpochMillis = now,
+            createdAtEpochMillis = nextTimestamp,
             deliveryState = PersistedChatMessage.DeliveryState.PENDING,
         )
     }

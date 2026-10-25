@@ -26,6 +26,7 @@ internal class ChatStreamObserverCoordinator(
     ): ChatStreamObserver =
         object : ChatStreamObserver {
             @Volatile private var lastFinishReason: ChatFinishReason? = null
+            @Volatile private var reasoningChars: Int = 0
 
             private fun updateAssistant(transform: (ChatLine) -> ChatLine) {
                 mainHandler.post {
@@ -37,6 +38,10 @@ internal class ChatStreamObserverCoordinator(
 
             override fun onDelta(text: String) {
                 updateAssistant { line -> line.copy(content = line.content + text) }
+            }
+
+            override fun onReasoningDelta(text: String) {
+                reasoningChars += text.length
             }
 
             override fun onUsage(usage: ChatTokenUsage) {
@@ -57,13 +62,17 @@ internal class ChatStreamObserverCoordinator(
                     "chat.usage",
                     "promptTokens=${usage.promptTokens}; completionTokens=${usage.completionTokens}; " +
                         "totalTokens=${usage.totalTokens}; " +
-                        "cachedPromptTokens=${usage.cachedPromptTokens ?: "unknown"}",
+                        "cachedPromptTokens=${usage.cachedPromptTokens ?: "unknown"}; " +
+                        "reasoningTokens=${usage.reasoningTokens ?: "unknown"}",
                 )
             }
 
             override fun onFinish(reason: ChatFinishReason) {
                 lastFinishReason = reason
                 diagnosticStore.info("chat.stream.finished", "reason=${reason.name}")
+                if (reasoningChars > 0) {
+                    diagnosticStore.info("chat.reasoning", "reasoningChars=$reasoningChars")
+                }
             }
 
             override fun onComplete() {

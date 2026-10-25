@@ -1010,6 +1010,12 @@ fun ChatScreen(
                                 setStatus = { status = it },
                             ).start(openingMessage, userText)
                             diagnosticStore.info("chat.send.started", "conversation=${requestConversationId.take(8)}")
+                            diagnosticStore.info(
+                                "chat.request.options",
+                                "maxTokens=${settings.getInt("chat_max_tokens", 4096)}; " +
+                                    "stream=${chatGenerationPreferences.streamEnabled}; " +
+                                    "thinking=${chatGenerationPreferences.thinkingEnabled}",
+                            )
                             val assistantMessageId = history.lastOrNull { it.role == "assistant" }?.id.orEmpty()
                             val requestHistory = history.toList()
                             diagnosticStore.info("chat.send.prepare.begin", "history=${requestHistory.size}")
