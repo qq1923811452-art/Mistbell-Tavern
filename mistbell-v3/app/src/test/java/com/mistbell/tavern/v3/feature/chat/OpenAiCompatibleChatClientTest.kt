@@ -415,6 +415,50 @@ class OpenAiCompatibleChatClientTest {
         assertEquals("Hi!", observer.output.toString())
     }
 
+    @Test
+    fun surfacesProviderErrorsFromNonStreamingResponses() {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("{\"error\":{\"message\":\"model gemini is not available\"}}"),
+        )
+        server.start()
+        val observer = RecordingObserver()
+
+        clientFor(server, apiKey = "key").stream(
+            listOf(PromptMessage(PromptRole.USER, "Hi")),
+            observer,
+            ChatGenerationOptions(stream = false),
+        )
+
+        assertTrue(observer.finished.await(5, TimeUnit.SECONDS))
+        assertEquals(ChatFailureKind.INVALID_STREAM, observer.failure?.kind)
+        assertEquals("model gemini is not available", observer.failure?.safeMessage)
+    }
+
+    @Test
+    fun surfacesProviderErrorsFromStreamingEvents() {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody("data: {\"error\":{\"message\":\"quota exceeded\"}}\n\n"),
+        )
+        server.start()
+        val observer = RecordingObserver()
+
+        clientFor(server, apiKey = "key").stream(
+            listOf(PromptMessage(PromptRole.USER, "Hi")),
+            observer,
+            ChatGenerationOptions(),
+        )
+
+        assertTrue(observer.finished.await(5, TimeUnit.SECONDS))
+        assertEquals(ChatFailureKind.INVALID_STREAM, observer.failure?.kind)
+        assertEquals("quota exceeded", observer.failure?.safeMessage)
+    }
+
     private class RecordingObserver : ChatStreamObserver {
         val output = StringBuilder()
         val reasoning = StringBuilder()

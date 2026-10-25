@@ -218,6 +218,12 @@ class OpenAiCompatibleChatClient(
                             readLimitedUtf8(body.source(), MAX_RESPONSE_BYTES)
                         }.getOrNull()
                         val root = runCatching { JSONObject(payload.orEmpty()) }.getOrNull()
+                        providerErrorMessage(root)?.let { message ->
+                            observer.onFailure(
+                                ChatStreamFailure(ChatFailureKind.INVALID_STREAM, safeMessage = message),
+                            )
+                            return
+                        }
                         val completion = root?.let(::completionText)
                         if (root == null || completion == null) {
                             observer.onFailure(
@@ -359,6 +365,12 @@ class OpenAiCompatibleChatClient(
                                     )
                                 }
                             }
+                            providerErrorMessage(event)?.let { message ->
+                                observer.onFailure(
+                                    ChatStreamFailure(ChatFailureKind.INVALID_STREAM, safeMessage = message),
+                                )
+                                return
+                            }
                             val choices = event.optJSONArray("choices") ?: continue
                             val choice = choices.optJSONObject(0) ?: continue
                             choice.optString("finish_reason")
@@ -414,6 +426,7 @@ class OpenAiCompatibleChatClient(
         const val MAX_SSE_LINE_CHARS = 1_000_000
         const val READ_CHUNK_BYTES = 8 * 1024
         private const val MAX_DIAGNOSTIC_KEYS = 6
+        private const val MAX_ERROR_MESSAGE_CHARS = 300
     }
 
     private fun readLimitedUtf8(source: BufferedSource, maxBytes: Long): String {
@@ -467,6 +480,18 @@ class OpenAiCompatibleChatClient(
             }
         }.takeIf(String::isNotEmpty)
         else -> null
+    }
+
+    private fun providerErrorMessage(root: JSONObject?): String? {
+        val error = root?.opt("error") ?: return null
+        val message = when (error) {
+            is JSONObject -> error.optString("message")
+                .takeIf(String::isNotBlank)
+                ?: error.optString("type").takeIf(String::isNotBlank)
+            is String -> error.takeIf(String::isNotBlank)
+            else -> null
+        } ?: return "Chat provider returned an error without a message."
+        return message.take(MAX_ERROR_MESSAGE_CHARS)
     }
 
     private fun malformedCompletionMessage(
