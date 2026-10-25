@@ -217,27 +217,21 @@ class OpenAiCompatibleChatClient(
                             }
                             readLimitedUtf8(body.source(), MAX_RESPONSE_BYTES)
                         }.getOrNull()
-                        val message = runCatching {
-                            JSONObject(payload.orEmpty())
-                                .optJSONArray("choices")
-                                ?.optJSONObject(0)
-                                ?.optJSONObject("message")
-                        }.getOrNull()
-                        if (message == null) {
+                        val root = runCatching { JSONObject(payload.orEmpty()) }.getOrNull()
+                        val completion = root?.let(::completionText)
+                        if (root == null || completion == null) {
                             observer.onFailure(
                                 ChatStreamFailure(
                                     ChatFailureKind.INVALID_STREAM,
-                                    safeMessage = "Chat provider returned malformed completion data.",
+                                    safeMessage = malformedCompletionMessage(opened, payload, root),
                                 ),
                             )
                             return
                         }
-                        val content = message.optString("content")
-                        if (content.isNotEmpty()) observer.onDelta(content)
-                        val reasoning = message.opt("reasoning_content")
-                        if (reasoning is String && reasoning.isNotEmpty()) {
-                            observer.onReasoningDelta(reasoning)
-                        }
+                        if (completion.isNotEmpty()) observer.onDelta(completion)
+                        root.let(::reasoningText)
+                            ?.takeIf(String::isNotEmpty)
+                            ?.let(observer::onReasoningDelta)
                         runCatching {
                             JSONObject(payload.orEmpty()).optJSONObject("usage")
                         }.getOrNull()?.let { usage ->
@@ -371,12 +365,12 @@ class OpenAiCompatibleChatClient(
                                 .takeIf { it.isNotBlank() && it != "null" }
                                 ?.let { finishReason = it }
                             val delta = choice.optJSONObject("delta") ?: continue
-                            val content = delta.opt("content")
-                            if (content is String && content.isNotEmpty()) observer.onDelta(content)
-                            val reasoning = delta.opt("reasoning_content")
-                            if (reasoning is String && reasoning.isNotEmpty()) {
-                                observer.onReasoningDelta(reasoning)
-                            }
+                            textOf(delta.opt("content"))
+                                ?.takeIf(String::isNotEmpty)
+                                ?.let(observer::onDelta)
+                            textOf(delta.opt("reasoning_content"))
+                                ?.takeIf(String::isNotEmpty)
+                                ?.let(observer::onReasoningDelta)
                         }
                         val reason = when {
                             finishReason.equals("length", ignoreCase = true) -> ChatFinishReason.LENGTH
@@ -419,6 +413,7 @@ class OpenAiCompatibleChatClient(
         const val MAX_RESPONSE_BYTES = 8L * 1024 * 1024
         const val MAX_SSE_LINE_CHARS = 1_000_000
         const val READ_CHUNK_BYTES = 8 * 1024
+        private const val MAX_DIAGNOSTIC_KEYS = 6
     }
 
     private fun readLimitedUtf8(source: BufferedSource, maxBytes: Long): String {
@@ -431,6 +426,68 @@ class OpenAiCompatibleChatClient(
             require(output.size() <= maxBytes) { "Chat response exceeds the size limit." }
         }
         return output.toString(Charsets.UTF_8.name())
+    }
+
+    /**
+     * Reads completion text from the OpenAI shape plus the shapes some relays return for Gemini:
+     * array content parts, choices[0].delta/text, or native candidates[0].content.parts[].
+     */
+    private fun completionText(root: JSONObject): String? {
+        val first = root.optJSONArray("choices")?.optJSONObject(0)
+        val candidateParts = root.optJSONArray("candidates")
+            ?.optJSONObject(0)
+            ?.optJSONObject("content")
+            ?.optJSONArray("parts")
+        val value = first?.optJSONObject("message")?.opt("content")
+            ?: first?.optJSONObject("delta")?.opt("content")
+            ?: first?.opt("text")
+            ?: candidateParts
+            ?: root.opt("content")
+        return when (value) {
+            null -> root.optString("text").takeIf(String::isNotEmpty)
+            is String -> value
+            else -> textOf(value)
+        }
+    }
+
+    private fun reasoningText(root: JSONObject): String? {
+        val first = root.optJSONArray("choices")?.optJSONObject(0)
+        val value = first?.optJSONObject("message")?.opt("reasoning_content")
+            ?: first?.optJSONObject("delta")?.opt("reasoning_content")
+        return textOf(value)
+    }
+
+    private fun textOf(value: Any?): String? = when (value) {
+        is String -> value
+        is JSONArray -> buildString {
+            for (index in 0 until value.length()) {
+                val part = value.opt(index)
+                val text = if (part is JSONObject) part.optString("text") else part as? String
+                if (!text.isNullOrEmpty()) append(text)
+            }
+        }.takeIf(String::isNotEmpty)
+        else -> null
+    }
+
+    private fun malformedCompletionMessage(
+        response: Response,
+        payload: String?,
+        root: JSONObject?,
+    ): String {
+        val contentType = response.header("Content-Type")
+            ?.substringBefore(';')
+            ?.trim()
+            .orEmpty()
+            .ifEmpty { "unknown" }
+        val bytes = payload?.toByteArray(Charsets.UTF_8)?.size ?: 0
+        val keys = root?.keys()
+            ?.asSequence()
+            ?.take(MAX_DIAGNOSTIC_KEYS)
+            ?.joinToString(",")
+            .orEmpty()
+            .ifEmpty { "unparsed" }
+        return "Chat provider returned malformed completion data " +
+            "(type=$contentType; bytes=$bytes; keys=$keys)."
     }
 
 }

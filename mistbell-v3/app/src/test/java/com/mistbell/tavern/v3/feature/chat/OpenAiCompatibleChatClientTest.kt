@@ -341,6 +341,80 @@ class OpenAiCompatibleChatClientTest {
         assertEquals("", observer.reasoning.toString())
     }
 
+    @Test
+    fun readsGeminiNativeNonStreamingCompletions() {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody(
+                    "{\"candidates\":[{\"content\":{\"parts\":[" +
+                        "{\"text\":\"你好\"},{\"text\":\"呀\"}]}}]}",
+                ),
+        )
+        server.start()
+        val observer = RecordingObserver()
+
+        clientFor(server, apiKey = "key").stream(
+            listOf(PromptMessage(PromptRole.USER, "Hi")),
+            observer,
+            ChatGenerationOptions(stream = false),
+        )
+
+        assertTrue(observer.finished.await(5, TimeUnit.SECONDS))
+        assertEquals("你好呀", observer.output.toString())
+    }
+
+    @Test
+    fun joinsArrayContentPartsInNonStreamingCompletions() {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody(
+                    "{\"choices\":[{\"message\":{\"content\":[" +
+                        "{\"type\":\"text\",\"text\":\"A\"}," +
+                        "{\"type\":\"text\",\"text\":\"B\"}]}}]}",
+                ),
+        )
+        server.start()
+        val observer = RecordingObserver()
+
+        clientFor(server, apiKey = "key").stream(
+            listOf(PromptMessage(PromptRole.USER, "Hi")),
+            observer,
+            ChatGenerationOptions(stream = false),
+        )
+
+        assertTrue(observer.finished.await(5, TimeUnit.SECONDS))
+        assertEquals("AB", observer.output.toString())
+    }
+
+    @Test
+    fun joinsArrayContentPartsInStreamingDeltas() {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody(
+                    "data: {\"choices\":[{\"delta\":{\"content\":[" +
+                        "{\"text\":\"Hi\"},{\"text\":\"!\"}]}}]}\n\n" +
+                        "data: [DONE]\n\n",
+                ),
+        )
+        server.start()
+        val observer = RecordingObserver()
+
+        clientFor(server, apiKey = "key").stream(
+            listOf(PromptMessage(PromptRole.USER, "Hi")),
+            observer,
+            ChatGenerationOptions(),
+        )
+
+        assertTrue(observer.finished.await(5, TimeUnit.SECONDS))
+        assertEquals("Hi!", observer.output.toString())
+    }
+
     private class RecordingObserver : ChatStreamObserver {
         val output = StringBuilder()
         val reasoning = StringBuilder()
