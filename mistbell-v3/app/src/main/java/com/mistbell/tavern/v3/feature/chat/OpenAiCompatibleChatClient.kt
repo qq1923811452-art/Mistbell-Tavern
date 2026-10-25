@@ -42,6 +42,8 @@ data class ChatTokenUsage(
     val completionTokens: Int,
     val totalTokens: Int,
     val cachedPromptTokens: Int? = null,
+    /** Reasoning tokens reported by the provider; they are counted inside completion tokens. */
+    val reasoningTokens: Int? = null,
 )
 
 data class ChatGenerationOptions(
@@ -71,6 +73,11 @@ interface ChatStreamObserver {
     fun onUsage(usage: ChatTokenUsage) = Unit
     /** Reports the provider's finish reason before [onComplete]. */
     fun onFinish(reason: ChatFinishReason) = Unit
+    /**
+     * Reports hidden reasoning text for providers that stream it separately. It is never shown as
+     * reply content; callers may only use it for diagnostics or to explain token usage.
+     */
+    fun onReasoningDelta(text: String) = Unit
 }
 
 class ChatClientConfigurationException(message: String) : IllegalStateException(message)
@@ -227,6 +234,10 @@ class OpenAiCompatibleChatClient(
                         }
                         val content = message.optString("content")
                         if (content.isNotEmpty()) observer.onDelta(content)
+                        val reasoning = message.opt("reasoning_content")
+                        if (reasoning is String && reasoning.isNotEmpty()) {
+                            observer.onReasoningDelta(reasoning)
+                        }
                         runCatching {
                             JSONObject(payload.orEmpty()).optJSONObject("usage")
                         }.getOrNull()?.let { usage ->
@@ -237,6 +248,10 @@ class OpenAiCompatibleChatClient(
                             val cached = usage.optJSONObject("prompt_tokens_details")
                                 ?.optInt("cached_tokens", 0)
                                 ?.coerceAtLeast(0)
+                            val reasoning = usage.optJSONObject("completion_tokens_details")
+                                ?.takeIf { it.has("reasoning_tokens") }
+                                ?.optInt("reasoning_tokens", 0)
+                                ?.coerceAtLeast(0)
                             if (promptTokens > 0 || completionTokens > 0) {
                                 observer.onUsage(
                                     ChatTokenUsage(
@@ -244,6 +259,7 @@ class OpenAiCompatibleChatClient(
                                         completionTokens = completionTokens,
                                         totalTokens = totalTokens,
                                         cachedPromptTokens = cached,
+                                        reasoningTokens = reasoning,
                                     ),
                                 )
                             }
@@ -334,12 +350,17 @@ class OpenAiCompatibleChatClient(
                                             usage.optInt("total_cached_tokens")
                                         else -> null
                                     }
+                                    val reasoning = usage.optJSONObject("completion_tokens_details")
+                                        ?.takeIf { it.has("reasoning_tokens") }
+                                        ?.optInt("reasoning_tokens", 0)
+                                        ?.coerceAtLeast(0)
                                     observer.onUsage(
                                         ChatTokenUsage(
                                             promptTokens = promptTokens.coerceAtLeast(0),
                                             completionTokens = completionTokens.coerceAtLeast(0),
                                             totalTokens = totalTokens.coerceAtLeast(0),
                                             cachedPromptTokens = cachedTokens?.coerceAtLeast(0),
+                                            reasoningTokens = reasoning,
                                         ),
                                     )
                                 }
@@ -352,6 +373,10 @@ class OpenAiCompatibleChatClient(
                             val delta = choice.optJSONObject("delta") ?: continue
                             val content = delta.opt("content")
                             if (content is String && content.isNotEmpty()) observer.onDelta(content)
+                            val reasoning = delta.opt("reasoning_content")
+                            if (reasoning is String && reasoning.isNotEmpty()) {
+                                observer.onReasoningDelta(reasoning)
+                            }
                         }
                         val reason = when {
                             finishReason.equals("length", ignoreCase = true) -> ChatFinishReason.LENGTH

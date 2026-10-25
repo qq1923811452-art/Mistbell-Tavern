@@ -3,6 +3,7 @@ package com.mistbell.tavern.v3.feature.chat
 import android.os.Handler
 import com.mistbell.tavern.v3.core.diagnostics.DiagnosticLogStore
 import com.mistbell.tavern.v3.core.model.ProviderProfileSet
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Owns the existing stream callbacks that update visible message delivery state and usage.
@@ -26,6 +27,7 @@ internal class ChatStreamObserverCoordinator(
     ): ChatStreamObserver =
         object : ChatStreamObserver {
             @Volatile private var lastFinishReason: ChatFinishReason? = null
+            private val reasoningChars = AtomicInteger(0)
 
             private fun updateAssistant(transform: (ChatLine) -> ChatLine) {
                 mainHandler.post {
@@ -37,6 +39,10 @@ internal class ChatStreamObserverCoordinator(
 
             override fun onDelta(text: String) {
                 updateAssistant { line -> line.copy(content = line.content + text) }
+            }
+
+            override fun onReasoningDelta(text: String) {
+                reasoningChars.addAndGet(text.length)
             }
 
             override fun onUsage(usage: ChatTokenUsage) {
@@ -57,13 +63,18 @@ internal class ChatStreamObserverCoordinator(
                     "chat.usage",
                     "promptTokens=${usage.promptTokens}; completionTokens=${usage.completionTokens}; " +
                         "totalTokens=${usage.totalTokens}; " +
-                        "cachedPromptTokens=${usage.cachedPromptTokens ?: "unknown"}",
+                        "cachedPromptTokens=${usage.cachedPromptTokens ?: "unknown"}; " +
+                        "reasoningTokens=${usage.reasoningTokens ?: "unknown"}",
                 )
             }
 
             override fun onFinish(reason: ChatFinishReason) {
                 lastFinishReason = reason
                 diagnosticStore.info("chat.stream.finished", "reason=${reason.name}")
+                val reasoningCount = reasoningChars.get()
+                if (reasoningCount > 0) {
+                    diagnosticStore.info("chat.reasoning", "reasoningChars=$reasoningCount")
+                }
             }
 
             override fun onComplete() {

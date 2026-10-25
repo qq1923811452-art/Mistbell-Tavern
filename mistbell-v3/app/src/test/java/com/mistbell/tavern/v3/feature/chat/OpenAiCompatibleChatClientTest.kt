@@ -286,8 +286,64 @@ class OpenAiCompatibleChatClientTest {
         )
     }
 
+    @Test
+    fun keepsReasoningSeparateFromVisibleContentAndReportsReasoningTokens() {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody(
+                    "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"think \"}}]}\n\n" +
+                        "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"more\"}}]}\n\n" +
+                        "data: {\"choices\":[{\"delta\":{\"content\":\"answer\"}}]}\n\n" +
+                        "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":20," +
+                        "\"total_tokens\":30,\"completion_tokens_details\":{\"reasoning_tokens\":8}}}\n\n" +
+                        "data: [DONE]\n\n",
+                ),
+        )
+        server.start()
+        val observer = RecordingObserver()
+
+        clientFor(server, apiKey = "key").stream(
+            listOf(PromptMessage(PromptRole.USER, "Hi")),
+            observer,
+            ChatGenerationOptions(),
+        )
+
+        assertTrue(observer.finished.await(5, TimeUnit.SECONDS))
+        assertEquals("answer", observer.output.toString())
+        assertEquals("think more", observer.reasoning.toString())
+        assertEquals(8, observer.usage?.reasoningTokens)
+    }
+
+    @Test
+    fun ignoresNonStringReasoningInNonStreamingResponses() {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody(
+                    "{\"choices\":[{\"message\":{\"content\":\"hi\",\"reasoning_content\":42}}]," +
+                        "\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":2,\"total_tokens\":3}}",
+                ),
+        )
+        server.start()
+        val observer = RecordingObserver()
+
+        clientFor(server, apiKey = "key").stream(
+            listOf(PromptMessage(PromptRole.USER, "Hi")),
+            observer,
+            ChatGenerationOptions(stream = false),
+        )
+
+        assertTrue(observer.finished.await(5, TimeUnit.SECONDS))
+        assertEquals("hi", observer.output.toString())
+        assertEquals("", observer.reasoning.toString())
+    }
+
     private class RecordingObserver : ChatStreamObserver {
         val output = StringBuilder()
+        val reasoning = StringBuilder()
         val finished = CountDownLatch(1)
         @Volatile var failure: ChatStreamFailure? = null
         @Volatile var usage: ChatTokenUsage? = null
@@ -295,6 +351,10 @@ class OpenAiCompatibleChatClientTest {
 
         override fun onDelta(text: String) {
             output.append(text)
+        }
+
+        override fun onReasoningDelta(text: String) {
+            reasoning.append(text)
         }
 
         override fun onComplete() {
