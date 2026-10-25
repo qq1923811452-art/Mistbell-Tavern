@@ -53,11 +53,16 @@ class CharacterCardJsonCodecTest {
         )
 
         assertEquals(
-            "Name: Mira\n\nDescription: A mage\n\nPersonality: Curious\n\nExample dialogue:\nExample: The mage smiles.\n\nSystem instructions: Be kind\n\nPost-history instructions: Stay in character",
+            "Name: Mira\n\nDescription: A mage\n\nPersonality: Curious\n\n" +
+                "Example dialogue:\nExample: The mage smiles.\n\nSystem instructions: Be kind",
             card.stableDefinition(),
         )
         assertTrue(!card.stableDefinition().contains("volatile opening"))
         assertTrue(card.stableDefinition().contains("Example dialogue:"))
+        assertTrue(
+            "Post-history instructions must be injected after the conversation, not into the stable prefix.",
+            !card.stableDefinition().contains("Stay in character"),
+        )
     }
 
 }

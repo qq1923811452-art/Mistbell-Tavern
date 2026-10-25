@@ -11,6 +11,7 @@ internal class ChatPromptAssemblyCoordinator {
         contextWindow: ConversationContextWindow,
         activatedWorldbook: List<WorldBookEntry>,
         latestUserMessage: String,
+        postHistoryInstructions: String? = null,
     ): List<PromptMessage> = PromptAssembler.assemble(
         PromptAssemblyInput(
             stableSystemPrefix = "你是 Mistbell Tavern 的聊天助手。请直接、清晰地回答用户。",
@@ -19,6 +20,7 @@ internal class ChatPromptAssemblyCoordinator {
             worldbookEntries = activatedWorldbook,
             conversationHistory = contextWindow.recentMessages,
             latestUserMessage = latestUserMessage,
+            postHistoryInstructions = postHistoryInstructions,
         ),
     )
 }

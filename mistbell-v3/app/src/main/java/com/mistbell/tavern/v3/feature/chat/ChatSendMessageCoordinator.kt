@@ -31,6 +31,7 @@ internal class ChatSendMessageCoordinator(
         worldbookStateKey: String,
         onBudgetExceeded: (Int) -> Unit,
         historyIsComplete: Boolean = false,
+        postHistoryInstructions: String? = null,
     ): ChatSendMessagePreparation {
         val completedLines = if (historyIsComplete) history else history.dropLast(2)
         val completeHistory = completedLines.mapNotNull { line ->
@@ -69,6 +70,7 @@ internal class ChatSendMessageCoordinator(
             contextWindow = contextWindow,
             activatedWorldbook = activationReport.activatedEntries.map { it.entry },
             latestUserMessage = userText,
+            postHistoryInstructions = postHistoryInstructions,
         )
         val assemblyMs = (System.nanoTime() - assemblyStarted) / NANOS_PER_MILLI
         diagnosticStore.info(

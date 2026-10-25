@@ -23,8 +23,14 @@ class MemoryAwareChatRequest(
         messages: List<PromptMessage>,
         observer: ChatStreamObserver,
         options: ChatGenerationOptions = ChatGenerationOptions(),
+        memoryQuery: String? = null,
     ): Call {
-        val latestUserMessage = messages.lastOrNull { it.role == PromptRole.USER }?.content
+        // Prefer the caller's raw user text. Parsing the assembled message for a post-history
+        // marker is unsafe: user or worldbook content can contain the same text.
+        val latestUserMessage = memoryQuery
+            ?.trim()
+            ?.takeIf(String::isNotEmpty)
+            ?: messages.lastOrNull { it.role == PromptRole.USER }?.content
         val memoryResult = if (latestUserMessage.isNullOrBlank()) {
             VectorMemoryContextResult.NoRelevantMemories
         } else {

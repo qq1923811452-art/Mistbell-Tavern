@@ -69,6 +69,34 @@ object GroupPromptAssembler {
         }
     }
 
+    /**
+     * Labels real assistant history messages with their speaker names while leaving derived
+     * messages (worldbook depth insertions, marked `synthetic`) untouched. Synthetic assistant
+     * messages are not part of the conversation and must not consume a history speaker name.
+     *
+     * Callers may pass names from the full history even when the prompt only keeps its newest
+     * window. The returned labels align to the retained messages by taking the last names.
+     */
+    fun labelHistoryAssistantMessages(
+        messages: List<PromptMessage>,
+        assistantNames: List<String?>,
+    ): List<PromptMessage> {
+        val retainedAssistantCount = messages.count {
+            it.role == PromptRole.ASSISTANT && !it.synthetic
+        }
+        val windowedNames = assistantNames.takeLast(retainedAssistantCount)
+        var assistantIndex = 0
+        return messages.map { message ->
+            if (message.role != PromptRole.ASSISTANT || message.synthetic) {
+                message
+            } else {
+                val name = windowedNames.getOrNull(assistantIndex)
+                assistantIndex += 1
+                message.copy(content = labelAssistantContent(name, message.content))
+            }
+        }
+    }
+
     /** Trims [text] and replaces each internal whitespace run with a single space. */
     private fun singleLine(text: String): String = text.trim().replace(INLINE_WHITESPACE, " ")
 }
