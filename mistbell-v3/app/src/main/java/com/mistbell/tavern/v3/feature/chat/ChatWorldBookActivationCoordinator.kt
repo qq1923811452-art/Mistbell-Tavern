@@ -59,14 +59,32 @@ internal class ChatWorldBookActivationCoordinator(
     }
 
     private fun embeddedEntries(selectedCard: CharacterCard?): List<WorldBookEntry> =
-        selectedCard?.characterBookJson?.let { raw ->
+        selectedCard?.let(CharacterBookEntryCache::entries).orEmpty()
+}
+
+/** Parses a character's embedded worldbook once per card content. */
+private object CharacterBookEntryCache {
+    private var cachedName: String? = null
+    private var cachedRaw: String? = null
+    private var cachedEntries: List<WorldBookEntry> = emptyList()
+
+    @Synchronized
+    fun entries(card: CharacterCard): List<WorldBookEntry> {
+        val raw = card.characterBookJson
+        if (cachedName == card.name && cachedRaw == raw) return cachedEntries
+        val parsed = raw?.let { json ->
             runCatching {
-                WorldBookParser.parse(raw, "角色卡：${selectedCard.name}")?.entries.orEmpty().map { entry ->
+                WorldBookParser.parse(json, "角色卡：${card.name}")?.entries.orEmpty().map { entry ->
                     entry.copy(
-                        id = "character-book:${selectedCard.name}:${entry.id}",
-                        bookId = "character-book:${selectedCard.name}:${entry.bookId}",
+                        id = "character-book:${card.name}:${entry.id}",
+                        bookId = "character-book:${card.name}:${entry.bookId}",
                     )
                 }
             }.getOrDefault(emptyList())
         }.orEmpty()
+        cachedName = card.name
+        cachedRaw = raw
+        cachedEntries = parsed
+        return parsed
+    }
 }

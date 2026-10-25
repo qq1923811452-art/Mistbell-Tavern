@@ -43,10 +43,13 @@ internal class ChatSendMessageCoordinator(
                 )
             }
         }
+        val historyStarted = System.nanoTime()
         val contextWindow = ChatPromptHistoryCoordinator(settings).build(completeHistory)
+        val historyMs = (System.nanoTime() - historyStarted) / NANOS_PER_MILLI
 
         // Activate entries from the asynchronously loaded local library against
         // the current turn plus a bounded tail of recent conversation.
+        val activationStarted = System.nanoTime()
         val activationReport = ChatWorldBookActivationCoordinator(
             settings = settings,
             diagnosticStore = diagnosticStore,
@@ -59,12 +62,21 @@ internal class ChatSendMessageCoordinator(
             stateKey = worldbookStateKey,
             onBudgetExceeded = onBudgetExceeded,
         )
+        val activationMs = (System.nanoTime() - activationStarted) / NANOS_PER_MILLI
+        val assemblyStarted = System.nanoTime()
         val messages = ChatPromptAssemblyCoordinator().assemble(
             characterDefinition = characterDefinition,
             contextWindow = contextWindow,
             activatedWorldbook = activationReport.activatedEntries.map { it.entry },
             latestUserMessage = userText,
         )
+        val assemblyMs = (System.nanoTime() - assemblyStarted) / NANOS_PER_MILLI
+        diagnosticStore.info(
+            "chat.prompt.stages",
+            "historyMs=$historyMs; activationMs=$activationMs; assemblyMs=$assemblyMs",
+        )
         return ChatSendMessagePreparation(messages = messages)
     }
 }
+
+private const val NANOS_PER_MILLI = 1_000_000

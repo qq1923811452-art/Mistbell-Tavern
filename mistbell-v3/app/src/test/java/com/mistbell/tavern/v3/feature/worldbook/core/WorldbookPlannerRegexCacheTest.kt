@@ -1,0 +1,82 @@
+package com.mistbell.tavern.v3.feature.worldbook.core
+
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Before
+import org.junit.Test
+
+class WorldbookPlannerRegexCacheTest {
+    private val planner = WorldbookPlanner()
+
+    @Before
+    fun setUp() = WorldbookPlanner.clearRegexCacheForTest()
+
+    @After
+    fun tearDown() = WorldbookPlanner.clearRegexCacheForTest()
+
+    @Test
+    fun cacheNeverExceedsItsBound() {
+        repeat(WorldbookPlanner.MAX_REGEX_CACHE_ENTRIES_FOR_TEST + 64) { index ->
+            planner.matchingKeys(listOf("word$index*"), "word$index content")
+        }
+        assertTrue(WorldbookPlanner.regexCacheSizeForTest() <= WorldbookPlanner.MAX_REGEX_CACHE_ENTRIES_FOR_TEST)
+    }
+
+    @Test
+    fun recentlyUsedEntrySurvivesEviction() {
+        planner.matchingKeys(listOf("/keep-me/"), "keep-me")
+        // Fill the remaining 255 slots so the cache is exactly full.
+        repeat(WorldbookPlanner.MAX_REGEX_CACHE_ENTRIES_FOR_TEST - 1) { index ->
+            planner.matchingKeys(listOf("filler$index*"), "filler$index")
+        }
+        assertTrue(WorldbookPlanner.regexCacheContainsForTest("raw:keep-me"))
+        // Refresh keep-me to most recently used, then force one eviction.
+        planner.matchingKeys(listOf("/keep-me/"), "keep-me")
+        planner.matchingKeys(listOf("one-more*"), "one more")
+        assertTrue(WorldbookPlanner.regexCacheContainsForTest("raw:keep-me"))
+        assertFalse(WorldbookPlanner.regexCacheContainsForTest("wild:filler0.*"))
+        assertTrue(WorldbookPlanner.regexCacheSizeForTest() <= WorldbookPlanner.MAX_REGEX_CACHE_ENTRIES_FOR_TEST)
+    }
+
+    @Test
+    fun invalidRegexFallsBackToLiteralMatching() {
+        val matched = planner.matchingKeys(listOf("/([/"), "literal /([/ inside")
+        assertEquals(1, matched.size)
+    }
+
+    @Test
+    fun concurrentLookupsDoNotCorruptTheCache() {
+        val pool = Executors.newFixedThreadPool(8)
+        val failure = java.util.concurrent.atomic.AtomicReference<Throwable?>()
+        try {
+            val start = CountDownLatch(1)
+            val done = CountDownLatch(8)
+            repeat(8) { worker ->
+                pool.execute {
+                    try {
+                        start.await()
+                        repeat(200) { index ->
+                            planner.matchingKeys(listOf("/shared$worker-$index/"), "shared$worker-$index")
+                        }
+                    } catch (error: Throwable) {
+                        failure.compareAndSet(null, error)
+                    } finally {
+                        done.countDown()
+                    }
+                }
+            }
+            start.countDown()
+            assertTrue(done.await(30, TimeUnit.SECONDS))
+        } finally {
+            pool.shutdown()
+            pool.awaitTermination(10, TimeUnit.SECONDS)
+        }
+        failure.get()?.let { throw AssertionError("worker failed", it) }
+        assertTrue(WorldbookPlanner.regexCacheSizeForTest() <= WorldbookPlanner.MAX_REGEX_CACHE_ENTRIES_FOR_TEST)
+    }
+}
