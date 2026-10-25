@@ -176,6 +176,23 @@ class GroupPromptAssemblerTest {
         assertEquals("[Bob] Second", labelled[3].content)
     }
 
+    @Test
+    fun labelHistoryAssistantMessagesAlignsNamesToARetainedHistoryWindow() {
+        val messages = listOf(
+            PromptMessage(PromptRole.SYSTEM, "Rules"),
+            PromptMessage(PromptRole.USER, "Recent question"),
+            PromptMessage(PromptRole.ASSISTANT, "Bob reply"),
+            PromptMessage(PromptRole.USER, "Latest question"),
+        )
+
+        val labelled = GroupPromptAssembler.labelHistoryAssistantMessages(
+            messages,
+            assistantNames = listOf("Alice", "Bob"),
+        )
+
+        assertEquals("[Bob] Bob reply", labelled[2].content)
+    }
+
     private fun member(id: String, name: String, brief: String = "") =
         GroupPromptAssembler.Member(id = id, name = name, brief = brief)
 
