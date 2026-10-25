@@ -444,6 +444,8 @@ class OpenAiCompatibleChatClient(
                 if (!text.isNullOrEmpty()) append(text)
             }
         }.takeIf(String::isNotEmpty)
+        is JSONObject -> value.optString("text").takeIf(String::isNotEmpty)
+            ?: textOf(value.optJSONArray("parts"))
         else -> null
     }
 

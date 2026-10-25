@@ -481,6 +481,30 @@ class OpenAiCompatibleChatClientTest {
         assertEquals(ChatFinishReason.STOP, observer.finishReason)
     }
 
+    @Test
+    fun readsObjectShapedContentInNonStreamingCompletions() {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody(
+                    "{\"choices\":[{\"message\":{\"content\":" +
+                        "{\"type\":\"text\",\"text\":\"nested\"}}}]}",
+                ),
+        )
+        server.start()
+        val observer = RecordingObserver()
+
+        clientFor(server, apiKey = "key").stream(
+            listOf(PromptMessage(PromptRole.USER, "Hi")),
+            observer,
+            ChatGenerationOptions(stream = false),
+        )
+
+        assertTrue(observer.finished.await(5, TimeUnit.SECONDS))
+        assertEquals("nested", observer.output.toString())
+    }
+
     private class RecordingObserver : ChatStreamObserver {
         val output = StringBuilder()
         val reasoning = StringBuilder()
