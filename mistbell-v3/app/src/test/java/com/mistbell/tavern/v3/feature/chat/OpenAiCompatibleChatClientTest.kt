@@ -459,6 +459,28 @@ class OpenAiCompatibleChatClientTest {
         assertEquals("quota exceeded", observer.failure?.safeMessage)
     }
 
+    @Test
+    fun fallsBackToJsonWhenAStreamingRequestGetsANonSseBody() {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("{\"choices\":[{\"message\":{\"content\":\"JSON fallback\"}}]}"),
+        )
+        server.start()
+        val observer = RecordingObserver()
+
+        clientFor(server, apiKey = "key").stream(
+            listOf(PromptMessage(PromptRole.USER, "Hi")),
+            observer,
+            ChatGenerationOptions(stream = true),
+        )
+
+        assertTrue(observer.finished.await(5, TimeUnit.SECONDS))
+        assertEquals("JSON fallback", observer.output.toString())
+        assertEquals(ChatFinishReason.STOP, observer.finishReason)
+    }
+
     private class RecordingObserver : ChatStreamObserver {
         val output = StringBuilder()
         val reasoning = StringBuilder()

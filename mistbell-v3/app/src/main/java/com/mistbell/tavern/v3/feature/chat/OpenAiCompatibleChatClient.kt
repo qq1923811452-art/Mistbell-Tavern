@@ -217,54 +217,7 @@ class OpenAiCompatibleChatClient(
                             }
                             readLimitedUtf8(body.source(), MAX_RESPONSE_BYTES)
                         }.getOrNull()
-                        val root = runCatching { JSONObject(payload.orEmpty()) }.getOrNull()
-                        providerErrorMessage(root)?.let { message ->
-                            observer.onFailure(
-                                ChatStreamFailure(ChatFailureKind.INVALID_STREAM, safeMessage = message),
-                            )
-                            return
-                        }
-                        val completion = root?.let(::completionText)
-                        if (root == null || completion == null) {
-                            observer.onFailure(
-                                ChatStreamFailure(
-                                    ChatFailureKind.INVALID_STREAM,
-                                    safeMessage = malformedCompletionMessage(opened, payload, root),
-                                ),
-                            )
-                            return
-                        }
-                        if (completion.isNotEmpty()) observer.onDelta(completion)
-                        root.let(::reasoningText)
-                            ?.takeIf(String::isNotEmpty)
-                            ?.let(observer::onReasoningDelta)
-                        runCatching {
-                            JSONObject(payload.orEmpty()).optJSONObject("usage")
-                        }.getOrNull()?.let { usage ->
-                            val promptTokens = usage.optInt("prompt_tokens", 0).coerceAtLeast(0)
-                            val completionTokens = usage.optInt("completion_tokens", 0).coerceAtLeast(0)
-                            val totalTokens = usage.optInt("total_tokens", 0)
-                                .coerceAtLeast(promptTokens + completionTokens)
-                            val cached = usage.optJSONObject("prompt_tokens_details")
-                                ?.optInt("cached_tokens", 0)
-                                ?.coerceAtLeast(0)
-                            val reasoning = usage.optJSONObject("completion_tokens_details")
-                                ?.takeIf { it.has("reasoning_tokens") }
-                                ?.optInt("reasoning_tokens", 0)
-                                ?.coerceAtLeast(0)
-                            if (promptTokens > 0 || completionTokens > 0) {
-                                observer.onUsage(
-                                    ChatTokenUsage(
-                                        promptTokens = promptTokens,
-                                        completionTokens = completionTokens,
-                                        totalTokens = totalTokens,
-                                        cachedPromptTokens = cached,
-                                        reasoningTokens = reasoning,
-                                    ),
-                                )
-                            }
-                        }
-                        observer.onComplete()
+                        parseCompletionPayload(payload, opened.header("Content-Type"), observer)
                     }
                 }
             })
@@ -306,6 +259,8 @@ class OpenAiCompatibleChatClient(
                     try {
                         val source = responseBody.source()
                         var sawDone = false
+                        var sawSseEvent = false
+                        val nonSseBody = StringBuilder()
                         var finishReason: String? = null
                         while (!source.exhausted()) {
                             val line = source.readUtf8Line() ?: break
@@ -313,8 +268,10 @@ class OpenAiCompatibleChatClient(
                                 "Streaming event exceeds the line limit."
                             }
                             if (line.isBlank() || line.startsWith(":") || !line.startsWith("data:")) {
+                                if (line.trimStart().startsWith("{")) nonSseBody.appendLine(line)
                                 continue
                             }
+                            sawSseEvent = true
                             val eventData = line.removePrefix("data:").trimStart()
                             if (eventData == "[DONE]") {
                                 sawDone = true
@@ -383,6 +340,14 @@ class OpenAiCompatibleChatClient(
                             textOf(delta.opt("reasoning_content"))
                                 ?.takeIf(String::isNotEmpty)
                                 ?.let(observer::onReasoningDelta)
+                        }
+                        if (!sawSseEvent && nonSseBody.isNotEmpty()) {
+                            parseCompletionPayload(
+                                nonSseBody.toString(),
+                                opened.header("Content-Type"),
+                                observer,
+                            )
+                            return
                         }
                         val reason = when {
                             finishReason.equals("length", ignoreCase = true) -> ChatFinishReason.LENGTH
@@ -494,12 +459,67 @@ class OpenAiCompatibleChatClient(
         return message.take(MAX_ERROR_MESSAGE_CHARS)
     }
 
+    /**
+     * Handles a complete JSON completion body. Used by the non-streaming request path and as a
+     * fallback when a relay ignores `stream` and returns plain JSON to a streaming request.
+     */
+    private fun parseCompletionPayload(
+        payload: String?,
+        contentTypeHeader: String?,
+        observer: ChatStreamObserver,
+    ) {
+        val root = runCatching { JSONObject(payload.orEmpty()) }.getOrNull()
+        providerErrorMessage(root)?.let { message ->
+            observer.onFailure(ChatStreamFailure(ChatFailureKind.INVALID_STREAM, safeMessage = message))
+            return
+        }
+        val completion = root?.let(::completionText)
+        if (root == null || completion == null) {
+            observer.onFailure(
+                ChatStreamFailure(
+                    ChatFailureKind.INVALID_STREAM,
+                    safeMessage = malformedCompletionMessage(contentTypeHeader, payload, root),
+                ),
+            )
+            return
+        }
+        if (completion.isNotEmpty()) observer.onDelta(completion)
+        root.let(::reasoningText)?.takeIf(String::isNotEmpty)?.let(observer::onReasoningDelta)
+        root.optJSONObject("usage")?.let { usage -> emitUsage(usage, observer) }
+        observer.onFinish(ChatFinishReason.STOP)
+        observer.onComplete()
+    }
+
+    private fun emitUsage(usage: JSONObject, observer: ChatStreamObserver) {
+        val promptTokens = usage.optInt("prompt_tokens", 0).coerceAtLeast(0)
+        val completionTokens = usage.optInt("completion_tokens", 0).coerceAtLeast(0)
+        val totalTokens = usage.optInt("total_tokens", 0).coerceAtLeast(promptTokens + completionTokens)
+        val cached = usage.optJSONObject("prompt_tokens_details")
+            ?.optInt("cached_tokens", 0)
+            ?.coerceAtLeast(0)
+        val reasoning = usage.optJSONObject("completion_tokens_details")
+            ?.takeIf { it.has("reasoning_tokens") }
+            ?.optInt("reasoning_tokens", 0)
+            ?.coerceAtLeast(0)
+        if (promptTokens > 0 || completionTokens > 0) {
+            observer.onUsage(
+                ChatTokenUsage(
+                    promptTokens = promptTokens,
+                    completionTokens = completionTokens,
+                    totalTokens = totalTokens,
+                    cachedPromptTokens = cached,
+                    reasoningTokens = reasoning,
+                ),
+            )
+        }
+    }
+
     private fun malformedCompletionMessage(
-        response: Response,
+        contentTypeHeader: String?,
         payload: String?,
         root: JSONObject?,
     ): String {
-        val contentType = response.header("Content-Type")
+        val contentType = contentTypeHeader
             ?.substringBefore(';')
             ?.trim()
             .orEmpty()
