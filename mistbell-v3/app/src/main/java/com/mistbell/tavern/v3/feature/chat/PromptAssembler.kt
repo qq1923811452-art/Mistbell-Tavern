@@ -22,6 +22,8 @@ data class PromptAssemblyInput(
     val worldbookEntries: List<WorldBookEntry> = emptyList(),
     val conversationHistory: List<PromptMessage> = emptyList(),
     val latestUserMessage: String,
+    /** Character-card instructions that must follow the conversation history. */
+    val postHistoryInstructions: String? = null,
 )
 
 /**
@@ -55,14 +57,14 @@ object PromptAssembler {
             appendEntries("Worldbook after character", plan.afterPrompt.filterNot(WorldBookEntry::constant))
             val memoryFacts = input.activeMemoryFacts.map(String::trim).filter(String::isNotEmpty)
             if (memoryFacts.isNotEmpty()) add("Relevant memory facts:\n" + memoryFacts.joinToString("\n") { "- $it" })
-            appendEntries("Author note before", plan.anBefore.filterNot(WorldBookEntry::constant))
-            appendEntries("Author note after", plan.anAfter.filterNot(WorldBookEntry::constant))
-            appendEntries("Example block before", plan.emBefore.filterNot(WorldBookEntry::constant))
-            appendEntries("Example block after", plan.emAfter.filterNot(WorldBookEntry::constant))
+            appendEntries("Author note before", plan.anBefore)
+            appendEntries("Author note after", plan.anAfter)
+            appendEntries("Example block before", plan.emBefore)
+            appendEntries("Example block after", plan.emAfter)
             val depthSections = plan.byDepth.entries
                 .filter { it.key.second == WorldBookPlacement.DEPTH_ROLE_SYSTEM }
                 .flatMap { (key, entries) ->
-                    entries.filterNot(WorldBookEntry::constant).mapNotNull { entry ->
+                    entries.mapNotNull { entry ->
                         entry.content.trim().takeIf(String::isNotEmpty)?.let {
                             "[depth ${key.first} · ${key.second}] $it"
                         }
@@ -73,11 +75,18 @@ object PromptAssembler {
             // variant can live in the volatile tail without changing semantics.
         }
 
-        val userContent = if (dynamicSections.isEmpty()) {
+        val latestUserContent = if (dynamicSections.isEmpty()) {
             input.latestUserMessage.trim()
         } else {
             dynamicSections.joinToString("\n\n") + "\n\n" + input.latestUserMessage.trim()
         }
+        // Post-history instructions belong after the conversation, including the latest user
+        // message, so they stay the final steering text the model sees before generating.
+        val userContent = input.postHistoryInstructions
+            ?.trim()
+            ?.takeIf(String::isNotEmpty)
+            ?.let { "$latestUserContent\n\nPost-history instructions:\n$it" }
+            ?: latestUserContent
         val history = input.conversationHistory
         val depthInsertions = plan.byDepth.entries
             .filter { it.key.second != WorldBookPlacement.DEPTH_ROLE_SYSTEM }

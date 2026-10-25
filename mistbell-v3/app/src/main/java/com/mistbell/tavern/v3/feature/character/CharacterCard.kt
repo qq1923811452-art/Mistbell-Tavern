@@ -43,7 +43,8 @@ data class CharacterCard(
         append("Scenario", scenario)
         exampleDialogue.trim().takeIf(String::isNotEmpty)?.let { blocks += "Example dialogue:\n$it" }
         append("System instructions", systemPrompt)
-        append("Post-history instructions", postHistoryInstructions)
+        // Post-history instructions are deliberately excluded from the stable prefix: the prompt
+        // assembler appends them after the conversation instead.
         return blocks.joinToString("\n\n")
     }
 }

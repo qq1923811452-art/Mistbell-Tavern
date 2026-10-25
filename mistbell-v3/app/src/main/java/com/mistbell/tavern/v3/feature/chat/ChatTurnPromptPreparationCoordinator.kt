@@ -50,6 +50,7 @@ internal class ChatTurnPromptPreparationCoordinator(
             worldbookState = worldbookState,
             worldbookStateKey = worldbookStateKey,
             historyIsComplete = historyIsComplete,
+            postHistoryInstructions = selectedCard?.postHistoryInstructions,
             onBudgetExceeded = { droppedCount ->
                 mainHandler.post {
                     setStatus("世界书预算超限：本轮有 " + droppedCount + " 个条目未注入")
