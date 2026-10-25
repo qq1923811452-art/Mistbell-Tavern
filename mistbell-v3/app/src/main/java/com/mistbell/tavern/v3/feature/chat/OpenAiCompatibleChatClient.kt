@@ -234,9 +234,10 @@ class OpenAiCompatibleChatClient(
                         }
                         val content = message.optString("content")
                         if (content.isNotEmpty()) observer.onDelta(content)
-                        message.optString("reasoning_content")
-                            .takeIf(String::isNotEmpty)
-                            ?.let(observer::onReasoningDelta)
+                        val reasoning = message.opt("reasoning_content")
+                        if (reasoning is String && reasoning.isNotEmpty()) {
+                            observer.onReasoningDelta(reasoning)
+                        }
                         runCatching {
                             JSONObject(payload.orEmpty()).optJSONObject("usage")
                         }.getOrNull()?.let { usage ->
