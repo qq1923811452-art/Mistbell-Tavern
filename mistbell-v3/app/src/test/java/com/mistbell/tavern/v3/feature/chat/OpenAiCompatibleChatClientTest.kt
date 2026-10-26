@@ -341,9 +341,271 @@ class OpenAiCompatibleChatClientTest {
         assertEquals("", observer.reasoning.toString())
     }
 
+    @Test
+    fun readsGeminiNativeNonStreamingCompletions() {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody(
+                    "{\"candidates\":[{\"content\":{\"parts\":[" +
+                        "{\"text\":\"你好\"},{\"text\":\"呀\"}]}}]}",
+                ),
+        )
+        server.start()
+        val observer = RecordingObserver()
+
+        clientFor(server, apiKey = "key").stream(
+            listOf(PromptMessage(PromptRole.USER, "Hi")),
+            observer,
+            ChatGenerationOptions(stream = false),
+        )
+
+        assertTrue(observer.finished.await(5, TimeUnit.SECONDS))
+        assertEquals("你好呀", observer.output.toString())
+    }
+
+    @Test
+    fun joinsArrayContentPartsInNonStreamingCompletions() {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody(
+                    "{\"choices\":[{\"message\":{\"content\":[" +
+                        "{\"type\":\"text\",\"text\":\"A\"}," +
+                        "{\"type\":\"text\",\"text\":\"B\"}]}}]}",
+                ),
+        )
+        server.start()
+        val observer = RecordingObserver()
+
+        clientFor(server, apiKey = "key").stream(
+            listOf(PromptMessage(PromptRole.USER, "Hi")),
+            observer,
+            ChatGenerationOptions(stream = false),
+        )
+
+        assertTrue(observer.finished.await(5, TimeUnit.SECONDS))
+        assertEquals("AB", observer.output.toString())
+    }
+
+    @Test
+    fun joinsArrayContentPartsInStreamingDeltas() {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody(
+                    "data: {\"choices\":[{\"delta\":{\"content\":[" +
+                        "{\"text\":\"Hi\"},{\"text\":\"!\"}]}}]}\n\n" +
+                        "data: [DONE]\n\n",
+                ),
+        )
+        server.start()
+        val observer = RecordingObserver()
+
+        clientFor(server, apiKey = "key").stream(
+            listOf(PromptMessage(PromptRole.USER, "Hi")),
+            observer,
+            ChatGenerationOptions(),
+        )
+
+        assertTrue(observer.finished.await(5, TimeUnit.SECONDS))
+        assertEquals("Hi!", observer.output.toString())
+    }
+
+    @Test
+    fun surfacesProviderErrorsFromNonStreamingResponses() {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("{\"error\":{\"message\":\"model gemini is not available\"}}"),
+        )
+        server.start()
+        val observer = RecordingObserver()
+
+        clientFor(server, apiKey = "key").stream(
+            listOf(PromptMessage(PromptRole.USER, "Hi")),
+            observer,
+            ChatGenerationOptions(stream = false),
+        )
+
+        assertTrue(observer.finished.await(5, TimeUnit.SECONDS))
+        assertEquals(ChatFailureKind.INVALID_STREAM, observer.failure?.kind)
+        assertEquals("model gemini is not available", observer.failure?.safeMessage)
+    }
+
+    @Test
+    fun surfacesProviderErrorsFromStreamingEvents() {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody("data: {\"error\":{\"message\":\"quota exceeded\"}}\n\n"),
+        )
+        server.start()
+        val observer = RecordingObserver()
+
+        clientFor(server, apiKey = "key").stream(
+            listOf(PromptMessage(PromptRole.USER, "Hi")),
+            observer,
+            ChatGenerationOptions(),
+        )
+
+        assertTrue(observer.finished.await(5, TimeUnit.SECONDS))
+        assertEquals(ChatFailureKind.INVALID_STREAM, observer.failure?.kind)
+        assertEquals("quota exceeded", observer.failure?.safeMessage)
+    }
+
+    @Test
+    fun fallsBackToJsonWhenAStreamingRequestGetsANonSseBody() {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("{\"choices\":[{\"message\":{\"content\":\"JSON fallback\"}}]}"),
+        )
+        server.start()
+        val observer = RecordingObserver()
+
+        clientFor(server, apiKey = "key").stream(
+            listOf(PromptMessage(PromptRole.USER, "Hi")),
+            observer,
+            ChatGenerationOptions(stream = true),
+        )
+
+        assertTrue(observer.finished.await(5, TimeUnit.SECONDS))
+        assertEquals("JSON fallback", observer.output.toString())
+        assertEquals(ChatFinishReason.STOP, observer.finishReason)
+    }
+
+    @Test
+    fun readsObjectShapedContentInNonStreamingCompletions() {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody(
+                    "{\"choices\":[{\"message\":{\"content\":" +
+                        "{\"type\":\"text\",\"text\":\"nested\"}}}]}",
+                ),
+        )
+        server.start()
+        val observer = RecordingObserver()
+
+        clientFor(server, apiKey = "key").stream(
+            listOf(PromptMessage(PromptRole.USER, "Hi")),
+            observer,
+            ChatGenerationOptions(stream = false),
+        )
+
+        assertTrue(observer.finished.await(5, TimeUnit.SECONDS))
+        assertEquals("nested", observer.output.toString())
+    }
+
+    @Test
+    fun classifiesHtmlResponsesSeparatelyFromJsonFailures() {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "text/html; charset=utf-8")
+                .setBody("<html><head><title>502 Bad Gateway</title></head><body>gateway</body></html>"),
+        )
+        server.start()
+        val observer = RecordingObserver()
+
+        clientFor(server, apiKey = "key").stream(
+            listOf(PromptMessage(PromptRole.USER, "Hi")),
+            observer,
+            ChatGenerationOptions(stream = false),
+        )
+
+        assertTrue(observer.finished.await(5, TimeUnit.SECONDS))
+        assertEquals(ChatFailureKind.HTML_RESPONSE, observer.failure?.kind)
+        val message = observer.failure?.safeMessage.orEmpty()
+        assertTrue(message.contains("text/html"))
+        assertTrue(message.contains("502 Bad Gateway"))
+        assertTrue(message.contains("status=200"))
+    }
+
+    @Test
+    fun reportsHttpStatusForEveryNon2xxClass() {
+        server.start()
+        for (status in listOf(401, 403, 404, 429, 500, 503)) {
+            server.enqueue(
+                MockResponse()
+                    .setResponseCode(status)
+                    .setHeader("Content-Type", "text/html")
+                    .setBody("<html><body>error</body></html>"),
+            )
+            val observer = RecordingObserver()
+
+            clientFor(server, apiKey = "key").stream(
+                listOf(PromptMessage(PromptRole.USER, "Hi")),
+                observer,
+                ChatGenerationOptions(stream = false),
+            )
+
+            assertTrue(observer.finished.await(5, TimeUnit.SECONDS))
+            assertEquals(ChatFailureKind.HTTP_STATUS, observer.failure?.kind)
+            assertEquals(status, observer.failure?.httpStatus)
+        }
+    }
+
+    @Test
+    fun classifiesInvalidJsonAsMalformedDataWithSafeDiagnostics() {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("not-json"),
+        )
+        server.start()
+        val observer = RecordingObserver()
+
+        clientFor(server, apiKey = "key").stream(
+            listOf(PromptMessage(PromptRole.USER, "Hi")),
+            observer,
+            ChatGenerationOptions(stream = false),
+        )
+
+        assertTrue(observer.finished.await(5, TimeUnit.SECONDS))
+        assertEquals(ChatFailureKind.INVALID_STREAM, observer.failure?.kind)
+        val message = observer.failure?.safeMessage.orEmpty()
+        assertTrue(message.contains("status=200"))
+        assertTrue(message.contains("type=application/json"))
+        assertTrue(message.contains("keys=unparsed"))
+    }
+
+    @Test
+    fun emitsRequestAndResponseDiagnosticsWithoutPromptContent() {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("{\"choices\":[{\"message\":{\"content\":\"hi\"}}]}"),
+        )
+        server.start()
+        val observer = RecordingObserver()
+
+        clientFor(server, apiKey = "key").stream(
+            listOf(PromptMessage(PromptRole.USER, "secret prompt")),
+            observer,
+            ChatGenerationOptions(stream = false),
+        )
+
+        assertTrue(observer.finished.await(5, TimeUnit.SECONDS))
+        assertTrue(observer.diagnostics.any { it.startsWith("request:") })
+        assertTrue(observer.diagnostics.any { it.startsWith("response:") })
+        assertTrue(observer.diagnostics.none { it.contains("secret prompt") })
+    }
+
     private class RecordingObserver : ChatStreamObserver {
         val output = StringBuilder()
         val reasoning = StringBuilder()
+        val diagnostics = mutableListOf<String>()
         val finished = CountDownLatch(1)
         @Volatile var failure: ChatStreamFailure? = null
         @Volatile var usage: ChatTokenUsage? = null
@@ -355,6 +617,10 @@ class OpenAiCompatibleChatClientTest {
 
         override fun onReasoningDelta(text: String) {
             reasoning.append(text)
+        }
+
+        override fun onDiagnostic(stage: String, detail: String) {
+            diagnostics += "$stage:$detail"
         }
 
         override fun onComplete() {

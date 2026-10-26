@@ -28,6 +28,7 @@ enum class ChatFailureKind {
     NETWORK,
     HTTP_STATUS,
     INVALID_STREAM,
+    HTML_RESPONSE,
     CANCELLED,
 }
 
@@ -78,6 +79,8 @@ interface ChatStreamObserver {
      * reply content; callers may only use it for diagnostics or to explain token usage.
      */
     fun onReasoningDelta(text: String) = Unit
+    /** Sanitized lifecycle diagnostics: stage plus key=value fields, never prompt or secret text. */
+    fun onDiagnostic(stage: String, detail: String) = Unit
 }
 
 class ChatClientConfigurationException(message: String) : IllegalStateException(message)
@@ -107,6 +110,7 @@ class OpenAiCompatibleChatClient(
         observer: ChatStreamObserver,
         options: ChatGenerationOptions = ChatGenerationOptions(),
     ): Call {
+        val startedAtNanos = System.nanoTime()
         require(messages.isNotEmpty()) { "At least one prompt message is required." }
         val profile = providers.profileFor(ProviderKind.CHAT)
             ?: throw ChatClientConfigurationException("No enabled chat provider is explicitly selected.")
@@ -178,6 +182,11 @@ class OpenAiCompatibleChatClient(
             .toString()
             .toRequestBody(JSON_MEDIA_TYPE)
 
+        val endpoint = ChatCompletionParser.endpointLabel(baseUrl)
+        observer.onDiagnostic(
+            "request",
+            "endpoint=$endpoint; stream=${options.stream}; maxTokens=${options.maxTokens}",
+        )
         val requestBuilder = Request.Builder()
             .url("$baseUrl/chat/completions")
             .header("Accept", if (options.stream) "text/event-stream" else "application/json")
@@ -200,6 +209,12 @@ class OpenAiCompatibleChatClient(
 
                 override fun onResponse(call: Call, response: Response) {
                     response.use { opened ->
+                        observer.onDiagnostic(
+                            "response",
+                            "status=${opened.code}; " +
+                                "type=${ChatCompletionParser.contentTypeLabel(opened.header("Content-Type"))}; " +
+                                "elapsedMs=${(System.nanoTime() - startedAtNanos) / NANOS_PER_MILLI}",
+                        )
                         if (!opened.isSuccessful) {
                             observer.onFailure(
                                 ChatStreamFailure(
@@ -217,54 +232,7 @@ class OpenAiCompatibleChatClient(
                             }
                             readLimitedUtf8(body.source(), MAX_RESPONSE_BYTES)
                         }.getOrNull()
-                        val message = runCatching {
-                            JSONObject(payload.orEmpty())
-                                .optJSONArray("choices")
-                                ?.optJSONObject(0)
-                                ?.optJSONObject("message")
-                        }.getOrNull()
-                        if (message == null) {
-                            observer.onFailure(
-                                ChatStreamFailure(
-                                    ChatFailureKind.INVALID_STREAM,
-                                    safeMessage = "Chat provider returned malformed completion data.",
-                                ),
-                            )
-                            return
-                        }
-                        val content = message.optString("content")
-                        if (content.isNotEmpty()) observer.onDelta(content)
-                        val reasoning = message.opt("reasoning_content")
-                        if (reasoning is String && reasoning.isNotEmpty()) {
-                            observer.onReasoningDelta(reasoning)
-                        }
-                        runCatching {
-                            JSONObject(payload.orEmpty()).optJSONObject("usage")
-                        }.getOrNull()?.let { usage ->
-                            val promptTokens = usage.optInt("prompt_tokens", 0).coerceAtLeast(0)
-                            val completionTokens = usage.optInt("completion_tokens", 0).coerceAtLeast(0)
-                            val totalTokens = usage.optInt("total_tokens", 0)
-                                .coerceAtLeast(promptTokens + completionTokens)
-                            val cached = usage.optJSONObject("prompt_tokens_details")
-                                ?.optInt("cached_tokens", 0)
-                                ?.coerceAtLeast(0)
-                            val reasoning = usage.optJSONObject("completion_tokens_details")
-                                ?.takeIf { it.has("reasoning_tokens") }
-                                ?.optInt("reasoning_tokens", 0)
-                                ?.coerceAtLeast(0)
-                            if (promptTokens > 0 || completionTokens > 0) {
-                                observer.onUsage(
-                                    ChatTokenUsage(
-                                        promptTokens = promptTokens,
-                                        completionTokens = completionTokens,
-                                        totalTokens = totalTokens,
-                                        cachedPromptTokens = cached,
-                                        reasoningTokens = reasoning,
-                                    ),
-                                )
-                            }
-                        }
-                        observer.onComplete()
+                        parseCompletionPayload(payload, opened.header("Content-Type"), opened.code, observer)
                     }
                 }
             })
@@ -283,6 +251,12 @@ class OpenAiCompatibleChatClient(
 
             override fun onResponse(call: Call, response: Response) {
                 response.use { opened ->
+                    observer.onDiagnostic(
+                        "response",
+                        "status=${opened.code}; " +
+                            "type=${ChatCompletionParser.contentTypeLabel(opened.header("Content-Type"))}; " +
+                            "elapsedMs=${(System.nanoTime() - startedAtNanos) / NANOS_PER_MILLI}",
+                    )
                     if (!opened.isSuccessful) {
                         observer.onFailure(
                             ChatStreamFailure(
@@ -306,6 +280,8 @@ class OpenAiCompatibleChatClient(
                     try {
                         val source = responseBody.source()
                         var sawDone = false
+                        var sawSseEvent = false
+                        val nonSseBody = StringBuilder()
                         var finishReason: String? = null
                         while (!source.exhausted()) {
                             val line = source.readUtf8Line() ?: break
@@ -313,8 +289,10 @@ class OpenAiCompatibleChatClient(
                                 "Streaming event exceeds the line limit."
                             }
                             if (line.isBlank() || line.startsWith(":") || !line.startsWith("data:")) {
+                                if (line.trimStart().startsWith("{")) nonSseBody.appendLine(line)
                                 continue
                             }
+                            sawSseEvent = true
                             val eventData = line.removePrefix("data:").trimStart()
                             if (eventData == "[DONE]") {
                                 sawDone = true
@@ -365,18 +343,33 @@ class OpenAiCompatibleChatClient(
                                     )
                                 }
                             }
+                            ChatCompletionParser.providerErrorMessage(event)?.let { message ->
+                                observer.onFailure(
+                                    ChatStreamFailure(ChatFailureKind.INVALID_STREAM, safeMessage = message),
+                                )
+                                return
+                            }
                             val choices = event.optJSONArray("choices") ?: continue
                             val choice = choices.optJSONObject(0) ?: continue
                             choice.optString("finish_reason")
                                 .takeIf { it.isNotBlank() && it != "null" }
                                 ?.let { finishReason = it }
                             val delta = choice.optJSONObject("delta") ?: continue
-                            val content = delta.opt("content")
-                            if (content is String && content.isNotEmpty()) observer.onDelta(content)
-                            val reasoning = delta.opt("reasoning_content")
-                            if (reasoning is String && reasoning.isNotEmpty()) {
-                                observer.onReasoningDelta(reasoning)
-                            }
+                            ChatCompletionParser.textOf(delta.opt("content"))
+                                ?.takeIf(String::isNotEmpty)
+                                ?.let(observer::onDelta)
+                            ChatCompletionParser.textOf(delta.opt("reasoning_content"))
+                                ?.takeIf(String::isNotEmpty)
+                                ?.let(observer::onReasoningDelta)
+                        }
+                        if (!sawSseEvent && nonSseBody.isNotEmpty()) {
+                            parseCompletionPayload(
+                                nonSseBody.toString(),
+                                opened.header("Content-Type"),
+                                opened.code,
+                                observer,
+                            )
+                            return
                         }
                         val reason = when {
                             finishReason.equals("length", ignoreCase = true) -> ChatFinishReason.LENGTH
@@ -419,6 +412,7 @@ class OpenAiCompatibleChatClient(
         const val MAX_RESPONSE_BYTES = 8L * 1024 * 1024
         const val MAX_SSE_LINE_CHARS = 1_000_000
         const val READ_CHUNK_BYTES = 8 * 1024
+        private const val NANOS_PER_MILLI = 1_000_000L
     }
 
     private fun readLimitedUtf8(source: BufferedSource, maxBytes: Long): String {
@@ -432,5 +426,83 @@ class OpenAiCompatibleChatClient(
         }
         return output.toString(Charsets.UTF_8.name())
     }
+
+    /**
+     * Reads completion text from the OpenAI shape plus the shapes some relays return for Gemini:
+     * array content parts, choices[0].delta/text, or native candidates[0].content.parts[].
+     */
+    private fun parseCompletionPayload(
+        payload: String?,
+        contentTypeHeader: String?,
+        statusCode: Int,
+        observer: ChatStreamObserver,
+    ) {
+        val root = runCatching { JSONObject(payload.orEmpty()) }.getOrNull()
+        val providerError = ChatCompletionParser.providerErrorMessage(root)
+        when {
+            providerError != null -> observer.onFailure(
+                ChatStreamFailure(ChatFailureKind.INVALID_STREAM, safeMessage = providerError),
+            )
+            ChatCompletionParser.isHtmlResponse(contentTypeHeader, payload) -> observer.onFailure(
+                ChatStreamFailure(
+                    ChatFailureKind.HTML_RESPONSE,
+                    safeMessage = ChatCompletionParser.htmlCompletionMessage(
+                        statusCode,
+                        contentTypeHeader,
+                        payload,
+                    ),
+                ),
+            )
+            else -> {
+                val completion = root?.let(ChatCompletionParser::completionText)
+                if (root == null || completion == null) {
+                    observer.onFailure(
+                        ChatStreamFailure(
+                            ChatFailureKind.INVALID_STREAM,
+                            safeMessage = ChatCompletionParser.malformedCompletionMessage(
+                                statusCode,
+                                contentTypeHeader,
+                                payload,
+                                root,
+                            ),
+                        ),
+                    )
+                } else {
+                    if (completion.isNotEmpty()) observer.onDelta(completion)
+                    ChatCompletionParser.reasoningText(root)
+                        ?.takeIf(String::isNotEmpty)
+                        ?.let(observer::onReasoningDelta)
+                    root.optJSONObject("usage")?.let { usage -> emitUsage(usage, observer) }
+                    observer.onFinish(ChatFinishReason.STOP)
+                    observer.onComplete()
+                }
+            }
+        }
+    }
+
+    private fun emitUsage(usage: JSONObject, observer: ChatStreamObserver) {
+        val promptTokens = usage.optInt("prompt_tokens", 0).coerceAtLeast(0)
+        val completionTokens = usage.optInt("completion_tokens", 0).coerceAtLeast(0)
+        val totalTokens = usage.optInt("total_tokens", 0).coerceAtLeast(promptTokens + completionTokens)
+        val cached = usage.optJSONObject("prompt_tokens_details")
+            ?.optInt("cached_tokens", 0)
+            ?.coerceAtLeast(0)
+        val reasoning = usage.optJSONObject("completion_tokens_details")
+            ?.takeIf { it.has("reasoning_tokens") }
+            ?.optInt("reasoning_tokens", 0)
+            ?.coerceAtLeast(0)
+        if (promptTokens > 0 || completionTokens > 0) {
+            observer.onUsage(
+                ChatTokenUsage(
+                    promptTokens = promptTokens,
+                    completionTokens = completionTokens,
+                    totalTokens = totalTokens,
+                    cachedPromptTokens = cached,
+                    reasoningTokens = reasoning,
+                ),
+            )
+        }
+    }
+
 
 }
