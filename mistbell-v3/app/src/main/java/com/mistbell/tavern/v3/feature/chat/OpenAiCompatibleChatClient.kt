@@ -355,10 +355,10 @@ class OpenAiCompatibleChatClient(
                                 .takeIf { it.isNotBlank() && it != "null" }
                                 ?.let { finishReason = it }
                             val delta = choice.optJSONObject("delta") ?: continue
-                            textOf(delta.opt("content"))
+                            ChatCompletionParser.textOf(delta.opt("content"))
                                 ?.takeIf(String::isNotEmpty)
                                 ?.let(observer::onDelta)
-                            textOf(delta.opt("reasoning_content"))
+                            ChatCompletionParser.textOf(delta.opt("reasoning_content"))
                                 ?.takeIf(String::isNotEmpty)
                                 ?.let(observer::onReasoningDelta)
                         }

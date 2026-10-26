@@ -89,7 +89,7 @@ internal object ChatCompletionParser {
         return "${uri.scheme}://${uri.host}${uri.path.orEmpty()}"
     }
 
-    private fun textOf(value: Any?): String? = when (value) {
+    fun textOf(value: Any?): String? = when (value) {
         is String -> value
         is JSONArray -> buildString {
             for (index in 0 until value.length()) {
