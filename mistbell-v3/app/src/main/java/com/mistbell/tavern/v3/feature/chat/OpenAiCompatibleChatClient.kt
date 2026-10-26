@@ -182,9 +182,10 @@ class OpenAiCompatibleChatClient(
             .toString()
             .toRequestBody(JSON_MEDIA_TYPE)
 
+        val endpoint = ChatCompletionParser.endpointLabel(baseUrl)
         observer.onDiagnostic(
             "request",
-            "endpoint=${endpointLabel(baseUrl)}; stream=${options.stream}; maxTokens=${options.maxTokens}",
+            "endpoint=$endpoint; stream=${options.stream}; maxTokens=${options.maxTokens}",
         )
         val requestBuilder = Request.Builder()
             .url("$baseUrl/chat/completions")
@@ -211,7 +212,7 @@ class OpenAiCompatibleChatClient(
                         observer.onDiagnostic(
                             "response",
                             "status=${opened.code}; " +
-                                "type=${contentTypeLabel(opened.header("Content-Type"))}; " +
+                                "type=${ChatCompletionParser.contentTypeLabel(opened.header("Content-Type"))}; " +
                                 "elapsedMs=${(System.nanoTime() - startedAtNanos) / NANOS_PER_MILLI}",
                         )
                         if (!opened.isSuccessful) {
@@ -253,7 +254,7 @@ class OpenAiCompatibleChatClient(
                     observer.onDiagnostic(
                         "response",
                         "status=${opened.code}; " +
-                            "type=${contentTypeLabel(opened.header("Content-Type"))}; " +
+                            "type=${ChatCompletionParser.contentTypeLabel(opened.header("Content-Type"))}; " +
                             "elapsedMs=${(System.nanoTime() - startedAtNanos) / NANOS_PER_MILLI}",
                     )
                     if (!opened.isSuccessful) {
@@ -342,7 +343,7 @@ class OpenAiCompatibleChatClient(
                                     )
                                 }
                             }
-                            providerErrorMessage(event)?.let { message ->
+                            ChatCompletionParser.providerErrorMessage(event)?.let { message ->
                                 observer.onFailure(
                                     ChatStreamFailure(ChatFailureKind.INVALID_STREAM, safeMessage = message),
                                 )
@@ -411,15 +412,7 @@ class OpenAiCompatibleChatClient(
         const val MAX_RESPONSE_BYTES = 8L * 1024 * 1024
         const val MAX_SSE_LINE_CHARS = 1_000_000
         const val READ_CHUNK_BYTES = 8 * 1024
-        private const val MAX_DIAGNOSTIC_KEYS = 6
-        private const val MAX_ERROR_MESSAGE_CHARS = 300
-        private const val MAX_HTML_TITLE_CHARS = 120
         private const val NANOS_PER_MILLI = 1_000_000L
-        private val HTML_TITLE = Regex(
-            "<title[^>]*>(.*?)</title>",
-            setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL),
-        )
-        private val WHITESPACE = Regex("\\s+")
     }
 
     private fun readLimitedUtf8(source: BufferedSource, maxBytes: Long): String {
@@ -438,97 +431,53 @@ class OpenAiCompatibleChatClient(
      * Reads completion text from the OpenAI shape plus the shapes some relays return for Gemini:
      * array content parts, choices[0].delta/text, or native candidates[0].content.parts[].
      */
-    private fun completionText(root: JSONObject): String? {
-        val first = root.optJSONArray("choices")?.optJSONObject(0)
-        val candidateParts = root.optJSONArray("candidates")
-            ?.optJSONObject(0)
-            ?.optJSONObject("content")
-            ?.optJSONArray("parts")
-        val value = first?.optJSONObject("message")?.opt("content")
-            ?: first?.optJSONObject("delta")?.opt("content")
-            ?: first?.opt("text")
-            ?: candidateParts
-            ?: root.opt("content")
-        return when (value) {
-            null -> root.optString("text").takeIf(String::isNotEmpty)
-            is String -> value
-            else -> textOf(value)
-        }
-    }
-
-    private fun reasoningText(root: JSONObject): String? {
-        val first = root.optJSONArray("choices")?.optJSONObject(0)
-        val value = first?.optJSONObject("message")?.opt("reasoning_content")
-            ?: first?.optJSONObject("delta")?.opt("reasoning_content")
-        return textOf(value)
-    }
-
-    private fun textOf(value: Any?): String? = when (value) {
-        is String -> value
-        is JSONArray -> buildString {
-            for (index in 0 until value.length()) {
-                val part = value.opt(index)
-                val text = if (part is JSONObject) part.optString("text") else part as? String
-                if (!text.isNullOrEmpty()) append(text)
-            }
-        }.takeIf(String::isNotEmpty)
-        is JSONObject -> value.optString("text").takeIf(String::isNotEmpty)
-            ?: textOf(value.optJSONArray("parts"))
-        else -> null
-    }
-
-    private fun providerErrorMessage(root: JSONObject?): String? {
-        val error = root?.opt("error") ?: return null
-        val message = when (error) {
-            is JSONObject -> error.optString("message")
-                .takeIf(String::isNotBlank)
-                ?: error.optString("type").takeIf(String::isNotBlank)
-            is String -> error.takeIf(String::isNotBlank)
-            else -> null
-        }
-        return (message ?: "Chat provider returned an error without a message.")
-            .take(MAX_ERROR_MESSAGE_CHARS)
-    }
-
-    /**
-     * Handles a complete JSON completion body. Used by the non-streaming request path and as a
-     * fallback when a relay ignores `stream` and returns plain JSON to a streaming request.
-     */
     private fun parseCompletionPayload(
         payload: String?,
         contentTypeHeader: String?,
         statusCode: Int,
         observer: ChatStreamObserver,
     ) {
-        if (isHtmlResponse(contentTypeHeader, payload)) {
-            observer.onFailure(
+        val root = runCatching { JSONObject(payload.orEmpty()) }.getOrNull()
+        val providerError = ChatCompletionParser.providerErrorMessage(root)
+        when {
+            providerError != null -> observer.onFailure(
+                ChatStreamFailure(ChatFailureKind.INVALID_STREAM, safeMessage = providerError),
+            )
+            ChatCompletionParser.isHtmlResponse(contentTypeHeader, payload) -> observer.onFailure(
                 ChatStreamFailure(
                     ChatFailureKind.HTML_RESPONSE,
-                    safeMessage = htmlCompletionMessage(statusCode, contentTypeHeader, payload),
+                    safeMessage = ChatCompletionParser.htmlCompletionMessage(
+                        statusCode,
+                        contentTypeHeader,
+                        payload,
+                    ),
                 ),
             )
-            return
+            else -> {
+                val completion = root?.let(ChatCompletionParser::completionText)
+                if (root == null || completion == null) {
+                    observer.onFailure(
+                        ChatStreamFailure(
+                            ChatFailureKind.INVALID_STREAM,
+                            safeMessage = ChatCompletionParser.malformedCompletionMessage(
+                                statusCode,
+                                contentTypeHeader,
+                                payload,
+                                root,
+                            ),
+                        ),
+                    )
+                } else {
+                    if (completion.isNotEmpty()) observer.onDelta(completion)
+                    ChatCompletionParser.reasoningText(root)
+                        ?.takeIf(String::isNotEmpty)
+                        ?.let(observer::onReasoningDelta)
+                    root.optJSONObject("usage")?.let { usage -> emitUsage(usage, observer) }
+                    observer.onFinish(ChatFinishReason.STOP)
+                    observer.onComplete()
+                }
+            }
         }
-        val root = runCatching { JSONObject(payload.orEmpty()) }.getOrNull()
-        providerErrorMessage(root)?.let { message ->
-            observer.onFailure(ChatStreamFailure(ChatFailureKind.INVALID_STREAM, safeMessage = message))
-            return
-        }
-        val completion = root?.let(::completionText)
-        if (root == null || completion == null) {
-            observer.onFailure(
-                ChatStreamFailure(
-                    ChatFailureKind.INVALID_STREAM,
-                    safeMessage = malformedCompletionMessage(statusCode, contentTypeHeader, payload, root),
-                ),
-            )
-            return
-        }
-        if (completion.isNotEmpty()) observer.onDelta(completion)
-        root.let(::reasoningText)?.takeIf(String::isNotEmpty)?.let(observer::onReasoningDelta)
-        root.optJSONObject("usage")?.let { usage -> emitUsage(usage, observer) }
-        observer.onFinish(ChatFinishReason.STOP)
-        observer.onComplete()
     }
 
     private fun emitUsage(usage: JSONObject, observer: ChatStreamObserver) {
@@ -555,59 +504,5 @@ class OpenAiCompatibleChatClient(
         }
     }
 
-    private fun isHtmlResponse(contentTypeHeader: String?, payload: String?): Boolean =
-        contentTypeHeader?.contains("text/html", ignoreCase = true) == true ||
-            payload?.trimStart()?.startsWith("<") == true
-
-    private fun htmlCompletionMessage(
-        statusCode: Int,
-        contentTypeHeader: String?,
-        payload: String?,
-    ): String {
-        val bytes = payload?.toByteArray(Charsets.UTF_8)?.size ?: 0
-        val title = htmlTitle(payload)?.let { "; title=$it" }.orEmpty()
-        return "Chat provider returned an HTML page instead of JSON " +
-            "(status=$statusCode; type=${contentTypeLabel(contentTypeHeader)}; bytes=$bytes$title). " +
-            "Check the base URL and endpoint path."
-    }
-
-    private fun htmlTitle(payload: String?): String? {
-        val match = HTML_TITLE.find(payload.orEmpty()) ?: return null
-        return match.groupValues.getOrNull(1)
-            ?.replace(WHITESPACE, " ")
-            ?.trim()
-            ?.take(MAX_HTML_TITLE_CHARS)
-            ?.takeIf(String::isNotEmpty)
-    }
-
-    private fun contentTypeLabel(value: String?): String =
-        value?.substringBefore(';')?.trim().orEmpty().ifEmpty { "unknown" }
-
-    private fun endpointLabel(baseUrl: String): String {
-        val uri = runCatching { URI(baseUrl) }.getOrNull() ?: return "unknown"
-        return "${uri.scheme}://${uri.host}${uri.path.orEmpty()}"
-    }
-
-    private fun malformedCompletionMessage(
-        statusCode: Int,
-        contentTypeHeader: String?,
-        payload: String?,
-        root: JSONObject?,
-    ): String {
-        val contentType = contentTypeHeader
-            ?.substringBefore(';')
-            ?.trim()
-            .orEmpty()
-            .ifEmpty { "unknown" }
-        val bytes = payload?.toByteArray(Charsets.UTF_8)?.size ?: 0
-        val keys = root?.keys()
-            ?.asSequence()
-            ?.take(MAX_DIAGNOSTIC_KEYS)
-            ?.joinToString(",")
-            .orEmpty()
-            .ifEmpty { "unparsed" }
-        return "Chat provider returned malformed completion data " +
-            "(status=$statusCode; type=$contentType; bytes=$bytes; keys=$keys)."
-    }
 
 }
