@@ -505,9 +505,107 @@ class OpenAiCompatibleChatClientTest {
         assertEquals("nested", observer.output.toString())
     }
 
+    @Test
+    fun classifiesHtmlResponsesSeparatelyFromJsonFailures() {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "text/html; charset=utf-8")
+                .setBody("<html><head><title>502 Bad Gateway</title></head><body>gateway</body></html>"),
+        )
+        server.start()
+        val observer = RecordingObserver()
+
+        clientFor(server, apiKey = "key").stream(
+            listOf(PromptMessage(PromptRole.USER, "Hi")),
+            observer,
+            ChatGenerationOptions(stream = false),
+        )
+
+        assertTrue(observer.finished.await(5, TimeUnit.SECONDS))
+        assertEquals(ChatFailureKind.HTML_RESPONSE, observer.failure?.kind)
+        val message = observer.failure?.safeMessage.orEmpty()
+        assertTrue(message.contains("text/html"))
+        assertTrue(message.contains("502 Bad Gateway"))
+        assertTrue(message.contains("status=200"))
+    }
+
+    @Test
+    fun reportsHttpStatusForEveryNon2xxClass() {
+        server.start()
+        for (status in listOf(401, 403, 404, 429, 500, 503)) {
+            server.enqueue(
+                MockResponse()
+                    .setResponseCode(status)
+                    .setHeader("Content-Type", "text/html")
+                    .setBody("<html><body>error</body></html>"),
+            )
+            val observer = RecordingObserver()
+
+            clientFor(server, apiKey = "key").stream(
+                listOf(PromptMessage(PromptRole.USER, "Hi")),
+                observer,
+                ChatGenerationOptions(stream = false),
+            )
+
+            assertTrue(observer.finished.await(5, TimeUnit.SECONDS))
+            assertEquals(ChatFailureKind.HTTP_STATUS, observer.failure?.kind)
+            assertEquals(status, observer.failure?.httpStatus)
+        }
+    }
+
+    @Test
+    fun classifiesInvalidJsonAsMalformedDataWithSafeDiagnostics() {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("not-json"),
+        )
+        server.start()
+        val observer = RecordingObserver()
+
+        clientFor(server, apiKey = "key").stream(
+            listOf(PromptMessage(PromptRole.USER, "Hi")),
+            observer,
+            ChatGenerationOptions(stream = false),
+        )
+
+        assertTrue(observer.finished.await(5, TimeUnit.SECONDS))
+        assertEquals(ChatFailureKind.INVALID_STREAM, observer.failure?.kind)
+        val message = observer.failure?.safeMessage.orEmpty()
+        assertTrue(message.contains("status=200"))
+        assertTrue(message.contains("type=application/json"))
+        assertTrue(message.contains("keys=unparsed"))
+    }
+
+    @Test
+    fun emitsRequestAndResponseDiagnosticsWithoutPromptContent() {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("{\"choices\":[{\"message\":{\"content\":\"hi\"}}]}"),
+        )
+        server.start()
+        val observer = RecordingObserver()
+
+        clientFor(server, apiKey = "key").stream(
+            listOf(PromptMessage(PromptRole.USER, "secret prompt")),
+            observer,
+            ChatGenerationOptions(stream = false),
+        )
+
+        assertTrue(observer.finished.await(5, TimeUnit.SECONDS))
+        assertTrue(observer.diagnostics.any { it.startsWith("request:") })
+        assertTrue(observer.diagnostics.any { it.startsWith("response:") })
+        assertTrue(observer.diagnostics.none { it.contains("secret prompt") })
+    }
+
     private class RecordingObserver : ChatStreamObserver {
         val output = StringBuilder()
         val reasoning = StringBuilder()
+        val diagnostics = mutableListOf<String>()
         val finished = CountDownLatch(1)
         @Volatile var failure: ChatStreamFailure? = null
         @Volatile var usage: ChatTokenUsage? = null
@@ -519,6 +617,10 @@ class OpenAiCompatibleChatClientTest {
 
         override fun onReasoningDelta(text: String) {
             reasoning.append(text)
+        }
+
+        override fun onDiagnostic(stage: String, detail: String) {
+            diagnostics += "$stage:$detail"
         }
 
         override fun onComplete() {

@@ -45,6 +45,10 @@ internal class ChatStreamObserverCoordinator(
                 reasoningChars.addAndGet(text.length)
             }
 
+            override fun onDiagnostic(stage: String, detail: String) {
+                diagnosticStore.info("chat.request.diagnostic", "stage=$stage; $detail")
+            }
+
             override fun onUsage(usage: ChatTokenUsage) {
                 mainHandler.post {
                     if (!isCurrentRequest()) return@post

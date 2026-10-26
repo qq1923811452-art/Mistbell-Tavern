@@ -28,6 +28,7 @@ enum class ChatFailureKind {
     NETWORK,
     HTTP_STATUS,
     INVALID_STREAM,
+    HTML_RESPONSE,
     CANCELLED,
 }
 
@@ -78,6 +79,8 @@ interface ChatStreamObserver {
      * reply content; callers may only use it for diagnostics or to explain token usage.
      */
     fun onReasoningDelta(text: String) = Unit
+    /** Sanitized lifecycle diagnostics: stage plus key=value fields, never prompt or secret text. */
+    fun onDiagnostic(stage: String, detail: String) = Unit
 }
 
 class ChatClientConfigurationException(message: String) : IllegalStateException(message)
@@ -107,6 +110,7 @@ class OpenAiCompatibleChatClient(
         observer: ChatStreamObserver,
         options: ChatGenerationOptions = ChatGenerationOptions(),
     ): Call {
+        val startedAtNanos = System.nanoTime()
         require(messages.isNotEmpty()) { "At least one prompt message is required." }
         val profile = providers.profileFor(ProviderKind.CHAT)
             ?: throw ChatClientConfigurationException("No enabled chat provider is explicitly selected.")
@@ -178,6 +182,10 @@ class OpenAiCompatibleChatClient(
             .toString()
             .toRequestBody(JSON_MEDIA_TYPE)
 
+        observer.onDiagnostic(
+            "request",
+            "endpoint=${endpointLabel(baseUrl)}; stream=${options.stream}; maxTokens=${options.maxTokens}",
+        )
         val requestBuilder = Request.Builder()
             .url("$baseUrl/chat/completions")
             .header("Accept", if (options.stream) "text/event-stream" else "application/json")
@@ -200,6 +208,12 @@ class OpenAiCompatibleChatClient(
 
                 override fun onResponse(call: Call, response: Response) {
                     response.use { opened ->
+                        observer.onDiagnostic(
+                            "response",
+                            "status=${opened.code}; " +
+                                "type=${contentTypeLabel(opened.header("Content-Type"))}; " +
+                                "elapsedMs=${(System.nanoTime() - startedAtNanos) / NANOS_PER_MILLI}",
+                        )
                         if (!opened.isSuccessful) {
                             observer.onFailure(
                                 ChatStreamFailure(
@@ -217,7 +231,7 @@ class OpenAiCompatibleChatClient(
                             }
                             readLimitedUtf8(body.source(), MAX_RESPONSE_BYTES)
                         }.getOrNull()
-                        parseCompletionPayload(payload, opened.header("Content-Type"), observer)
+                        parseCompletionPayload(payload, opened.header("Content-Type"), opened.code, observer)
                     }
                 }
             })
@@ -236,6 +250,12 @@ class OpenAiCompatibleChatClient(
 
             override fun onResponse(call: Call, response: Response) {
                 response.use { opened ->
+                    observer.onDiagnostic(
+                        "response",
+                        "status=${opened.code}; " +
+                            "type=${contentTypeLabel(opened.header("Content-Type"))}; " +
+                            "elapsedMs=${(System.nanoTime() - startedAtNanos) / NANOS_PER_MILLI}",
+                    )
                     if (!opened.isSuccessful) {
                         observer.onFailure(
                             ChatStreamFailure(
@@ -345,6 +365,7 @@ class OpenAiCompatibleChatClient(
                             parseCompletionPayload(
                                 nonSseBody.toString(),
                                 opened.header("Content-Type"),
+                                opened.code,
                                 observer,
                             )
                             return
@@ -392,6 +413,13 @@ class OpenAiCompatibleChatClient(
         const val READ_CHUNK_BYTES = 8 * 1024
         private const val MAX_DIAGNOSTIC_KEYS = 6
         private const val MAX_ERROR_MESSAGE_CHARS = 300
+        private const val MAX_HTML_TITLE_CHARS = 120
+        private const val NANOS_PER_MILLI = 1_000_000L
+        private val HTML_TITLE = Regex(
+            "<title[^>]*>(.*?)</title>",
+            setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL),
+        )
+        private val WHITESPACE = Regex("\\s+")
     }
 
     private fun readLimitedUtf8(source: BufferedSource, maxBytes: Long): String {
@@ -469,8 +497,18 @@ class OpenAiCompatibleChatClient(
     private fun parseCompletionPayload(
         payload: String?,
         contentTypeHeader: String?,
+        statusCode: Int,
         observer: ChatStreamObserver,
     ) {
+        if (isHtmlResponse(contentTypeHeader, payload)) {
+            observer.onFailure(
+                ChatStreamFailure(
+                    ChatFailureKind.HTML_RESPONSE,
+                    safeMessage = htmlCompletionMessage(statusCode, contentTypeHeader, payload),
+                ),
+            )
+            return
+        }
         val root = runCatching { JSONObject(payload.orEmpty()) }.getOrNull()
         providerErrorMessage(root)?.let { message ->
             observer.onFailure(ChatStreamFailure(ChatFailureKind.INVALID_STREAM, safeMessage = message))
@@ -481,7 +519,7 @@ class OpenAiCompatibleChatClient(
             observer.onFailure(
                 ChatStreamFailure(
                     ChatFailureKind.INVALID_STREAM,
-                    safeMessage = malformedCompletionMessage(contentTypeHeader, payload, root),
+                    safeMessage = malformedCompletionMessage(statusCode, contentTypeHeader, payload, root),
                 ),
             )
             return
@@ -517,7 +555,41 @@ class OpenAiCompatibleChatClient(
         }
     }
 
+    private fun isHtmlResponse(contentTypeHeader: String?, payload: String?): Boolean =
+        contentTypeHeader?.contains("text/html", ignoreCase = true) == true ||
+            payload?.trimStart()?.startsWith("<") == true
+
+    private fun htmlCompletionMessage(
+        statusCode: Int,
+        contentTypeHeader: String?,
+        payload: String?,
+    ): String {
+        val bytes = payload?.toByteArray(Charsets.UTF_8)?.size ?: 0
+        val title = htmlTitle(payload)?.let { "; title=$it" }.orEmpty()
+        return "Chat provider returned an HTML page instead of JSON " +
+            "(status=$statusCode; type=${contentTypeLabel(contentTypeHeader)}; bytes=$bytes$title). " +
+            "Check the base URL and endpoint path."
+    }
+
+    private fun htmlTitle(payload: String?): String? {
+        val match = HTML_TITLE.find(payload.orEmpty()) ?: return null
+        return match.groupValues.getOrNull(1)
+            ?.replace(WHITESPACE, " ")
+            ?.trim()
+            ?.take(MAX_HTML_TITLE_CHARS)
+            ?.takeIf(String::isNotEmpty)
+    }
+
+    private fun contentTypeLabel(value: String?): String =
+        value?.substringBefore(';')?.trim().orEmpty().ifEmpty { "unknown" }
+
+    private fun endpointLabel(baseUrl: String): String {
+        val uri = runCatching { URI(baseUrl) }.getOrNull() ?: return "unknown"
+        return "${uri.scheme}://${uri.host}${uri.path.orEmpty()}"
+    }
+
     private fun malformedCompletionMessage(
+        statusCode: Int,
         contentTypeHeader: String?,
         payload: String?,
         root: JSONObject?,
@@ -535,7 +607,7 @@ class OpenAiCompatibleChatClient(
             .orEmpty()
             .ifEmpty { "unparsed" }
         return "Chat provider returned malformed completion data " +
-            "(type=$contentType; bytes=$bytes; keys=$keys)."
+            "(status=$statusCode; type=$contentType; bytes=$bytes; keys=$keys)."
     }
 
 }
