@@ -271,18 +271,20 @@ class MemoryExtractionClient(
         val factsJson = JSONObject(content).optJSONArray("facts")
             ?: throw JSONException("Missing facts array")
         require(factsJson.length() <= MAX_FACTS) { "Too many extracted facts." }
-        val facts = (0 until factsJson.length()).map { index ->
-            val fact = factsJson.optJSONObject(index) ?: throw JSONException("Fact must be an object")
+        val facts = (0 until factsJson.length()).mapNotNull { index ->
+            val fact = factsJson.optJSONObject(index) ?: return@mapNotNull null
             val subject = fact.optString("subject").trim()
             val predicate = fact.optString("predicate").trim()
             val value = fact.optString("value").trim()
             val sourceTurnId = fact.optString("source_turn_id").trim()
-            require(subject.isNotBlank() && subject.length <= MAX_FIELD_CHARS)
-            require(predicate.isNotBlank() && predicate.length <= MAX_FIELD_CHARS)
-            require(value.isNotBlank() && value.length <= MAX_FIELD_CHARS)
-            require(sourceTurnId in allowedTurnIds) { "Fact refers to an unknown source turn." }
+            // A single hallucinated source turn must not discard every valid fact in the batch.
+            if (subject.isBlank() || subject.length > MAX_FIELD_CHARS) return@mapNotNull null
+            if (predicate.isBlank() || predicate.length > MAX_FIELD_CHARS) return@mapNotNull null
+            if (value.isBlank() || value.length > MAX_FIELD_CHARS) return@mapNotNull null
+            if (sourceTurnId !in allowedTurnIds) return@mapNotNull null
             ExtractedFactDraft(subject, predicate, value, sourceTurnId)
         }
+        require(facts.isNotEmpty() || factsJson.length() == 0) { "No valid facts in the response." }
         return MemoryExtractionResult(facts)
     }
 

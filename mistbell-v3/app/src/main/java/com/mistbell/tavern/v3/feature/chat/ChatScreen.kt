@@ -24,6 +24,9 @@ import com.mistbell.tavern.v3.core.storage.AtomicMemoryTextStore
 import com.mistbell.tavern.v3.core.storage.AtomicTemporalFactStore
 import com.mistbell.tavern.v3.core.storage.MemoryScopeFileNames
 import com.mistbell.tavern.v3.feature.memory.MemoryEditDraft
+import com.mistbell.tavern.v3.feature.memory.MemoryExtractionJobRepository
+import com.mistbell.tavern.v3.feature.memory.MemoryExtractionJobStore
+import com.mistbell.tavern.v3.feature.memory.MemoryExtractionQueueWorker
 import com.mistbell.tavern.v3.feature.memory.MemoryStatusReader
 import com.mistbell.tavern.v3.feature.memory.MemoryStatusSnapshot
 import com.mistbell.tavern.v3.feature.memory.SessionMemoryLoadResult
@@ -882,6 +885,21 @@ fun ChatScreen(
                             is SessionMemorySaveResult.Failed -> "恢复失败：${result.safeReason}"
                         },
                     )
+                }
+            },
+            onRetryFailed = {
+                coroutineScope.launch {
+                    val retried = withContext(Dispatchers.IO) {
+                        MemoryExtractionJobRepository(
+                            MemoryExtractionJobStore(context.applicationContext),
+                        ).retryPermanentFailures(memoryScopeId, System.currentTimeMillis())
+                    }
+                    if (retried > 0) {
+                        MemoryExtractionQueueWorker.enqueue(context.applicationContext)
+                        refreshSessionMemory("已重新排队 $retried 条失败任务；后台会重试。")
+                    } else {
+                        refreshSessionMemory("当前没有可重试的失败任务。")
+                    }
                 }
             },
             ),

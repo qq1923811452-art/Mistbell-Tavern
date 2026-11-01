@@ -121,6 +121,26 @@ class MemoryExtractionClientTest {
     }
 
     @Test
+    fun keepsValidFactsWhenAnotherFactReferencesAnUnknownTurn() {
+        val server = MockWebServer()
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"choices":[{"message":{"content":"{\"facts\":[{\"subject\":\"user\",\"predicate\":\"likes\",\"value\":\"tea\",\"source_turn_id\":\"turn-1\"},{\"subject\":\"user\",\"predicate\":\"likes\",\"value\":\"coffee\",\"source_turn_id\":\"invented-turn\"}]}"}}]}""",
+            ),
+        )
+        server.start()
+        try {
+            val outcome = execute(clientFor(server))
+            assertTrue(outcome is MemoryExtractionOutcome.Success)
+            val facts = (outcome as MemoryExtractionOutcome.Success).result.facts
+            assertEquals(1, facts.size)
+            assertEquals("tea", facts.single().value)
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
     fun rejectsFactThatReferencesUnknownSourceTurn() {
         val server = MockWebServer()
         server.enqueue(

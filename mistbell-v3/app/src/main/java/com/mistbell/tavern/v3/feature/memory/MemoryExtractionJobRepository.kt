@@ -113,6 +113,32 @@ class MemoryExtractionJobRepository(private val store: MemoryExtractionJobPersis
         return recovered
     }
 
+    /** Re-arms permanently failed batches after the user fixes configuration or installs a fix. */
+    @Synchronized
+    fun retryPermanentFailures(conversationId: String, now: Long): Int {
+        require(conversationId.isNotBlank())
+        require(now >= 0L)
+        val jobs = read()
+        var retried = 0
+        val next = jobs.map { job ->
+            if (job.conversationId == conversationId &&
+                job.state == MemoryExtractionJob.State.PERMANENT_FAILURE
+            ) {
+                retried++
+                job.copy(
+                    state = MemoryExtractionJob.State.RETRY_WAIT,
+                    attemptCount = 0,
+                    nextAttemptAtEpochMillis = now,
+                    lastSafeError = null,
+                )
+            } else {
+                job
+            }
+        }
+        if (retried > 0) store.save(next)
+        return retried
+    }
+
     @Synchronized
     fun list(): List<MemoryExtractionJob> = read()
 

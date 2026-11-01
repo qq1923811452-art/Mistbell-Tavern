@@ -78,7 +78,7 @@ internal fun SessionMemoryScreen(
             }
         }
         Text(scopeTitle, style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.7f))
-        status?.let { MemoryStatusBlock(it) }
+        status?.let { MemoryStatusBlock(it, onRetryFailed = actions.onRetryFailed) }
         when (state) {
             SessionMemoryUiState.Loading ->
                 Text(
@@ -117,7 +117,10 @@ internal fun SessionMemoryScreen(
 /** The pipeline state the user otherwise cannot see: queue, projection and index health. */
 @Suppress("FunctionNaming")
 @Composable
-private fun MemoryStatusBlock(status: MemoryStatusSnapshot) {
+private fun MemoryStatusBlock(
+    status: MemoryStatusSnapshot,
+    onRetryFailed: () -> Unit,
+) {
     Column(
         Modifier
             .fillMaxWidth()
@@ -142,6 +145,11 @@ private fun MemoryStatusBlock(status: MemoryStatusSnapshot) {
                 style = MaterialTheme.typography.labelSmall,
                 color = Color.White.copy(alpha = 0.65f),
             )
+        }
+        if (status.failedJobs > 0) {
+            TextButton(onClick = onRetryFailed) {
+                Text("重试 ${status.failedJobs} 条失败任务")
+            }
         }
         Text(
             "事实 ${status.factsCurrent}/${status.factsTotal} · 文本 ${status.textRecords} · " +
@@ -278,6 +286,7 @@ internal data class SessionMemoryActions(
     val onReload: () -> Unit,
     val onSave: (factId: String, revision: Long, subject: String, predicate: String, value: String) -> Unit,
     val onRevert: (factId: String, revision: Long) -> Unit,
+    val onRetryFailed: () -> Unit,
 )
 
 private const val MAX_FIELD_CHARS = 2_000

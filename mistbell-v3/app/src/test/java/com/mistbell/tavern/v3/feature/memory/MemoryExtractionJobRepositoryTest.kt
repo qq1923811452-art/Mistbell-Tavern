@@ -124,6 +124,33 @@ class MemoryExtractionJobRepositoryTest {
         assertEquals("Retry limit reached.", byId.getValue("exhausted").lastSafeError)
     }
 
+    @Test fun retryPermanentFailuresReArmsOnlyTheRequestedConversation() {
+        val repository = repository()
+        val failed = job("failed", createdAt = 100L, attemptCount = 5).copy(
+            state = MemoryExtractionJob.State.PERMANENT_FAILURE,
+            lastSafeError = "Retry limit reached.",
+        )
+        val other = job("other", createdAt = 100L, attemptCount = 5).copy(
+            conversationId = "conversation-2",
+            state = MemoryExtractionJob.State.PERMANENT_FAILURE,
+            lastSafeError = "Retry limit reached.",
+        )
+        assertTrue(repository.enqueue(failed))
+        assertTrue(repository.enqueue(other))
+
+        assertEquals(1, repository.retryPermanentFailures("conversation-1", 500L))
+
+        val retried = repository.list().first { it.id == "failed" }
+        assertEquals(MemoryExtractionJob.State.RETRY_WAIT, retried.state)
+        assertEquals(0, retried.attemptCount)
+        assertEquals(500L, retried.nextAttemptAtEpochMillis)
+        assertEquals(null, retried.lastSafeError)
+        assertEquals(
+            MemoryExtractionJob.State.PERMANENT_FAILURE,
+            repository.list().first { it.id == "other" }.state,
+        )
+    }
+
     private fun repository(): MemoryExtractionJobRepository =
         MemoryExtractionJobRepository(InMemoryJobStore())
 
