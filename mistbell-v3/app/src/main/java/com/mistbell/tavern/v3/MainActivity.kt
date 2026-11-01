@@ -669,23 +669,26 @@ class MainActivity : ComponentActivity() {
                 if (installed == null) {
                     InferenceRuntimeStatus.idle()
                 } else {
-                    val verified = withContext(Dispatchers.IO) {
-                        installed.isQualcommSm8650Optimized &&
-                            NpuEvidenceStore.hasValidEvidence(applicationContext, installed.file)
-                    }
-                    val live = EmbeddingEngineProcessHolder.currentStatusOrNull(
-                        installed.file,
-                        installed.isQualcommSm8650Optimized,
-                    )
+                    val verified =
+                        withContext(Dispatchers.IO) {
+                            installed.isQualcommSm8650Optimized &&
+                                NpuEvidenceStore.hasValidEvidence(applicationContext, installed.file)
+                        }
+                    val live =
+                        EmbeddingEngineProcessHolder.currentStatusOrNull(
+                            installed.file,
+                            installed.isQualcommSm8650Optimized,
+                        )
                     EmbeddingRuntimeStatusSnapshot.resolve(
                         live = live,
                         previous = statusAtStart,
-                        restored = EmbeddingRuntimeStatusSnapshot.restored(
-                            modelId = com.mistbell.tavern.v3.feature.embedding.EmbeddingGemma2TextPolicy.MODEL_ID,
-                            acceleratorName =
-                                if (installed.isQualcommSm8650Optimized) InferenceBackend.NPU.name else null,
-                            evidenceVerified = verified,
-                        ),
+                        restored =
+                            EmbeddingRuntimeStatusSnapshot.restored(
+                                modelId = com.mistbell.tavern.v3.feature.embedding.EmbeddingGemma2TextPolicy.MODEL_ID,
+                                acceleratorName =
+                                    if (installed.isQualcommSm8650Optimized) InferenceBackend.NPU.name else null,
+                                evidenceVerified = verified,
+                            ),
                     )
                 }
             },
