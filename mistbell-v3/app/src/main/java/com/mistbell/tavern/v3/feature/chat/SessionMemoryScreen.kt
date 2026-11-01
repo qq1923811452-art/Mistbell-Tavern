@@ -9,8 +9,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
@@ -35,6 +38,7 @@ import com.mistbell.tavern.v3.feature.memory.MemoryStatusSnapshot
 /** Screen state is owned by the caller so scope changes can discard it wholesale. */
 internal sealed interface SessionMemoryUiState {
     data object Loading : SessionMemoryUiState
+
     data class Ready(
         val entries: List<EffectiveMemory>,
         val revision: Long,
@@ -63,6 +67,7 @@ internal fun SessionMemoryScreen(
         Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
+            .systemBarsPadding()
             .padding(16.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -75,21 +80,24 @@ internal fun SessionMemoryScreen(
         Text(scopeTitle, style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.7f))
         status?.let { MemoryStatusBlock(it) }
         when (state) {
-            SessionMemoryUiState.Loading -> Text(
-                "正在读取本会话记忆…",
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(top = 16.dp),
-            )
-            is SessionMemoryUiState.Failed -> Text(
-                "记忆暂时无法读取：${state.message}\n原数据已保留，未做任何修改。",
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(top = 16.dp),
-            )
-            is SessionMemoryUiState.Ready -> MemoryList(
-                state = state,
-                onEdit = { editing = it },
-                onRevert = { actions.onRevert(it.factId, it.revision) },
-            )
+            SessionMemoryUiState.Loading ->
+                Text(
+                    "正在读取本会话记忆…",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(top = 16.dp),
+                )
+            is SessionMemoryUiState.Failed ->
+                Text(
+                    "记忆暂时无法读取：${state.message}\n原数据已保留，未做任何修改。",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(top = 16.dp),
+                )
+            is SessionMemoryUiState.Ready ->
+                MemoryList(
+                    state = state,
+                    onEdit = { editing = it },
+                    onRevert = { actions.onRevert(it.factId, it.revision) },
+                )
         }
     }
 
@@ -224,14 +232,18 @@ private fun MemoryEditDialog(
     var subject by remember(entry.factId) { mutableStateOf(entry.subject) }
     var predicate by remember(entry.factId) { mutableStateOf(entry.predicate) }
     var value by remember(entry.factId) { mutableStateOf(entry.value) }
-    val tooLong = subject.length > MAX_FIELD_CHARS || predicate.length > MAX_FIELD_CHARS ||
-        value.length > MAX_FIELD_CHARS
+    val tooLong =
+        subject.length > MAX_FIELD_CHARS || predicate.length > MAX_FIELD_CHARS ||
+            value.length > MAX_FIELD_CHARS
     val invalid = subject.isBlank() || predicate.isBlank() || value.isBlank() || tooLong
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("编辑记忆") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 Text(
                     "只修改这条记忆的文字；原始抽取记录与来源轮次会保留。",
                     style = MaterialTheme.typography.bodySmall,

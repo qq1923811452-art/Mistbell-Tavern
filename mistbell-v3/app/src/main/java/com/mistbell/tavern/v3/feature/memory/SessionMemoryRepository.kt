@@ -2,8 +2,8 @@ package com.mistbell.tavern.v3.feature.memory
 
 import com.mistbell.tavern.v3.core.memory.EffectiveMemory
 import com.mistbell.tavern.v3.core.memory.EffectiveMemoryResolver
+import com.mistbell.tavern.v3.core.memory.MemoryLogicalKey
 import com.mistbell.tavern.v3.core.memory.MemoryOverride
-import com.mistbell.tavern.v3.core.memory.MemoryProjection
 import com.mistbell.tavern.v3.core.memory.TemporalMemoryFact
 import com.mistbell.tavern.v3.core.storage.MemoryOverrideLoadResult
 import com.mistbell.tavern.v3.core.storage.MemoryOverridePersistence
@@ -14,35 +14,34 @@ import com.mistbell.tavern.v3.core.storage.TemporalFactPersistence
 sealed interface SessionMemoryLoadResult {
     data class Loaded(
         val entries: List<EffectiveMemory>,
-        /** Highest override revision for this scope; the UI uses it as the optimistic token. */
         val revision: Long,
         val overrideIssue: String? = null,
     ) : SessionMemoryLoadResult
 
     data object Missing : SessionMemoryLoadResult
+
     data class Unavailable(val safeReason: String) : SessionMemoryLoadResult
 }
 
-/** The three editable fields travel together so the write path keeps a single draft object. */
 data class MemoryEditDraft(val subject: String, val predicate: String, val value: String)
 
 sealed interface SessionMemorySaveResult {
-    data class Saved(val entry: EffectiveMemory, val revision: Long) : SessionMemorySaveResult
+    data class Saved(
+        val entry: EffectiveMemory,
+        val revision: Long,
+        val projectionWarning: String? = null,
+    ) : SessionMemorySaveResult
 
-    /** Someone else wrote this fact first; the caller must reload and let the user re-apply. */
     data class Conflict(val currentRevision: Long) : SessionMemorySaveResult
+
     data object NotFound : SessionMemorySaveResult
+
     data class Invalid(val safeReason: String) : SessionMemorySaveResult
+
     data class Failed(val safeReason: String) : SessionMemorySaveResult
 }
 
-/**
- * Single write path for manual memory edits.
- *
- * The authoritative commit is the override record; the searchable text projection is derived
- * afterwards from the merged view. A failure between the two leaves the edit saved and the text
- * stale, and the next synchronizer pass repairs it, so the two files never need a fake transaction.
- */
+/** Manual revisions never mutate the extraction ledger. All writers use the override path lock. */
 class SessionMemoryRepository(
     private val factStore: TemporalFactPersistence,
     private val memoryTextStore: MemoryTextPersistence,
@@ -50,152 +49,127 @@ class SessionMemoryRepository(
     private val clockMillis: () -> Long = System::currentTimeMillis,
 ) {
     fun load(scopeId: String): SessionMemoryLoadResult {
-        val loadedFacts = factStore.load()
-        if (loadedFacts is TemporalFactLoadResult.Corrupt) {
-            return SessionMemoryLoadResult.Unavailable(loadedFacts.safeReason)
+        val loaded = factStore.load()
+        if (loaded is TemporalFactLoadResult.Corrupt) {
+            return SessionMemoryLoadResult.Unavailable(loaded.safeReason)
         }
-        val facts = (loadedFacts as? TemporalFactLoadResult.Loaded)?.facts.orEmpty()
-        val overrides = readOverrides(scopeId)
-        val empty = facts.isEmpty() && overrides.items.isEmpty() && overrides.issue == null
-        return if (empty) {
+        val facts =
+            (loaded as? TemporalFactLoadResult.Loaded)?.facts.orEmpty()
+                .filter { it.conversationId == scopeId }
+        val overrides = overrideStore.load()
+        val items =
+            (overrides as? MemoryOverrideLoadResult.Loaded)?.overrides.orEmpty()
+                .filter { it.scopeId == scopeId }
+        val issue = (overrides as? MemoryOverrideLoadResult.Corrupt)?.safeReason
+        return if (facts.isEmpty() && items.isEmpty() && issue == null) {
             SessionMemoryLoadResult.Missing
         } else {
             SessionMemoryLoadResult.Loaded(
-                entries = EffectiveMemoryResolver.resolve(facts, overrides.items),
-                revision = overrides.items.maxOfOrNull(MemoryOverride::revision) ?: 0L,
-                overrideIssue = overrides.issue,
+                EffectiveMemoryResolver.resolve(facts, items),
+                items.maxOfOrNull(MemoryOverride::revision) ?: 0L,
+                issue,
             )
         }
     }
 
-    @Suppress("ReturnCount") // Guard clauses keep every rejection reason explicit on the write path.
     fun saveEdit(
         scopeId: String,
         factId: String,
         expectedRevision: Long,
         draft: MemoryEditDraft,
     ): SessionMemorySaveResult {
-        val cleanSubject = draft.subject.trim()
-        val cleanPredicate = draft.predicate.trim()
-        val cleanValue = draft.value.trim()
-        validateFields(cleanSubject, cleanPredicate, cleanValue)?.let { return it }
-
-        val facts = when (val loaded = factStore.load()) {
-            TemporalFactLoadResult.Missing -> return SessionMemorySaveResult.NotFound
-            is TemporalFactLoadResult.Corrupt -> return SessionMemorySaveResult.Failed(loaded.safeReason)
-            is TemporalFactLoadResult.Loaded -> loaded.facts
-        }
-        val fact = facts.firstOrNull { it.id == factId } ?: return SessionMemorySaveResult.NotFound
-        if (!fact.isCurrent) return SessionMemorySaveResult.NotFound
-
-        val now = clockMillis().coerceAtLeast(0L)
-        return updateOverrides(factId, expectedRevision) { existing ->
-            existing.filterNot { it.factId == factId } + MemoryOverride(
-                scopeId = scopeId,
-                factId = factId,
-                subject = cleanSubject,
-                predicate = cleanPredicate,
-                value = cleanValue,
-                revision = expectedRevision + 1L,
-                updatedAtEpochMillis = now,
-            )
-        }.let { outcome ->
-            when (outcome) {
-                is OverrideWrite.Conflict -> SessionMemorySaveResult.Conflict(outcome.currentRevision)
-                is OverrideWrite.Failed -> SessionMemorySaveResult.Failed(outcome.safeReason)
-                is OverrideWrite.Written -> {
-                    projectTexts(facts, outcome.overrides)
-                    val entry = EffectiveMemoryResolver.resolve(facts, outcome.overrides)
-                        .firstOrNull { it.factId == factId }
-                        ?: return SessionMemorySaveResult.Failed("记忆修订未能保存。")
-                    SessionMemorySaveResult.Saved(entry, expectedRevision + 1L)
-                }
-            }
-        }
+        val clean = MemoryEditDraft(draft.subject.trim(), draft.predicate.trim(), draft.value.trim())
+        return validateFields(clean) ?: commit(EditRequest(factId, expectedRevision, scopeId, clean))
     }
 
-    /** Restores the automatic value by deleting the override instead of rewriting the ledger. */
-    @Suppress("ReturnCount")
-    fun revert(factId: String, expectedRevision: Long): SessionMemorySaveResult {
-        val facts = when (val loaded = factStore.load()) {
-            TemporalFactLoadResult.Missing -> return SessionMemorySaveResult.NotFound
-            is TemporalFactLoadResult.Corrupt -> return SessionMemorySaveResult.Failed(loaded.safeReason)
-            is TemporalFactLoadResult.Loaded -> loaded.facts
-        }
-        if (facts.none { it.id == factId }) return SessionMemorySaveResult.NotFound
-        return updateOverrides(factId, expectedRevision) { existing ->
-            existing.filterNot { it.factId == factId }
-        }.let { outcome ->
-            when (outcome) {
-                is OverrideWrite.Conflict -> SessionMemorySaveResult.Conflict(outcome.currentRevision)
-                is OverrideWrite.Failed -> SessionMemorySaveResult.Failed(outcome.safeReason)
-                is OverrideWrite.Written -> {
-                    projectTexts(facts, outcome.overrides)
-                    val entry = EffectiveMemoryResolver.resolve(facts, outcome.overrides)
-                        .firstOrNull { it.factId == factId }
-                        ?: return SessionMemorySaveResult.NotFound
-                    SessionMemorySaveResult.Saved(entry, 0L)
-                }
-            }
-        }
-    }
-
-    private fun validateFields(subject: String, predicate: String, value: String): SessionMemorySaveResult.Invalid? {
-        val limit = MemoryOverride.MAX_FIELD_CHARS
-        val tooLong = subject.length > limit || predicate.length > limit || value.length > limit
-        return when {
-            subject.isEmpty() || predicate.isEmpty() || value.isEmpty() ->
-                SessionMemorySaveResult.Invalid("主体、关系、内容都不能为空。")
-            tooLong -> SessionMemorySaveResult.Invalid("单个字段最多 $limit 字符。")
-            else -> null
-        }
-    }
-
-    private sealed interface OverrideWrite {
-        data class Written(val overrides: List<MemoryOverride>) : OverrideWrite
-        data class Conflict(val currentRevision: Long) : OverrideWrite
-        data class Failed(val safeReason: String) : OverrideWrite
-    }
-
-    private fun updateOverrides(
+    /** Keep a revision tombstone: resetting to automatic must not revive stale edit tokens. */
+    fun revert(
         factId: String,
         expectedRevision: Long,
-        transform: (List<MemoryOverride>) -> List<MemoryOverride>,
-    ): OverrideWrite {
-        var conflict: Long? = null
-        return try {
-            val written = overrideStore.update { existing ->
-                val currentRevision = existing.firstOrNull { it.factId == factId }?.revision ?: 0L
-                if (currentRevision != expectedRevision) {
-                    conflict = currentRevision
+    ): SessionMemorySaveResult = commit(EditRequest(factId, expectedRevision))
+
+    private data class EditRequest(
+        val factId: String,
+        val expectedRevision: Long,
+        val scopeId: String? = null,
+        val draft: MemoryEditDraft? = null,
+    )
+
+    @Suppress("LongMethod", "ReturnCount", "CyclomaticComplexMethod")
+    private fun commit(request: EditRequest): SessionMemorySaveResult {
+        var result: SessionMemorySaveResult = SessionMemorySaveResult.NotFound
+        try {
+            overrideStore.update { existing ->
+                val loaded = factStore.load()
+                if (loaded is TemporalFactLoadResult.Corrupt) {
+                    result = SessionMemorySaveResult.Failed(loaded.safeReason)
                     return@update existing
                 }
-                transform(existing)
+                val facts = (loaded as? TemporalFactLoadResult.Loaded)?.facts.orEmpty()
+                val fact =
+                    facts.firstOrNull { it.id == request.factId && it.isCurrent }
+                        ?: return@update existing
+                if (request.scopeId != null && fact.conversationId != request.scopeId) return@update existing
+                val key = MemoryLogicalKey.of(fact.subject, fact.predicate)
+                val factsById = facts.associateBy(TemporalMemoryFact::id)
+                val group =
+                    existing.filter {
+                        it.scopeId == fact.conversationId && EffectiveMemoryResolver.originalKey(it, factsById) == key
+                    }
+                val revision = group.maxOfOrNull(MemoryOverride::revision) ?: 0L
+                if (revision != request.expectedRevision) {
+                    result = SessionMemorySaveResult.Conflict(revision)
+                    return@update existing
+                }
+                if (revision == Long.MAX_VALUE) {
+                    result = SessionMemorySaveResult.Failed("记忆修订号已达上限。")
+                    return@update existing
+                }
+                val draft = request.draft ?: MemoryEditDraft(fact.subject, fact.predicate, fact.value)
+                val replacement =
+                    MemoryOverride(
+                        scopeId = fact.conversationId,
+                        factId = fact.id,
+                        subject = draft.subject,
+                        predicate = draft.predicate,
+                        value = draft.value,
+                        revision = revision + 1L,
+                        updatedAtEpochMillis = clockMillis().coerceAtLeast(0L),
+                        sourceLogicalKey = key,
+                        reverted = request.draft == null,
+                    )
+                val updated = existing.filterNot { it in group } + replacement
+                val entry = EffectiveMemoryResolver.resolve(facts, updated).first { it.factId == fact.id }
+                result = SessionMemorySaveResult.Saved(entry, replacement.revision)
+                updated
             }
-            conflict?.let(OverrideWrite::Conflict) ?: OverrideWrite.Written(written)
-        } catch (error: IllegalStateException) {
-            OverrideWrite.Failed(error.message ?: "记忆修订存储不可用。")
-        } catch (error: java.io.IOException) {
-            OverrideWrite.Failed(error.javaClass.simpleName)
+        } catch (_: IllegalStateException) {
+            return SessionMemorySaveResult.Failed("记忆修订存储不可用，原数据已保留。")
+        } catch (_: java.io.IOException) {
+            return SessionMemorySaveResult.Failed("记忆修订文件写入失败。")
+        } catch (_: IllegalArgumentException) {
+            return SessionMemorySaveResult.Failed("记忆修订超出存储限制，原数据已保留。")
         }
+        val committed = result as? SessionMemorySaveResult.Saved ?: return result
+        // Re-read inside the shared override lock; never project the pre-commit facts/overrides.
+        val sync = TemporalFactTextSynchronizer(factStore, memoryTextStore, overrideStore).synchronize()
+        return committed.copy(
+            projectionWarning =
+                if (sync is TemporalFactTextSyncResult.Skipped) {
+                    "修订已保存，但检索文本尚未同步；同步恢复前不会注入旧记忆。"
+                } else {
+                    null
+                },
+        )
     }
 
-    /** Derived projection; a failure here never rolls back the already-saved override. */
-    private fun projectTexts(facts: List<TemporalMemoryFact>, overrides: List<MemoryOverride>) {
-        runCatching {
-            val projected = EffectiveMemoryResolver.currentTexts(facts, overrides)
-            memoryTextStore.update { existing ->
-                existing.filterNot { it.id.startsWith(MemoryProjection.FACT_TEXT_ID_PREFIX) } + projected
-            }
+    private fun validateFields(draft: MemoryEditDraft): SessionMemorySaveResult.Invalid? {
+        val values = listOf(draft.subject, draft.predicate, draft.value)
+        return when {
+            values.any(String::isEmpty) -> SessionMemorySaveResult.Invalid("主体、关系、内容都不能为空。")
+            values.any { it.length > MemoryOverride.MAX_FIELD_CHARS } ->
+                SessionMemorySaveResult.Invalid("单个字段最多 ${MemoryOverride.MAX_FIELD_CHARS} 字符。")
+            else -> null
         }
-    }
-
-    private data class Overrides(val items: List<MemoryOverride>, val issue: String?)
-
-    private fun readOverrides(scopeId: String): Overrides = when (val loaded = overrideStore.load()) {
-        MemoryOverrideLoadResult.Missing -> Overrides(emptyList(), null)
-        is MemoryOverrideLoadResult.Corrupt -> Overrides(emptyList(), loaded.safeReason)
-        is MemoryOverrideLoadResult.Loaded ->
-            Overrides(loaded.overrides.filter { it.scopeId == scopeId }, null)
     }
 }

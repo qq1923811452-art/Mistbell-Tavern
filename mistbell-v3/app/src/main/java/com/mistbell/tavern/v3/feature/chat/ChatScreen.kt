@@ -207,10 +207,12 @@ fun ChatScreen(
             ),
         )
     }
-    var memorySummary by remember { mutableStateOf<String?>(null) }
-    var showMemoryScreen by remember { mutableStateOf(false) }
-    var memoryScreenState by remember { mutableStateOf<SessionMemoryUiState>(SessionMemoryUiState.Loading) }
-    var memoryStatus by remember { mutableStateOf<MemoryStatusSnapshot?>(null) }
+    var memorySummary by remember(memoryScopeId) { mutableStateOf<String?>(null) }
+    var showMemoryScreen by remember(memoryScopeId) { mutableStateOf(false) }
+    var memoryScreenState by remember(memoryScopeId) {
+        mutableStateOf<SessionMemoryUiState>(SessionMemoryUiState.Loading)
+    }
+    var memoryStatus by remember(memoryScopeId) { mutableStateOf<MemoryStatusSnapshot?>(null) }
     val historyStore = remember(context, conversationHistoryScope) {
         val legacyStore = ChatHistoryStore(
             context.applicationContext,
@@ -819,7 +821,7 @@ fun ChatScreen(
         return
     }
 
-    LaunchedEffect(showSessionSettings) {
+    LaunchedEffect(showSessionSettings, memoryScopeId) {
         if (showSessionSettings) {
             memorySummary = withContext(Dispatchers.IO) {
                 when (val loaded = sessionMemoryRepository.load(memoryScopeId)) {
@@ -835,6 +837,7 @@ fun ChatScreen(
     }
 
     if (showMemoryScreen) {
+        BackHandler { showMemoryScreen = false }
         SessionMemoryScreen(
             scopeTitle = "当前角色 · 本会话（作用域 ${memoryScopeId.take(8)}）",
             state = memoryScreenState,
@@ -855,7 +858,7 @@ fun ChatScreen(
                     refreshSessionMemory(
                         when (result) {
                             is SessionMemorySaveResult.Saved ->
-                                "已保存；索引刷新后检索会使用新内容。"
+                                result.projectionWarning ?: "已保存；索引刷新后检索会使用新内容。"
                             is SessionMemorySaveResult.Conflict ->
                                 "这条记忆已被其他修改更新，已刷新为最新版本，请重新编辑。"
                             is SessionMemorySaveResult.Invalid -> result.safeReason
@@ -872,7 +875,7 @@ fun ChatScreen(
                     }
                     refreshSessionMemory(
                         when (result) {
-                            is SessionMemorySaveResult.Saved -> "已恢复自动抽取版本。"
+                            is SessionMemorySaveResult.Saved -> result.projectionWarning ?: "已恢复自动抽取版本。"
                             is SessionMemorySaveResult.Conflict -> "这条记忆已被其他修改更新，已刷新，请重试。"
                             is SessionMemorySaveResult.Invalid -> result.safeReason
                             SessionMemorySaveResult.NotFound -> "这条记忆已不存在，已刷新。"

@@ -10,7 +10,9 @@ import java.io.IOException
 
 sealed interface MemoryOverrideLoadResult {
     data object Missing : MemoryOverrideLoadResult
+
     data class Loaded(val overrides: List<MemoryOverride>) : MemoryOverrideLoadResult
+
     data class Corrupt(val safeReason: String) : MemoryOverrideLoadResult
 }
 
@@ -40,48 +42,40 @@ class AtomicMemoryOverrideStore(
         atomicFile = AtomicFile(File(context.filesDir, fileName))
     }
 
-    override fun load(): MemoryOverrideLoadResult = synchronized(lockFor(atomicFile.baseFile)) {
-        val baseFile = atomicFile.baseFile
-        val backup = File(baseFile.path + ".bak")
-        if (!baseFile.exists() && !backup.exists()) return MemoryOverrideLoadResult.Missing
-        if (maxOf(baseFile.length(), backup.length()) > MAX_STORE_BYTES) {
-            return MemoryOverrideLoadResult.Corrupt("Memory override store exceeds the size limit.")
+    override fun load(): MemoryOverrideLoadResult =
+        synchronized(lockFor(atomicFile.baseFile)) {
+            val baseFile = atomicFile.baseFile
+            val backup = File(baseFile.path + ".bak")
+            if (!baseFile.exists() && !backup.exists()) return MemoryOverrideLoadResult.Missing
+            if (maxOf(baseFile.length(), backup.length()) > MAX_STORE_BYTES) {
+                return MemoryOverrideLoadResult.Corrupt("Memory override store exceeds the size limit.")
+            }
+            try {
+                val bytes = atomicFile.openRead().use { it.readBytes() }
+                MemoryOverrideLoadResult.Loaded(MemoryOverrideCodec.decode(bytes))
+            } catch (_: IOException) {
+                MemoryOverrideLoadResult.Corrupt("Memory override store could not be read.")
+            } catch (_: IllegalArgumentException) {
+                MemoryOverrideLoadResult.Corrupt("Memory override store failed validation.")
+            } catch (_: org.json.JSONException) {
+                MemoryOverrideLoadResult.Corrupt("Memory override store contains invalid JSON.")
+            }
         }
-        try {
-            val bytes = atomicFile.openRead().use { it.readBytes() }
-            MemoryOverrideLoadResult.Loaded(MemoryOverrideCodec.decode(bytes))
-        } catch (_: IOException) {
-            MemoryOverrideLoadResult.Corrupt("Memory override store could not be read.")
-        } catch (_: IllegalArgumentException) {
-            MemoryOverrideLoadResult.Corrupt("Memory override store failed validation.")
-        }
-    }
 
-    override fun update(
-        transform: (List<MemoryOverride>) -> List<MemoryOverride>,
-    ): List<MemoryOverride> = synchronized(lockFor(atomicFile.baseFile)) {
-        val current = when (val loaded = loadUnlocked()) {
-            MemoryOverrideLoadResult.Missing -> emptyList()
-            is MemoryOverrideLoadResult.Loaded -> loaded.overrides
-            is MemoryOverrideLoadResult.Corrupt -> throw IllegalStateException(loaded.safeReason)
+    override fun update(transform: (List<MemoryOverride>) -> List<MemoryOverride>): List<MemoryOverride> =
+        synchronized(lockFor(atomicFile.baseFile)) {
+            val current =
+                when (val loaded = loadUnlocked()) {
+                    MemoryOverrideLoadResult.Missing -> emptyList()
+                    is MemoryOverrideLoadResult.Loaded -> loaded.overrides
+                    is MemoryOverrideLoadResult.Corrupt -> throw IllegalStateException(loaded.safeReason)
+                }
+            val updated = transform(current)
+            if (updated != current) saveUnlocked(updated)
+            updated
         }
-        val updated = transform(current)
-        if (updated != current) saveUnlocked(updated)
-        updated
-    }
 
-    private fun loadUnlocked(): MemoryOverrideLoadResult {
-        val baseFile = atomicFile.baseFile
-        val backup = File(baseFile.path + ".bak")
-        if (!baseFile.exists() && !backup.exists()) return MemoryOverrideLoadResult.Missing
-        return runCatching {
-            MemoryOverrideLoadResult.Loaded(
-                MemoryOverrideCodec.decode(atomicFile.openRead().use { it.readBytes() }),
-            )
-        }.getOrElse {
-            MemoryOverrideLoadResult.Corrupt("Memory override store could not be read.")
-        }
-    }
+    private fun loadUnlocked(): MemoryOverrideLoadResult = load()
 
     private fun saveUnlocked(overrides: List<MemoryOverride>) {
         val bytes = MemoryOverrideCodec.encode(overrides)
@@ -104,8 +98,7 @@ class AtomicMemoryOverrideStore(
         private const val LOCK_STRIPES = 16
         private val LOCKS = Array(LOCK_STRIPES) { Any() }
 
-        private fun lockFor(file: File): Any =
-            LOCKS[(file.absolutePath.hashCode() and Int.MAX_VALUE) % LOCK_STRIPES]
+        private fun lockFor(file: File): Any = LOCKS[(file.absolutePath.hashCode() and Int.MAX_VALUE) % LOCK_STRIPES]
     }
 }
 
@@ -127,31 +120,44 @@ object MemoryOverrideCodec {
                         .put("predicate", override.predicate)
                         .put("value", override.value)
                         .put("revision", override.revision)
+                        .put("sourceLogicalKey", override.sourceLogicalKey)
+                        .put("reverted", override.reverted)
                         .put("updatedAt", override.updatedAtEpochMillis),
                 )
             }
         val root = JSONObject().put("version", VERSION).put("overrides", array)
-        return root.toString().toByteArray(Charsets.UTF_8)
+        return root.toString().toByteArray(Charsets.UTF_8).also {
+            require(it.size <= AtomicMemoryOverrideStore.MAX_STORE_BYTES) {
+                "Memory override store exceeds the size limit."
+            }
+        }
     }
 
     fun decode(bytes: ByteArray): List<MemoryOverride> {
+        require(bytes.size <= AtomicMemoryOverrideStore.MAX_STORE_BYTES) {
+            "Memory override store exceeds the size limit."
+        }
         val root = JSONObject(bytes.toString(Charsets.UTF_8))
         require(root.optInt("version", -1) == VERSION) { "Unsupported memory override version." }
-        val array = root.optJSONArray("overrides")
-            ?: throw IllegalArgumentException("Memory override payload is missing.")
+        val array =
+            root.optJSONArray("overrides")
+                ?: throw IllegalArgumentException("Memory override payload is missing.")
         require(array.length() <= MAX_OVERRIDES) { "Memory override store contains too many records." }
-        val overrides = (0 until array.length()).map { index ->
-            val item = array.optJSONObject(index) ?: throw IllegalArgumentException("Malformed override.")
-            MemoryOverride(
-                scopeId = item.optString("scopeId"),
-                factId = item.optString("factId"),
-                subject = item.optString("subject"),
-                predicate = item.optString("predicate"),
-                value = item.optString("value"),
-                revision = item.optLong("revision"),
-                updatedAtEpochMillis = item.optLong("updatedAt"),
-            )
-        }
+        val overrides =
+            (0 until array.length()).map { index ->
+                val item = array.optJSONObject(index) ?: throw IllegalArgumentException("Malformed override.")
+                MemoryOverride(
+                    scopeId = item.optString("scopeId"),
+                    factId = item.optString("factId"),
+                    subject = item.optString("subject"),
+                    predicate = item.optString("predicate"),
+                    value = item.optString("value"),
+                    revision = item.optLong("revision"),
+                    updatedAtEpochMillis = item.optLong("updatedAt"),
+                    sourceLogicalKey = item.optString("sourceLogicalKey").takeIf(String::isNotBlank),
+                    reverted = item.optBoolean("reverted", false),
+                )
+            }
         require(overrides.map(MemoryOverride::factId).distinct().size == overrides.size) {
             "Memory override fact IDs must be unique."
         }

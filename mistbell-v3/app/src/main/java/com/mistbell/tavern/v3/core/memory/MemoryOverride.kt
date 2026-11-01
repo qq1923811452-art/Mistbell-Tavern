@@ -19,12 +19,18 @@ data class MemoryOverride(
     val value: String,
     val revision: Long,
     val updatedAtEpochMillis: Long,
+    /** Original ledger identity, not the editable wording. Null supports the version-1 format. */
+    val sourceLogicalKey: String? = null,
+    /** A reset retains its revision, so an old edit can never pass a reused token (ABA). */
+    val reverted: Boolean = false,
 ) {
     init {
         require(scopeId.isNotBlank() && factId.isNotBlank())
         require(subject.isNotBlank() && predicate.isNotBlank() && value.isNotBlank())
-        require(subject.length <= MAX_FIELD_CHARS && predicate.length <= MAX_FIELD_CHARS &&
-            value.length <= MAX_FIELD_CHARS)
+        require(
+            subject.length <= MAX_FIELD_CHARS && predicate.length <= MAX_FIELD_CHARS &&
+                value.length <= MAX_FIELD_CHARS,
+        )
         require(revision >= 1L && updatedAtEpochMillis >= 0L)
     }
 
@@ -40,11 +46,15 @@ data class MemoryOverride(
 /** Normalization shared with the fact ledger: NFKC, trimmed, case-folded with the root locale. */
 object MemoryLogicalKey {
     /** Scope is already implied by the per-scope store; adding it would only risk aliasing bugs. */
-    fun of(subject: String, predicate: String): String =
-        normalize(subject) + "|" + normalize(predicate)
+    fun of(
+        subject: String,
+        predicate: String,
+    ): String {
+        val normalizedSubject = normalize(subject)
+        return "${normalizedSubject.length}:$normalizedSubject${normalize(predicate)}"
+    }
 
-    fun normalize(value: String): String =
-        Normalizer.normalize(value.trim(), Normalizer.Form.NFKC).lowercase(Locale.ROOT)
+    fun normalize(value: String): String = Normalizer.normalize(value.trim(), Normalizer.Form.NFKC).lowercase(Locale.ROOT)
 }
 
 enum class MemoryOrigin { AUTOMATIC, MANUAL }
@@ -67,7 +77,11 @@ data class EffectiveMemory(
 
 /** One projection used by UI, text storage and prompt retrieval; never re-implemented per caller. */
 object MemoryProjection {
-    fun textFor(subject: String, predicate: String, value: String): String = "$subject $predicate: $value"
+    fun textFor(
+        subject: String,
+        predicate: String,
+        value: String,
+    ): String = "$subject $predicate: $value"
 
     fun factRecordId(factId: String): String = FACT_TEXT_ID_PREFIX + factId
 
@@ -84,40 +98,46 @@ object EffectiveMemoryResolver {
         overrides: List<MemoryOverride>,
     ): List<EffectiveMemory> {
         val byFactId = overrides.associateBy(MemoryOverride::factId)
-        val byLogicalKey = overrides.groupBy(MemoryOverride::logicalKey)
-        val resolved = facts.map { fact ->
-            val override = byFactId[fact.id]
-                ?: byLogicalKey[MemoryLogicalKey.of(fact.subject, fact.predicate)]
-                    ?.filter { it.factId != fact.id }
-                    ?.maxByOrNull(MemoryOverride::revision)
-            if (override == null) {
-                EffectiveMemory(
-                    factId = fact.id,
-                    subject = fact.subject,
-                    predicate = fact.predicate,
-                    value = fact.value,
-                    origin = MemoryOrigin.AUTOMATIC,
-                    revision = 0L,
-                    sourceTurnId = fact.sourceTurnId,
-                    observedAtEpochMillis = fact.observedAtEpochMillis,
-                    updatedAtEpochMillis = null,
-                    isCurrent = fact.isCurrent,
-                )
-            } else {
-                EffectiveMemory(
-                    factId = fact.id,
-                    subject = override.subject,
-                    predicate = override.predicate,
-                    value = override.value,
-                    origin = MemoryOrigin.MANUAL,
-                    revision = override.revision,
-                    sourceTurnId = fact.sourceTurnId,
-                    observedAtEpochMillis = fact.observedAtEpochMillis,
-                    updatedAtEpochMillis = override.updatedAtEpochMillis,
-                    isCurrent = fact.isCurrent,
-                )
+        val factsById = facts.associateBy(TemporalMemoryFact::id)
+        val byLogicalKey = overrides.groupBy { originalKey(it, factsById) }
+        val resolved =
+            facts.map { fact ->
+                val override =
+                    if (fact.isCurrent) {
+                        byLogicalKey[MemoryLogicalKey.of(fact.subject, fact.predicate)]
+                            ?.filter { it.scopeId == fact.conversationId }
+                            ?.maxByOrNull(MemoryOverride::revision)
+                    } else {
+                        byFactId[fact.id]?.takeIf { it.scopeId == fact.conversationId }
+                    }
+                if (override == null || override.reverted) {
+                    EffectiveMemory(
+                        factId = fact.id,
+                        subject = fact.subject,
+                        predicate = fact.predicate,
+                        value = fact.value,
+                        origin = MemoryOrigin.AUTOMATIC,
+                        revision = override?.revision ?: 0L,
+                        sourceTurnId = fact.sourceTurnId,
+                        observedAtEpochMillis = fact.observedAtEpochMillis,
+                        updatedAtEpochMillis = null,
+                        isCurrent = fact.isCurrent,
+                    )
+                } else {
+                    EffectiveMemory(
+                        factId = fact.id,
+                        subject = override.subject,
+                        predicate = override.predicate,
+                        value = override.value,
+                        origin = MemoryOrigin.MANUAL,
+                        revision = override.revision,
+                        sourceTurnId = fact.sourceTurnId,
+                        observedAtEpochMillis = fact.observedAtEpochMillis,
+                        updatedAtEpochMillis = override.updatedAtEpochMillis,
+                        isCurrent = fact.isCurrent,
+                    )
+                }
             }
-        }
         return resolved.sortedWith(
             compareByDescending<EffectiveMemory> { it.isCurrent }
                 .thenByDescending { it.updatedAtEpochMillis ?: it.observedAtEpochMillis }
@@ -125,11 +145,20 @@ object EffectiveMemoryResolver {
         )
     }
 
+    fun originalKey(
+        override: MemoryOverride,
+        factsById: Map<String, TemporalMemoryFact>,
+    ): String =
+        override.sourceLogicalKey ?: factsById[override.factId]?.let {
+            MemoryLogicalKey.of(it.subject, it.predicate)
+        } ?: override.logicalKey
+
     /** Current effective facts only, in the exact text form prompt retrieval consumes. */
     fun currentTexts(
         facts: List<TemporalMemoryFact>,
         overrides: List<MemoryOverride>,
-    ): List<MemoryTextRecord> = resolve(facts, overrides)
-        .filter(EffectiveMemory::isCurrent)
-        .map { MemoryTextRecord(MemoryProjection.factRecordId(it.factId), it.displayText) }
+    ): List<MemoryTextRecord> =
+        resolve(facts, overrides)
+            .filter(EffectiveMemory::isCurrent)
+            .map { MemoryTextRecord(MemoryProjection.factRecordId(it.factId), it.displayText) }
 }

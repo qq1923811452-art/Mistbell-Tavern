@@ -6,11 +6,14 @@ import com.mistbell.tavern.v3.core.memory.VectorSnapshot
 import com.mistbell.tavern.v3.core.memory.VectorSnapshotCodec
 import java.io.File
 import java.io.IOException
-import java.nio.channels.FileChannel
 import java.nio.BufferUnderflowException
+import java.nio.channels.FileChannel
 
 fun interface VectorSnapshotLoader {
-    fun load(expectedModelId: String, expectedDimensions: Int): VectorSnapshotLoadResult
+    fun load(
+        expectedModelId: String,
+        expectedDimensions: Int,
+    ): VectorSnapshotLoadResult
 }
 
 fun interface VectorSnapshotSaver {
@@ -19,8 +22,11 @@ fun interface VectorSnapshotSaver {
 
 sealed interface VectorSnapshotLoadResult {
     data object Missing : VectorSnapshotLoadResult
+
     data class Loaded(val snapshot: VectorSnapshot) : VectorSnapshotLoadResult
+
     data class Incompatible(val reason: String) : VectorSnapshotLoadResult
+
     data class Corrupt(val reason: String) : VectorSnapshotLoadResult
 }
 
@@ -47,82 +53,94 @@ class AtomicVectorSnapshotStore(
         atomicFile = AtomicFile(File(context.filesDir, fileName))
     }
 
-    @Synchronized
-    override fun save(snapshot: VectorSnapshot) {
-        val bytes = VectorSnapshotCodec.encode(snapshot)
-        val stream = atomicFile.startWrite()
-        try {
-            stream.write(bytes)
-            atomicFile.finishWrite(stream)
-        } catch (failure: Throwable) {
-            atomicFile.failWrite(stream)
-            throw failure
-        }
-    }
+    private val pathLock = VectorSnapshotMemoryCache.lockFor(atomicFile.baseFile)
 
-    @Synchronized
-    override fun load(expectedModelId: String, expectedDimensions: Int): VectorSnapshotLoadResult {
-        require(expectedModelId.isNotBlank())
-        require(expectedDimensions > 0)
-        val file = atomicFile.baseFile
-        val backup = File(file.path + ".bak")
-        if (!file.exists() && !backup.exists()) return VectorSnapshotLoadResult.Missing
-        if (maxOf(file.length(), backup.length()) > VectorSnapshotCodec.MAX_SNAPSHOT_BYTES) {
-            return VectorSnapshotLoadResult.Corrupt("Vector snapshot exceeds the size limit.")
-        }
-
-        // One message loads the snapshot twice (preflight and retrieval). Re-decoding and
-        // re-hashing the whole file for the second call is pure waste when nothing changed.
-        val cached = VectorSnapshotMemoryCache.find(file, memoryCacheKey(file, expectedModelId, expectedDimensions))
-        if (cached != null) return completeLoad(cached, expectedModelId, expectedDimensions)
-
-        val snapshot = try {
-            atomicFile.openRead().use { input ->
-                val channel = input.channel
-                val size = channel.size()
-                require(size in 1..VectorSnapshotCodec.MAX_SNAPSHOT_BYTES.toLong()) {
-                    "Vector snapshot size is invalid."
+    override fun save(snapshot: VectorSnapshot): Unit =
+        synchronized(pathLock) {
+            val bytes = VectorSnapshotCodec.encode(snapshot)
+            try {
+                val stream = atomicFile.startWrite()
+                try {
+                    stream.write(bytes)
+                    atomicFile.finishWrite(stream)
+                } catch (failure: Throwable) {
+                    atomicFile.failWrite(stream)
+                    throw failure
                 }
-                val mapped = channel.map(FileChannel.MapMode.READ_ONLY, 0L, size)
-                VectorSnapshotCodec.decodeMapped(mapped)
+            } finally {
+                // Also discard on failure: AtomicFile may have restored/replaced the base file.
+                VectorSnapshotMemoryCache.invalidate(atomicFile.baseFile)
             }
-        } catch (failure: IOException) {
-            return VectorSnapshotLoadResult.Corrupt("Vector snapshot could not be read.")
-        } catch (failure: BufferUnderflowException) {
-            return VectorSnapshotLoadResult.Corrupt("Vector snapshot is truncated.")
-        } catch (failure: IllegalArgumentException) {
-            return VectorSnapshotLoadResult.Corrupt(
-                failure.message ?: "Vector snapshot failed validation.",
-            )
         }
 
-        if (snapshot.modelId != expectedModelId || snapshot.dimensions != expectedDimensions) {
-            return completeLoad(snapshot, expectedModelId, expectedDimensions)
+    @Suppress("ReturnCount", "CyclomaticComplexMethod") // Recovery and validation use explicit exits.
+    override fun load(
+        expectedModelId: String,
+        expectedDimensions: Int,
+    ): VectorSnapshotLoadResult {
+        return synchronized(pathLock) {
+            require(expectedModelId.isNotBlank())
+            require(expectedDimensions > 0)
+            val file = atomicFile.baseFile
+            val backup = File(file.path + ".bak")
+            if (!file.exists() && !backup.exists()) return VectorSnapshotLoadResult.Missing
+            if (maxOf(file.length(), backup.length()) > VectorSnapshotCodec.MAX_SNAPSHOT_BYTES) {
+                return VectorSnapshotLoadResult.Corrupt("Vector snapshot exceeds the size limit.")
+            }
+
+            // Observe before openRead as well: it may restore .bak or the path may be replaced
+            // between opening the descriptor and taking the next identity. Such reads are not cached.
+            val beforeOpen = VectorSnapshotMemoryCache.key(file, expectedModelId, expectedDimensions)
+            var decodedKey: VectorSnapshotMemoryCache.Key? = null
+            val snapshot =
+                try {
+                    atomicFile.openRead().use { input ->
+                        // Always let AtomicFile perform recovery before considering a cache hit.
+                        val openedKey = VectorSnapshotMemoryCache.key(file, expectedModelId, expectedDimensions)
+                        val stableKey = openedKey?.takeIf { it == beforeOpen }
+                        val channel = input.channel
+                        val size = channel.size()
+                        require(size in 1..VectorSnapshotCodec.MAX_SNAPSHOT_BYTES.toLong()) {
+                            "Vector snapshot size is invalid."
+                        }
+                        if (stableKey != null && stableKey.identity.length == size) {
+                            val cached = VectorSnapshotMemoryCache.find(file, stableKey)
+                            if (cached != null) return completeLoad(cached, expectedModelId, expectedDimensions)
+                            decodedKey = stableKey
+                        }
+                        val mapped = channel.map(FileChannel.MapMode.READ_ONLY, 0L, size)
+                        VectorSnapshotCodec.decodeMapped(mapped)
+                    }
+                } catch (failure: IOException) {
+                    return VectorSnapshotLoadResult.Corrupt("Vector snapshot could not be read.")
+                } catch (failure: BufferUnderflowException) {
+                    return VectorSnapshotLoadResult.Corrupt("Vector snapshot is truncated.")
+                } catch (failure: IllegalArgumentException) {
+                    return VectorSnapshotLoadResult.Corrupt(
+                        failure.message ?: "Vector snapshot failed validation.",
+                    )
+                }
+
+            if (snapshot.modelId != expectedModelId || snapshot.dimensions != expectedDimensions) {
+                return completeLoad(snapshot, expectedModelId, expectedDimensions)
+            }
+            decodedKey?.let { VectorSnapshotMemoryCache.store(file, it, snapshot) }
+            return VectorSnapshotLoadResult.Loaded(snapshot)
         }
-        VectorSnapshotMemoryCache.store(memoryCacheKey(file, expectedModelId, expectedDimensions), snapshot)
-        return VectorSnapshotLoadResult.Loaded(snapshot)
     }
 
     private fun completeLoad(
         snapshot: VectorSnapshot,
         expectedModelId: String,
         expectedDimensions: Int,
-    ): VectorSnapshotLoadResult = when {
-        snapshot.modelId != expectedModelId ->
-            VectorSnapshotLoadResult.Incompatible("Embedding model ID does not match.")
-        snapshot.dimensions != expectedDimensions ->
-            VectorSnapshotLoadResult.Incompatible("Embedding dimension does not match.")
-        else -> VectorSnapshotLoadResult.Loaded(snapshot)
-    }
-
-    private fun memoryCacheKey(file: File, modelId: String, dimensions: Int): VectorSnapshotMemoryCache.Key =
-        VectorSnapshotMemoryCache.Key(
-            path = file.absolutePath,
-            length = file.length(),
-            lastModified = file.lastModified(),
-            modelId = modelId,
-            dimensions = dimensions,
-        )
+    ): VectorSnapshotLoadResult =
+        when {
+            snapshot.modelId != expectedModelId ->
+                VectorSnapshotLoadResult.Incompatible("Embedding model ID does not match.")
+            snapshot.dimensions != expectedDimensions ->
+                VectorSnapshotLoadResult.Incompatible("Embedding dimension does not match.")
+            else -> VectorSnapshotLoadResult.Loaded(snapshot)
+        }
 
     companion object {
         const val DEFAULT_FILE_NAME = "mistbell-v3-vectors.bin"

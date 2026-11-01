@@ -42,7 +42,38 @@ class EffectiveMemoryResolverTest {
         assertEquals("艾琳 职业: 法师", texts.single().text)
     }
 
-    private fun fact(id: String, subject: String, predicate: String, value: String) = TemporalMemoryFact(
+    @Test
+    fun currentOverrideDoesNotRewriteAnUneditedHistoricalFact() {
+        val old = fact("f0", "艾琳", "职业", "学徒").copy(validUntilEpochMillis = 10L)
+        val current = fact("f1", "艾琳", "职业", "法师")
+        val override = MemoryOverride(SCOPE, "f1", "艾琳", "职业", "剑士", 1L, 5L)
+        val entries = EffectiveMemoryResolver.resolve(listOf(old, current), listOf(override))
+        assertEquals("学徒", entries.first { it.factId == "f0" }.value)
+        assertEquals("剑士", entries.first { it.factId == "f1" }.value)
+    }
+
+    @Test
+    fun delimiterCharactersDoNotAliasAnotherFact() {
+        val first = fact("f1", "a|b", "c", "original")
+        val second = fact("f2", "a", "b|c", "unrelated")
+        val override = MemoryOverride(SCOPE, "f1", "a|b", "c", "edited", 1L, 5L)
+        val entries = EffectiveMemoryResolver.resolve(listOf(first, second), listOf(override))
+        assertEquals("unrelated", entries.first { it.factId == "f2" }.value)
+    }
+
+    @Test
+    fun otherScopeOverrideCannotApplyEvenWithMatchingFactIdAndKey() {
+        val override = MemoryOverride("other", "f1", "艾琳", "职业", "错误", 1L, 5L)
+        val entry = EffectiveMemoryResolver.resolve(listOf(fact("f1", "艾琳", "职业", "法师")), listOf(override)).single()
+        assertEquals("法师", entry.value)
+    }
+
+    private fun fact(
+        id: String,
+        subject: String,
+        predicate: String,
+        value: String,
+    ) = TemporalMemoryFact(
         id = id,
         conversationId = SCOPE,
         sourceTurnId = "turn-1",

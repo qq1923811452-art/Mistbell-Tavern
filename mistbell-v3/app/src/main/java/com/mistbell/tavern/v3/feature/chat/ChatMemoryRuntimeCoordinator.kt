@@ -180,6 +180,7 @@ if (installedModel == null || configuredDimensions !in CHAT_EMBEDDING_DIMENSION_
         }
     }
     var indexMaintenanceMessage = ""
+    var effectiveTextUnavailable = false
     when (val syncResult = withContext(Dispatchers.IO) {
         TemporalFactTextSynchronizer(
             factStore = scopedTemporalFactStore,
@@ -201,8 +202,18 @@ if (installedModel == null || configuredDimensions !in CHAT_EMBEDDING_DIMENSION_
                 "memory.facts.text_projection_skipped",
                 "reason=safe_sync_failure",
             )
-            indexMaintenanceMessage = "事实记忆同步暂不可用；原始事实文件不会被覆盖。"
+            effectiveTextUnavailable = true
+            indexMaintenanceMessage = "事实记忆同步暂不可用；本轮不注入旧记忆，原始文件保留。"
         }
+    }
+    if (effectiveTextUnavailable) {
+        setMemoryStatusNotice(indexMaintenanceMessage)
+        client.stream(
+            messages,
+            observer,
+            ChatGenerationOptions(maxTokens = maxTokens, stream = streamEnabled, thinkingEnabled = thinkingEnabled),
+        )
+        return
     }
     when (
         val existingSnapshot = withContext(Dispatchers.IO) {
@@ -285,6 +296,10 @@ if (installedModel == null || configuredDimensions !in CHAT_EMBEDDING_DIMENSION_
         memoryContext = memoryContext,
         diagnosticStore = diagnosticStore,
         onMemoryStatus = { notice ->
+            embeddingSettings.edit()
+                .putString("memory_last_status_$memoryScopeId", notice)
+                .putLong("memory_last_status_at_$memoryScopeId", System.currentTimeMillis())
+                .apply()
             mainHandler.post {
                 setMemoryStatusNotice(notice)
                 setStatus(notice)
