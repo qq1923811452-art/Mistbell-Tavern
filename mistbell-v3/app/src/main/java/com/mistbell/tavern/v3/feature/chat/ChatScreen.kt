@@ -35,7 +35,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -177,7 +176,7 @@ fun ChatScreen(
     }
     var usageSummary by remember { mutableStateOf("Token 用量：本轮尚无服务端 usage 数据") }
     val history = remember { mutableStateListOf<ChatLine>() }
-    val listState = rememberLazyListState()
+    var loadedHistoryScope by remember { mutableStateOf<String?>(null) }
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
     val conversationHistoryScope = memoryConversationId.ifBlank { memoryScopeId }
     val historyWindowPlanner = remember(conversationHistoryScope) { StableConversationWindowPlanner() }
@@ -582,7 +581,10 @@ fun ChatScreen(
         historyLoadCoordinator = historyLoadCoordinator,
         diagnosticStore = diagnosticStore,
         history = history,
-        setHistoryReady = { historyReady = it },
+        setHistoryReady = {
+            historyReady = it
+            loadedHistoryScope = conversationHistoryScope.takeIf { _ -> it }
+        },
         setHistoryLoadFailed = { historyLoadFailed = it },
         setStatus = { status = it },
     )
@@ -916,10 +918,14 @@ fun ChatScreen(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
 
-            ChatHistoryMessageList(
-                history = history,
-                busy = busy,
-                listState = listState,
+            chatConversationPane(
+                pane = ConversationPaneState(
+                    conversationId = conversationHistoryScope,
+                    historyReady = historyReady && !historyLoadFailed &&
+                        loadedHistoryScope == conversationHistoryScope,
+                    history = history,
+                    busy = busy,
+                ),
                 onSelectVariant = { messageId, requested ->
                     val index = history.indexOfFirst { it.id == messageId }
                     if (index >= 0) {
