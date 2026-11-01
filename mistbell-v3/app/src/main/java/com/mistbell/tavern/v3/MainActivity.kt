@@ -87,7 +87,7 @@ class MainActivity : ComponentActivity() {
     private val embeddingDimensionOptions = listOf(128, 256, 512, 768, 1024, 1536, 2048)
     private var selectedEmbeddingDimensions by mutableStateOf(768)
     private var qualcommModelSelected by mutableStateOf(false)
-    private var modelProfileGeneration = 0
+    private var modelProfileGeneration by mutableStateOf(0)
 
     /**
      * Some Android document providers expose a readable filesystem path (notably MediaStore
@@ -152,6 +152,8 @@ class MainActivity : ComponentActivity() {
                 Toast.makeText(this, "当前操作尚未完成", Toast.LENGTH_LONG).show()
             } else {
                 operationBusy = true
+                inferenceStatus = InferenceRuntimeStatus.idle()
+                modelProfileGeneration += 1
                 operationMessage = "正在导入本地 .litertlm 模型……"
                 lifecycleScope.launch {
                     try {
@@ -284,8 +286,8 @@ class MainActivity : ComponentActivity() {
                     } else if (showMemorySettings) {
                         MemorySettingsScreen(onBack = { showMemorySettings = false })
                     } else if (showLocalModel) {
-                        LaunchedEffect(showLocalModel) {
-                            if (showLocalModel) refreshInferenceStatusFromPersistedEvidence()
+                        LaunchedEffect(qualcommModelSelected, operationBusy, modelProfileGeneration) {
+                            refreshInferenceStatusFromPersistedEvidence()
                         }
                         LocalModelScreen(
                             inferenceStatus = inferenceStatus,
@@ -410,6 +412,7 @@ class MainActivity : ComponentActivity() {
         EmbeddingEngineProcessHolder.close(CloseReason.MODEL_CHANGED)
         qualcommModelSelected = qualcomm
         modelProfileGeneration += 1
+        inferenceStatus = InferenceRuntimeStatus.idle()
         val generationAtSelection = modelProfileGeneration
         val assetsAtSelection = createModelAssetManager(qualcomm)
         modelAssets = assetsAtSelection
@@ -541,6 +544,8 @@ class MainActivity : ComponentActivity() {
     private fun downloadEmbeddingModel() {
         if (operationBusy) return
         operationBusy = true
+        inferenceStatus = InferenceRuntimeStatus.idle()
+        modelProfileGeneration += 1
         operationMessage = "开始下载模型；校验后保存到软件内部目录，并备份到 ${publicModelDirectoryLabel()}；请保持应用在前台并连接稳定网络。"
         diagnostics.info("embedding.model.download.started", "source=official-model-host")
         lifecycleScope.launch {
@@ -653,37 +658,43 @@ class MainActivity : ComponentActivity() {
      * A cold process reports UNKNOWN backend (no execution yet) while keeping the verified
      * evidence level, so a restart no longer looks like an unverified runtime.
      */
-    private fun refreshInferenceStatusFromPersistedEvidence() {
-        // A concurrently closed engine reports idle(); that is "nothing running here", not
-        // "unverified", so fall through to the persisted evidence instead of caching idle().
-        val live =
-            EmbeddingEngineProcessHolder.currentStatusOrNull()
-                ?.takeUnless {
-                    it.phase == InferencePhase.NOT_INITIALIZED &&
-                        it.backendEvidence == com.mistbell.tavern.v3.core.inference.BackendEvidence.NOT_AVAILABLE
+    private suspend fun refreshInferenceStatusFromPersistedEvidence() {
+        if (operationBusy || inferenceStatus.phase == InferencePhase.FAILED) return
+        val assetsAtStart = modelAssets
+        val generationAtStart = modelProfileGeneration
+        val statusAtStart = inferenceStatus
+        EmbeddingRuntimeStatusSnapshot.refresh(
+            load = {
+                val installed = assetsAtStart.verifyInstalled()
+                if (installed == null) {
+                    InferenceRuntimeStatus.idle()
+                } else {
+                    val verified = withContext(Dispatchers.IO) {
+                        installed.isQualcommSm8650Optimized &&
+                            NpuEvidenceStore.hasValidEvidence(applicationContext, installed.file)
+                    }
+                    val live = EmbeddingEngineProcessHolder.currentStatusOrNull(
+                        installed.file,
+                        installed.isQualcommSm8650Optimized,
+                    )
+                    EmbeddingRuntimeStatusSnapshot.resolve(
+                        live = live,
+                        previous = statusAtStart,
+                        restored = EmbeddingRuntimeStatusSnapshot.restored(
+                            modelId = com.mistbell.tavern.v3.feature.embedding.EmbeddingGemma2TextPolicy.MODEL_ID,
+                            acceleratorName =
+                                if (installed.isQualcommSm8650Optimized) InferenceBackend.NPU.name else null,
+                            evidenceVerified = verified,
+                        ),
+                    )
                 }
-        if (live != null) {
-            inferenceStatus = live
-            return
-        }
-        lifecycleScope.launch {
-            val installed =
-                withContext(Dispatchers.IO) {
-                    runCatching { modelAssets.verifyInstalled() }.getOrNull()
-                } ?: return@launch
-            val verified =
-                withContext(Dispatchers.IO) {
-                    runCatching { NpuEvidenceStore.hasValidEvidence(applicationContext, installed.file) }
-                        .getOrDefault(false)
-                }
-            val accelerator = if (installed.isQualcommSm8650Optimized) InferenceBackend.NPU.name else null
-            inferenceStatus =
-                EmbeddingRuntimeStatusSnapshot.restored(
-                    modelId = com.mistbell.tavern.v3.feature.embedding.EmbeddingGemma2TextPolicy.MODEL_ID,
-                    acceleratorName = accelerator,
-                    evidenceVerified = verified,
-                )
-        }
+            },
+            isCurrent = {
+                !operationBusy && assetsAtStart === modelAssets && generationAtStart == modelProfileGeneration &&
+                    inferenceStatus === statusAtStart
+            },
+            publish = { inferenceStatus = it },
+        )
     }
 
     private fun runEmbeddingSelfTest(allowDiagnosticNpuProbe: Boolean = false) {

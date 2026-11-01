@@ -84,10 +84,23 @@ object EmbeddingEngineProcessHolder : ComponentCallbacks2 {
      * Status of the engine already owned by this process, or null when nothing is loaded.
      * Never initializes the runtime: opening a settings screen must not start native inference.
      */
-    fun currentStatusOrNull(): InferenceRuntimeStatus? {
-        val engine = synchronized(stateLock) { current?.engine } ?: return null
-        return engine.currentStatus()
-    }
+    suspend fun currentStatusOrNull(
+        modelFile: File,
+        npuModelCompatible: Boolean,
+    ): InferenceRuntimeStatus? =
+        withContext(Dispatchers.IO) {
+            val key =
+                EngineKey(
+                    modelFile.canonicalPath,
+                    modelFile.length(),
+                    modelFile.lastModified(),
+                    npuModelCompatible,
+                )
+            val entry = synchronized(stateLock) { current?.takeIf { it.key == key } } ?: return@withContext null
+            // currentStatus shares the native inference lock; never wait for it on the UI thread.
+            val status = entry.engine.currentStatus()
+            synchronized(stateLock) { status.takeIf { current === entry } }
+        }
 
     fun close(reason: CloseReason = CloseReason.EXPLICIT) {
         synchronized(stateLock) {

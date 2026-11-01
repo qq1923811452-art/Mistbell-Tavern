@@ -4,6 +4,9 @@ import com.mistbell.tavern.v3.core.inference.BackendEvidence
 import com.mistbell.tavern.v3.core.inference.InferenceBackend
 import com.mistbell.tavern.v3.core.inference.InferencePhase
 import com.mistbell.tavern.v3.core.inference.InferenceRuntimeStatus
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.ensureActive
+import kotlin.coroutines.coroutineContext
 
 /**
  * Restores the *verification* verdict from persisted evidence after a restart.
@@ -28,6 +31,37 @@ internal object EmbeddingRuntimeStatusSnapshot {
             backendEvidence = evidence,
             acceleratorName = acceleratorName,
         )
+    }
+
+    /** Live failures win; a closed/idle engine must not hide durable verification. */
+    fun resolve(
+        live: InferenceRuntimeStatus?,
+        previous: InferenceRuntimeStatus,
+        restored: InferenceRuntimeStatus,
+    ): InferenceRuntimeStatus =
+        when {
+            live != null && live.phase != InferencePhase.NOT_INITIALIZED -> live
+            previous.phase == InferencePhase.FAILED -> previous
+            else -> restored
+        }
+
+    /** Runs in the caller's scope: leaving settings or changing a key cancels publication. */
+    suspend fun refresh(
+        load: suspend () -> InferenceRuntimeStatus,
+        isCurrent: () -> Boolean,
+        publish: (InferenceRuntimeStatus) -> Unit,
+    ) {
+        val status =
+            try {
+                load()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                // Fail closed if a model disappeared or could not be validated.
+                InferenceRuntimeStatus.idle()
+            }
+        coroutineContext.ensureActive()
+        if (isCurrent()) publish(status)
     }
 
     private const val RESTORED_RUNTIME_ID = "persisted-evidence"
