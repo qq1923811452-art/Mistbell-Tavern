@@ -54,8 +54,9 @@ object MemoryLogicalKey {
         return "${normalizedSubject.length}:$normalizedSubject${normalize(predicate)}"
     }
 
-    fun normalize(value: String): String =
-        Normalizer.normalize(value.trim(), Normalizer.Form.NFKC).lowercase(Locale.ROOT)
+    fun normalize(value: String): String {
+        return Normalizer.normalize(value.trim(), Normalizer.Form.NFKC).lowercase(Locale.ROOT)
+    }
 }
 
 enum class MemoryOrigin { AUTOMATIC, MANUAL }

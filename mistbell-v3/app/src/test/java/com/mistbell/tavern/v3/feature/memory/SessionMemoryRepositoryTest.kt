@@ -17,6 +17,8 @@ class SessionMemoryRepositoryTest {
     private val texts = mutableListOf(MemoryTextRecord("fact:f1", "艾琳 职业: 法师"))
     private val overrides = mutableListOf<com.mistbell.tavern.v3.core.memory.MemoryOverride>()
     private var textWriteFails = false
+
+    @Suppress("ktlint:standard:function-signature") // Keep signatures within Detekt line length.
     private val repository =
         SessionMemoryRepository(
             factStore =
