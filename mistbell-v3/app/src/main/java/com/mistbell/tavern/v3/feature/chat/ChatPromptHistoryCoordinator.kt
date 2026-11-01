@@ -7,10 +7,10 @@ import com.mistbell.tavern.v3.core.settings.getIntCompat
 internal class ChatPromptHistoryCoordinator(
     private val settings: SharedPreferences,
     private val planner: StableConversationWindowPlanner,
+    private val cache: WindowStateCache? = null,
 ) {
-    fun build(scopeId: String, history: List<ChatLine>, invalidate: Boolean): HistoryWindowDecision = planner.plan(
-        scopeId = scopeId,
-        history = history.map { line ->
+    fun build(scopeId: String, history: List<ChatLine>, invalidate: Boolean): HistoryWindowDecision {
+        val source = history.map { line ->
             WindowHistoryMessage(
                 id = line.id,
                 role = if (line.role == "user") PromptRole.USER else PromptRole.ASSISTANT,
@@ -19,8 +19,8 @@ internal class ChatPromptHistoryCoordinator(
                 activeVariant = line.activeVariant,
                 sourceRole = line.role,
             )
-        },
-        config = HistoryWindowConfig(
+        }
+        val config = HistoryWindowConfig(
             recentTurns = settings.getIntCompat(
                 "chat_history_recent_turns",
                 ConversationContextWindowBuilder.DEFAULT_RECENT_TURNS,
@@ -33,9 +33,16 @@ internal class ChatPromptHistoryCoordinator(
                 "chat_history_max_chars",
                 ConversationContextWindowBuilder.DEFAULT_MAX_HISTORY_CHARS,
             ).coerceIn(MIN_HISTORY_CHARS, MAX_HISTORY_CHARS),
-        ),
-        invalidate = invalidate,
-    )
+        )
+        if (!invalidate && !planner.hasState()) {
+            runCatching { cache?.load(scopeId) }.getOrNull()?.let { state ->
+                planner.restore(state, scopeId, source, config)
+            }
+        }
+        val decision = planner.plan(scopeId, source, config, invalidate)
+        planner.exportState()?.let { state -> runCatching { cache?.save(state) } }
+        return decision
+    }
 }
 
 private const val MAX_RECENT_TURNS = 100

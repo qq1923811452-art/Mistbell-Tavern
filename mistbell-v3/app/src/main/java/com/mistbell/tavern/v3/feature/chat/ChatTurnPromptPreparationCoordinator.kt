@@ -20,7 +20,7 @@ internal class ChatTurnPromptPreparationCoordinator(
     private val mainHandler: Handler,
     private val setStatus: (String) -> Unit,
     private val historyPlanner: StableConversationWindowPlanner,
-    private val historyScopeId: String,
+    private val historyWindowCache: WindowStateCache? = null,
 ) {
     @Suppress("LongParameterList")
     fun prepare(
@@ -31,6 +31,7 @@ internal class ChatTurnPromptPreparationCoordinator(
         localWorldbookEntries: List<WorldBookEntry>,
         worldbookState: WorldBookActivationState,
         worldbookStateKey: String,
+        historyScopeId: String,
         historyIsComplete: Boolean = false,
         groupContext: GroupChatPromptContext? = null,
         invalidateHistoryWindow: Boolean = false,
@@ -45,6 +46,7 @@ internal class ChatTurnPromptPreparationCoordinator(
             settings = settings,
             diagnosticStore = diagnosticStore,
             historyPlanner = historyPlanner,
+            historyWindowCache = historyWindowCache,
         ).prepare(
             history = history,
             userText = userText,

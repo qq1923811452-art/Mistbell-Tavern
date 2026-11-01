@@ -412,15 +412,16 @@ fun ChatScreen(
                     status = "重新生成失败：API 配置不完整。"
                     return@launch
                 }
-                val messages = withContext(Dispatchers.Default) {
+                val messages = withContext(Dispatchers.IO) {
                     ChatTurnPromptPreparationCoordinator(
                         settings = settings,
                         diagnosticStore = diagnosticStore,
                         mainHandler = mainHandler,
                         setStatus = { status = it },
                         historyPlanner = historyWindowPlanner,
-                        historyScopeId = requestConversationId.ifBlank { requestMemoryScopeId },
+                        historyWindowCache = historyStore.windowStateCache,
                     ).prepare(
+                        historyScopeId = requestConversationId.ifBlank { requestMemoryScopeId },
                         history = plan.prefixHistory,
                         userText = plan.userText,
                         characterCards = characterCards,
@@ -1025,15 +1026,16 @@ fun ChatScreen(
                             diagnosticStore.info("chat.send.prepare.begin", "history=${requestHistory.size}")
                             val messages = try {
                                 withTimeoutOrNull(PROMPT_PREPARE_TIMEOUT_MS) {
-                                withContext(Dispatchers.Default) {
+                                withContext(Dispatchers.IO) {
                                     ChatTurnPromptPreparationCoordinator(
                                         settings = settings,
                                         diagnosticStore = diagnosticStore,
                                         mainHandler = mainHandler,
                                         setStatus = { status = it },
                                         historyPlanner = historyWindowPlanner,
-                                        historyScopeId = requestConversationId.ifBlank { requestMemoryScopeId },
+                                        historyWindowCache = historyStore.windowStateCache,
                                     ).prepare(
+                                        historyScopeId = requestConversationId.ifBlank { requestMemoryScopeId },
                                         history = requestHistory,
                                         userText = userText,
                                         characterCards = characterCards,

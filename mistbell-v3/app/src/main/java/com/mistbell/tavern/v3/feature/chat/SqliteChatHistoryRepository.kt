@@ -20,6 +20,7 @@ class SqliteChatHistoryRepository(
     private val legacyFileStore: ChatHistoryStore? = null,
 ) : Closeable {
     private val store = SqliteChatStore(context.applicationContext, databaseName)
+    internal val windowStateCache: WindowStateCache = SqliteWindowStateCache(store)
     private var cachedById: Map<String, PersistedChatMessage>? = null
 
     @Synchronized

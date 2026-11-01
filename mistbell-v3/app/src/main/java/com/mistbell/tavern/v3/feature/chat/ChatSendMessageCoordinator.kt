@@ -20,6 +20,7 @@ internal class ChatSendMessageCoordinator(
     private val settings: SharedPreferences,
     private val diagnosticStore: DiagnosticLogStore,
     private val historyPlanner: StableConversationWindowPlanner,
+    private val historyWindowCache: WindowStateCache? = null,
 ) {
     @Suppress("LongParameterList")
     fun prepare(
@@ -48,7 +49,7 @@ internal class ChatSendMessageCoordinator(
             }
         }
         val historyStarted = System.nanoTime()
-        val decision = ChatPromptHistoryCoordinator(settings, historyPlanner).build(
+        val decision = ChatPromptHistoryCoordinator(settings, historyPlanner, historyWindowCache).build(
             scopeId = historyScopeId,
             history = completedLines,
             invalidate = invalidateHistoryWindow,

@@ -44,13 +44,51 @@ internal data class HistoryWindowDecision(
 }
 
 /**
- * Session-memory only: neither a restart-stable cache nor a token hard limit.
+ * Memory anchors can be restored from a validated disposable cache; this is not a token hard limit.
  * B1 still owns one contiguous whole-turn boundary. On append, that boundary moves only in
  * complete USER-turn blocks, and summary extraction runs only when its exact older prefix changes.
  * Source validation deliberately compares the entire immutable identity/role/content snapshot.
  */
 internal class StableConversationWindowPlanner {
     private var previous: WindowSnapshot? = null
+
+    @Synchronized
+    fun hasState(): Boolean = previous != null
+
+    @Synchronized
+    fun restore(
+        state: ConversationWindowState,
+        scopeId: String,
+        history: List<WindowHistoryMessage>,
+        config: HistoryWindowConfig,
+    ): Boolean {
+        if (previous != null || !state.matches(scopeId, history, config)) return false
+        val source = history.take(state.sourceCount)
+        val messages = source.filter { it.content.isNotBlank() }
+        val window = ConversationContextWindow(
+            state.summary,
+            messages.drop(state.archivedMessageCount).map(WindowHistoryMessage::toPromptMessage),
+            config.maxHistoryChars,
+            state.archivedMessageCount,
+        )
+        previous = WindowSnapshot(scopeId, config, source, decision(messages, window, "restored", false))
+        return true
+    }
+
+    @Synchronized
+    fun exportState(): ConversationWindowState? = previous?.let { snapshot ->
+        ConversationWindowState(
+            version = ConversationWindowState.VERSION,
+            scopeId = snapshot.scopeId,
+            config = snapshot.config,
+            sourceCount = snapshot.history.size,
+            sourceFingerprint = WindowSourceFingerprint.hash(snapshot.history),
+            startId = snapshot.decision.startId,
+            summaryThroughId = snapshot.decision.summaryThroughId,
+            archivedMessageCount = snapshot.decision.window.archivedMessageCount,
+            summary = snapshot.decision.window.earlierSummary,
+        )
+    }
 
     @Synchronized
     fun plan(
