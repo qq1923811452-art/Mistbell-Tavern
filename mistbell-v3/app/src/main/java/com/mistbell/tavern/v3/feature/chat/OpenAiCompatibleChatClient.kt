@@ -477,7 +477,8 @@ class OpenAiCompatibleChatClient(
                     val safeFinish = providerFinish?.take(MAX_FINISH_REASON_LABEL_CHARS)
                         ?.filter { it.isLetterOrDigit() || it == '_' }
                     observer.onDiagnostic(
-                        "stage=completion; providerFinishReason=${safeFinish ?: "missing"}; " +
+                        "completion",
+                        "providerFinishReason=${safeFinish ?: "missing"}; " +
                             "completionChars=${completion.length}",
                     )
                     observer.onFinish(classifyCompletionFinishReason(providerFinish))
