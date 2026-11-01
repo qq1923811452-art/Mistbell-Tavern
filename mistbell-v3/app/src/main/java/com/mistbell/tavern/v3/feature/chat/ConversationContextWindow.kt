@@ -99,6 +99,9 @@ object ConversationContextWindowBuilder {
      * facts) and the remaining two thirds for the most recent older messages. This is extractive,
      * not semantic, but prevents the opening of a long roleplay from disappearing entirely.
      */
+    internal fun summarizeOlder(history: List<PromptMessage>, maxChars: Int): String =
+        buildExtractiveSummary(history, maxChars)
+
     private fun buildExtractiveSummary(history: List<PromptMessage>, maxChars: Int): String {
         if (history.isEmpty() || maxChars == 0) return ""
         val normalized = history.mapNotNull { message ->

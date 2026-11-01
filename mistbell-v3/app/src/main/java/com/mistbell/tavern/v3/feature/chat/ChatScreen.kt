@@ -180,6 +180,7 @@ fun ChatScreen(
     val listState = rememberLazyListState()
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
     val conversationHistoryScope = memoryConversationId.ifBlank { memoryScopeId }
+    val historyWindowPlanner = remember(conversationHistoryScope) { StableConversationWindowPlanner() }
     val historyStore = remember(context, conversationHistoryScope) {
         val legacyStore = ChatHistoryStore(
             context.applicationContext,
@@ -417,6 +418,8 @@ fun ChatScreen(
                         diagnosticStore = diagnosticStore,
                         mainHandler = mainHandler,
                         setStatus = { status = it },
+                        historyPlanner = historyWindowPlanner,
+                        historyScopeId = requestConversationId.ifBlank { requestMemoryScopeId },
                     ).prepare(
                         history = plan.prefixHistory,
                         userText = plan.userText,
@@ -426,6 +429,7 @@ fun ChatScreen(
                         worldbookState = requestWorldbookState,
                         worldbookStateKey = requestWorldbookStateKey,
                         historyIsComplete = true,
+                        invalidateHistoryWindow = true,
                     )
                 }
                 if (memoryConversationId != requestConversationId || !ownsRequest()) {
@@ -1027,6 +1031,8 @@ fun ChatScreen(
                                         diagnosticStore = diagnosticStore,
                                         mainHandler = mainHandler,
                                         setStatus = { status = it },
+                                        historyPlanner = historyWindowPlanner,
+                                        historyScopeId = requestConversationId.ifBlank { requestMemoryScopeId },
                                     ).prepare(
                                         history = requestHistory,
                                         userText = userText,
