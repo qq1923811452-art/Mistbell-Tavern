@@ -19,7 +19,16 @@ import kotlinx.coroutines.sync.withLock
 import com.mistbell.tavern.v3.core.diagnostics.DiagnosticLogStore
 import com.mistbell.tavern.v3.core.security.AndroidKeystoreMemoryCredentialStore
 import com.mistbell.tavern.v3.core.security.ChatCredentialStore
+import com.mistbell.tavern.v3.core.storage.AtomicMemoryOverrideStore
+import com.mistbell.tavern.v3.core.storage.AtomicMemoryTextStore
+import com.mistbell.tavern.v3.core.storage.AtomicTemporalFactStore
 import com.mistbell.tavern.v3.core.storage.MemoryScopeFileNames
+import com.mistbell.tavern.v3.feature.memory.MemoryEditDraft
+import com.mistbell.tavern.v3.feature.memory.MemoryStatusReader
+import com.mistbell.tavern.v3.feature.memory.MemoryStatusSnapshot
+import com.mistbell.tavern.v3.feature.memory.SessionMemoryLoadResult
+import com.mistbell.tavern.v3.feature.memory.SessionMemoryRepository
+import com.mistbell.tavern.v3.feature.memory.SessionMemorySaveResult
 import java.io.File
 import java.util.UUID
 import org.json.JSONArray
@@ -180,6 +189,30 @@ fun ChatScreen(
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
     val conversationHistoryScope = memoryConversationId.ifBlank { memoryScopeId }
     val historyWindowPlanner = remember(conversationHistoryScope) { StableConversationWindowPlanner() }
+
+    // Manual memory edits live in their own scope-partitioned store; the ledger stays untouched.
+    val sessionMemoryRepository = remember(context, memoryScopeId) {
+        SessionMemoryRepository(
+            factStore = AtomicTemporalFactStore(
+                context.applicationContext,
+                MemoryScopeFileNames.forScope(AtomicTemporalFactStore.DEFAULT_FILE_NAME, memoryScopeId),
+            ),
+            memoryTextStore = AtomicMemoryTextStore(
+                context.applicationContext,
+                MemoryScopeFileNames.forScope(AtomicMemoryTextStore.DEFAULT_FILE_NAME, memoryScopeId),
+            ),
+            overrideStore = AtomicMemoryOverrideStore(
+                context.applicationContext,
+                MemoryScopeFileNames.forScope(AtomicMemoryOverrideStore.DEFAULT_FILE_NAME, memoryScopeId),
+            ),
+        )
+    }
+    var memorySummary by remember(memoryScopeId) { mutableStateOf<String?>(null) }
+    var showMemoryScreen by remember(memoryScopeId) { mutableStateOf(false) }
+    var memoryScreenState by remember(memoryScopeId) {
+        mutableStateOf<SessionMemoryUiState>(SessionMemoryUiState.Loading)
+    }
+    var memoryStatus by remember(memoryScopeId) { mutableStateOf<MemoryStatusSnapshot?>(null) }
     val historyStore = remember(context, conversationHistoryScope) {
         val legacyStore = ChatHistoryStore(
             context.applicationContext,
@@ -205,6 +238,33 @@ fun ChatScreen(
     }
     val memoryCredentialStore = remember(context) { AndroidKeystoreMemoryCredentialStore(context.applicationContext) }
     val coroutineScope = rememberCoroutineScope()
+
+    suspend fun loadSessionMemory(): SessionMemoryUiState = withContext(Dispatchers.IO) {
+        when (val loaded = sessionMemoryRepository.load(memoryScopeId)) {
+            SessionMemoryLoadResult.Missing -> SessionMemoryUiState.Ready(emptyList(), 0L)
+            is SessionMemoryLoadResult.Unavailable -> SessionMemoryUiState.Failed(loaded.safeReason)
+            is SessionMemoryLoadResult.Loaded -> SessionMemoryUiState.Ready(
+                entries = loaded.entries,
+                revision = loaded.revision,
+                issue = loaded.overrideIssue,
+            )
+        }
+    }
+
+    fun refreshSessionMemory(notice: String? = null) {
+        memoryScreenState = SessionMemoryUiState.Loading
+        coroutineScope.launch {
+            memoryStatus = withContext(Dispatchers.IO) {
+                MemoryStatusReader.read(context.applicationContext, memoryScopeId)
+            }
+            val loaded = loadSessionMemory()
+            memoryScreenState = if (loaded is SessionMemoryUiState.Ready) {
+                loaded.copy(notice = notice ?: loaded.notice)
+            } else {
+                loaded
+            }
+        }
+    }
     val historySaveMutex = remember { Mutex() }
     val historySaveRevision = remember { java.util.concurrent.atomic.AtomicLong(0L) }
     val diagnosticStore = remember(context) { DiagnosticLogStore(context.applicationContext.filesDir) }
@@ -761,11 +821,86 @@ fun ChatScreen(
         return
     }
 
+    LaunchedEffect(showSessionSettings, memoryScopeId) {
+        if (showSessionSettings) {
+            memorySummary = withContext(Dispatchers.IO) {
+                when (val loaded = sessionMemoryRepository.load(memoryScopeId)) {
+                    SessionMemoryLoadResult.Missing -> "暂无已保存记忆"
+                    is SessionMemoryLoadResult.Unavailable -> "记忆暂时无法读取"
+                    is SessionMemoryLoadResult.Loaded -> {
+                        val current = loaded.entries.count { it.isCurrent }
+                        "有效 $current 条 · 历史 ${loaded.entries.size - current} 条"
+                    }
+                }
+            }
+        }
+    }
+
+    if (showMemoryScreen) {
+        BackHandler { showMemoryScreen = false }
+        SessionMemoryScreen(
+            scopeTitle = "当前角色 · 本会话（作用域 ${memoryScopeId.take(8)}）",
+            state = memoryScreenState,
+            status = memoryStatus,
+            actions = SessionMemoryActions(
+            onBack = { showMemoryScreen = false },
+            onReload = { refreshSessionMemory() },
+            onSave = { factId, revision, subject, predicate, value ->
+                coroutineScope.launch {
+                    val result = withContext(Dispatchers.IO) {
+                        sessionMemoryRepository.saveEdit(
+                            memoryScopeId,
+                            factId,
+                            revision,
+                            MemoryEditDraft(subject, predicate, value),
+                        )
+                    }
+                    refreshSessionMemory(
+                        when (result) {
+                            is SessionMemorySaveResult.Saved ->
+                                result.projectionWarning ?: "已保存；索引刷新后检索会使用新内容。"
+                            is SessionMemorySaveResult.Conflict ->
+                                "这条记忆已被其他修改更新，已刷新为最新版本，请重新编辑。"
+                            is SessionMemorySaveResult.Invalid -> result.safeReason
+                            SessionMemorySaveResult.NotFound -> "这条记忆已不存在，已刷新。"
+                            is SessionMemorySaveResult.Failed -> "保存失败：${result.safeReason}"
+                        },
+                    )
+                }
+            },
+            onRevert = { factId, revision ->
+                coroutineScope.launch {
+                    val result = withContext(Dispatchers.IO) {
+                        sessionMemoryRepository.revert(factId, revision)
+                    }
+                    refreshSessionMemory(
+                        when (result) {
+                            is SessionMemorySaveResult.Saved -> result.projectionWarning ?: "已恢复自动抽取版本。"
+                            is SessionMemorySaveResult.Conflict -> "这条记忆已被其他修改更新，已刷新，请重试。"
+                            is SessionMemorySaveResult.Invalid -> result.safeReason
+                            SessionMemorySaveResult.NotFound -> "这条记忆已不存在，已刷新。"
+                            is SessionMemorySaveResult.Failed -> "恢复失败：${result.safeReason}"
+                        },
+                    )
+                }
+            },
+            ),
+        )
+        return
+    }
+
     if (showSessionSettings) {
         ChatSessionSettingsSheet(
             characters = characterCards,
             selectedCharacterId = selectedCharacterId,
             messageCount = history.size,
+            memorySummary = memorySummary,
+            onOpenMemory = {
+                showSessionSettings = false
+                memoryScreenState = SessionMemoryUiState.Loading
+                showMemoryScreen = true
+                refreshSessionMemory()
+            },
             worldbooks = worldbookLibrary.map { book -> book.id to book.name },
             selectedWorldbookId = sessionWorldbookId,
             onSelectWorldbook = { worldbookId ->

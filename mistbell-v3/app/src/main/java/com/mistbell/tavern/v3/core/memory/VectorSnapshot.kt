@@ -70,6 +70,25 @@ data class VectorSnapshot(
     val dimensions: Int,
     val records: List<StoredVector>,
 ) {
+    /**
+     * Magnitudes are immutable for a decoded snapshot, so decode each vector once instead of
+     * recomputing every norm on every query. A query previously paid this cost N times per search.
+     */
+    val norms: DoubleArray by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        val scratch = FloatArray(dimensions)
+        DoubleArray(records.size) { index ->
+            val values = records[index].values
+            var squared = 0.0
+            if (values is FloatVectorView) {
+                values.fillInto(scratch)
+                for (value in scratch) squared += value.toDouble() * value.toDouble()
+            } else {
+                for (value in values) squared += value.toDouble() * value.toDouble()
+            }
+            kotlin.math.sqrt(squared)
+        }
+    }
+
     init {
         require(modelId.isNotBlank()) { "Embedding model ID must not be blank." }
         require(dimensions in 1..VectorSnapshotCodec.MAX_DIMENSIONS) {

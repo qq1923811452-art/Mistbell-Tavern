@@ -27,6 +27,8 @@ internal fun ChatSessionSettingsSheet(
     characters: List<StoredCharacterCard>,
     selectedCharacterId: String,
     messageCount: Int,
+    memorySummary: String?,
+    onOpenMemory: () -> Unit,
     worldbooks: List<Pair<String, String>>,
     selectedWorldbookId: String,
     onSelectWorldbook: (String) -> Unit,
@@ -53,6 +55,17 @@ internal fun ChatSessionSettingsSheet(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            Text(
+                "会话记忆",
+                style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier.padding(top = 16.dp),
+            )
+            Text(
+                memorySummary ?: "正在读取本会话记忆…",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            TextButton(onClick = onOpenMemory) { Text("查看与编辑记忆") }
             Text(
                 "当前角色",
                 style = MaterialTheme.typography.labelLarge,

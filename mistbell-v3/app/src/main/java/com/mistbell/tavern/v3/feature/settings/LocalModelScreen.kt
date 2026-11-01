@@ -133,19 +133,22 @@ fun LocalModelScreen(
     }
 }
 
-@Suppress("FunctionNaming", "CyclomaticComplexMethod")
+@Suppress("FunctionNaming", "CyclomaticComplexMethod", "LongMethod")
 @Composable
 private fun ModelStatusBlock(status: InferenceRuntimeStatus) {
+    // A verified runtime that has not run in this process is not the same as an unverified one.
+    val evidenceVerified = status.backendEvidence == BackendEvidence.RUNTIME_REPORTED ||
+        status.backendEvidence == BackendEvidence.DEVICE_VERIFIED
     val backend = when (status.backend) {
         InferenceBackend.NPU -> "NPU"
         InferenceBackend.GPU -> "GPU"
         InferenceBackend.CPU -> "CPU"
-        InferenceBackend.UNKNOWN -> "未验证"
+        InferenceBackend.UNKNOWN -> if (evidenceVerified) "待本次启动执行" else "未验证"
     }
     val phase = when (status.phase) {
         InferencePhase.NOT_INITIALIZED -> "尚未初始化"
         InferencePhase.LOADING_MODEL -> "正在加载模型"
-        InferencePhase.INITIALIZED -> "已初始化，尚未验证真实推理"
+        InferencePhase.INITIALIZED -> "已初始化，尚未执行推理"
         InferencePhase.READY -> "已就绪"
         InferencePhase.RUNNING -> "正在推理"
         InferencePhase.FALLBACK -> "已回退"
@@ -153,11 +156,15 @@ private fun ModelStatusBlock(status: InferenceRuntimeStatus) {
     }
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text("本地 Embedding / NPU 状态", style = MaterialTheme.typography.titleMedium)
-        Text("$phase · 配置后端：$backend", style = MaterialTheme.typography.bodyMedium)
+        Text("$phase · 实际后端：$backend", style = MaterialTheme.typography.bodyMedium)
         val evidence = when (status.backendEvidence) {
             BackendEvidence.NOT_AVAILABLE -> "未验证"
             BackendEvidence.CONFIGURED_ONLY -> "仅配置成功，未独立确认硬件调用"
-            BackendEvidence.RUNTIME_REPORTED -> "运行时报告已加载并推理"
+            BackendEvidence.RUNTIME_REPORTED -> when {
+                status.backend == InferenceBackend.NPU -> "运行时证据已验证（本次启动已执行）"
+                status.phase == InferencePhase.FAILED -> "运行时证据已验证；上次执行失败"
+                else -> "运行时证据已验证，本次启动尚未执行"
+            }
             BackendEvidence.DEVICE_VERIFIED -> "设备侧证据确认"
         }
         Text("实际验证：$evidence", style = MaterialTheme.typography.bodySmall)
