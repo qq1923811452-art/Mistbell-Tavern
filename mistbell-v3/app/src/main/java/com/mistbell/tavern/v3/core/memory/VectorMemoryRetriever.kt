@@ -220,8 +220,7 @@ object VectorMemoryRetriever {
     /** Tokenize each bounded candidate once; only count terms actually present in the query. */
     private fun countMatchedQueryTerms(text: String, queryTerms: Set<String>): Int {
         if (queryTerms.isEmpty() || text.isEmpty()) return 0
-        val bounded = text.substring(0, minOf(text.length, MAX_KEYWORD_SCAN_CHARACTERS))
-            .lowercase(Locale.ROOT)
+        val bounded = keywordScanPrefix(text).lowercase(Locale.ROOT)
         val matched = mutableSetOf<String>()
         for (chunk in wordRegex.findAll(bounded)) {
             val segment = chunk.value
@@ -245,6 +244,16 @@ object VectorMemoryRetriever {
             }
         }
         return matched.size
+    }
+
+    /** The scan budget is UTF-16 units; never leave half of a valid pair at its boundary. */
+    internal fun keywordScanPrefix(text: String): String {
+        var end = minOf(text.length, MAX_KEYWORD_SCAN_CHARACTERS)
+        if (end == text.length) return text
+        if (Character.isHighSurrogate(text[end - 1]) && Character.isLowSurrogate(text[end])) {
+            end--
+        }
+        return text.substring(0, end)
     }
 
     private fun isHan(character: Char): Boolean =

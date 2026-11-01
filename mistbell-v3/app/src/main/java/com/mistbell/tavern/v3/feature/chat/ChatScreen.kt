@@ -298,17 +298,6 @@ fun ChatScreen(
         lastPromptMessages = emptyList()
     }
 
-    fun formatUsageSummary(usage: ChatTokenUsage): String {
-        val cached = usage.cachedPromptTokens
-        val cacheRatio = if (cached != null && usage.promptTokens > 0) {
-            "（${cached * 100 / usage.promptTokens}%）"
-        } else {
-            ""
-        }
-        return "Token 用量：输入 ${usage.promptTokens} · 缓存 ${cached?.toString() ?: "未知"}$cacheRatio" +
-            " · 输出 ${usage.completionTokens} · 合计 ${usage.totalTokens}"
-    }
-
     fun saveUsageSummary(conversationId: String, summary: String) {
         if (conversationId.isNotBlank()) {
             settings.edit().putString("chat_usage_$conversationId", summary).apply()
@@ -1010,9 +999,10 @@ fun ChatScreen(
                                 setStatus = { status = it },
                             ).start(openingMessage, userText)
                             diagnosticStore.info("chat.send.started", "conversation=${requestConversationId.take(8)}")
+                            val requestMaxTokens = effectiveMaxTokens()
                             diagnosticStore.info(
                                 "chat.request.options",
-                                "maxTokens=${settings.getInt("chat_max_tokens", 4096)}; " +
+                                "maxTokens=$requestMaxTokens; " +
                                     "stream=${chatGenerationPreferences.streamEnabled}; " +
                                     "thinking=${chatGenerationPreferences.thinkingEnabled}",
                             )
@@ -1158,7 +1148,7 @@ fun ChatScreen(
                                         client,
                                         messages,
                                         observer,
-                                        effectiveMaxTokens(),
+                                        requestMaxTokens,
                                         memoryQuery = userText,
                                     )
                                 },
@@ -1167,7 +1157,7 @@ fun ChatScreen(
                                         messages,
                                         observer,
                                         ChatGenerationOptions(
-                                            maxTokens = effectiveMaxTokens(),
+                                            maxTokens = requestMaxTokens,
                                             stream = chatGenerationPreferences.streamEnabled,
                                             thinkingEnabled = chatGenerationPreferences.thinkingEnabled,
                                         ),

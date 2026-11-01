@@ -473,7 +473,14 @@ class OpenAiCompatibleChatClient(
                         ?.takeIf(String::isNotEmpty)
                         ?.let(observer::onReasoningDelta)
                     root.optJSONObject("usage")?.let { usage -> emitUsage(usage, observer) }
-                    observer.onFinish(ChatFinishReason.STOP)
+                    val providerFinish = completionFinishReason(root)
+                    val safeFinish = providerFinish?.take(MAX_FINISH_REASON_LABEL_CHARS)
+                        ?.filter { it.isLetterOrDigit() || it == '_' }
+                    observer.onDiagnostic(
+                        "stage=completion; providerFinishReason=${safeFinish ?: "missing"}; " +
+                            "completionChars=${completion.length}",
+                    )
+                    observer.onFinish(classifyCompletionFinishReason(providerFinish))
                     observer.onComplete()
                 }
             }
