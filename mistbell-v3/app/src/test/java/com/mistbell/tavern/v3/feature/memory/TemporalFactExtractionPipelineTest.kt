@@ -125,6 +125,41 @@ class TemporalFactExtractionPipelineTest {
         }
     }
 
+    @Test
+    fun persistenceUsesAtomicUpdateInsteadOfSeparateLoadAndSave() {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setBody(extractionCompletionBody()))
+        server.start()
+        val saved = java.util.concurrent.atomic.AtomicReference<TemporalFactPipelineOutcome>()
+        val latch = CountDownLatch(1)
+        try {
+            val profile = ProviderProfile(
+                id = "memory", kind = ProviderKind.MEMORY_EXTRACTION,
+                baseUrl = server.url("/v1").toString(), modelId = "memory-model", credentialHandle = "memory-key",
+            )
+            val client = MemoryExtractionClient(
+                providers = ProviderProfileSet(
+                    profiles = listOf(profile),
+                    selectedProfileIds = mapOf(ProviderKind.MEMORY_EXTRACTION to profile.id),
+                ),
+                credentials = MemoryCredentialResolver { "test-secret" },
+            )
+            val facts = UpdateOnlyFacts()
+            TemporalFactExtractionPipeline(client, facts, InMemoryTexts()).extractAndPersist(
+                MemoryExtractionInput(
+                    conversationId = "scope-1",
+                    turns = listOf(EligibleConversationTurn("turn-1", 1)),
+                    textByTurnId = mapOf("turn-1" to "The user likes tea."),
+                ),
+            ) { saved.set(it); latch.countDown() }
+            assertTrue(latch.await(3, TimeUnit.SECONDS))
+            assertTrue(saved.get() is TemporalFactPipelineOutcome.Saved)
+            assertEquals(1, facts.updateCalls)
+        } finally {
+            server.shutdown()
+        }
+    }
+
     private fun extractionCompletionBody(): String {
         val content = """{"facts":[{"subject":"user","predicate":"likes","value":"tea","source_turn_id":"turn-1"}]}"""
         return org.json.JSONObject().put(
@@ -132,6 +167,24 @@ class TemporalFactExtractionPipelineTest {
                 org.json.JSONObject().put("message", org.json.JSONObject().put("content", content)),
             ),
         ).toString()
+    }
+
+    /** Any load/save fallback would bypass the concurrency contract and fail this test. */
+    private class UpdateOnlyFacts : TemporalFactPersistence {
+        var updateCalls = 0
+        private var current: List<TemporalMemoryFact> = emptyList()
+
+        override fun update(
+            transform: (List<TemporalMemoryFact>) -> List<TemporalMemoryFact>,
+        ): List<TemporalMemoryFact> {
+            updateCalls += 1
+            current = transform(current)
+            return current
+        }
+
+        override fun save(facts: List<TemporalMemoryFact>) = error("save must not be used")
+
+        override fun load(): TemporalFactLoadResult = error("load must not be used")
     }
 
     private class InMemoryFacts : TemporalFactPersistence {

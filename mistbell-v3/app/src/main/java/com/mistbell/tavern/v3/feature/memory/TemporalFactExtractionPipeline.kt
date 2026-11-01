@@ -3,9 +3,9 @@ package com.mistbell.tavern.v3.feature.memory
 import com.mistbell.tavern.v3.core.memory.MemoryTextRecord
 import com.mistbell.tavern.v3.core.memory.TemporalFactLedger
 import com.mistbell.tavern.v3.core.memory.TemporalFactObservation
+import com.mistbell.tavern.v3.core.memory.TemporalMemoryFact
 import com.mistbell.tavern.v3.core.storage.MemoryTextPersistence
 import com.mistbell.tavern.v3.core.storage.TemporalFactPersistence
-import com.mistbell.tavern.v3.core.storage.TemporalFactLoadResult
 import okhttp3.Call
 
 sealed interface TemporalFactPipelineOutcome {
@@ -86,12 +86,7 @@ class TemporalFactExtractionPipeline(
     private fun persistFacts(
         input: MemoryExtractionInput,
         result: MemoryExtractionResult,
-    ): List<com.mistbell.tavern.v3.core.memory.TemporalMemoryFact> {
-        val existing = when (val loaded = factStore.load()) {
-            TemporalFactLoadResult.Missing -> emptyList()
-            is TemporalFactLoadResult.Loaded -> loaded.facts
-            is TemporalFactLoadResult.Corrupt -> error(loaded.safeReason)
-        }
+    ): List<TemporalMemoryFact> = factStore.update { existing ->
         val observedAt = clockMillis().also { require(it >= 0L) }
         val observations = result.facts.map { fact ->
             TemporalFactObservation(
@@ -103,9 +98,7 @@ class TemporalFactExtractionPipeline(
                 observedAtEpochMillis = observedAt,
             )
         }
-        val updated = TemporalFactLedger.apply(existing, observations)
-        factStore.save(updated)
-        return updated
+        TemporalFactLedger.apply(existing, observations)
     }
 
     companion object {
