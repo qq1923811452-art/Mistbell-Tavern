@@ -71,6 +71,11 @@ class AtomicVectorSnapshotStore(
             return VectorSnapshotLoadResult.Corrupt("Vector snapshot exceeds the size limit.")
         }
 
+        // One message loads the snapshot twice (preflight and retrieval). Re-decoding and
+        // re-hashing the whole file for the second call is pure waste when nothing changed.
+        val cached = VectorSnapshotMemoryCache.find(file, memoryCacheKey(file, expectedModelId, expectedDimensions))
+        if (cached != null) return completeLoad(cached, expectedModelId, expectedDimensions)
+
         val snapshot = try {
             atomicFile.openRead().use { input ->
                 val channel = input.channel
@@ -91,14 +96,33 @@ class AtomicVectorSnapshotStore(
             )
         }
 
-        if (snapshot.modelId != expectedModelId) {
-            return VectorSnapshotLoadResult.Incompatible("Embedding model ID does not match.")
+        if (snapshot.modelId != expectedModelId || snapshot.dimensions != expectedDimensions) {
+            return completeLoad(snapshot, expectedModelId, expectedDimensions)
         }
-        if (snapshot.dimensions != expectedDimensions) {
-            return VectorSnapshotLoadResult.Incompatible("Embedding dimension does not match.")
-        }
+        VectorSnapshotMemoryCache.store(memoryCacheKey(file, expectedModelId, expectedDimensions), snapshot)
         return VectorSnapshotLoadResult.Loaded(snapshot)
     }
+
+    private fun completeLoad(
+        snapshot: VectorSnapshot,
+        expectedModelId: String,
+        expectedDimensions: Int,
+    ): VectorSnapshotLoadResult = when {
+        snapshot.modelId != expectedModelId ->
+            VectorSnapshotLoadResult.Incompatible("Embedding model ID does not match.")
+        snapshot.dimensions != expectedDimensions ->
+            VectorSnapshotLoadResult.Incompatible("Embedding dimension does not match.")
+        else -> VectorSnapshotLoadResult.Loaded(snapshot)
+    }
+
+    private fun memoryCacheKey(file: File, modelId: String, dimensions: Int): VectorSnapshotMemoryCache.Key =
+        VectorSnapshotMemoryCache.Key(
+            path = file.absolutePath,
+            length = file.length(),
+            lastModified = file.lastModified(),
+            modelId = modelId,
+            dimensions = dimensions,
+        )
 
     companion object {
         const val DEFAULT_FILE_NAME = "mistbell-v3-vectors.bin"

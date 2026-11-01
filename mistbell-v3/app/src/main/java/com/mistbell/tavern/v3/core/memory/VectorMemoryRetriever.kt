@@ -14,8 +14,8 @@ data class MemoryTextRecord(
         require(text.isNotBlank()) { "Memory text must not be blank." }
     }
 
-    val sourceTextSha256: String
-        get() = sha256Text(text)
+    /** Hashed once per record; retrieval reads this property several times per query. */
+    val sourceTextSha256: String by lazy(LazyThreadSafetyMode.PUBLICATION) { sha256Text(text) }
 }
 
 enum class MemoryRetrievalSource {

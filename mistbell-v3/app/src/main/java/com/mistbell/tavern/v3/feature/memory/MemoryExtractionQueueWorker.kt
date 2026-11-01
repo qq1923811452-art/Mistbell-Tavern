@@ -10,6 +10,7 @@ import com.mistbell.tavern.v3.core.model.ProviderKind
 import com.mistbell.tavern.v3.core.model.ProviderProfile
 import com.mistbell.tavern.v3.core.model.ProviderProfileSet
 import com.mistbell.tavern.v3.core.security.AndroidKeystoreMemoryCredentialStore
+import com.mistbell.tavern.v3.core.storage.AtomicMemoryOverrideStore
 import com.mistbell.tavern.v3.core.storage.AtomicMemoryTextStore
 import com.mistbell.tavern.v3.core.storage.AtomicTemporalFactStore
 import com.mistbell.tavern.v3.core.storage.MemoryScopeFileNames
@@ -130,6 +131,13 @@ class MemoryExtractionQueueWorker(
                                     applicationContext,
                                     MemoryScopeFileNames.forScope(
                                         AtomicMemoryTextStore.DEFAULT_FILE_NAME,
+                                        job.conversationId,
+                                    ),
+                                ),
+                                overrideStore = AtomicMemoryOverrideStore(
+                                    applicationContext,
+                                    MemoryScopeFileNames.forScope(
+                                        AtomicMemoryOverrideStore.DEFAULT_FILE_NAME,
                                         job.conversationId,
                                     ),
                                 ),

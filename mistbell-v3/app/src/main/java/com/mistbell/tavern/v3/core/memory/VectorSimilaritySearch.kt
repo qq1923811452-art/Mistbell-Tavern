@@ -41,29 +41,25 @@ object VectorSimilaritySearch {
         val queryNorm = norm(queryValues)
         require(queryNorm > 0.0) { "Query vector must not be a zero vector." }
         val candidateValues = FloatArray(snapshot.dimensions)
+        val norms = snapshot.norms
 
-        return snapshot.records.asSequence()
-            .mapNotNull { record ->
+        return snapshot.records.asSequence().mapIndexedNotNull { index, record ->
                 val recordValues = record.values
-                val recordNorm = if (recordValues is FloatVectorView) {
+                if (recordValues is FloatVectorView) {
                     recordValues.fillInto(candidateValues)
-                    norm(candidateValues)
                 } else {
-                    var squared = 0.0
-                    for (index in candidateValues.indices) {
-                        val value = recordValues[index]
-                        candidateValues[index] = value
-                        squared += value.toDouble() * value.toDouble()
+                    for (position in candidateValues.indices) {
+                        candidateValues[position] = recordValues[position]
                     }
-                    kotlin.math.sqrt(squared)
                 }
-                if (recordNorm == 0.0) return@mapNotNull null
+                val recordNorm = norms[index]
+                if (recordNorm == 0.0) return@mapIndexedNotNull null
                 var dot = 0.0
                 for (index in queryValues.indices) {
                     dot += queryValues[index].toDouble() * candidateValues[index].toDouble()
                 }
                 val score = (dot / (queryNorm * recordNorm)).coerceIn(-1.0, 1.0)
-                if (score < minimumScore) return@mapNotNull null
+                if (score < minimumScore) return@mapIndexedNotNull null
                 VectorSearchHit(
                     id = record.id,
                     score = score,

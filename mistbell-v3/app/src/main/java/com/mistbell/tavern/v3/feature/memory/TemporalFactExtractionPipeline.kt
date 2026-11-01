@@ -1,6 +1,9 @@
 package com.mistbell.tavern.v3.feature.memory
 
-import com.mistbell.tavern.v3.core.memory.MemoryTextRecord
+import com.mistbell.tavern.v3.core.memory.EffectiveMemoryResolver
+import com.mistbell.tavern.v3.core.memory.MemoryOverride
+import com.mistbell.tavern.v3.core.storage.MemoryOverrideLoadResult
+import com.mistbell.tavern.v3.core.storage.MemoryOverridePersistence
 import com.mistbell.tavern.v3.core.memory.TemporalFactLedger
 import com.mistbell.tavern.v3.core.memory.TemporalFactObservation
 import com.mistbell.tavern.v3.core.memory.TemporalMemoryFact
@@ -27,6 +30,8 @@ class TemporalFactExtractionPipeline(
     private val client: MemoryExtractionClient,
     private val factStore: TemporalFactPersistence,
     private val memoryTextStore: MemoryTextPersistence,
+    /** Manual revisions are re-applied to the projection so extraction never restores edited values. */
+    private val overrideStore: MemoryOverridePersistence? = null,
     private val clockMillis: () -> Long = System::currentTimeMillis,
 ) {
     fun extractAndPersist(
@@ -52,16 +57,22 @@ class TemporalFactExtractionPipeline(
 
                     val facts = persisted.getOrThrow()
                     val currentFacts = facts.filter { it.isCurrent }
-                    val textUpdate = runCatching {
-                        memoryTextStore.update { existingTexts ->
-                            val unrelated = existingTexts.filterNot { it.id.startsWith(FACT_TEXT_ID_PREFIX) }
-                            val currentFactTexts = currentFacts.map { fact ->
-                                MemoryTextRecord(
-                                    id = FACT_TEXT_ID_PREFIX + fact.id,
-                                    text = "${fact.subject} ${fact.predicate}: ${fact.value}",
-                                )
+                    val overrides = when (val loaded = overrideStore?.load()) {
+                        null, MemoryOverrideLoadResult.Missing -> emptyList<MemoryOverride>()
+                        is MemoryOverrideLoadResult.Corrupt -> null
+                        is MemoryOverrideLoadResult.Loaded -> loaded.overrides
+                    }
+                    val textUpdate = if (overrides == null) {
+                        Result.failure(IllegalStateException("Manual memory revisions could not be read."))
+                    } else {
+                        runCatching {
+                            memoryTextStore.update { existingTexts ->
+                                val unrelated = existingTexts.filterNot {
+                                    it.id.startsWith(FACT_TEXT_ID_PREFIX)
+                                }
+                                (unrelated + EffectiveMemoryResolver.currentTexts(facts, overrides))
+                                    .distinctBy { it.id }
                             }
-                            (unrelated + currentFactTexts).distinctBy(MemoryTextRecord::id)
                         }
                     }
                     observer(
@@ -102,6 +113,6 @@ class TemporalFactExtractionPipeline(
     }
 
     companion object {
-        const val FACT_TEXT_ID_PREFIX = "fact:"
+        const val FACT_TEXT_ID_PREFIX = com.mistbell.tavern.v3.core.memory.MemoryProjection.FACT_TEXT_ID_PREFIX
     }
 }

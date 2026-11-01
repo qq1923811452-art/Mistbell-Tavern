@@ -9,7 +9,6 @@ import com.google.ai.edge.litertlm.EmbeddingEngineConfig
 import com.google.ai.edge.litertlm.EmbeddingOptions
 import com.google.ai.edge.litertlm.InputData
 import com.mistbell.tavern.v3.core.diagnostics.DiagnosticLogStore
-import com.mistbell.tavern.v3.core.inference.BackendEvidence
 import com.mistbell.tavern.v3.core.inference.InferenceBackend
 import com.mistbell.tavern.v3.core.inference.InferencePhase
 import com.mistbell.tavern.v3.core.inference.InferenceRuntimeStatus
@@ -265,24 +264,29 @@ class LiteRtLmEmbeddingGemma2Engine(
                     fallbackReason = failures.takeIf { it.isNotEmpty() }?.joinToString("; ")
                         ?.take(InferenceRuntimeStatus.MAX_DETAIL_LENGTH)
                     lastError = null
+                    // LiteRT-LM exposes the configured delegate, not proof that the NPU executed
+                    // this operation; the policy keeps that claim and the manifest evidence apart.
+                    val reported = EmbeddingRuntimeStatusPolicy.report(
+                        selected = selectedBackend,
+                        runtimeEvidenceVerified = npuEvidenceVerified,
+                        activeInProcess = true,
+                    )
                     logInfo(
                         "embedding.inference.succeeded",
                         "outputCount=${responses.size}; dimensions=${responses.firstOrNull()?.embedding?.size ?: 0}; " +
                             "elapsedMs=$elapsedMillis; backend=${backend.name}; runtimeFallbackApplied=${fallbackReason != null}; " +
                             "inputCount=${formattedInputs.size}; inputBatchShape=${inputBatchShape}; " +
                             "inputCharLengths=${inputCharLengths}; tokenLengths=unavailable; " +
-                            "backendEvidence=${evidenceFor(backend)}; hardwareExecutionVerified=false",
+                            "backendEvidence=${reported.evidence}; hardwareExecutionVerified=false",
                     )
                     return@withLock EmbeddingBatch(
                         vectors = responses.map { response -> response.embedding.asList() },
                         status = InferenceRuntimeStatus(
                             phase = if (fallbackReason == null) InferencePhase.READY else InferencePhase.FALLBACK,
                             modelId = EmbeddingGemma2TextPolicy.MODEL_ID,
-                            // LiteRT-LM exposes the configured delegate, not proof that the NPU
-                            // executed this operation. Do not label NPU as an active backend without evidence.
-                            backend = if (selectedBackend == InferenceBackend.NPU && !npuEvidenceVerified) InferenceBackend.UNKNOWN else selectedBackend,
+                            backend = reported.backend,
                             runtimeId = runtimeId,
-                            backendEvidence = evidenceFor(selectedBackend),
+                            backendEvidence = reported.evidence,
                             acceleratorName = selectedBackend.name,
                             fallbackReason = fallbackReason,
                             lastExecutionMillis = elapsedMillis,
@@ -435,30 +439,31 @@ class LiteRtLmEmbeddingGemma2Engine(
                 lastError = lastError,
             )
         }
+        val phase = when {
+            lastError != null -> InferencePhase.FAILED
+            !hasSuccessfulInference -> InferencePhase.INITIALIZED
+            fallbackReason == null -> InferencePhase.READY
+            else -> InferencePhase.FALLBACK
+        }
+        // Initialization alone is not execution evidence for Qualcomm NPU, so the backend label
+        // stays UNKNOWN until this process actually ran an inference. The persisted manifest
+        // verdict is still reported, otherwise a restart would show a verified runtime as unverified.
+        val reported = EmbeddingRuntimeStatusPolicy.report(
+            selected = selectedBackend,
+            runtimeEvidenceVerified = npuEvidenceVerified,
+            activeInProcess = phase == InferencePhase.READY || phase == InferencePhase.FALLBACK,
+        )
         InferenceRuntimeStatus(
-            phase = when {
-                lastError != null -> InferencePhase.FAILED
-                !hasSuccessfulInference -> InferencePhase.INITIALIZED
-                fallbackReason == null -> InferencePhase.READY
-                else -> InferencePhase.FALLBACK
-            },
+            phase = phase,
             modelId = EmbeddingGemma2TextPolicy.MODEL_ID,
-            // Initialization alone is not execution evidence for Qualcomm NPU.
-            backend = if (selectedBackend == InferenceBackend.NPU) InferenceBackend.UNKNOWN else selectedBackend,
+            backend = reported.backend,
             runtimeId = runtimeId,
-            backendEvidence = BackendEvidence.CONFIGURED_ONLY,
+            backendEvidence = reported.evidence,
             acceleratorName = selectedBackend.name,
             fallbackReason = fallbackReason,
             lastError = lastError,
         )
     }
-
-    private fun evidenceFor(backend: InferenceBackend): BackendEvidence =
-        if (backend == InferenceBackend.NPU && npuEvidenceVerified) {
-            BackendEvidence.RUNTIME_REPORTED
-        } else {
-            BackendEvidence.CONFIGURED_ONLY
-        }
 
     override fun close() {
         lock.withLock {

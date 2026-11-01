@@ -4,6 +4,7 @@ import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.mistbell.tavern.v3.core.memory.VectorMemoryContextService
+import com.mistbell.tavern.v3.core.storage.AtomicMemoryOverrideStore
 import com.mistbell.tavern.v3.core.storage.AtomicMemoryTextStore
 import com.mistbell.tavern.v3.core.storage.AtomicTemporalFactStore
 import com.mistbell.tavern.v3.core.storage.MemoryTextLoadResult
@@ -123,6 +124,13 @@ if (installedModel == null || configuredDimensions !in CHAT_EMBEDDING_DIMENSION_
             memoryScopeId,
         ),
     )
+    val scopedOverrideStore = AtomicMemoryOverrideStore(
+        context.applicationContext,
+        com.mistbell.tavern.v3.core.storage.MemoryScopeFileNames.forScope(
+            AtomicMemoryOverrideStore.DEFAULT_FILE_NAME,
+            memoryScopeId,
+        ),
+    )
     val scopedTemporalFactStore = AtomicTemporalFactStore(
         context.applicationContext,
         com.mistbell.tavern.v3.core.storage.MemoryScopeFileNames.forScope(
@@ -176,6 +184,7 @@ if (installedModel == null || configuredDimensions !in CHAT_EMBEDDING_DIMENSION_
         TemporalFactTextSynchronizer(
             factStore = scopedTemporalFactStore,
             memoryTextStore = memoryTextStore,
+            overrideStore = scopedOverrideStore,
         ).synchronize()
     }) {
         TemporalFactTextSyncResult.NoFacts -> Unit
@@ -268,7 +277,8 @@ if (installedModel == null || configuredDimensions !in CHAT_EMBEDDING_DIMENSION_
         embeddings = memoryRuntime,
         textProvider = memoryTextStore,
     )
-    setStatus("本地记忆检索已接入；后端=${backendStatus.backend}，证据=${backendStatus.backendEvidence}。配置状态不等于芯片级 NPU 实测。" +
+    setStatus("本地记忆检索已接入；后端=${backendStatus.backend}（配置=${backendStatus.acceleratorName}），" +
+        "证据=${backendStatus.backendEvidence}。配置状态不等于芯片级 NPU 实测。" +
         if (indexMaintenanceMessage.isBlank()) "" else " $indexMaintenanceMessage")
     MemoryAwareChatRequest(
         chatClient = client,
