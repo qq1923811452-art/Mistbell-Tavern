@@ -654,7 +654,14 @@ class MainActivity : ComponentActivity() {
      * evidence level, so a restart no longer looks like an unverified runtime.
      */
     private fun refreshInferenceStatusFromPersistedEvidence() {
-        val live = EmbeddingEngineProcessHolder.currentStatusOrNull()
+        // A concurrently closed engine reports idle(); that is "nothing running here", not
+        // "unverified", so fall through to the persisted evidence instead of caching idle().
+        val live =
+            EmbeddingEngineProcessHolder.currentStatusOrNull()
+                ?.takeUnless {
+                    it.phase == InferencePhase.NOT_INITIALIZED &&
+                        it.backendEvidence == com.mistbell.tavern.v3.core.inference.BackendEvidence.NOT_AVAILABLE
+                }
         if (live != null) {
             inferenceStatus = live
             return
