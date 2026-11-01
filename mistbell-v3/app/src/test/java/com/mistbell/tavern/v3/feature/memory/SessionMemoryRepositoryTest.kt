@@ -37,7 +37,9 @@ class SessionMemoryRepositoryTest {
 
                     override fun load(): MemoryTextLoadResult = MemoryTextLoadResult.Loaded(texts.toList())
 
-                    override fun update(transform: (List<MemoryTextRecord>) -> List<MemoryTextRecord>): List<MemoryTextRecord> {
+                    override fun update(
+                        transform: (List<MemoryTextRecord>) -> List<MemoryTextRecord>,
+                    ): List<MemoryTextRecord> {
                         check(!textWriteFails) { "projection failure" }
                         val updated = transform(texts.toList())
                         texts.clear()

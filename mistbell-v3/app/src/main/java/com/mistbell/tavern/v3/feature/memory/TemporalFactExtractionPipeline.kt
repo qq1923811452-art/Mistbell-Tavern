@@ -50,7 +50,8 @@ class TemporalFactExtractionPipeline(
                             if (persisted.isFailure) {
                                 observer(
                                     TemporalFactPipelineOutcome.Failed(
-                                        "Extracted facts could not be safely persisted; existing history was preserved.",
+                                        "Extracted facts could not be safely persisted; " +
+                                            "existing history was preserved.",
                                     ),
                                 )
                                 return@commit

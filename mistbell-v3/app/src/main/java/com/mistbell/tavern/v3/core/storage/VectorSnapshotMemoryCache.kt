@@ -30,7 +30,8 @@ internal object VectorSnapshotMemoryCache {
     private val pathLocks = HashMap<String, Any>()
     private val entries =
         object : LinkedHashMap<Key, VectorSnapshot>(MAX_ENTRIES, LOAD_FACTOR, true) {
-            override fun removeEldestEntry(oldest: MutableMap.MutableEntry<Key, VectorSnapshot>): Boolean = size > MAX_ENTRIES
+            override fun removeEldestEntry(oldest: MutableMap.MutableEntry<Key, VectorSnapshot>): Boolean =
+                size > MAX_ENTRIES
         }
 
     fun lockFor(file: File): Any =
