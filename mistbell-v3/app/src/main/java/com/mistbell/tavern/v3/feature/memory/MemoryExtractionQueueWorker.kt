@@ -19,7 +19,6 @@ import com.mistbell.tavern.v3.feature.chat.SqliteChatHistoryRepository
 import com.mistbell.tavern.v3.feature.chat.MemoryExtractionBatchInputFactory
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CompletableDeferred
 
 /**
  * Process-resilient queue consumer. The queue and source history are both persisted privately;
@@ -38,7 +37,8 @@ class MemoryExtractionQueueWorker(
             val inputFactory = MemoryExtractionBatchInputFactory()
             var processedJobs = 0
             while (!isStopped && processedJobs < MAX_JOBS_PER_RUN) {
-                val completion = CompletableDeferred<Boolean>()
+                val attempt = MemoryExtractionAttempt()
+                val completion = attempt.completion
                 runner.runNext(
                         buildInput = { job ->
                             val handle = requireNotNull(job.credentialHandle) {
@@ -108,6 +108,7 @@ class MemoryExtractionQueueWorker(
                             Triple(input, profile, handle)
                         },
                         execute = { job, prepared, complete ->
+                            attempt.bindCompletion(complete)
                             val (input, profile, handle) = prepared
                             val providers = ProviderProfileSet(
                                 profiles = listOf(profile),
@@ -133,7 +134,7 @@ class MemoryExtractionQueueWorker(
                                     ),
                                 ),
                             )
-                            pipeline.extractAndPersist(input) { outcome ->
+                            val call = pipeline.extractAndPersist(input, commitGate = attempt::commit) { outcome ->
                                 when (outcome) {
                                     is TemporalFactPipelineOutcome.Saved ->
                                         complete(MemoryExtractionQueueRunner.ExecutionResult.Success)
@@ -146,6 +147,7 @@ class MemoryExtractionQueueWorker(
                                         )
                                 }
                             }
+                            attempt.attachCall(call)
                         },
                         observer = { result ->
                             when (result) {
@@ -177,7 +179,7 @@ class MemoryExtractionQueueWorker(
                             }
                         },
                     )
-                val hasJob = completion.await()
+                val hasJob = attempt.await()
                 if (!hasJob) break
                 processedJobs += 1
             }

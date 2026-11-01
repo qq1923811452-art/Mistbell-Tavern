@@ -35,7 +35,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -177,9 +176,10 @@ fun ChatScreen(
     }
     var usageSummary by remember { mutableStateOf("Token 用量：本轮尚无服务端 usage 数据") }
     val history = remember { mutableStateListOf<ChatLine>() }
-    val listState = rememberLazyListState()
+    var loadedHistoryScope by remember { mutableStateOf<String?>(null) }
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
     val conversationHistoryScope = memoryConversationId.ifBlank { memoryScopeId }
+    val historyWindowPlanner = remember(conversationHistoryScope) { StableConversationWindowPlanner() }
     val historyStore = remember(context, conversationHistoryScope) {
         val legacyStore = ChatHistoryStore(
             context.applicationContext,
@@ -298,17 +298,6 @@ fun ChatScreen(
         lastPromptMessages = emptyList()
     }
 
-    fun formatUsageSummary(usage: ChatTokenUsage): String {
-        val cached = usage.cachedPromptTokens
-        val cacheRatio = if (cached != null && usage.promptTokens > 0) {
-            "（${cached * 100 / usage.promptTokens}%）"
-        } else {
-            ""
-        }
-        return "Token 用量：输入 ${usage.promptTokens} · 缓存 ${cached?.toString() ?: "未知"}$cacheRatio" +
-            " · 输出 ${usage.completionTokens} · 合计 ${usage.totalTokens}"
-    }
-
     fun saveUsageSummary(conversationId: String, summary: String) {
         if (conversationId.isNotBlank()) {
             settings.edit().putString("chat_usage_$conversationId", summary).apply()
@@ -411,13 +400,16 @@ fun ChatScreen(
                     status = "重新生成失败：API 配置不完整。"
                     return@launch
                 }
-                val messages = withContext(Dispatchers.Default) {
+                val messages = withContext(Dispatchers.IO) {
                     ChatTurnPromptPreparationCoordinator(
                         settings = settings,
                         diagnosticStore = diagnosticStore,
                         mainHandler = mainHandler,
                         setStatus = { status = it },
+                        historyPlanner = historyWindowPlanner,
+                        historyWindowCache = historyStore.windowStateCache,
                     ).prepare(
+                        historyScopeId = requestConversationId.ifBlank { requestMemoryScopeId },
                         history = plan.prefixHistory,
                         userText = plan.userText,
                         characterCards = characterCards,
@@ -426,6 +418,7 @@ fun ChatScreen(
                         worldbookState = requestWorldbookState,
                         worldbookStateKey = requestWorldbookStateKey,
                         historyIsComplete = true,
+                        invalidateHistoryWindow = true,
                     )
                 }
                 if (memoryConversationId != requestConversationId || !ownsRequest()) {
@@ -577,7 +570,10 @@ fun ChatScreen(
         historyLoadCoordinator = historyLoadCoordinator,
         diagnosticStore = diagnosticStore,
         history = history,
-        setHistoryReady = { historyReady = it },
+        setHistoryReady = {
+            historyReady = it
+            loadedHistoryScope = conversationHistoryScope.takeIf { _ -> it }
+        },
         setHistoryLoadFailed = { historyLoadFailed = it },
         setStatus = { status = it },
     )
@@ -911,10 +907,14 @@ fun ChatScreen(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
 
-            ChatHistoryMessageList(
-                history = history,
-                busy = busy,
-                listState = listState,
+            chatConversationPane(
+                pane = ConversationPaneState(
+                    conversationId = conversationHistoryScope,
+                    historyReady = historyReady && !historyLoadFailed &&
+                        loadedHistoryScope == conversationHistoryScope,
+                    history = history,
+                    busy = busy,
+                ),
                 onSelectVariant = { messageId, requested ->
                     val index = history.indexOfFirst { it.id == messageId }
                     if (index >= 0) {
@@ -1010,24 +1010,30 @@ fun ChatScreen(
                                 setStatus = { status = it },
                             ).start(openingMessage, userText)
                             diagnosticStore.info("chat.send.started", "conversation=${requestConversationId.take(8)}")
+                            val requestMaxTokens = effectiveMaxTokens()
                             diagnosticStore.info(
                                 "chat.request.options",
-                                "maxTokens=${settings.getInt("chat_max_tokens", 4096)}; " +
+                                "maxTokens=$requestMaxTokens; " +
                                     "stream=${chatGenerationPreferences.streamEnabled}; " +
-                                    "thinking=${chatGenerationPreferences.thinkingEnabled}",
+                                    "thinking=${chatGenerationPreferences.thinkingEnabled}; " +
+                                    "model=${ChatRequestDiagnostics.modelLabel(modelId)}; " +
+                                    "host=${ChatRequestDiagnostics.endpointHost(baseUrl)}",
                             )
                             val assistantMessageId = history.lastOrNull { it.role == "assistant" }?.id.orEmpty()
                             val requestHistory = history.toList()
                             diagnosticStore.info("chat.send.prepare.begin", "history=${requestHistory.size}")
                             val messages = try {
                                 withTimeoutOrNull(PROMPT_PREPARE_TIMEOUT_MS) {
-                                withContext(Dispatchers.Default) {
+                                withContext(Dispatchers.IO) {
                                     ChatTurnPromptPreparationCoordinator(
                                         settings = settings,
                                         diagnosticStore = diagnosticStore,
                                         mainHandler = mainHandler,
                                         setStatus = { status = it },
+                                        historyPlanner = historyWindowPlanner,
+                                        historyWindowCache = historyStore.windowStateCache,
                                     ).prepare(
+                                        historyScopeId = requestConversationId.ifBlank { requestMemoryScopeId },
                                         history = requestHistory,
                                         userText = userText,
                                         characterCards = characterCards,
@@ -1158,7 +1164,7 @@ fun ChatScreen(
                                         client,
                                         messages,
                                         observer,
-                                        effectiveMaxTokens(),
+                                        requestMaxTokens,
                                         memoryQuery = userText,
                                     )
                                 },
@@ -1167,7 +1173,7 @@ fun ChatScreen(
                                         messages,
                                         observer,
                                         ChatGenerationOptions(
-                                            maxTokens = effectiveMaxTokens(),
+                                            maxTokens = requestMaxTokens,
                                             stream = chatGenerationPreferences.streamEnabled,
                                             thinkingEnabled = chatGenerationPreferences.thinkingEnabled,
                                         ),

@@ -19,6 +19,8 @@ internal data class ChatSendMessagePreparation(
 internal class ChatSendMessageCoordinator(
     private val settings: SharedPreferences,
     private val diagnosticStore: DiagnosticLogStore,
+    private val historyPlanner: StableConversationWindowPlanner,
+    private val historyWindowCache: WindowStateCache? = null,
 ) {
     @Suppress("LongParameterList")
     fun prepare(
@@ -32,6 +34,8 @@ internal class ChatSendMessageCoordinator(
         onBudgetExceeded: (Int) -> Unit,
         historyIsComplete: Boolean = false,
         postHistoryInstructions: String? = null,
+        historyScopeId: String,
+        invalidateHistoryWindow: Boolean = false,
     ): ChatSendMessagePreparation {
         val completedLines = if (historyIsComplete) history else history.dropLast(2)
         val completeHistory = completedLines.mapNotNull { line ->
@@ -45,7 +49,13 @@ internal class ChatSendMessageCoordinator(
             }
         }
         val historyStarted = System.nanoTime()
-        val contextWindow = ChatPromptHistoryCoordinator(settings).build(completeHistory)
+        val decision = ChatPromptHistoryCoordinator(settings, historyPlanner, historyWindowCache).build(
+            scopeId = historyScopeId,
+            history = completedLines,
+            invalidate = invalidateHistoryWindow,
+        )
+        val contextWindow = decision.window
+        diagnosticStore.info("chat.window.decision", decision.diagnosticText())
         val historyMs = (System.nanoTime() - historyStarted) / NANOS_PER_MILLI
 
         // Activate entries from the asynchronously loaded local library against

@@ -17,6 +17,8 @@ internal object NpuEvidenceStore {
     // so repeated engine creation does not reread a half-gigabyte model and the APK.
     private val fileHashCache = linkedMapOf<FileHashCacheKey, String>()
 
+    private const val CACHE_ENTRIES = 8
+
     private const val EXPECTED_MODEL_SHA256 =
         "3b8a18c6d043b8132c4eda45611296e1ae455ada82cda8b591ec0ca141e041c5"
     private val requiredMappings = listOf("libQnnHtp.so", "libQnnHtpV75Stub.so", "libcdsprpc.so")
@@ -218,10 +220,16 @@ internal object NpuEvidenceStore {
 
     private fun File.sha256OrEmpty(): String = runCatching { sha256() }.getOrDefault("")
 
-    private fun File.sha256Cached(context: Context): String = synchronized(fileHashCache) {
+    /**
+     * Hashing a model or APK can take seconds; it must not run while holding the cache monitor,
+     * or every other engine creation blocks behind it. Concurrent misses may hash the same file
+     * twice, which is bounded and cheaper than serializing all evidence validation.
+     */
+    private fun File.sha256Cached(context: Context): String {
         val key = FileHashCacheKey(canonicalPath, length(), lastModified())
-        fileHashCache[key]?.let { return@synchronized it }
-        fileHashCache.keys.filter { it.path == key.path }.forEach(fileHashCache::remove)
+        synchronized(fileHashCache) {
+            fileHashCache[key]?.let { return it }
+        }
 
         val prefs = context.getSharedPreferences("mistbell-npu-file-hash-cache", Context.MODE_PRIVATE)
         val appVersion = runCatching {
@@ -233,21 +241,19 @@ internal object NpuEvidenceStore {
         val stamp = listOf("1", appVersion, canonicalPath, length().toString(), lastModified().toString())
             .joinToString("|")
         val saved = prefs.getString(cacheKey, null)?.split("|")
-        if (saved != null && saved.size == 6 &&
-            saved.take(5).joinToString("|") == stamp
-        ) {
-            val cachedDigest = saved[5]
-            if (cachedDigest.matches(Regex("[0-9a-f]{64}"))) {
-                fileHashCache[key] = cachedDigest
-                return@synchronized cachedDigest
-            }
-        }
+        val persisted = saved
+            ?.takeIf { it.size == 6 && it.take(5).joinToString("|") == stamp }
+            ?.get(5)
+            ?.takeIf { it.matches(Regex("[0-9a-f]{64}")) }
 
-        val digest = sha256()
-        fileHashCache[key] = digest
-        prefs.edit().putString(cacheKey, "$stamp|$digest").apply()
-        while (fileHashCache.size > 8) fileHashCache.remove(fileHashCache.keys.first())
-        digest
+        val digest = persisted ?: sha256()
+        synchronized(fileHashCache) {
+            fileHashCache.keys.filter { it.path == key.path }.forEach(fileHashCache::remove)
+            fileHashCache[key] = digest
+            while (fileHashCache.size > CACHE_ENTRIES) fileHashCache.remove(fileHashCache.keys.first())
+        }
+        if (persisted == null) prefs.edit().putString(cacheKey, "$stamp|$digest").apply()
+        return digest
     }
 
     private fun File.sha256(): String {

@@ -117,6 +117,7 @@ class OpenAiCompatibleChatClientTest {
         )
         assertTrue(observer.finished.await(5, TimeUnit.SECONDS))
         assertEquals(ChatFinishReason.LENGTH, observer.finishReason)
+        assertTrue(observer.diagnostics.any { it.startsWith("completion:providerFinishReason=length;") })
     }
 
     @Test
@@ -177,6 +178,7 @@ class OpenAiCompatibleChatClientTest {
         )
         assertTrue(observer.finished.await(5, TimeUnit.SECONDS))
         assertEquals(ChatFinishReason.LENGTH, observer.finishReason)
+        assertTrue(observer.diagnostics.any { it.startsWith("completion:providerFinishReason=length;") })
     }
 
     @Test
@@ -314,6 +316,29 @@ class OpenAiCompatibleChatClientTest {
         assertEquals("answer", observer.output.toString())
         assertEquals("think more", observer.reasoning.toString())
         assertEquals(8, observer.usage?.reasoningTokens)
+        assertTrue(observer.diagnostics.contains("completion:providerFinishReason=missing; completionChars=6"))
+        assertTrue(observer.diagnostics.none { it.contains("think more") || it.contains("answer") })
+    }
+
+    @Test
+    fun reportsOfficialNonStreamingCacheUsageAndLength() {
+        server.enqueue(
+            MockResponse().setHeader("Content-Type", "application/json").setBody(
+                "{\"choices\":[{\"message\":{\"content\":\"partial\"},\"finish_reason\":\"length\"}]," +
+                    "\"usage\":{\"prompt_tokens\":100,\"completion_tokens\":10," +
+                    "\"prompt_tokens_details\":{},\"prompt_cache_hit_tokens\":80}}",
+            ),
+        )
+        server.start()
+        val observer = RecordingObserver()
+        clientFor(server, apiKey = "key").stream(
+            listOf(PromptMessage(PromptRole.USER, "Hi")), observer, ChatGenerationOptions(stream = false),
+        )
+        assertTrue(observer.finished.await(5, TimeUnit.SECONDS))
+        assertNull(observer.failure)
+        assertEquals(80, observer.usage?.cachedPromptTokens)
+        assertEquals(ChatFinishReason.LENGTH, observer.finishReason)
+        assertTrue(observer.diagnostics.contains("completion:providerFinishReason=length; completionChars=7"))
     }
 
     @Test
@@ -478,7 +503,8 @@ class OpenAiCompatibleChatClientTest {
 
         assertTrue(observer.finished.await(5, TimeUnit.SECONDS))
         assertEquals("JSON fallback", observer.output.toString())
-        assertEquals(ChatFinishReason.STOP, observer.finishReason)
+        // The provider omitted finish_reason; a JSON response alone does not prove STOP.
+        assertEquals(ChatFinishReason.OTHER, observer.finishReason)
     }
 
     @Test

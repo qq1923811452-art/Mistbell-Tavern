@@ -36,6 +36,7 @@ class SqliteChatStore(
             db.execSQL("ALTER TABLE $TABLE_MESSAGES ADD COLUMN variants TEXT NOT NULL DEFAULT '[]'")
             db.execSQL("ALTER TABLE $TABLE_MESSAGES ADD COLUMN active_variant INTEGER NOT NULL DEFAULT 0")
         }
+        if (oldVersion < 4) SqliteWindowStateCache.createSchema(db)
         if (oldVersion < 3) {
             db.execSQL(
                 "CREATE TABLE IF NOT EXISTS $TABLE_META (" +
@@ -187,6 +188,7 @@ class SqliteChatStore(
     override fun deleteScope(scopeId: String) {
         validateScope(scopeId)
         writableDatabase.delete(TABLE_MESSAGES, "scope_id = ?", arrayOf(scopeId))
+        SqliteWindowStateCache.clear(writableDatabase, scopeId)
     }
 
     /** Moves every row from one scope to another; existing target rows win on ID conflicts. */
@@ -207,6 +209,8 @@ class SqliteChatStore(
                 arrayOf(toScopeId, fromScopeId),
             )
             db.delete(TABLE_MESSAGES, "scope_id = ?", arrayOf(fromScopeId))
+            SqliteWindowStateCache.clear(db, fromScopeId)
+            SqliteWindowStateCache.clear(db, toScopeId)
             db.insertWithOnConflict(
                 TABLE_META,
                 null,
@@ -327,7 +331,7 @@ class SqliteChatStore(
         }
 
         const val DEFAULT_DATABASE_NAME = "mistbell-v3-chat.db"
-        const val DATABASE_VERSION = 3
+        const val DATABASE_VERSION = 4
         const val MAX_PAGE_SIZE = 500
         const val MAX_SCOPE_ID_CHARS = 256
         private const val TABLE_MESSAGES = "chat_messages"
@@ -353,6 +357,7 @@ class SqliteChatStore(
         }
 
         private fun createSchema(db: SQLiteDatabase) {
+            SqliteWindowStateCache.createSchema(db)
             db.execSQL(
                 """
                 CREATE TABLE IF NOT EXISTS $TABLE_MESSAGES (

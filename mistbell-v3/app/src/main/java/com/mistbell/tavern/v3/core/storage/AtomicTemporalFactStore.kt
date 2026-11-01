@@ -16,6 +16,21 @@ sealed interface TemporalFactLoadResult {
 interface TemporalFactPersistence {
     fun save(facts: List<TemporalMemoryFact>)
     fun load(): TemporalFactLoadResult
+
+    /**
+     * Read-modify-write that must not lose concurrent updates. Implementations backed by a file
+     * should serialize across store instances, not only within one object.
+     */
+    fun update(transform: (List<TemporalMemoryFact>) -> List<TemporalMemoryFact>): List<TemporalMemoryFact> {
+        val current = when (val loaded = load()) {
+            TemporalFactLoadResult.Missing -> emptyList()
+            is TemporalFactLoadResult.Loaded -> loaded.facts
+            is TemporalFactLoadResult.Corrupt -> throw IllegalStateException(loaded.safeReason)
+        }
+        val updated = transform(current)
+        if (updated != current) save(updated)
+        return updated
+    }
 }
 
 /** App-private atomic storage. Corrupt originals are reported, never silently replaced. */
@@ -33,8 +48,7 @@ class AtomicTemporalFactStore(
         atomicFile = AtomicFile(File(context.filesDir, fileName))
     }
 
-    @Synchronized
-    override fun save(facts: List<TemporalMemoryFact>) {
+    override fun save(facts: List<TemporalMemoryFact>) = synchronized(lockFor(atomicFile.baseFile)) {
         val bytes = TemporalFactCodec.encode(facts)
         val stream = atomicFile.startWrite()
         try {
@@ -46,8 +60,7 @@ class AtomicTemporalFactStore(
         }
     }
 
-    @Synchronized
-    override fun load(): TemporalFactLoadResult {
+    override fun load(): TemporalFactLoadResult = synchronized(lockFor(atomicFile.baseFile)) {
         val baseFile = atomicFile.baseFile
         val backup = File(baseFile.path + ".bak")
         if (!baseFile.exists() && !backup.exists()) return TemporalFactLoadResult.Missing
@@ -65,7 +78,60 @@ class AtomicTemporalFactStore(
         }
     }
 
+    override fun update(
+        transform: (List<TemporalMemoryFact>) -> List<TemporalMemoryFact>,
+    ): List<TemporalMemoryFact> = synchronized(lockFor(atomicFile.baseFile)) {
+        val current = when (val loaded = loadUnlocked()) {
+            TemporalFactLoadResult.Missing -> emptyList()
+            is TemporalFactLoadResult.Loaded -> loaded.facts
+            is TemporalFactLoadResult.Corrupt -> throw IllegalStateException(loaded.safeReason)
+        }
+        val updated = transform(current)
+        if (updated != current) saveUnlocked(updated)
+        updated
+    }
+
+    private fun saveUnlocked(facts: List<TemporalMemoryFact>) {
+        val bytes = TemporalFactCodec.encode(facts)
+        val stream = atomicFile.startWrite()
+        try {
+            stream.write(bytes)
+            atomicFile.finishWrite(stream)
+        } catch (failure: Throwable) {
+            atomicFile.failWrite(stream)
+            throw failure
+        }
+    }
+
+    private fun loadUnlocked(): TemporalFactLoadResult {
+        val baseFile = atomicFile.baseFile
+        val backup = File(baseFile.path + ".bak")
+        return when {
+            !baseFile.exists() && !backup.exists() -> TemporalFactLoadResult.Missing
+            maxOf(baseFile.length(), backup.length()) > TemporalFactCodec.MAX_STORE_BYTES ->
+                TemporalFactLoadResult.Corrupt("Temporal fact store exceeds the size limit.")
+            else -> readUnlocked()
+        }
+    }
+
+    private fun readUnlocked(): TemporalFactLoadResult = try {
+        TemporalFactLoadResult.Loaded(
+            atomicFile.openRead().use { input -> TemporalFactCodec.decode(input.readBytes()) },
+        )
+    } catch (_: IOException) {
+        TemporalFactLoadResult.Corrupt("Temporal fact store could not be read.")
+    } catch (_: IllegalArgumentException) {
+        TemporalFactLoadResult.Corrupt("Temporal fact store failed integrity or validation checks.")
+    }
+
     companion object {
         const val DEFAULT_FILE_NAME = "mistbell-v3-temporal-facts.bin"
+
+        private val LOCKS = Array(LOCK_STRIPES) { Any() }
+
+        private fun lockFor(file: File): Any =
+            LOCKS[(file.absolutePath.hashCode() and Int.MAX_VALUE) % LOCK_STRIPES]
+
+        private const val LOCK_STRIPES = 16
     }
 }

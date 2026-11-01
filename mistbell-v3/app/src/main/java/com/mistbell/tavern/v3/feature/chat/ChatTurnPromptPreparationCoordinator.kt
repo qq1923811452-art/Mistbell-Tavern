@@ -19,6 +19,8 @@ internal class ChatTurnPromptPreparationCoordinator(
     private val diagnosticStore: DiagnosticLogStore,
     private val mainHandler: Handler,
     private val setStatus: (String) -> Unit,
+    private val historyPlanner: StableConversationWindowPlanner,
+    private val historyWindowCache: WindowStateCache? = null,
 ) {
     @Suppress("LongParameterList")
     fun prepare(
@@ -29,8 +31,10 @@ internal class ChatTurnPromptPreparationCoordinator(
         localWorldbookEntries: List<WorldBookEntry>,
         worldbookState: WorldBookActivationState,
         worldbookStateKey: String,
+        historyScopeId: String,
         historyIsComplete: Boolean = false,
         groupContext: GroupChatPromptContext? = null,
+        invalidateHistoryWindow: Boolean = false,
     ): List<PromptMessage> {
         val startedNanos = System.nanoTime()
         val selectedCard = characterCards.firstOrNull { it.id == selectedCharacterId }?.card
@@ -41,6 +45,8 @@ internal class ChatTurnPromptPreparationCoordinator(
         val messages = ChatSendMessageCoordinator(
             settings = settings,
             diagnosticStore = diagnosticStore,
+            historyPlanner = historyPlanner,
+            historyWindowCache = historyWindowCache,
         ).prepare(
             history = history,
             userText = userText,
@@ -50,6 +56,8 @@ internal class ChatTurnPromptPreparationCoordinator(
             worldbookState = worldbookState,
             worldbookStateKey = worldbookStateKey,
             historyIsComplete = historyIsComplete,
+            historyScopeId = historyScopeId,
+            invalidateHistoryWindow = invalidateHistoryWindow,
             postHistoryInstructions = selectedCard?.postHistoryInstructions,
             onBudgetExceeded = { droppedCount ->
                 mainHandler.post {

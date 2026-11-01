@@ -36,6 +36,10 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun SettingsHomeScreen(
     contextTokens: Int,
+    recentTurns: Int,
+    summaryMaxChars: Int,
+    onRecentTurnsChange: (Int) -> Unit,
+    onSummaryMaxCharsChange: (Int) -> Unit,
     memoryEnabled: Boolean,
     onContextTokensChange: (Int) -> Unit,
     onMemoryEnabledChange: (Boolean) -> Unit,
@@ -66,6 +70,20 @@ fun SettingsHomeScreen(
         SettingsGroup("💬 对话设置") {
             MaxOutputTokensRow(maxOutputTokens, onMaxOutputTokensChange)
             ContextLengthRow(contextTokens, onContextTokensChange)
+            NumberSettingRow(
+                title = "保留最近轮数",
+                subtitle = "未超过水位时窗口起点不变；1–100",
+                value = recentTurns,
+                range = 1..100,
+                onChange = onRecentTurnsChange,
+            )
+            NumberSettingRow(
+                title = "摘要字符上限",
+                subtitle = "历史摘要的 UTF-16 软预算；0 表示不生成摘要",
+                value = summaryMaxChars,
+                range = 0..10_000,
+                onChange = onSummaryMaxCharsChange,
+            )
             BackupSettingsSection()
         }
         SettingsGroup("🧠 记忆") {
@@ -159,6 +177,49 @@ private fun formatTokens(tokens: Int): String = when {
     tokens >= 1_000_000 -> "1M"
     tokens >= 1_000 -> "${tokens / 1_000}K"
     else -> tokens.toString()
+}
+
+@Suppress("FunctionNaming")
+@Composable
+private fun NumberSettingRow(
+    title: String,
+    subtitle: String,
+    value: Int,
+    range: IntRange,
+    onChange: (Int) -> Unit,
+) {
+    var text by remember(value) { mutableStateOf(value.toString()) }
+    val parsed = text.toIntOrNull()
+    val invalid = text.length !in 1..6 || text.any { it !in '0'..'9' } || parsed == null || parsed !in range
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge)
+            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.65f))
+        }
+        OutlinedTextField(
+            value = text,
+            onValueChange = { raw ->
+                text = raw
+                if (raw.all { it in '0'..'9' }) {
+                    raw.toIntOrNull()?.takeIf { it in range }?.let(onChange)
+                }
+            },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            isError = invalid,
+            supportingText = {
+                Text(
+                    if (invalid) "请输入 ${range.first}–${range.last}，当前输入不会保存" else "实际生效：$value",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            },
+            modifier = Modifier.padding(start = 12.dp).width(150.dp),
+        )
+    }
 }
 
 @Suppress("FunctionNaming")

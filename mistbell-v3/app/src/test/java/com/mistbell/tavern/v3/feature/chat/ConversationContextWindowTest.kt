@@ -41,7 +41,7 @@ class ConversationContextWindowTest {
     }
 
     @Test
-    fun recentHistoryAlsoRespectsCharacterBudget() {
+    fun characterBudgetMovesExcludedTurnsIntoSummaryInsteadOfLeavingAHole() {
         val history = listOf(
             PromptMessage(PromptRole.USER, "old"),
             PromptMessage(PromptRole.ASSISTANT, "older reply"),
@@ -54,7 +54,14 @@ class ConversationContextWindowTest {
             summaryMaxChars = 300,
             maxHistoryChars = 12,
         )
-        assertEquals(listOf("new", "new reply"), result.recentMessages.map { it.content })
+        assertEquals(2, result.archivedMessageCount)
+        assertEquals(history.size, result.archivedMessageCount + result.recentMessages.size)
+        assertEquals(history.drop(result.archivedMessageCount), result.recentMessages)
+        assertTrue(result.earlierSummary.contains("old"))
+        assertTrue(result.earlierSummary.contains("older reply"))
+        assertTrue(!result.earlierSummary.contains("new"))
+        assertEquals(12L, result.recentHistoryChars)
+        assertTrue(!result.isOverHistoryBudget)
     }
 
     @Test
@@ -159,37 +166,7 @@ class ConversationContextWindowTest {
     }
 
     @Test
-    fun summaryStaysFrozenAcrossTurnsWithinTheSameTenMessageBlock() {
-        val summaries = (1..5).map { turnCount ->
-            val history = conversationWithTurns(turnCount)
-            val result = ConversationContextWindowBuilder.build(history, recentTurns = 1)
-            // The split stays at index 10 for one to five turns, so no recent turn may leak into the summary.
-            assertEquals(history.drop(10), result.recentMessages)
-            assertTrue(!result.earlierSummary.contains("turn-"))
-            result.earlierSummary
-        }
-        assertEquals(1, summaries.distinct().size)
-        assertTrue(summaries.first().contains("prefix-1"))
-        assertTrue(summaries.first().contains("prefix-10"))
-    }
-
-    @Test
-    fun summaryChangesWhenTheBoundaryCrossesIntoTheNextTenMessageBlock() {
-        val withinBlock = conversationWithTurns(5)
-        val nextBlock = conversationWithTurns(6)
-        val frozen = ConversationContextWindowBuilder.build(withinBlock, recentTurns = 1)
-        val shifted = ConversationContextWindowBuilder.build(nextBlock, recentTurns = 1)
-        assertEquals(10, withinBlock.size - frozen.recentMessages.size)
-        assertEquals(20, nextBlock.size - shifted.recentMessages.size)
-        assertTrue(frozen.earlierSummary != shifted.earlierSummary)
-        assertTrue(!frozen.earlierSummary.contains("turn-5-user"))
-        assertTrue(shifted.earlierSummary.contains("turn-5-user"))
-        assertTrue(!shifted.earlierSummary.contains("turn-6-user"))
-        assertEquals(listOf("turn-6-user", "turn-6-assistant"), shifted.recentMessages.map { it.content })
-    }
-
-    @Test
-    fun recentMessagesKeepEveryMessageAfterTheSummaryFreezesToABlock() {
+    fun turnLimitUsesExactBoundaryInsteadOfExpandingToTenMessageBlocks() {
         val history = (1..25).map { index ->
             PromptMessage(
                 if (index % 2 == 1) PromptRole.USER else PromptRole.ASSISTANT,
@@ -197,28 +174,180 @@ class ConversationContextWindowTest {
             )
         }
         val result = ConversationContextWindowBuilder.build(history, recentTurns = 1)
-        val splitAt = history.size - result.recentMessages.size
-        assertEquals(20, splitAt)
-        assertEquals(0, splitAt % ConversationContextWindowBuilder.SUMMARY_BLOCK_MESSAGES)
-        assertEquals(history.drop(splitAt), result.recentMessages)
-        assertEquals((21..25).map { "message-$it" }, result.recentMessages.map { it.content })
-        assertTrue(result.earlierSummary.contains("message-1"))
-        assertTrue(result.earlierSummary.contains("message-20"))
-        assertTrue(!result.earlierSummary.contains("message-21"))
+        assertEquals(history.drop(24), result.recentMessages)
+        assertTrue(result.earlierSummary.contains("message-24"))
+        assertTrue(!result.earlierSummary.contains("message-25"))
     }
 
-    private fun conversationWithTurns(turnCount: Int): List<PromptMessage> = buildList {
-        (1..10).forEach { index ->
-            add(
-                PromptMessage(
-                    if (index % 2 == 1) PromptRole.USER else PromptRole.ASSISTANT,
-                    "prefix-$index",
-                ),
-            )
+    @Test
+    fun tenMessageAlignmentNeverSplitsATurnWithMultipleAssistants() {
+        val history = buildList {
+            repeat(4) { turn ->
+                add(PromptMessage(PromptRole.USER, "user-$turn"))
+                add(PromptMessage(PromptRole.ASSISTANT, "reply-$turn-a"))
+                add(PromptMessage(PromptRole.ASSISTANT, "reply-$turn-b"))
+            }
+            add(PromptMessage(PromptRole.USER, "latest"))
+            add(PromptMessage(PromptRole.ASSISTANT, "latest reply"))
         }
-        (1..turnCount).forEach { turn ->
-            add(PromptMessage(PromptRole.USER, "turn-$turn-user"))
-            add(PromptMessage(PromptRole.ASSISTANT, "turn-$turn-assistant"))
+        val result = ConversationContextWindowBuilder.build(history, recentTurns = 1)
+        assertEquals(history.drop(12), result.recentMessages)
+        assertTrue(result.earlierSummary.contains("reply-3-b"))
+        assertTrue(!result.earlierSummary.contains("latest"))
+    }
+
+    @Test
+    fun budgetDoesNotKeepAnAssistantSuffixOfAnExcludedTurn() {
+        val history = listOf(
+            PromptMessage(PromptRole.USER, "old user is too long"),
+            PromptMessage(PromptRole.ASSISTANT, "a"),
+            PromptMessage(PromptRole.ASSISTANT, "b"),
+            PromptMessage(PromptRole.USER, "new"),
+            PromptMessage(PromptRole.ASSISTANT, "c"),
+            PromptMessage(PromptRole.ASSISTANT, "d"),
+        )
+        val result = ConversationContextWindowBuilder.build(history, recentTurns = 2, maxHistoryChars = 7)
+        assertEquals(history.drop(3), result.recentMessages)
+        assertTrue(result.earlierSummary.contains("old user is too long"))
+        assertTrue(result.earlierSummary.contains("助手：a"))
+        assertTrue(result.earlierSummary.contains("助手：b"))
+        assertEquals(5L, result.recentHistoryChars)
+        assertTrue(!result.isOverHistoryBudget)
+    }
+
+    @Test
+    fun budgetCountsConsecutiveUsersAsSeparateTurns() {
+        val history = listOf(
+            PromptMessage(PromptRole.USER, "too long"),
+            PromptMessage(PromptRole.USER, "x"),
+            PromptMessage(PromptRole.USER, "y"),
+        )
+        val result = ConversationContextWindowBuilder.build(history, recentTurns = 3, maxHistoryChars = 2)
+        assertEquals(history.drop(1), result.recentMessages)
+        assertTrue(result.earlierSummary.contains("too long"))
+    }
+
+    @Test
+    fun oversizedLatestTurnStaysWholeAndReportsSoftBudgetOverflow() {
+        val history = listOf(
+            PromptMessage(PromptRole.USER, "old"),
+            PromptMessage(PromptRole.ASSISTANT, "old reply"),
+            PromptMessage(PromptRole.USER, "😀"),
+            PromptMessage(PromptRole.ASSISTANT, "剧".repeat(100)),
+            PromptMessage(PromptRole.ASSISTANT, "tail"),
+        )
+        val result = ConversationContextWindowBuilder.build(history, maxHistoryChars = 5)
+        assertEquals(2, result.archivedMessageCount)
+        assertEquals(history.size, result.archivedMessageCount + result.recentMessages.size)
+        assertEquals(history.drop(result.archivedMessageCount), result.recentMessages)
+        assertEquals(106L, result.recentHistoryChars)
+        assertEquals(5, result.maxHistoryChars)
+        assertTrue(result.isOverHistoryBudget)
+        assertTrue(result.earlierSummary.contains("old reply"))
+    }
+
+    @Test
+    fun zeroCharacterBudgetMovesEntireHistoryToOlder() {
+        val history = listOf(
+            PromptMessage(PromptRole.ASSISTANT, "opening"),
+            PromptMessage(PromptRole.USER, "user"),
+            PromptMessage(PromptRole.ASSISTANT, "reply"),
+        )
+        val result = ConversationContextWindowBuilder.build(history, maxHistoryChars = 0)
+        assertTrue(result.recentMessages.isEmpty())
+        assertTrue(result.earlierSummary.contains("opening"))
+        assertTrue(result.earlierSummary.contains("reply"))
+        assertEquals(0L, result.recentHistoryChars)
+        assertTrue(!result.isOverHistoryBudget)
+    }
+
+    @Test
+    fun disabledSummaryStillUsesFinalWholeTurnBudgetBoundary() {
+        val history = listOf(
+            PromptMessage(PromptRole.USER, "old long user"),
+            PromptMessage(PromptRole.ASSISTANT, "old reply"),
+            PromptMessage(PromptRole.USER, "x"),
+            PromptMessage(PromptRole.ASSISTANT, "y"),
+        )
+        val result = ConversationContextWindowBuilder.build(history, summaryMaxChars = 0, maxHistoryChars = 2)
+        assertEquals("", result.earlierSummary)
+        assertEquals(2, result.archivedMessageCount)
+        assertEquals(history.size, result.archivedMessageCount + result.recentMessages.size)
+        assertEquals(history.drop(result.archivedMessageCount), result.recentMessages)
+        assertEquals(2L, result.recentHistoryChars)
+        assertTrue(!result.isOverHistoryBudget)
+    }
+
+    @Test
+    fun assistantOnlyHistoryRemainsAnIndivisibleOpeningSegment() {
+        val history = listOf(
+            PromptMessage(PromptRole.ASSISTANT, "opening"),
+            PromptMessage(PromptRole.ASSISTANT, "continuation"),
+        )
+        val result = ConversationContextWindowBuilder.build(history, recentTurns = 1, maxHistoryChars = 1)
+        assertEquals(history, result.recentMessages)
+        assertEquals("", result.earlierSummary)
+        assertTrue(result.isOverHistoryBudget)
+        val olderOnly = ConversationContextWindowBuilder.build(history, recentTurns = 0)
+        assertTrue(olderOnly.recentMessages.isEmpty())
+        assertTrue(olderOnly.earlierSummary.contains("opening"))
+    }
+
+    @Test
+    fun summaryRemainsValidUtf16AcrossAllSmallBudgets() {
+        val history = listOf(
+            PromptMessage(PromptRole.ASSISTANT, "ab😀z"),
+            PromptMessage(PromptRole.USER, "😀latest😀"),
+            PromptMessage(PromptRole.ASSISTANT, "xy😀z"),
+        )
+        for (budget in 0..50) {
+            val result = ConversationContextWindowBuilder.build(history, recentTurns = 0, summaryMaxChars = budget)
+            assertTrue(result.earlierSummary.length <= budget)
+            val text = result.earlierSummary
+            text.forEachIndexed { index, char ->
+                if (char.isHighSurrogate()) assertTrue(index + 1 < text.length && text[index + 1].isLowSurrogate())
+                if (char.isLowSurrogate()) assertTrue(index > 0 && text[index - 1].isHighSurrogate())
+            }
         }
+    }
+
+    @Test
+    fun archivedCountDescribesSummaryInputEvenWhenSummaryIsLossyOrDisabled() {
+        val history = listOf(
+            PromptMessage(PromptRole.ASSISTANT, "opening"),
+            PromptMessage(PromptRole.USER, "old user"),
+            PromptMessage(PromptRole.ASSISTANT, "old reply"),
+            PromptMessage(PromptRole.USER, "new user"),
+            PromptMessage(PromptRole.ASSISTANT, "new reply"),
+        )
+        for (turns in 0..3) {
+            for (characters in listOf(0, 1, 17, 100)) {
+                for (summaryChars in listOf(0, 1, 100)) {
+                    val result = ConversationContextWindowBuilder.build(history, turns, summaryChars, characters)
+                    val splitAt = result.archivedMessageCount
+                    assertEquals(history.size, splitAt + result.recentMessages.size)
+                    assertEquals(history.drop(splitAt), result.recentMessages)
+                    val summaryInput = ConversationContextWindowBuilder.build(
+                        history.take(splitAt), recentTurns = 0, summaryMaxChars = summaryChars,
+                    )
+                    assertEquals(summaryInput.earlierSummary, result.earlierSummary)
+                }
+            }
+        }
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun rejectsNegativeCharacterBudget() {
+        ConversationContextWindowBuilder.build(emptyList(), maxHistoryChars = -1)
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun rejectsNegativeSummaryBudget() {
+        ConversationContextWindowBuilder.build(emptyList(), summaryMaxChars = -1)
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun rejectsSystemMessagesInHistory() {
+        ConversationContextWindowBuilder.build(listOf(PromptMessage(PromptRole.SYSTEM, "system")))
     }
 }
