@@ -4,6 +4,7 @@ import android.content.ComponentCallbacks2
 import android.content.Context
 import android.content.res.Configuration
 import com.mistbell.tavern.v3.core.diagnostics.DiagnosticLogStore
+import com.mistbell.tavern.v3.core.inference.InferenceRuntimeStatus
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
@@ -77,6 +78,15 @@ object EmbeddingEngineProcessHolder : ComponentCallbacks2 {
         } finally {
             mutex.unlock()
         }
+    }
+
+    /**
+     * Status of the engine already owned by this process, or null when nothing is loaded.
+     * Never initializes the runtime: opening a settings screen must not start native inference.
+     */
+    fun currentStatusOrNull(): InferenceRuntimeStatus? {
+        val engine = synchronized(stateLock) { current?.engine } ?: return null
+        return engine.currentStatus()
     }
 
     fun close(reason: CloseReason = CloseReason.EXPLICIT) {

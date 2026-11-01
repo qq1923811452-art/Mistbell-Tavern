@@ -52,6 +52,8 @@ import com.mistbell.tavern.v3.feature.chat.ChatScreen
 import com.mistbell.tavern.v3.feature.character.CharacterCardLibraryScreen
 import com.mistbell.tavern.v3.feature.worldbook.WorldBookLibraryScreen
 import com.mistbell.tavern.v3.feature.image.ImageGenerationScreen
+import com.mistbell.tavern.v3.feature.embedding.EmbeddingRuntimeStatusSnapshot
+import com.mistbell.tavern.v3.feature.embedding.NpuEvidenceStore
 import com.mistbell.tavern.v3.feature.settings.LocalModelScreen
 import com.mistbell.tavern.v3.feature.settings.MemorySettingsScreen
 import com.mistbell.tavern.v3.feature.settings.SettingsHomeScreen
@@ -281,6 +283,9 @@ class MainActivity : ComponentActivity() {
                     } else if (showMemorySettings) {
                         MemorySettingsScreen(onBack = { showMemorySettings = false })
                     } else if (showLocalModel) {
+                        LaunchedEffect(showLocalModel) {
+                            if (showLocalModel) refreshInferenceStatusFromPersistedEvidence()
+                        }
                         LocalModelScreen(
                             inferenceStatus = inferenceStatus,
                             operationMessage = operationMessage,
@@ -639,6 +644,37 @@ class MainActivity : ComponentActivity() {
             } finally {
                 operationBusy = false
             }
+        }
+    }
+
+    /**
+     * Settings must show what the device already proved, not only what a fresh process has run.
+     * A cold process reports UNKNOWN backend (no execution yet) while keeping the verified
+     * evidence level, so a restart no longer looks like an unverified runtime.
+     */
+    private fun refreshInferenceStatusFromPersistedEvidence() {
+        val live = EmbeddingEngineProcessHolder.currentStatusOrNull()
+        if (live != null) {
+            inferenceStatus = live
+            return
+        }
+        lifecycleScope.launch {
+            val installed =
+                withContext(Dispatchers.IO) {
+                    runCatching { modelAssets.verifyInstalled() }.getOrNull()
+                } ?: return@launch
+            val verified =
+                withContext(Dispatchers.IO) {
+                    runCatching { NpuEvidenceStore.hasValidEvidence(applicationContext, installed.file) }
+                        .getOrDefault(false)
+                }
+            val accelerator = if (installed.isQualcommSm8650Optimized) InferenceBackend.NPU.name else null
+            inferenceStatus =
+                EmbeddingRuntimeStatusSnapshot.restored(
+                    modelId = com.mistbell.tavern.v3.feature.embedding.EmbeddingGemma2TextPolicy.MODEL_ID,
+                    acceleratorName = accelerator,
+                    evidenceVerified = verified,
+                )
         }
     }
 

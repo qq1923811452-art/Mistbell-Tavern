@@ -146,7 +146,9 @@ private fun ModelStatusBlock(status: InferenceRuntimeStatus) {
         InferenceBackend.UNKNOWN -> if (evidenceVerified) "待本次启动执行" else "未验证"
     }
     val phase = when (status.phase) {
-        InferencePhase.NOT_INITIALIZED -> "尚未初始化"
+        InferencePhase.NOT_INITIALIZED -> {
+            if (evidenceVerified) "本次进程尚未运行引擎（设备证据已验证）" else "尚未初始化"
+        }
         InferencePhase.LOADING_MODEL -> "正在加载模型"
         InferencePhase.INITIALIZED -> "已初始化，尚未执行推理"
         InferencePhase.READY -> "已就绪"
