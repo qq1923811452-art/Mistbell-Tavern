@@ -1015,7 +1015,9 @@ fun ChatScreen(
                                 "chat.request.options",
                                 "maxTokens=$requestMaxTokens; " +
                                     "stream=${chatGenerationPreferences.streamEnabled}; " +
-                                    "thinking=${chatGenerationPreferences.thinkingEnabled}",
+                                    "thinking=${chatGenerationPreferences.thinkingEnabled}; " +
+                                    "model=${ChatRequestDiagnostics.modelLabel(modelId)}; " +
+                                    "host=${ChatRequestDiagnostics.endpointHost(baseUrl)}",
                             )
                             val assistantMessageId = history.lastOrNull { it.role == "assistant" }?.id.orEmpty()
                             val requestHistory = history.toList()
