@@ -23,6 +23,22 @@ class ConversationWindowStateTest {
     }
 
     @Test
+    fun summaryWithoutArchivedMessagesIsRejected() {
+        val source = history(4)
+        val planner = StableConversationWindowPlanner()
+        planner.plan(SCOPE, source, CONFIG)
+        val valid = checkNotNull(planner.exportState())
+        val inconsistent = valid.copy(
+            archivedMessageCount = 0,
+            startId = source.first().id,
+            summaryThroughId = null,
+            summary = "stale summary",
+        )
+        assertFalse(inconsistent.matches(SCOPE, source, CONFIG))
+        assertTrue(valid.matches(SCOPE, source, CONFIG))
+    }
+
+    @Test
     fun everyFieldWhitespaceVariantsAndFramingChangeFingerprint() {
         val original = WindowHistoryMessage("id", PromptRole.USER, " text ", listOf("a", "b"))
         val hash = WindowSourceFingerprint.hash(listOf(original))

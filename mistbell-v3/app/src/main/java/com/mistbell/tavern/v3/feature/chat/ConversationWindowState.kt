@@ -31,8 +31,12 @@ internal data class ConversationWindowState(
             messages.getOrNull(archivedMessageCount - 1)?.id == summaryThroughId
         val wholeTurn = next == null || archivedMessageCount == 0 || next.role == PromptRole.USER
         val safeSummary = summary.length <= config.summaryMaxChars
+        // A summary must describe archived messages; nothing archived means no summary.
+        val summaryConsistent = archivedMessageCount > 0 || summary.isEmpty()
         val matchingSource = sourceFingerprint == WindowSourceFingerprint.hash(prefix)
-        return listOf(validBoundary, safeSummary, boundaryIdsMatch, wholeTurn, matchingSource).all { it }
+        return listOf(
+            validBoundary, safeSummary, summaryConsistent, boundaryIdsMatch, wholeTurn, matchingSource,
+        ).all { it }
     }
 
     companion object {
