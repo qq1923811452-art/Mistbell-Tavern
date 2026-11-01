@@ -134,7 +134,7 @@ class MemoryExtractionQueueWorker(
                                     ),
                                 ),
                             )
-                            val call = pipeline.extractAndPersist(input) { outcome ->
+                            val call = pipeline.extractAndPersist(input, commitGate = attempt::commit) { outcome ->
                                 when (outcome) {
                                     is TemporalFactPipelineOutcome.Saved ->
                                         complete(MemoryExtractionQueueRunner.ExecutionResult.Success)

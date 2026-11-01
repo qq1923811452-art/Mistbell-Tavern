@@ -102,5 +102,35 @@ class MemoryExtractionAttemptTest {
         assertEquals(MemoryExtractionJob.State.RETRY_WAIT, repository.list().single().state)
     }
 
+    @Test
+    fun expiredAttemptCannotEnterPersistence() = runBlocking {
+        val attempt = MemoryExtractionAttempt()
+        attempt.bindCompletion { }
+        try {
+            attempt.await(1)
+        } catch (_: IOException) {
+            // Expiry closes the persistence gate as well as the queue callback.
+        }
+        var writes = 0
+        attempt.commit { writes += 1 }
+        assertEquals(0, writes)
+    }
+
+    @Test
+    fun committedAttemptCannotBeFailedOrCommittedAgain() = runBlocking {
+        val attempt = MemoryExtractionAttempt()
+        var failures = 0
+        var writes = 0
+        attempt.bindCompletion { failures += 1 }
+        attempt.commit {
+            writes += 1
+            attempt.completion.complete(true)
+        }
+        attempt.commit { writes += 1 }
+        assertTrue(attempt.await(1_000))
+        assertEquals(1, writes)
+        assertEquals(0, failures)
+    }
+
     private fun newCall() = OkHttpClient().newCall(Request.Builder().url("http://localhost/").build())
 }
