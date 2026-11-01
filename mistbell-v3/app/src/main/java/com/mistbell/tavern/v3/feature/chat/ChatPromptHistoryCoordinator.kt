@@ -40,7 +40,7 @@ internal class ChatPromptHistoryCoordinator(
             }
         }
         val decision = planner.plan(scopeId, source, config, invalidate)
-        planner.exportState()?.let { state -> runCatching { cache?.save(state) } }
+        planner.exportState()?.let { state -> runCatching { cache?.save(state, replaceExisting = invalidate) } }
         return decision
     }
 }

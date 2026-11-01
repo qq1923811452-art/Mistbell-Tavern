@@ -12,7 +12,7 @@ internal class SqliteWindowStateCache(private val store: SqliteChatStore) : Wind
         ).use { cursor -> if (cursor.moveToFirst()) cursor.state() else null }
     }.onFailure { android.util.Log.w("chat.window.cache", "load failed: ${it.javaClass.simpleName}") }.getOrNull()
 
-    override fun save(state: ConversationWindowState) {
+    override fun save(state: ConversationWindowState, replaceExisting: Boolean) {
         runCatching {
             require(state.summary.length <= state.config.summaryMaxChars)
             val db = store.writableDatabase
@@ -22,7 +22,7 @@ internal class SqliteWindowStateCache(private val store: SqliteChatStore) : Wind
                 val sameSource = existing?.sourceFingerprint == state.sourceFingerprint &&
                     existing.config == state.config
                 val regresses = sameSource && checkNotNull(existing).archivedMessageCount > state.archivedMessageCount
-                if (!regresses) {
+                if (replaceExisting || !regresses) {
                     db.insertWithOnConflict(TABLE, null, values(state), SQLiteDatabase.CONFLICT_REPLACE)
                 }
                 db.setTransactionSuccessful()

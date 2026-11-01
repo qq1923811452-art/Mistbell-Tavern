@@ -15,4 +15,10 @@ internal fun completionFinishReason(root: org.json.JSONObject): String? =
         ?: root.optJSONArray("candidates")?.optJSONObject(0)?.optString("finishReason")
             ?.takeIf { it.isNotBlank() && it != "null" }
 
-internal const val MAX_FINISH_REASON_LABEL_CHARS = 64
+internal fun completionDiagnostic(reason: String?, completionChars: Long): String {
+    val safeReason = reason?.take(MAX_FINISH_REASON_LABEL_CHARS)
+        ?.filter { it.isLetterOrDigit() || it == '_' }?.takeIf(String::isNotEmpty)
+    return "providerFinishReason=${safeReason ?: "missing"}; completionChars=$completionChars"
+}
+
+private const val MAX_FINISH_REASON_LABEL_CHARS = 64

@@ -57,6 +57,34 @@ class ConversationWindowStateTest {
     }
 
     @Test
+    fun sharedHashBufferMatchesIndependentFramingAcrossLongAndEmptyFields() {
+        val source = listOf(
+            WindowHistoryMessage("", PromptRole.USER, "😀x".repeat(3_000), listOf("", "ab", "中")),
+            WindowHistoryMessage("second", PromptRole.ASSISTANT, "tail"),
+        )
+        val bytes = java.io.ByteArrayOutputStream()
+        java.io.DataOutputStream(bytes).use { output ->
+            fun writeString(value: String) {
+                output.writeInt(value.length)
+                value.forEach { output.writeChar(it.code) }
+            }
+            output.writeInt(source.size)
+            source.forEach { message ->
+                writeString(message.id)
+                writeString(message.role.name)
+                writeString(message.content)
+                output.writeInt(message.variants.size)
+                message.variants.forEach(::writeString)
+                output.writeInt(message.activeVariant)
+                writeString(message.sourceRole)
+            }
+        }
+        val expected = java.security.MessageDigest.getInstance("SHA-256").digest(bytes.toByteArray())
+            .joinToString("") { "%02x".format(it) }
+        assertEquals(expected, WindowSourceFingerprint.hash(source))
+    }
+
+    @Test
     fun staleStateCannotRestoreEditedDeletedOrBlankSource() {
         val planner = StableConversationWindowPlanner()
         val source = history(44) + WindowHistoryMessage("blank", PromptRole.ASSISTANT, " ")

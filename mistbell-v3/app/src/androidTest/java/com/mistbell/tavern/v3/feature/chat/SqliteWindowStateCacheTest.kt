@@ -74,6 +74,34 @@ class SqliteWindowStateCacheTest {
     }
 
     @Test
+    fun explicitInvalidationReplacesLargerArchiveAndSurvivesReopen() {
+        val planner = StableConversationWindowPlanner()
+        val config = HistoryWindowConfig(recentTurns = 100, maxHistoryChars = 4_000)
+        val source = (0 until 13).flatMap {
+            listOf(
+                WindowHistoryMessage("u$it", PromptRole.USER, "u".repeat(500)),
+                WindowHistoryMessage("a$it", PromptRole.ASSISTANT, "a".repeat(500)),
+            )
+        }
+        for (turns in 4..13) planner.plan(SCOPE, source.take(turns * 2), config)
+        val cache = SqliteWindowStateCache(store)
+        val stable = checkNotNull(planner.exportState())
+        assertEquals(20, stable.archivedMessageCount)
+        cache.save(stable)
+        planner.plan(SCOPE, source, config, invalidate = true)
+        val rebuilt = checkNotNull(planner.exportState())
+        assertEquals(18, rebuilt.archivedMessageCount)
+        cache.save(rebuilt)
+        assertEquals(stable, cache.load(SCOPE))
+        cache.save(rebuilt, replaceExisting = true)
+        store.close()
+        store = SqliteChatStore(context, name)
+        val restored = checkNotNull(SqliteWindowStateCache(store).load(SCOPE))
+        assertEquals(rebuilt, restored)
+        assertTrue(StableConversationWindowPlanner().restore(restored, SCOPE, source, config))
+    }
+
+    @Test
     fun brokenCacheTableDoesNotBlockMessagesAndSummaryIsNeverTruncated() {
         val planner = StableConversationWindowPlanner()
         planner.plan(SCOPE, emptyList(), HistoryWindowConfig(summaryMaxChars = 0))

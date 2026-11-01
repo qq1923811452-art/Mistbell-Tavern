@@ -283,6 +283,7 @@ class OpenAiCompatibleChatClient(
                         var sawSseEvent = false
                         val nonSseBody = StringBuilder()
                         var finishReason: String? = null
+                        var completionChars = 0L
                         while (!source.exhausted()) {
                             val line = source.readUtf8Line() ?: break
                             require(line.length <= MAX_SSE_LINE_CHARS) {
@@ -357,7 +358,10 @@ class OpenAiCompatibleChatClient(
                             val delta = choice.optJSONObject("delta") ?: continue
                             ChatCompletionParser.textOf(delta.opt("content"))
                                 ?.takeIf(String::isNotEmpty)
-                                ?.let(observer::onDelta)
+                                ?.let { text ->
+                                    completionChars += text.length
+                                    observer.onDelta(text)
+                                }
                             ChatCompletionParser.textOf(delta.opt("reasoning_content"))
                                 ?.takeIf(String::isNotEmpty)
                                 ?.let(observer::onReasoningDelta)
@@ -379,6 +383,7 @@ class OpenAiCompatibleChatClient(
                             sawDone -> ChatFinishReason.STOP
                             else -> ChatFinishReason.EOF
                         }
+                        observer.onDiagnostic("completion", completionDiagnostic(finishReason, completionChars))
                         observer.onFinish(reason)
                         observer.onComplete()
                     } catch (_: IOException) {
@@ -474,12 +479,8 @@ class OpenAiCompatibleChatClient(
                         ?.let(observer::onReasoningDelta)
                     root.optJSONObject("usage")?.let { usage -> emitUsage(usage, observer) }
                     val providerFinish = completionFinishReason(root)
-                    val safeFinish = providerFinish?.take(MAX_FINISH_REASON_LABEL_CHARS)
-                        ?.filter { it.isLetterOrDigit() || it == '_' }
                     observer.onDiagnostic(
-                        "completion",
-                        "providerFinishReason=${safeFinish ?: "missing"}; " +
-                            "completionChars=${completion.length}",
+                        "completion", completionDiagnostic(providerFinish, completion.length.toLong()),
                     )
                     observer.onFinish(classifyCompletionFinishReason(providerFinish))
                     observer.onComplete()
@@ -492,9 +493,14 @@ class OpenAiCompatibleChatClient(
         val promptTokens = usage.optInt("prompt_tokens", 0).coerceAtLeast(0)
         val completionTokens = usage.optInt("completion_tokens", 0).coerceAtLeast(0)
         val totalTokens = usage.optInt("total_tokens", 0).coerceAtLeast(promptTokens + completionTokens)
-        val cached = usage.optJSONObject("prompt_tokens_details")
-            ?.optInt("cached_tokens", 0)
-            ?.coerceAtLeast(0)
+        val details = usage.optJSONObject("prompt_tokens_details")
+        val cached = when {
+            details?.has("cached_tokens") == true -> details.optInt("cached_tokens")
+            details?.has("cache_read_input_tokens") == true -> details.optInt("cache_read_input_tokens")
+            usage.has("prompt_cache_hit_tokens") -> usage.optInt("prompt_cache_hit_tokens")
+            usage.has("total_cached_tokens") -> usage.optInt("total_cached_tokens")
+            else -> null
+        }?.coerceAtLeast(0)
         val reasoning = usage.optJSONObject("completion_tokens_details")
             ?.takeIf { it.has("reasoning_tokens") }
             ?.optInt("reasoning_tokens", 0)

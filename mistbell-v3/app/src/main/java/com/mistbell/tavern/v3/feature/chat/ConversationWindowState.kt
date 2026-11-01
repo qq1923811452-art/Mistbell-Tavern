@@ -5,7 +5,7 @@ import java.security.MessageDigest
 /** A disposable cache, never an authority for transcript content. */
 internal interface WindowStateCache {
     fun load(scopeId: String): ConversationWindowState?
-    fun save(state: ConversationWindowState)
+    fun save(state: ConversationWindowState, replaceExisting: Boolean = false)
 }
 
 internal data class ConversationWindowState(
@@ -48,22 +48,22 @@ internal data class ConversationWindowState(
 internal object WindowSourceFingerprint {
     fun hash(history: List<WindowHistoryMessage>): String {
         val digest = MessageDigest.getInstance("SHA-256")
+        val buffer = ByteArray(HASH_BUFFER_BYTES)
         digest.addInt(history.size)
         history.forEach { message ->
-            digest.addString(message.id)
-            digest.addString(message.role.name)
-            digest.addString(message.content)
+            digest.addString(message.id, buffer)
+            digest.addString(message.role.name, buffer)
+            digest.addString(message.content, buffer)
             digest.addInt(message.variants.size)
-            message.variants.forEach { digest.addString(it) }
+            message.variants.forEach { digest.addString(it, buffer) }
             digest.addInt(message.activeVariant)
-            digest.addString(message.sourceRole)
+            digest.addString(message.sourceRole, buffer)
         }
         return digest.digest().joinToString("") { byte -> "%02x".format(byte) }
     }
 
-    private fun MessageDigest.addString(value: String) {
+    private fun MessageDigest.addString(value: String, buffer: ByteArray) {
         addInt(value.length)
-        val buffer = ByteArray(HASH_BUFFER_BYTES)
         var used = 0
         value.forEach { char ->
             buffer[used++] = (char.code ushr BYTE_BITS).toByte()
