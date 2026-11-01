@@ -94,6 +94,33 @@ class MemoryExtractionClientTest {
     }
 
     @Test
+    fun acceptsFactsWrappedInMarkdownFenceOrPreamble() {
+        val server = MockWebServer()
+        val fenced = "```json\n" +
+            """{"facts":[{"subject":"user","predicate":"likes","value":"tea","source_turn_id":"turn-1"}]}""" +
+            "\n```"
+        val envelope = org.json.JSONObject()
+            .put(
+                "choices",
+                org.json.JSONArray().put(
+                    org.json.JSONObject().put(
+                        "message",
+                        org.json.JSONObject().put("content", "Here is the result:\n$fenced"),
+                    ),
+                ),
+            )
+        server.enqueue(MockResponse().setResponseCode(200).setBody(envelope.toString()))
+        server.start()
+        try {
+            val outcome = execute(clientFor(server))
+            assertTrue(outcome is MemoryExtractionOutcome.Success)
+            assertEquals("tea", (outcome as MemoryExtractionOutcome.Success).result.facts.single().value)
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
     fun rejectsFactThatReferencesUnknownSourceTurn() {
         val server = MockWebServer()
         server.enqueue(

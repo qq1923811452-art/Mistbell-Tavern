@@ -6,6 +6,7 @@ import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import com.mistbell.tavern.v3.core.diagnostics.DiagnosticLogStore
 import com.mistbell.tavern.v3.core.model.ProviderKind
 import com.mistbell.tavern.v3.core.model.ProviderProfile
 import com.mistbell.tavern.v3.core.model.ProviderProfileSet
@@ -32,6 +33,12 @@ class MemoryExtractionQueueWorker(
     override suspend fun doWork(): Result {
         val repository = MemoryExtractionJobRepository(MemoryExtractionJobStore(applicationContext))
         val runner = MemoryExtractionQueueRunner(repository)
+        val diagnostics = DiagnosticLogStore(applicationContext.filesDir)
+        val queuedAtStart = runCatching { repository.list() }.getOrNull()
+        diagnostics.info(
+            "memory.extraction.worker.started",
+            "total=${queuedAtStart?.size ?: -1}; active=${queuedAtStart?.count { it.state in ACTIVE_STATES } ?: -1}",
+        )
         return try {
             runner.recoverInterrupted()
             val credentialStore = AndroidKeystoreMemoryCredentialStore(applicationContext)
@@ -119,6 +126,9 @@ class MemoryExtractionQueueWorker(
                                 client = MemoryExtractionClient(
                                     providers = providers,
                                     credentials = MemoryCredentialResolver(credentialStore::resolve),
+                                    onDiagnostic = { event, detail ->
+                                        diagnostics.info(event, "job=${job.id.take(JOB_ID_PREFIX_CHARS)}; $detail")
+                                    },
                                 ),
                                 factStore = AtomicTemporalFactStore(
                                     applicationContext,
@@ -142,27 +152,59 @@ class MemoryExtractionQueueWorker(
                                     ),
                                 ),
                             )
+                            val jobPrefix = job.id.take(JOB_ID_PREFIX_CHARS)
                             val call = pipeline.extractAndPersist(input, commitGate = attempt::commit) { outcome ->
                                 when (outcome) {
-                                    is TemporalFactPipelineOutcome.Saved ->
-                                        complete(MemoryExtractionQueueRunner.ExecutionResult.Success)
-                                    is TemporalFactPipelineOutcome.Failed ->
-                                        complete(
-                                            MemoryExtractionFailurePolicy.classify(
-                                                safeMessage = outcome.safeMessage,
-                                                httpStatus = outcome.httpStatus,
-                                            ),
+                                    is TemporalFactPipelineOutcome.Saved -> {
+                                        diagnostics.info(
+                                            "memory.extraction.job.saved",
+                                            "job=$jobPrefix; " +
+                                                "extracted=${outcome.extractedFacts}; " +
+                                                "current=${outcome.currentFacts}; " +
+                                                "indexed=${outcome.indexedTextRecords}; " +
+                                                "warning=${outcome.indexingWarning ?: "none"}",
                                         )
+                                        complete(MemoryExtractionQueueRunner.ExecutionResult.Success)
+                                    }
+                                    is TemporalFactPipelineOutcome.Failed -> {
+                                        val failure = MemoryExtractionFailurePolicy.classify(
+                                            safeMessage = outcome.safeMessage,
+                                            httpStatus = outcome.httpStatus,
+                                        )
+                                        diagnostics.warn(
+                                            "memory.extraction.job.failed",
+                                            "job=$jobPrefix; category=${failure.safeCategory}; " +
+                                                "permanent=${failure.permanent}; " +
+                                                "httpStatus=${outcome.httpStatus ?: "none"}; " +
+                                                "detail=${outcome.safeMessage.take(ERROR_DETAIL_CHARS)}",
+                                        )
+                                        complete(failure)
+                                    }
                                 }
                             }
                             attempt.attachCall(call)
                         },
                         observer = { result ->
                             when (result) {
-                                MemoryExtractionQueueRunner.Result.Idle -> completion.complete(false)
+                                MemoryExtractionQueueRunner.Result.Idle -> {
+                                    diagnostics.info("memory.extraction.worker.idle")
+                                    completion.complete(false)
+                                }
                                 is MemoryExtractionQueueRunner.Result.Finished -> {
+                                    val finishedJob = repository.list().firstOrNull { it.id == result.jobId }
+                                    val nextInMs = finishedJob?.let {
+                                        (it.nextAttemptAtEpochMillis - System.currentTimeMillis())
+                                            .coerceAtLeast(0L)
+                                    } ?: -1L
+                                    diagnostics.info(
+                                        "memory.extraction.job.finished",
+                                        "job=${result.jobId.take(JOB_ID_PREFIX_CHARS)}; state=${result.state}; " +
+                                            "attempts=${finishedJob?.attemptCount ?: -1}; " +
+                                            "nextInMs=$nextInMs; " +
+                                            "safeError=${finishedJob?.lastSafeError ?: "none"}",
+                                    )
                                     val completedJob = if (result.state == MemoryExtractionJob.State.COMPLETED) {
-                                        repository.list().firstOrNull { it.id == result.jobId }
+                                        finishedJob
                                     } else {
                                         null
                                     }
@@ -186,21 +228,30 @@ class MemoryExtractionQueueWorker(
                                 is MemoryExtractionQueueRunner.Result.Started -> Unit
                             }
                         },
+                        onInputFailure = { job, error ->
+                            diagnostics.warn(
+                                "memory.extraction.input_unavailable",
+                                "job=${job.id.take(JOB_ID_PREFIX_CHARS)}; reason=${error::class.java.simpleName}: " +
+                                    (error.message ?: "none").take(ERROR_DETAIL_CHARS),
+                            )
+                        },
                     )
                 val hasJob = attempt.await()
                 if (!hasJob) break
                 processedJobs += 1
             }
-            scheduleNextRetry(repository)
+            val retryDelay = scheduleNextRetry(repository)
+            diagnostics.info("memory.extraction.worker.completed", "processed=$processedJobs; retryInMs=$retryDelay")
             Result.success()
         } catch (cancelled: CancellationException) {
             throw cancelled
-        } catch (_: Exception) {
+        } catch (error: Exception) {
+            diagnostics.error("memory.extraction.worker.retry", "reason=${error::class.java.simpleName}")
             Result.retry()
         }
     }
 
-    private fun scheduleNextRetry(repository: MemoryExtractionJobRepository) {
+    private fun scheduleNextRetry(repository: MemoryExtractionJobRepository): Long {
         val active = repository.list().filter {
             it.state == MemoryExtractionJob.State.PENDING ||
                 it.state == MemoryExtractionJob.State.RUNNING ||
@@ -211,7 +262,7 @@ class MemoryExtractionQueueWorker(
         val nextTime = active.groupBy(MemoryExtractionJob::conversationId)
             .values
             .mapNotNull { jobs -> jobs.minByOrNull(MemoryExtractionJob::createdAtEpochMillis) }
-            .minOfOrNull(MemoryExtractionJob::nextAttemptAtEpochMillis) ?: return
+            .minOfOrNull(MemoryExtractionJob::nextAttemptAtEpochMillis) ?: return -1L
         val delay = (nextTime - System.currentTimeMillis()).coerceAtLeast(0L)
         val request = OneTimeWorkRequestBuilder<MemoryExtractionQueueWorker>()
             .setInitialDelay(delay, TimeUnit.MILLISECONDS)
@@ -222,11 +273,19 @@ class MemoryExtractionQueueWorker(
             ExistingWorkPolicy.APPEND_OR_REPLACE,
             request,
         )
+        return delay
     }
 
     companion object {
         private const val UNIQUE_WORK_NAME = "mistbell-memory-extraction-queue"
         private const val MAX_JOBS_PER_RUN = 10
+        private const val JOB_ID_PREFIX_CHARS = 8
+        private const val ERROR_DETAIL_CHARS = 180
+        private val ACTIVE_STATES = setOf(
+            MemoryExtractionJob.State.PENDING,
+            MemoryExtractionJob.State.RUNNING,
+            MemoryExtractionJob.State.RETRY_WAIT,
+        )
 
         fun enqueue(context: Context) {
             val request = OneTimeWorkRequestBuilder<MemoryExtractionQueueWorker>()

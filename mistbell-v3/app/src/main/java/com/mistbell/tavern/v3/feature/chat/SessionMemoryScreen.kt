@@ -136,6 +136,13 @@ private fun MemoryStatusBlock(status: MemoryStatusSnapshot) {
             style = MaterialTheme.typography.labelSmall,
             color = Color.White.copy(alpha = 0.65f),
         )
+        status.lastQueueError?.let {
+            Text(
+                "最近队列错误：${it.take(PREVIEW_CHARS)}（详情见诊断日志）",
+                style = MaterialTheme.typography.labelSmall,
+                color = Color.White.copy(alpha = 0.65f),
+            )
+        }
         Text(
             "事实 ${status.factsCurrent}/${status.factsTotal} · 文本 ${status.textRecords} · " +
                 "向量 ${MemoryStatusFormat.bytes(status.vectorBytes)}" +

@@ -48,6 +48,7 @@ class MemoryExtractionQueueRunner(
         buildInput: (MemoryExtractionJob) -> T,
         execute: (MemoryExtractionJob, T, (ExecutionResult) -> Unit) -> Unit,
         observer: (Result) -> Unit = {},
+        onInputFailure: (MemoryExtractionJob, Throwable) -> Unit = { _, _ -> },
     ): Result {
         val safeObserver: (Result) -> Unit = { result -> runCatching { observer(result) } }
         val job = repository.claimDue(now()) ?: return Result.Idle.also(safeObserver)
@@ -86,9 +87,11 @@ class MemoryExtractionQueueRunner(
             finish(ExecutionResult.Failure(safeCategory = "cancelled"))
             throw cancelled
         } catch (retryable: RetryableInputException) {
+            onInputFailure(job, retryable)
             finish(ExecutionResult.Failure(safeCategory = "source_unavailable", permanent = false))
             return synchronousResult.get() ?: Result.Started(job.id)
-        } catch (_: Exception) {
+        } catch (error: Exception) {
+            onInputFailure(job, error)
             finish(ExecutionResult.Failure(permanent = true))
             return synchronousResult.get() ?: Result.Started(job.id)
         }
