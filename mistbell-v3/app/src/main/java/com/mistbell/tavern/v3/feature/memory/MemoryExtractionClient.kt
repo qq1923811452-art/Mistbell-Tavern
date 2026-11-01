@@ -200,6 +200,7 @@ class MemoryExtractionClient(
         runCatching { onDiagnostic(event, detail) }
     }
 
+    @Suppress("TooGenericExceptionCaught")
     private fun readOutcome(response: Response, input: MemoryExtractionInput): MemoryExtractionOutcome {
         if (!response.isSuccessful) {
             report("memory.extraction.http_error", "status=${response.code}")

@@ -26,6 +26,7 @@ import kotlinx.coroutines.CancellationException
  * Process-resilient queue consumer. The queue and source history are both persisted privately;
  * API credentials are resolved from Android Keystore using the opaque handle stored in the job.
  */
+@Suppress("TooGenericExceptionCaught")
 class MemoryExtractionQueueWorker(
     appContext: Context,
     params: WorkerParameters,
@@ -42,79 +43,12 @@ class MemoryExtractionQueueWorker(
         return try {
             runner.recoverInterrupted()
             val credentialStore = AndroidKeystoreMemoryCredentialStore(applicationContext)
-            val inputFactory = MemoryExtractionBatchInputFactory()
             var processedJobs = 0
             while (!isStopped && processedJobs < MAX_JOBS_PER_RUN) {
                 val attempt = MemoryExtractionAttempt()
                 val completion = attempt.completion
                 runner.runNext(
-                        buildInput = { job ->
-                            val handle = requireNotNull(job.credentialHandle) {
-                                "Durable queue jobs require a saved credential handle."
-                            }
-                            require(credentialStore.contains(handle)) {
-                                "Saved memory credential is unavailable."
-                            }
-                            val preferences = applicationContext.getSharedPreferences(
-                                "mistbell-v3-settings",
-                                Context.MODE_PRIVATE,
-                            )
-                            val modelId = preferences.getString("memory_model_id", null)
-                                ?.trim()?.takeIf(String::isNotEmpty)
-                                ?: error("Memory extraction model is no longer configured.")
-                            val baseUrl = preferences.getString("memory_api_base_url", null)
-                                ?.trim()?.takeIf(String::isNotEmpty)
-                                ?: error("Memory extraction endpoint is no longer configured.")
-                            // Chat history now lives in SQLite. The repository still migrates a
-                            // legacy JSON file once if the conversation has not been opened since
-                            // the upgrade, so background extraction reads the same source as chat.
-                            val historyScopeId = job.historyScopeId
-                            val legacyScopeId = job.conversationId
-                                .takeIf { it.isNotBlank() && it != historyScopeId }
-                            val historyRepository = SqliteChatHistoryRepository(
-                                applicationContext,
-                                historyScopeId,
-                                ChatHistoryStore(
-                                    applicationContext,
-                                    MemoryScopeFileNames.forScope(
-                                        ChatHistoryStore.DEFAULT_FILE_NAME,
-                                        historyScopeId,
-                                    ),
-                                ),
-                                legacyScopeId = legacyScopeId,
-                                legacyFileStore = legacyScopeId?.let { scope ->
-                                    ChatHistoryStore(
-                                        applicationContext,
-                                        MemoryScopeFileNames.forScope(
-                                            ChatHistoryStore.DEFAULT_FILE_NAME,
-                                            scope,
-                                        ),
-                                    )
-                                },
-                            )
-                            val history = try {
-                                when (val loaded = historyRepository.load()) {
-                                    is ChatHistoryLoadResult.Loaded -> loaded.messages
-                                    ChatHistoryLoadResult.Missing ->
-                                        error("Persisted source chat history is missing.")
-                                    ChatHistoryLoadResult.Corrupt ->
-                                        error("Persisted source chat history is corrupt.")
-                                    ChatHistoryLoadResult.Unavailable ->
-                                        throw MemoryExtractionQueueRunner.RetryableInputException()
-                                }
-                            } finally {
-                                historyRepository.close()
-                            }
-                            val input = inputFactory.create(job, history)
-                            val profile = ProviderProfile(
-                                id = job.providerProfileId,
-                                kind = ProviderKind.MEMORY_EXTRACTION,
-                                baseUrl = baseUrl,
-                                modelId = modelId,
-                                credentialHandle = handle,
-                            )
-                            Triple(input, profile, handle)
-                        },
+                        buildInput = { job -> buildExtractionInput(job, diagnostics) },
                         execute = { job, prepared, complete ->
                             attempt.bindCompletion(complete)
                             val (input, profile, handle) = prepared
@@ -228,13 +162,6 @@ class MemoryExtractionQueueWorker(
                                 is MemoryExtractionQueueRunner.Result.Started -> Unit
                             }
                         },
-                        onInputFailure = { job, error ->
-                            diagnostics.warn(
-                                "memory.extraction.input_unavailable",
-                                "job=${job.id.take(JOB_ID_PREFIX_CHARS)}; reason=${error::class.java.simpleName}: " +
-                                    (error.message ?: "none").take(ERROR_DETAIL_CHARS),
-                            )
-                        },
                     )
                 val hasJob = attempt.await()
                 if (!hasJob) break
@@ -250,6 +177,89 @@ class MemoryExtractionQueueWorker(
             Result.retry()
         }
     }
+
+    @Suppress("LongMethod")
+    private fun buildExtractionInput(
+        job: MemoryExtractionJob,
+        diagnostics: DiagnosticLogStore,
+    ): Triple<MemoryExtractionInput, ProviderProfile, String> =
+        try {
+            val credentialStore = AndroidKeystoreMemoryCredentialStore(applicationContext)
+            val handle = requireNotNull(job.credentialHandle) {
+                "Durable queue jobs require a saved credential handle."
+            }
+            require(credentialStore.contains(handle)) {
+                "Saved memory credential is unavailable."
+            }
+            val preferences = applicationContext.getSharedPreferences(
+                "mistbell-v3-settings",
+                Context.MODE_PRIVATE,
+            )
+            val modelId = preferences.getString("memory_model_id", null)
+                ?.trim()?.takeIf(String::isNotEmpty)
+                ?: error("Memory extraction model is no longer configured.")
+            val baseUrl = preferences.getString("memory_api_base_url", null)
+                ?.trim()?.takeIf(String::isNotEmpty)
+                ?: error("Memory extraction endpoint is no longer configured.")
+            // Chat history now lives in SQLite. The repository still migrates a legacy JSON file
+            // once if the conversation has not been opened since the upgrade, so background
+            // extraction reads the same source as chat.
+            val historyScopeId = job.historyScopeId
+            val legacyScopeId = job.conversationId
+                .takeIf { it.isNotBlank() && it != historyScopeId }
+            val historyRepository = SqliteChatHistoryRepository(
+                applicationContext,
+                historyScopeId,
+                ChatHistoryStore(
+                    applicationContext,
+                    MemoryScopeFileNames.forScope(
+                        ChatHistoryStore.DEFAULT_FILE_NAME,
+                        historyScopeId,
+                    ),
+                ),
+                legacyScopeId = legacyScopeId,
+                legacyFileStore = legacyScopeId?.let { scope ->
+                    ChatHistoryStore(
+                        applicationContext,
+                        MemoryScopeFileNames.forScope(
+                            ChatHistoryStore.DEFAULT_FILE_NAME,
+                            scope,
+                        ),
+                    )
+                },
+            )
+            val history = try {
+                when (val loaded = historyRepository.load()) {
+                    is ChatHistoryLoadResult.Loaded -> loaded.messages
+                    ChatHistoryLoadResult.Missing ->
+                        error("Persisted source chat history is missing.")
+                    ChatHistoryLoadResult.Corrupt ->
+                        error("Persisted source chat history is corrupt.")
+                    ChatHistoryLoadResult.Unavailable ->
+                        throw MemoryExtractionQueueRunner.RetryableInputException()
+                }
+            } finally {
+                historyRepository.close()
+            }
+            val input = MemoryExtractionBatchInputFactory().create(job, history)
+            val profile = ProviderProfile(
+                id = job.providerProfileId,
+                kind = ProviderKind.MEMORY_EXTRACTION,
+                baseUrl = baseUrl,
+                modelId = modelId,
+                credentialHandle = handle,
+            )
+            Triple(input, profile, handle)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            diagnostics.warn(
+                "memory.extraction.input_unavailable",
+                "job=${job.id.take(JOB_ID_PREFIX_CHARS)}; reason=${error::class.java.simpleName}: " +
+                    (error.message ?: "none").take(ERROR_DETAIL_CHARS),
+            )
+            throw error
+        }
 
     private fun scheduleNextRetry(repository: MemoryExtractionJobRepository): Long {
         val active = repository.list().filter {
