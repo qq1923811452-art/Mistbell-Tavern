@@ -123,11 +123,30 @@ class MemoryExtractionClientTest {
     @Test
     fun keepsValidFactsWhenAnotherFactReferencesAnUnknownTurn() {
         val server = MockWebServer()
-        server.enqueue(
-            MockResponse().setResponseCode(200).setBody(
-                """{"choices":[{"message":{"content":"{\"facts\":[{\"subject\":\"user\",\"predicate\":\"likes\",\"value\":\"tea\",\"source_turn_id\":\"turn-1\"},{\"subject\":\"user\",\"predicate\":\"likes\",\"value\":\"coffee\",\"source_turn_id\":\"invented-turn\"}]}"}}]}""",
-            ),
-        )
+        val facts = org.json.JSONArray()
+            .put(
+                org.json.JSONObject()
+                    .put("subject", "user")
+                    .put("predicate", "likes")
+                    .put("value", "tea")
+                    .put("source_turn_id", "turn-1"),
+            )
+            .put(
+                org.json.JSONObject()
+                    .put("subject", "user")
+                    .put("predicate", "likes")
+                    .put("value", "coffee")
+                    .put("source_turn_id", "invented-turn"),
+            )
+        val content = org.json.JSONObject().put("facts", facts).toString()
+        val envelope = org.json.JSONObject()
+            .put(
+                "choices",
+                org.json.JSONArray().put(
+                    org.json.JSONObject().put("message", org.json.JSONObject().put("content", content)),
+                ),
+            )
+        server.enqueue(MockResponse().setResponseCode(200).setBody(envelope.toString()))
         server.start()
         try {
             val outcome = execute(clientFor(server))
