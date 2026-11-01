@@ -478,7 +478,8 @@ class OpenAiCompatibleChatClientTest {
 
         assertTrue(observer.finished.await(5, TimeUnit.SECONDS))
         assertEquals("JSON fallback", observer.output.toString())
-        assertEquals(ChatFinishReason.STOP, observer.finishReason)
+        // The provider omitted finish_reason; a JSON response alone does not prove STOP.
+        assertEquals(ChatFinishReason.OTHER, observer.finishReason)
     }
 
     @Test

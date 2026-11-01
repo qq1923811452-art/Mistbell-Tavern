@@ -52,16 +52,7 @@ internal class ChatStreamObserverCoordinator(
             override fun onUsage(usage: ChatTokenUsage) {
                 mainHandler.post {
                     if (!isCurrentRequest()) return@post
-                    val cached = usage.cachedPromptTokens
-                    val cacheRatio = if (cached != null && usage.promptTokens > 0) {
-                        "（${cached * PERCENT / usage.promptTokens}%）"
-                    } else {
-                        ""
-                    }
-                    setUsageSummary(
-                        "Token 用量：输入 ${usage.promptTokens} · 缓存 ${cached?.toString() ?: "未知"}$cacheRatio" +
-                            " · 输出 ${usage.completionTokens} · 合计 ${usage.totalTokens}",
-                    )
+                    setUsageSummary(formatUsageSummary(usage))
                 }
                 diagnosticStore.info(
                     "chat.usage",
@@ -123,8 +114,4 @@ internal class ChatStreamObserverCoordinator(
                 }
             }
         }
-
-    private companion object {
-        const val PERCENT = 100
-    }
 }
