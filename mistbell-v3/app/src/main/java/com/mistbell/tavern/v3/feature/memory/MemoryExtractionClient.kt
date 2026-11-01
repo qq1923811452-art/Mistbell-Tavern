@@ -218,7 +218,7 @@ class MemoryExtractionClient(
         val source = body.source()
         while (buffer.size < MAX_RESPONSE_BYTES + 1) {
             val remainingWithOverflowByte = MAX_RESPONSE_BYTES + 1 - buffer.size
-            if (source.read(buffer, minOf(8192L, remainingWithOverflowByte)) == -1L) break
+            if (source.read(buffer, minOf(RESPONSE_READ_CHUNK_BYTES, remainingWithOverflowByte)) == -1L) break
         }
         return if (buffer.size > MAX_RESPONSE_BYTES) null else buffer.readUtf8().takeIf(String::isNotBlank)
     }
@@ -246,6 +246,7 @@ class MemoryExtractionClient(
     companion object {
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
         private val LOOPBACK_HOSTS = setOf("localhost", "127.0.0.1", "::1")
+        private const val RESPONSE_READ_CHUNK_BYTES = 8_192L
         private const val MAX_RESPONSE_BYTES = 256 * 1024L
         private const val MAX_FACTS = 100
         private const val MAX_FIELD_CHARS = 2_000
