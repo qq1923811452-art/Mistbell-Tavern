@@ -4,6 +4,13 @@ import com.mistbell.tavern.v3.core.memory.EligibleConversationTurn
 import com.mistbell.tavern.v3.core.model.ProviderKind
 import com.mistbell.tavern.v3.core.model.ProviderProfile
 import com.mistbell.tavern.v3.core.model.ProviderProfileSet
+import okhttp3.OkHttpClient
+import okhttp3.ResponseBody
+import okio.Buffer
+import okio.ForwardingSource
+import okio.buffer
+import java.io.IOException
+import java.util.concurrent.atomic.AtomicInteger
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.Assert.assertEquals
@@ -121,7 +128,94 @@ class MemoryExtractionClientTest {
         }
     }
 
-    private fun execute(client: MemoryExtractionClient): MemoryExtractionOutcome {
+    @Test
+    fun bodyReadFailureFinishesOnceAndClosesResponse() {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setBody("partial response"))
+        server.start()
+        val closes = AtomicInteger()
+        val callbacks = AtomicInteger()
+        val http = OkHttpClient.Builder().addInterceptor { chain ->
+            val response = chain.proceed(chain.request())
+            val body = requireNotNull(response.body)
+            val brokenSource = object : ForwardingSource(body.source()) {
+                private var firstRead = true
+                override fun read(sink: Buffer, byteCount: Long): Long {
+                    if (!firstRead) throw IOException("private response text must not escape")
+                    firstRead = false
+                    return super.read(sink, minOf(1L, byteCount))
+                }
+                override fun close() {
+                    closes.incrementAndGet()
+                    super.close()
+                }
+            }.buffer()
+            response.newBuilder().body(object : ResponseBody() {
+                override fun contentType() = body.contentType()
+                override fun contentLength() = -1L
+                override fun source() = brokenSource
+            }).build()
+        }.build()
+        try {
+            val outcome = execute(clientFor(server, http), callbacks)
+            assertEquals(MemoryExtractionOutcome.Failure("Memory-extraction request failed."), outcome)
+            assertEquals(1, callbacks.get())
+            assertEquals(1, closes.get())
+        } finally {
+            server.shutdown()
+            http.dispatcher.executorService.shutdown()
+            http.connectionPool.evictAll()
+        }
+    }
+
+    @Test
+    fun cancellationWhileReadingFinishesOnce() {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setBody("response").setBodyDelay(1, TimeUnit.SECONDS))
+        server.start()
+        val callbacks = AtomicInteger()
+        val result = AtomicReference<MemoryExtractionOutcome>()
+        val finished = CountDownLatch(1)
+        try {
+            val call = clientFor(server).extract(input(), MemoryExtractionObserver {
+                callbacks.incrementAndGet()
+                result.set(it)
+                finished.countDown()
+            })
+            requireNotNull(server.takeRequest(2, TimeUnit.SECONDS))
+            call.cancel()
+            assertTrue(finished.await(3, TimeUnit.SECONDS))
+            assertEquals(MemoryExtractionOutcome.Failure("Memory extraction was cancelled."), result.get())
+            assertEquals(1, callbacks.get())
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    private fun clientFor(server: MockWebServer, http: OkHttpClient = OkHttpClient()): MemoryExtractionClient {
+        val profile = ProviderProfile(
+            id = "memory",
+            kind = ProviderKind.MEMORY_EXTRACTION,
+            baseUrl = server.url("/v1").toString(),
+            modelId = "memory-model",
+        )
+        return MemoryExtractionClient(
+            ProviderProfileSet(listOf(profile), mapOf(ProviderKind.MEMORY_EXTRACTION to profile.id)),
+            MemoryCredentialResolver { null },
+            http,
+        )
+    }
+
+    private fun input() = MemoryExtractionInput(
+        conversationId = "conversation-1",
+        turns = listOf(EligibleConversationTurn("turn-1", 1)),
+        textByTurnId = mapOf("turn-1" to "The user likes tea."),
+    )
+
+    private fun execute(
+        client: MemoryExtractionClient,
+        callbacks: AtomicInteger = AtomicInteger(),
+    ): MemoryExtractionOutcome {
         val latch = CountDownLatch(1)
         val result = AtomicReference<MemoryExtractionOutcome>()
         client.extract(
@@ -131,6 +225,7 @@ class MemoryExtractionClientTest {
                 textByTurnId = mapOf("turn-1" to "The user likes tea."),
             ),
             MemoryExtractionObserver {
+                callbacks.incrementAndGet()
                 result.set(it)
                 latch.countDown()
             },

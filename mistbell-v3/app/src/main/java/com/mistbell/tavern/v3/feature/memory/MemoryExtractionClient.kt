@@ -18,6 +18,7 @@ import java.io.IOException
 import java.net.URI
 import java.util.Locale
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 fun interface MemoryCredentialResolver {
     fun resolve(handle: String): String?
@@ -154,67 +155,72 @@ class MemoryExtractionClient(
             .post(requestBody)
         if (key != null) builder.header("Authorization", "Bearer $key")
         val call = httpClient.newCall(builder.build())
+        val finished = AtomicBoolean(false)
+        fun finish(outcome: MemoryExtractionOutcome) {
+            if (finished.compareAndSet(false, true)) observer.onFinished(outcome)
+        }
         call.enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
-                observer.onFinished(
-                    MemoryExtractionOutcome.Failure(
-                        if (call.isCanceled()) "Memory extraction was cancelled."
-                        else "Memory-extraction request failed.",
-                    ),
-                )
+                finish(requestFailure(call))
             }
 
             override fun onResponse(call: Call, response: Response) {
-                response.use { opened ->
-                    if (!opened.isSuccessful) {
-                        observer.onFinished(
-                            MemoryExtractionOutcome.Failure(
-                                safeMessage = "Memory-extraction provider returned HTTP ${opened.code}.",
-                                httpStatus = opened.code,
-                            ),
-                        )
-                        return
-                    }
-                    val body = opened.body
-                    if (body == null || body.contentLength() > MAX_RESPONSE_BYTES) {
-                        observer.onFinished(MemoryExtractionOutcome.Failure("Memory-extraction response is empty or too large."))
-                        return
-                    }
-                    val responseBuffer = okio.Buffer()
-                    val source = body.source()
-                    while (responseBuffer.size < MAX_RESPONSE_BYTES + 1) {
-                        val remainingWithOverflowByte = MAX_RESPONSE_BYTES + 1 - responseBuffer.size
-                        val read = source.read(responseBuffer, minOf(8192L, remainingWithOverflowByte))
-                        if (read == -1L) break
-                    }
-                    if (responseBuffer.size > MAX_RESPONSE_BYTES) {
-                        observer.onFinished(MemoryExtractionOutcome.Failure("Memory-extraction response is empty or too large."))
-                        return
-                    }
-                    val responseText = responseBuffer.readUtf8()
-                    if (responseText.isBlank()) {
-                        observer.onFinished(MemoryExtractionOutcome.Failure("Memory-extraction response is empty or too large."))
-                        return
-                    }
-                    val parsed = try {
-                        val envelope = JSONObject(responseText)
-                        val choices = envelope.optJSONArray("choices")
-                            ?: throw JSONException("Missing choices")
-                        val content = choices.optJSONObject(0)?.optJSONObject("message")
-                            ?.optString("content")?.takeIf(String::isNotBlank)
-                            ?: throw JSONException("Missing message content")
-                        parseFacts(content, input.turns.map(EligibleConversationTurn::id).toSet())
-                    } catch (_: Exception) {
-                        observer.onFinished(
-                            MemoryExtractionOutcome.Failure("Memory-extraction response failed validation."),
-                        )
-                        return
-                    }
-                    observer.onFinished(MemoryExtractionOutcome.Success(parsed))
+                // OkHttp does not call onFailure if reading inside onResponse throws.
+                // Close the response before notifying consumers, and never mistake a consumer
+                // exception for a transport failure (or deliver a second completion).
+                val outcome = try {
+                    response.use { opened -> readOutcome(opened, input) }
+                } catch (_: IOException) {
+                    requestFailure(call)
+                } catch (_: Exception) {
+                    MemoryExtractionOutcome.Failure("Memory-extraction response could not be processed.")
                 }
+                finish(outcome)
             }
         })
         return call
+    }
+
+    private fun requestFailure(call: Call): MemoryExtractionOutcome.Failure =
+        MemoryExtractionOutcome.Failure(
+            if (call.isCanceled()) "Memory extraction was cancelled."
+            else "Memory-extraction request failed.",
+        )
+
+    private fun readOutcome(response: Response, input: MemoryExtractionInput): MemoryExtractionOutcome {
+        if (!response.isSuccessful) {
+            return MemoryExtractionOutcome.Failure(
+                safeMessage = "Memory-extraction provider returned HTTP ${response.code}.",
+                httpStatus = response.code,
+            )
+        }
+        val responseText = readBoundedBody(response)
+        return if (responseText == null) {
+            MemoryExtractionOutcome.Failure("Memory-extraction response is empty or too large.")
+        } else try {
+            val envelope = JSONObject(responseText)
+            val choices = envelope.optJSONArray("choices") ?: throw JSONException("Missing choices")
+            val content = choices.optJSONObject(0)?.optJSONObject("message")
+                ?.optString("content")?.takeIf(String::isNotBlank)
+                ?: throw JSONException("Missing message content")
+            MemoryExtractionOutcome.Success(
+                parseFacts(content, input.turns.map(EligibleConversationTurn::id).toSet()),
+            )
+        } catch (_: Exception) {
+            MemoryExtractionOutcome.Failure("Memory-extraction response failed validation.")
+        }
+    }
+
+    private fun readBoundedBody(response: Response): String? {
+        val body = response.body
+        if (body == null || body.contentLength() > MAX_RESPONSE_BYTES) return null
+        val buffer = okio.Buffer()
+        val source = body.source()
+        while (buffer.size < MAX_RESPONSE_BYTES + 1) {
+            val remainingWithOverflowByte = MAX_RESPONSE_BYTES + 1 - buffer.size
+            if (source.read(buffer, minOf(RESPONSE_READ_CHUNK_BYTES, remainingWithOverflowByte)) == -1L) break
+        }
+        return if (buffer.size > MAX_RESPONSE_BYTES) null else buffer.readUtf8().takeIf(String::isNotBlank)
     }
 
     private fun parseFacts(content: String, allowedTurnIds: Set<String>): MemoryExtractionResult {
@@ -240,6 +246,7 @@ class MemoryExtractionClient(
     companion object {
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
         private val LOOPBACK_HOSTS = setOf("localhost", "127.0.0.1", "::1")
+        private const val RESPONSE_READ_CHUNK_BYTES = 8_192L
         private const val MAX_RESPONSE_BYTES = 256 * 1024L
         private const val MAX_FACTS = 100
         private const val MAX_FIELD_CHARS = 2_000
