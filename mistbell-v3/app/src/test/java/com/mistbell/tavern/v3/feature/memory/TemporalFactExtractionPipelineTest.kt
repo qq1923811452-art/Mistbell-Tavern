@@ -68,6 +68,72 @@ class TemporalFactExtractionPipelineTest {
         }
     }
 
+    @Test
+    fun expiredAttemptRejectsLatePipelineBeforeFactsOrTextsAreWritten() = kotlinx.coroutines.runBlocking {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setBody(extractionCompletionBody()))
+        server.start()
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val finished = CountDownLatch(1)
+        val facts = InMemoryFacts()
+        val texts = InMemoryTexts()
+        val attempt = MemoryExtractionAttempt()
+        val callbacks = java.util.concurrent.atomic.AtomicInteger()
+        try {
+            val profile = ProviderProfile(
+                id = "memory", kind = ProviderKind.MEMORY_EXTRACTION,
+                baseUrl = server.url("/v1").toString(), modelId = "memory-model", credentialHandle = "memory-key",
+            )
+            val client = MemoryExtractionClient(
+                providers = ProviderProfileSet(
+                    profiles = listOf(profile),
+                    selectedProfileIds = mapOf(ProviderKind.MEMORY_EXTRACTION to profile.id),
+                ),
+                credentials = MemoryCredentialResolver { "test-secret" },
+            )
+            TemporalFactExtractionPipeline(client, facts, texts).extractAndPersist(
+                input = MemoryExtractionInput(
+                    conversationId = "scope-1",
+                    turns = listOf(EligibleConversationTurn("turn-1", 1)),
+                    textByTurnId = mapOf("turn-1" to "The user likes tea."),
+                ),
+                commitGate = { commit ->
+                    entered.countDown()
+                    try {
+                        check(release.await(5, TimeUnit.SECONDS))
+                        attempt.commit(commit)
+                    } finally {
+                        finished.countDown()
+                    }
+                },
+            ) { callbacks.incrementAndGet() }
+            assertTrue(entered.await(3, TimeUnit.SECONDS))
+            try {
+                attempt.await(1)
+            } catch (_: java.io.IOException) {
+                // The response has arrived but must not commit after this expiry.
+            }
+            release.countDown()
+            assertTrue(finished.await(3, TimeUnit.SECONDS))
+            assertEquals(TemporalFactLoadResult.Missing, facts.load())
+            assertEquals(MemoryTextLoadResult.Missing, texts.load())
+            assertEquals(0, callbacks.get())
+        } finally {
+            release.countDown()
+            server.shutdown()
+        }
+    }
+
+    private fun extractionCompletionBody(): String {
+        val content = """{"facts":[{"subject":"user","predicate":"likes","value":"tea","source_turn_id":"turn-1"}]}"""
+        return org.json.JSONObject().put(
+            "choices", org.json.JSONArray().put(
+                org.json.JSONObject().put("message", org.json.JSONObject().put("content", content)),
+            ),
+        ).toString()
+    }
+
     private class InMemoryFacts : TemporalFactPersistence {
         private var facts: List<TemporalMemoryFact>? = null
 
