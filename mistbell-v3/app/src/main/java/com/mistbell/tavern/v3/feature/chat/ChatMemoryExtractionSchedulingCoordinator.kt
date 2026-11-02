@@ -62,23 +62,6 @@ internal class ChatMemoryExtractionSchedulingCoordinator(
         if (pending.size < 3) return
 
         val conversationId = memoryScopeId
-        val jobs = pending.chunked(MemoryExtractionInput.MAX_TURNS)
-            .filter { it.size >= 3 }
-            .mapIndexed { batchIndex, batch ->
-                val turnIds = batch.map { it.first.id }
-                val stableId = UUID.nameUUIDFromBytes(
-                    (conversationId + "|" + turnIds.joinToString("|")).toByteArray(Charsets.UTF_8),
-                ).toString()
-                MemoryExtractionJob(
-                    id = stableId,
-                    conversationId = conversationId,
-                    historyScopeId = historyScopeId,
-                    turnIds = turnIds,
-                    providerProfileId = profile.id,
-                    credentialHandle = credentialHandle,
-                    createdAtEpochMillis = (System.currentTimeMillis().coerceAtLeast(0L) + batchIndex).coerceAtMost(Long.MAX_VALUE),
-                )
-            }
         val historySnapshot = history.map { line ->
             PersistedChatMessage(
                 id = line.id,
@@ -98,9 +81,38 @@ internal class ChatMemoryExtractionSchedulingCoordinator(
                         val repository = MemoryExtractionJobRepository(
                             MemoryExtractionJobStore(context.applicationContext),
                         )
+                        val existingJobs = repository.list()
+                        // A failed or still-running batch keeps its turns pending. Without this
+                        // filter every new turn would enqueue another growing batch that overlaps
+                        // the unfinished one, so the queue would accumulate duplicate work.
+                        val activeTurnIds = existingJobs
+                            .filter { it.conversationId == conversationId && it.state in ACTIVE_STATES }
+                            .flatMap { it.turnIds }
+                            .toSet()
+                        val jobs = pending
+                            .filterNot { it.first.id in activeTurnIds }
+                            .chunked(MemoryExtractionInput.MAX_TURNS)
+                            .filter { it.size >= 3 }
+                            .mapIndexed { batchIndex, batch ->
+                                val turnIds = batch.map { it.first.id }
+                                val stableId = UUID.nameUUIDFromBytes(
+                                    (conversationId + "|" + turnIds.joinToString("|")).toByteArray(Charsets.UTF_8),
+                                ).toString()
+                                MemoryExtractionJob(
+                                    id = stableId,
+                                    conversationId = conversationId,
+                                    historyScopeId = historyScopeId,
+                                    turnIds = turnIds,
+                                    providerProfileId = profile.id,
+                                    credentialHandle = credentialHandle,
+                                    createdAtEpochMillis =
+                                        (System.currentTimeMillis().coerceAtLeast(0L) + batchIndex)
+                                            .coerceAtMost(Long.MAX_VALUE),
+                                )
+                            }
                         var added = 0
                         jobs.forEach { job ->
-                            val existing = repository.list().firstOrNull { it.id == job.id }
+                            val existing = existingJobs.firstOrNull { it.id == job.id }
                             if (existing == null && repository.enqueue(job)) added += 1
                         }
                         added
@@ -122,5 +134,13 @@ internal class ChatMemoryExtractionSchedulingCoordinator(
                 "记忆整理队列已检查；已有任务不会重复入队。"
             })
         }
+    }
+
+    private companion object {
+        val ACTIVE_STATES = setOf(
+            MemoryExtractionJob.State.PENDING,
+            MemoryExtractionJob.State.RUNNING,
+            MemoryExtractionJob.State.RETRY_WAIT,
+        )
     }
 }

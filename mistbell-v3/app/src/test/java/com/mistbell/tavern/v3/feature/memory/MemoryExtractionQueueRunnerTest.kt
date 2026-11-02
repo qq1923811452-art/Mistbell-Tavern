@@ -73,7 +73,7 @@ class MemoryExtractionQueueRunnerTest {
         assertTrue(!dispatched)
         val failed = repository.list().single()
         assertEquals(MemoryExtractionJob.State.RETRY_WAIT, failed.state)
-        assertEquals("Extraction attempt failed.", failed.lastSafeError)
+        assertEquals("Source chat history is temporarily unavailable.", failed.lastSafeError)
         assertEquals(40_000L, failed.nextAttemptAtEpochMillis)
     }
 
@@ -190,6 +190,16 @@ class MemoryExtractionQueueRunnerTest {
             assertEquals("client", failure.safeCategory)
             assertTrue("HTTP $status must be permanent", failure.permanent)
         }
+    }
+
+    @Test fun invalidProviderPayloadIsARetryableResponseFailure() {
+        val failure = MemoryExtractionFailurePolicy.classify(
+            safeMessage = "Memory-extraction response failed validation.",
+            httpStatus = null,
+        )
+
+        assertEquals("response", failure.safeCategory)
+        assertTrue(!failure.permanent)
     }
 
     @Test fun missingHttpStatusFallsBackToTimeoutOrNetworkClassification() {
