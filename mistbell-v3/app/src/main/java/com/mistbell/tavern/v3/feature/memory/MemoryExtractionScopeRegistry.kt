@@ -30,7 +30,9 @@ class AtomicMemoryExtractionScopeRegistry(directory: File, fileName: String) : M
     private val file = AtomicFile(File(directory, "$fileName.scopes.json"))
 
     override fun load(): List<MemoryExtractionScopeBinding> {
-        if (!file.baseFile.exists() && !File(file.baseFile.path + ".bak").exists()) return emptyList()
+        val backup = File(file.baseFile.path + ".bak")
+        if (!file.baseFile.exists() && !backup.exists()) return emptyList()
+        require(maxOf(file.baseFile.length(), backup.length()) <= MemoryExtractionJobCodec.MAX_BYTES)
         val bytes = file.openRead().use { it.readBytes() }
         require(bytes.size <= MemoryExtractionJobCodec.MAX_BYTES)
         val root = JSONObject(bytes.toString(Charsets.UTF_8))
@@ -42,7 +44,7 @@ class AtomicMemoryExtractionScopeRegistry(directory: File, fileName: String) : M
                 item.getString("legacy"), item.getString("role"), item.getString("history"), item.getBoolean("pending"),
             ).also {
                 require(listOf(it.legacyScopeId, it.roleScopeId, it.historyScopeId).all { scope ->
-                    scope.isNotBlank() && scope.length <= 256
+                    scope.isNotBlank() && scope.length <= MAX_SCOPE_ID_CHARS
                 })
             }
         }
@@ -50,6 +52,7 @@ class AtomicMemoryExtractionScopeRegistry(directory: File, fileName: String) : M
         return bindings
     }
 
+    @Suppress("TooGenericExceptionCaught") // AtomicFile must roll back and rethrow every write failure.
     override fun save(bindings: List<MemoryExtractionScopeBinding>) {
         val values = JSONArray()
         bindings.forEach { binding ->
@@ -63,5 +66,9 @@ class AtomicMemoryExtractionScopeRegistry(directory: File, fileName: String) : M
             file.failWrite(stream)
             throw error
         }
+    }
+
+    private companion object {
+        const val MAX_SCOPE_ID_CHARS = 256
     }
 }

@@ -30,12 +30,7 @@ class MemoryExtractionJobRepository(
             var changed = false
             val eligible =
                 jobs.map { job ->
-                    val due =
-                        (
-                            job.state == MemoryExtractionJob.State.PENDING ||
-                                job.state == MemoryExtractionJob.State.RETRY_WAIT
-                        ) &&
-                            job.nextAttemptAtEpochMillis <= now
+                    val due = isJobDue(job, now)
                     if (due && job.migrationRoleScopeId == null &&
                         job.attemptCount >= MemoryExtractionJob.MAX_ATTEMPTS
                     ) {
@@ -63,7 +58,8 @@ class MemoryExtractionJobRepository(
                         eligible.any { earlier ->
                             blocksLaterJob(earlier, job)
                         }
-                    due && job.migrationRoleScopeId == null && !scopeBlocked(job.conversationId) && !hasEarlierOutstandingJob
+                    due && job.migrationRoleScopeId == null &&
+                        !scopeBlocked(job.conversationId) && !hasEarlierOutstandingJob
                 }.minByOrNull { eligible[it].createdAtEpochMillis } ?: return null
             val job = eligible[index]
             val claimed = job.copy(state = MemoryExtractionJob.State.RUNNING, attemptCount = job.attemptCount + 1)
@@ -198,9 +194,9 @@ class MemoryExtractionJobRepository(
         }
         val bindings = scopeRegistry.load()
         val previous = bindings.firstOrNull { it.legacyScopeId == legacyMemoryScopeId }
-        require(previous == null ||
-            (previous.roleScopeId == roleMemoryScopeId && previous.historyScopeId == historyScopeId))
-        val binding = MemoryExtractionScopeBinding(legacyMemoryScopeId, roleMemoryScopeId, historyScopeId, pending = true)
+        validateScopeBinding(previous, roleMemoryScopeId, historyScopeId)
+        val binding =
+            MemoryExtractionScopeBinding(legacyMemoryScopeId, roleMemoryScopeId, historyScopeId, pending = true)
         val pendingBindings = bindings.filterNot { it.legacyScopeId == legacyMemoryScopeId } + binding
         scopeRegistry.save(pendingBindings)
         // Persist a fence BEFORE touching memory files. If copy or final queue persistence fails,
@@ -226,14 +222,16 @@ class MemoryExtractionJobRepository(
             }
         }
         if (rebound > 0) store.save(next)
-        scopeRegistry.save(pendingBindings.map { if (it.legacyScopeId == legacyMemoryScopeId) it.copy(pending = false) else it })
+        scopeRegistry.save(
+            pendingBindings.map { activateScopeBinding(it, legacyMemoryScopeId) },
+        )
         rebound
     }
 
     /** Held through fact/text writes AND their completion callback, against scope migration. */
     fun commitIfCurrent(claim: MemoryExtractionJob, commit: () -> Unit): Boolean = synchronized(QUEUE_LOCK) {
-        if (scopeBlocked(claim.conversationId) ||
-            claim.state != MemoryExtractionJob.State.RUNNING || claim.migrationRoleScopeId != null ||
+        if (scopeBlocked(claim.conversationId)) return false
+        if (claim.state != MemoryExtractionJob.State.RUNNING || claim.migrationRoleScopeId != null ||
             read().none { it == claim }) return false
         commit()
         true
@@ -249,7 +247,11 @@ class MemoryExtractionJobRepository(
         safeError: String,
         permanent: Boolean = false,
     ): Boolean = synchronized(QUEUE_LOCK) {
-        if (scopeBlocked(claim.conversationId) || read().none { it == claim }) false else fail(claim.id, now, safeError, permanent)
+        if (scopeBlocked(claim.conversationId) || read().none { it == claim }) {
+            false
+        } else {
+            fail(claim.id, now, safeError, permanent)
+        }
     }
 
     /** Includes completed batches even when the preference cursor was lost or predates migration. */
@@ -332,3 +334,22 @@ private fun rebindMigratedJob(
             MemoryExtractionJob.State.RETRY_WAIT
         } else job.state,
     )
+
+private fun isJobDue(job: MemoryExtractionJob, now: Long): Boolean =
+    (job.state == MemoryExtractionJob.State.PENDING || job.state == MemoryExtractionJob.State.RETRY_WAIT) &&
+        job.nextAttemptAtEpochMillis <= now
+
+private fun validateScopeBinding(
+    previous: MemoryExtractionScopeBinding?,
+    roleMemoryScopeId: String,
+    historyScopeId: String,
+) {
+    require(previous == null ||
+        (previous.roleScopeId == roleMemoryScopeId && previous.historyScopeId == historyScopeId))
+}
+
+private fun activateScopeBinding(
+    binding: MemoryExtractionScopeBinding,
+    legacyMemoryScopeId: String,
+): MemoryExtractionScopeBinding =
+    if (binding.legacyScopeId == legacyMemoryScopeId) binding.copy(pending = false) else binding

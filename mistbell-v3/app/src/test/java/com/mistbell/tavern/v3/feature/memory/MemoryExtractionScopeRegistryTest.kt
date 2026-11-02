@@ -1,5 +1,6 @@
 package com.mistbell.tavern.v3.feature.memory
 
+import java.io.RandomAccessFile
 import java.nio.file.Files
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
@@ -23,4 +24,19 @@ class MemoryExtractionScopeRegistryTest {
             AtomicMemoryExtractionScopeRegistry(directory, "queue").load()
         }
     }
+
+    @Test fun oversizedBaseOrBackupRegistryFailsClosedBeforeReading() {
+        val directory = Files.createTempDirectory("extraction-oversized").toFile()
+        for (suffix in listOf("", ".bak")) {
+            val oversized = directory.resolve("queue.scopes.json$suffix")
+            RandomAccessFile(oversized, "rw").use {
+                it.setLength(MemoryExtractionJobCodec.MAX_BYTES.toLong() + 1L)
+            }
+            assertThrows(IllegalArgumentException::class.java) {
+                AtomicMemoryExtractionScopeRegistry(directory, "queue").load()
+            }
+            oversized.delete()
+        }
+    }
+
 }
