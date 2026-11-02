@@ -200,7 +200,7 @@ object MemoryScopeMigration {
         val bytes =
             committedBytes(
                 directory, scopeId, AtomicVectorSnapshotStore.DEFAULT_FILE_NAME,
-                VectorSnapshotCodec.MAX_SNAPSHOT_BYTES,
+                VectorSnapshotCodec.MAX_SNAPSHOT_BYTES.toLong(),
             )
                 ?: return null
         val snapshot = VectorSnapshotCodec.decode(bytes)
