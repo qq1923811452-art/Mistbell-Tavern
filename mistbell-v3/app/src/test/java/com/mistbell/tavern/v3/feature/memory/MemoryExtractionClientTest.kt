@@ -258,6 +258,94 @@ class MemoryExtractionClientTest {
         }
     }
 
+    @Test
+    fun slowProviderSurvivesAnInheritedShortReadTimeout() {
+        // The client used to inherit the caller's read timeout (OkHttp defaults to 10 s), so a
+        // batch whose non-streamed answer needed longer died as a "network" failure.
+        val server = MockWebServer()
+        server.enqueue(
+            MockResponse().setBody("""{"choices":[{"message":{"content":"{\"facts\":[]}"}}]}""")
+                .setBodyDelay(400, TimeUnit.MILLISECONDS),
+        )
+        server.start()
+        val shortClient = OkHttpClient.Builder().readTimeout(50, TimeUnit.MILLISECONDS).build()
+        try {
+            assertEquals(
+                MemoryExtractionOutcome.Success(MemoryExtractionResult(emptyList())),
+                execute(clientFor(server, shortClient)),
+            )
+        } finally {
+            server.shutdown()
+            shortClient.dispatcher.executorService.shutdown()
+            shortClient.connectionPool.evictAll()
+        }
+    }
+
+    @Test
+    fun socketTimeoutIsReportedAsTimeoutInsteadOfNetwork() {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setBody("""{"choices":[]}""").setBodyDelay(2, TimeUnit.SECONDS))
+        server.start()
+        val profile = ProviderProfile(
+            id = "memory",
+            kind = ProviderKind.MEMORY_EXTRACTION,
+            baseUrl = server.url("/v1").toString(),
+            modelId = "memory-model",
+        )
+        try {
+            val client = MemoryExtractionClient(
+                ProviderProfileSet(listOf(profile), mapOf(ProviderKind.MEMORY_EXTRACTION to profile.id)),
+                MemoryCredentialResolver { null },
+                readTimeoutMillis = 200L,
+            )
+            val outcome = execute(client)
+            assertEquals(MemoryExtractionOutcome.Failure("Memory-extraction request timed out."), outcome)
+            val failure = requireNotNull(outcome as? MemoryExtractionOutcome.Failure)
+            assertEquals(
+                "timeout",
+                MemoryExtractionFailurePolicy.classify(failure.safeMessage, failure.httpStatus).safeCategory,
+            )
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun providerErrorCodeIsDiagnosedWithoutLeakingMessageOrPrompt() {
+        val server = MockWebServer()
+        server.enqueue(
+            MockResponse().setResponseCode(400).setBody(
+                """{"error":{"code":"context_length_exceeded","message":"private prompt text"}}""",
+            ),
+        )
+        server.start()
+        val diagnostics = mutableListOf<String>()
+        val profile = ProviderProfile(
+            id = "memory",
+            kind = ProviderKind.MEMORY_EXTRACTION,
+            baseUrl = server.url("/v1").toString(),
+            modelId = "memory-model",
+        )
+        try {
+            val client = MemoryExtractionClient(
+                ProviderProfileSet(listOf(profile), mapOf(ProviderKind.MEMORY_EXTRACTION to profile.id)),
+                MemoryCredentialResolver { null },
+                onDiagnostic = { event, detail -> diagnostics += "$event|$detail" },
+            )
+            assertEquals(
+                MemoryExtractionOutcome.Failure("Memory-extraction provider returned HTTP 400.", 400),
+                execute(client),
+            )
+            val httpError = diagnostics.single { it.startsWith("memory.extraction.http_error") }
+            assertTrue(httpError.contains("status=400"))
+            assertTrue(httpError.contains("code=context_length_exceeded"))
+            assertTrue(diagnostics.none { it.contains("private prompt text") })
+            assertTrue(diagnostics.single { it.startsWith("memory.extraction.request.started") }.contains("turns=1"))
+        } finally {
+            server.shutdown()
+        }
+    }
+
     private fun clientFor(server: MockWebServer, http: OkHttpClient = OkHttpClient()): MemoryExtractionClient {
         val profile = ProviderProfile(
             id = "memory",
