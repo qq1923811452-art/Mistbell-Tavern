@@ -1,11 +1,14 @@
 package com.mistbell.tavern.v3.feature.memory
 
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import org.junit.runner.RunWith
 import java.io.RandomAccessFile
 import java.nio.file.Files
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Test
 
+@RunWith(AndroidJUnit4::class)
 class MemoryExtractionScopeRegistryTest {
     @Test fun bindingsSurviveReopeningRegistryIncludingPendingState() {
         val directory = Files.createTempDirectory("extraction-scopes").toFile()
