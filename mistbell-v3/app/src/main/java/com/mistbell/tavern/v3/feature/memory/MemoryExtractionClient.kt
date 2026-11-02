@@ -49,6 +49,8 @@ data class MemoryExtractionInput(
     val conversationId: String,
     val turns: List<EligibleConversationTurn>,
     val textByTurnId: Map<String, String>,
+    /** Durable source-message times; extraction completion order must not define narrative order. */
+    val turnObservedAtEpochMillis: Map<String, Long> = emptyMap(),
 ) {
     init {
         require(conversationId.isNotBlank()) { "Conversation ID must not be blank." }
@@ -57,6 +59,10 @@ data class MemoryExtractionInput(
             "Turn IDs must be unique."
         }
         require(turns.all { it.id in textByTurnId }) { "Every turn must have source text." }
+        require(turnObservedAtEpochMillis.keys.all { id -> turns.any { it.id == id } } &&
+            turnObservedAtEpochMillis.values.all { it >= 0L }) {
+            "Observation times must be nonnegative and belong to source turns."
+        }
         require(textByTurnId.values.all { it.isNotBlank() && it.length <= MAX_TURN_TEXT_CHARS }) {
             "Turn text is blank or exceeds the size limit."
         }

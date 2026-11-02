@@ -158,17 +158,18 @@ fun ChatScreen(
         mutableStateOf(settings.getString("active_character_id", "") ?: "")
     }
     val activeMemoryRoleId = selectedCharacterId.takeIf(String::isNotBlank) ?: "default-character"
-    // Memory belongs to the character, not to one session: every conversation with the same role
-    // reads and writes the same store. The conversation-scoped id is kept for the one-time copy
-    // of existing per-session data and for history-file compatibility.
+    val sessionStore = remember(context) { SessionStore(context) }
+    // Resolve persisted kind before selecting a memory scope, including initial app startup.
+    var sessions by remember(sessionStore) { mutableStateOf(sessionStore.list()) }
+    val isGroupMemoryScope = sessions.firstOrNull { it.id == memoryConversationId }?.kind == SessionKind.GROUP
+    // Only one-to-one conversations share character memory. A group's other participants must
+    // not write facts into the host character's private conversations.
     val conversationMemoryScopeId = remember(activeMemoryRoleId, memoryConversationId) {
         MemoryScopeId.forRoleAndConversation(activeMemoryRoleId, memoryConversationId)
     }
-    val memoryScopeId = remember(activeMemoryRoleId) {
-        MemoryScopeId.forRole(activeMemoryRoleId)
+    val memoryScopeId = remember(activeMemoryRoleId, conversationMemoryScopeId, isGroupMemoryScope) {
+        if (isGroupMemoryScope) conversationMemoryScopeId else MemoryScopeId.forRole(activeMemoryRoleId)
     }
-    val sessionStore = remember(context) { SessionStore(context) }
-    var sessions by remember { mutableStateOf(emptyList<ChatSession>()) }
     var showSessionList by remember { mutableStateOf(true) }
     LaunchedEffect(showSessionList) { onSessionListVisibilityChange(showSessionList) }
     var lastGroupSpeakerId by remember { mutableStateOf<String?>(null) }
@@ -894,7 +895,11 @@ fun ChatScreen(
     if (showMemoryScreen) {
         BackHandler { showMemoryScreen = false }
         SessionMemoryScreen(
-            scopeTitle = "当前角色 · 跨会话共享（作用域 ${memoryScopeId.take(8)}）",
+            scopeTitle = if (isGroupMemoryScope) {
+                "当前群聊 · 独立记忆（作用域 ${memoryScopeId.take(8)}）"
+            } else {
+                "当前角色 · 跨会话共享（作用域 ${memoryScopeId.take(8)}）"
+            },
             state = memoryScreenState,
             status = memoryStatus,
             actions = SessionMemoryActions(

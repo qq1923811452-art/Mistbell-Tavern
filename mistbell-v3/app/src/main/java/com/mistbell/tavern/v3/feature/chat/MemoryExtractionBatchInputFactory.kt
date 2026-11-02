@@ -23,6 +23,7 @@ class MemoryExtractionBatchInputFactory {
         val byId = history.withIndex().associate { it.value.id to it.index }
         val turns = mutableListOf<EligibleConversationTurn>()
         val textByTurnId = linkedMapOf<String, String>()
+        val observedAtByTurnId = linkedMapOf<String, Long>()
 
         job.turnIds.forEachIndexed { index, turnId ->
             val messageIndex = requireNotNull(byId[turnId]) {
@@ -43,12 +44,14 @@ class MemoryExtractionBatchInputFactory {
 
             turns += EligibleConversationTurn(id = turnId, ordinal = (index + 1).toLong())
             textByTurnId[turnId] = formatMemoryExtractionTurn(user.content, assistant.content)
+            observedAtByTurnId[turnId] = user.createdAtEpochMillis
         }
 
         return MemoryExtractionInput(
             conversationId = job.conversationId,
             turns = turns,
             textByTurnId = textByTurnId,
+            turnObservedAtEpochMillis = observedAtByTurnId,
         )
     }
 }

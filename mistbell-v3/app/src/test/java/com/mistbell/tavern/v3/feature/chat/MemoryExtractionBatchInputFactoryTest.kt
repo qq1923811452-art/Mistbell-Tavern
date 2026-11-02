@@ -24,6 +24,7 @@ class MemoryExtractionBatchInputFactoryTest {
         assertEquals(listOf("user-2", "user-1"), input.turns.map { it.id })
         assertEquals(1L, input.turns[0].ordinal)
         assertEquals(2L, input.turns[1].ordinal)
+        assertEquals(mapOf("user-2" to 100L, "user-1" to 100L), input.turnObservedAtEpochMillis)
         assertEquals("User: second question\nAssistant: second answer", input.textByTurnId.getValue("user-2"))
         assertEquals("User: first question\nAssistant: first answer", input.textByTurnId.getValue("user-1"))
     }
