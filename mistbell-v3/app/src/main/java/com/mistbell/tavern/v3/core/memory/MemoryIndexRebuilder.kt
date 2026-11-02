@@ -253,22 +253,20 @@ class MemoryIndexRebuilder(
         val usable = previous?.takeIf { it.modelId == modelId && it.dimensions == dimensions }
             ?: return emptyMap()
         val byId = usable.records.associateBy(StoredVector::id)
-        val reused = LinkedHashMap<String, StoredVector>(ordered.size)
-        for (record in ordered) {
-            val candidate = byId[record.id] ?: continue
-            if (candidate.sourceTextSha256 != record.sourceTextSha256) continue
+        return ordered.mapNotNull { record ->
+            val candidate = byId[record.id]
+                ?.takeIf { it.sourceTextSha256 == record.sourceTextSha256 }
+                ?: return@mapNotNull null
             // A damaged reuse candidate must never abort the rebuild; re-embed instead.
-            val copy = runCatching {
+            runCatching {
                 StoredVector(
                     id = record.id,
                     sourceTextSha256 = record.sourceTextSha256,
                     createdAtEpochMillis = candidate.createdAtEpochMillis,
                     values = copyValues(candidate.values, dimensions),
                 )
-            }.getOrNull() ?: continue
-            reused[record.id] = copy
-        }
-        return reused
+            }.getOrNull()
+        }.associateBy(StoredVector::id)
     }
 
     private fun copyValues(values: List<Float>, dimensions: Int): List<Float> {

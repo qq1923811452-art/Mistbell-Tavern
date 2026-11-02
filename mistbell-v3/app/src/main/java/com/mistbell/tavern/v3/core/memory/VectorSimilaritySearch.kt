@@ -94,23 +94,31 @@ object VectorSimilaritySearch {
         /** Returns [Double.NaN] for a stored zero vector, which has no defined direction. */
         fun score(index: Int): Double {
             val values = snapshot.records[index].values
-            if (values is QuantizedVectorView && values.isQuantized) {
-                return values.score(query, queryNorm)
+            return if (values is QuantizedVectorView && values.isQuantized) {
+                values.score(query, queryNorm)
+            } else {
+                legacyScore(values, index)
             }
+        }
+
+        /** Legacy float32 path, unchanged: dequantize once, then a dot product. */
+        private fun legacyScore(values: List<Float>, index: Int): Double {
             val scratch = legacyValues ?: FloatArray(snapshot.dimensions).also { legacyValues = it }
             if (values is FloatVectorView) {
                 values.fillInto(scratch)
             } else {
                 for (position in scratch.indices) scratch[position] = values[position]
             }
-            // Legacy float32 path, unchanged: dequantize once, then a dot product.
             val recordNorm = (legacyNorms ?: snapshot.norms.also { legacyNorms = it })[index]
-            if (recordNorm == 0.0) return Double.NaN
-            var dot = 0.0
-            for (position in query.indices) {
-                dot += query[position].toDouble() * scratch[position].toDouble()
+            return if (recordNorm == 0.0) {
+                Double.NaN
+            } else {
+                var dot = 0.0
+                for (position in query.indices) {
+                    dot += query[position].toDouble() * scratch[position].toDouble()
+                }
+                (dot / (queryNorm * recordNorm)).coerceIn(-1.0, 1.0)
             }
-            return (dot / (queryNorm * recordNorm)).coerceIn(-1.0, 1.0)
         }
     }
 
