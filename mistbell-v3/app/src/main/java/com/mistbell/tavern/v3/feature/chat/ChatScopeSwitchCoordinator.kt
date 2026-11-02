@@ -8,9 +8,9 @@ import android.content.SharedPreferences
 internal class ChatScopeSwitchCoordinator(
     private val settings: SharedPreferences,
 ) {
-    fun persist(previousMemoryScopeId: String, newConversationId: String) {
+    fun persist(previousConversationId: String, newConversationId: String) {
         settings.edit()
-            .remove("memory_extraction_last_success_turn_id_$previousMemoryScopeId")
+            .remove("memory_extraction_last_success_turn_id_$previousConversationId")
             .remove("memory_extraction_last_success_turn_id")
             .putString("memory_extraction_conversation_id", newConversationId)
             .apply()

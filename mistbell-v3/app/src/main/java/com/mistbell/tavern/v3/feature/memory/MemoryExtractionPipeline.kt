@@ -1,5 +1,7 @@
 package com.mistbell.tavern.v3.feature.memory
 
+import com.mistbell.tavern.v3.core.memory.TemporalFactIdentity
+
 import com.mistbell.tavern.v3.core.memory.EligibleConversationTurn
 import com.mistbell.tavern.v3.core.memory.FactHistoryReducer
 import com.mistbell.tavern.v3.core.memory.MemoryBatchPolicy
@@ -12,8 +14,6 @@ import com.mistbell.tavern.v3.core.storage.MemoryFactHistoryPersistence
 import com.mistbell.tavern.v3.core.storage.MemoryJobLedgerLoadResult
 import com.mistbell.tavern.v3.core.storage.MemoryJobLedgerPersistence
 import okhttp3.Call
-import java.nio.ByteBuffer
-import java.security.MessageDigest
 
 fun interface MemoryFactExtractor {
     fun extract(input: MemoryExtractionInput, observer: MemoryExtractionObserver): Call
@@ -245,15 +245,14 @@ class MemoryExtractionWorker(
         }
     }
 
-    private fun stableFactId(conversationId: String, fact: ExtractedFactDraft): String {
-        val digest = MessageDigest.getInstance("SHA-256")
-        listOf(conversationId, fact.sourceTurnId, fact.subject, fact.predicate, fact.value).forEach { part ->
-            val bytes = part.toByteArray(Charsets.UTF_8)
-            digest.update(ByteBuffer.allocate(Int.SIZE_BYTES).putInt(bytes.size).array())
-            digest.update(bytes)
-        }
-        return "fact:" + digest.digest().joinToString("") { byte -> "%02x".format(byte) }
-    }
+    private fun stableFactId(conversationId: String, fact: ExtractedFactDraft): String =
+        TemporalFactIdentity.forObservation(
+            conversationId = conversationId,
+            sourceTurnId = fact.sourceTurnId,
+            subject = fact.subject,
+            predicate = fact.predicate,
+            value = fact.value,
+        )
 
     companion object {
         private const val MAX_RETRY_DELAY_MILLIS = 6 * 60 * 60 * 1000L

@@ -54,7 +54,7 @@ internal class ChatMemoryExtractionSchedulingCoordinator(
             index += 1
         }
         val lastSuccessfulTurnId = preferences.getString(
-            "memory_extraction_last_success_turn_id_$memoryScopeId",
+            "memory_extraction_last_success_turn_id_$historyScopeId",
             null,
         )
         val previousIndex = pairs.indexOfLast { it.first.id == lastSuccessfulTurnId }
