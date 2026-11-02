@@ -49,16 +49,18 @@ class AtomicMemoryTextStore(
      */
     override fun update(
         transform: (List<MemoryTextRecord>) -> List<MemoryTextRecord>,
-    ): List<MemoryTextRecord> = MemoryScopeStorageLock.withLock(atomicFile.baseFile) { synchronized(pathLock) {
-        val current = when (val loaded = loadLocked()) {
-            MemoryTextLoadResult.Missing -> emptyList()
-            is MemoryTextLoadResult.Loaded -> loaded.records
-            is MemoryTextLoadResult.Corrupt -> throw IllegalStateException(loaded.safeReason)
+    ): List<MemoryTextRecord> = MemoryScopeStorageLock.withLock(atomicFile.baseFile) {
+        synchronized(pathLock) {
+            val current = when (val loaded = loadLocked()) {
+                MemoryTextLoadResult.Missing -> emptyList()
+                is MemoryTextLoadResult.Loaded -> loaded.records
+                is MemoryTextLoadResult.Corrupt -> throw IllegalStateException(loaded.safeReason)
+            }
+            val updated = transform(current)
+            if (updated != current) saveLocked(updated)
+            updated
         }
-        val updated = transform(current)
-        if (updated != current) saveLocked(updated)
-        updated
-    } }
+    }
 
     override fun load(): MemoryTextLoadResult = MemoryScopeStorageLock.withLock(atomicFile.baseFile) {
         synchronized(pathLock) { loadLocked() }
@@ -66,16 +68,20 @@ class AtomicMemoryTextStore(
 
     /** Holds the text-store lock until an index commit finishes, excluding intervening updates. */
     fun commitIndexIfCurrent(expected: List<MemoryTextRecord>, commit: () -> Unit) {
-        synchronized(pathLock) {
-            val current = when (val loaded = loadLocked()) {
-                MemoryTextLoadResult.Missing -> emptyList()
-                is MemoryTextLoadResult.Loaded -> loaded.records
-                is MemoryTextLoadResult.Corrupt -> error(loaded.safeReason)
+        // The vector store also takes the storage transaction lock: acquire it before pathLock,
+        // matching load/update, so an index commit cannot deadlock with a concurrent writer.
+        MemoryScopeStorageLock.withLock(atomicFile.baseFile) {
+            synchronized(pathLock) {
+                val current = when (val loaded = loadLocked()) {
+                    MemoryTextLoadResult.Missing -> emptyList()
+                    is MemoryTextLoadResult.Loaded -> loaded.records
+                    is MemoryTextLoadResult.Corrupt -> error(loaded.safeReason)
+                }
+                check(current.sortedBy { it.id } == expected.sortedBy { it.id }) {
+                    "Source text changed during index rebuild."
+                }
+                commit()
             }
-            check(current.sortedBy { it.id } == expected.sortedBy { it.id }) {
-                "Source text changed during index rebuild."
-            }
-            commit()
         }
     }
 
