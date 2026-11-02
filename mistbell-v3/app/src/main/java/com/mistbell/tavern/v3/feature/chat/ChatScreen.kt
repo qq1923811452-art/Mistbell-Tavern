@@ -288,6 +288,10 @@ fun ChatScreen(
     LaunchedEffect(memoryScopeId, conversationMemoryScopeId, memoryScopeRetry) {
         memoryScopeReady = false
         memoryScopeFailed = false
+        if (isGroupMemoryScope) {
+            memoryScopeReady = true
+            return@LaunchedEffect
+        }
         val migrated = withContext(Dispatchers.IO) {
             runCatching {
                 MemoryExtractionJobRepository(MemoryExtractionJobStore(context.applicationContext)).migrateScope(
