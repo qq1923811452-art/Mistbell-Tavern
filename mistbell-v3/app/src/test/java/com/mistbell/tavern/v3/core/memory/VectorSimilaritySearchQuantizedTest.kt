@@ -88,14 +88,19 @@ class VectorSimilaritySearchQuantizedTest {
         input.position(input.position() + 8)
         input.putFloat(Float.MAX_VALUE / 127f)
         input.put(Byte.MIN_VALUE)
-        val digest = java.security.MessageDigest.getInstance("SHA-256").digest(encoded.copyOfRange(4, 4 + payloadLength))
+        val digest =
+            java.security.MessageDigest.getInstance("SHA-256").digest(encoded.copyOfRange(4, 4 + payloadLength))
         digest.copyInto(encoded, 4 + payloadLength)
         assertTrue(runCatching { VectorSnapshotCodec.decodeMapped(ByteBuffer.wrap(encoded)) }.isFailure)
         assertTrue(runCatching { VectorSnapshotCodec.decode(encoded) }.isFailure)
     }
 
     /** Same algorithm as before the change, kept here as the reference for equivalence. */
-    private fun dequantizedSearch(snapshot: VectorSnapshot, query: List<Float>, limit: Int = 20): List<VectorSearchHit> {
+    private fun dequantizedSearch(
+        snapshot: VectorSnapshot,
+        query: List<Float>,
+        limit: Int = 20,
+    ): List<VectorSearchHit> {
         val queryValues = query.toFloatArray()
         var querySquared = 0.0
         for (value in queryValues) querySquared += value.toDouble() * value.toDouble()

@@ -1,6 +1,7 @@
 package com.mistbell.tavern.v3.feature.memory
 
 /** Queue state transitions are persisted before work is dispatched. */
+@Suppress("TooManyFunctions") // Keep queue transitions and claim validation behind the same shared lock.
 class MemoryExtractionJobRepository(private val store: MemoryExtractionJobPersistence) {
     fun enqueue(job: MemoryExtractionJob): Boolean =
         synchronized(QUEUE_LOCK) {
@@ -31,7 +32,9 @@ class MemoryExtractionJobRepository(private val store: MemoryExtractionJobPersis
                                 job.state == MemoryExtractionJob.State.RETRY_WAIT
                         ) &&
                             job.nextAttemptAtEpochMillis <= now
-                    if (due && job.migrationRoleScopeId == null && job.attemptCount >= MemoryExtractionJob.MAX_ATTEMPTS) {
+                    if (due && job.migrationRoleScopeId == null &&
+                        job.attemptCount >= MemoryExtractionJob.MAX_ATTEMPTS
+                    ) {
                         changed = true
                         job.copy(
                             state = MemoryExtractionJob.State.PERMANENT_FAILURE,
@@ -208,20 +211,7 @@ class MemoryExtractionJobRepository(private val store: MemoryExtractionJobPersis
                     "Legacy extraction job belongs to a different history scope."
                 }
                 rebound++
-                job.copy(
-                    conversationId = roleMemoryScopeId,
-                    historyScopeId = historyScopeId,
-                    legacyHistoryScopeId = job.legacyHistoryScopeId ?: legacyMemoryScopeId,
-                    migrationRoleScopeId = null,
-                    attemptCount = if (job.state == MemoryExtractionJob.State.RUNNING) {
-                        (job.attemptCount - 1).coerceAtLeast(0)
-                    } else job.attemptCount,
-                    // An in-flight request has stores and input bound to the old scope. Revoke it;
-                    // its late response cannot commit or change the rebound job's retry state.
-                    state = if (job.state == MemoryExtractionJob.State.RUNNING) {
-                        MemoryExtractionJob.State.RETRY_WAIT
-                    } else job.state,
-                )
+                rebindMigratedJob(job, legacyMemoryScopeId, roleMemoryScopeId, historyScopeId)
             }
         }
         if (rebound > 0) store.save(next)
@@ -304,3 +294,24 @@ class MemoryExtractionJobRepository(private val store: MemoryExtractionJobPersis
         private val QUEUE_LOCK = Any()
     }
 }
+
+private fun rebindMigratedJob(
+    job: MemoryExtractionJob,
+    legacyMemoryScopeId: String,
+    roleMemoryScopeId: String,
+    historyScopeId: String,
+): MemoryExtractionJob =
+    job.copy(
+        conversationId = roleMemoryScopeId,
+        historyScopeId = historyScopeId,
+        legacyHistoryScopeId = job.legacyHistoryScopeId ?: legacyMemoryScopeId,
+        migrationRoleScopeId = null,
+        attemptCount = if (job.state == MemoryExtractionJob.State.RUNNING) {
+            (job.attemptCount - 1).coerceAtLeast(0)
+        } else job.attemptCount,
+        // An in-flight request has stores and input bound to the old scope. Revoke it;
+        // its late response cannot commit or change the rebound job's retry state.
+        state = if (job.state == MemoryExtractionJob.State.RUNNING) {
+            MemoryExtractionJob.State.RETRY_WAIT
+        } else job.state,
+    )

@@ -124,11 +124,8 @@ class AtomicMemoryTextStore(
                 // AtomicFile must recover .bak even when a decoded entry is already cached.
                 val openedKey = MemoryTextMemoryCache.key(baseFile)
                 val stableKey = openedKey?.takeIf { it == beforeOpen && it.length == input.channel.size() }
-                if (stableKey != null) {
-                    MemoryTextMemoryCache.find(baseFile, stableKey)?.let {
-                        return MemoryTextLoadResult.Loaded(it)
-                    }
-                }
+                val cached = stableKey?.let { MemoryTextMemoryCache.find(baseFile, it) }
+                if (cached != null) return MemoryTextLoadResult.Loaded(cached)
                 val decoded = MemoryTextCodec.decode(input.readBytes())
                 MemoryTextLoadResult.Loaded(MemoryTextMemoryCache.store(baseFile, stableKey, decoded))
             }

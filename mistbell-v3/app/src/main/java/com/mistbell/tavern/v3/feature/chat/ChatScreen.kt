@@ -87,6 +87,7 @@ internal val CHAT_EMBEDDING_DIMENSION_OPTIONS = listOf(128, 256, 512, 768, 1024,
  * Minimal end-to-end chat screen for 3.0 development.
  * Provider settings and the API key remain in screen memory only; they are not persisted.
  */
+@Suppress("ReturnCount") // Loading, memory and settings surfaces exit before composing the chat.
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatScreen(
@@ -305,6 +306,7 @@ fun ChatScreen(
                 }
             }.isSuccess
         }
+        if (migrated) MemoryExtractionQueueWorker.enqueue(context.applicationContext)
         memoryScopeReady = migrated
         memoryScopeFailed = !migrated
         diagnosticStore.info(

@@ -39,6 +39,7 @@ internal object MemoryScopeStorageLock {
         names.forEach { AtomicFile(File(staging, it)).delete() }
     }
 
+    @Suppress("TooGenericExceptionCaught") // AtomicFile must roll back and rethrow every write failure.
     private fun writeAtomic(file: File, bytes: ByteArray) {
         val target = AtomicFile(file)
         val stream = target.startWrite()
