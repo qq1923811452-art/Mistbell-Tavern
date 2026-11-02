@@ -64,6 +64,21 @@ class AtomicMemoryTextStore(
         synchronized(pathLock) { loadLocked() }
     }
 
+    /** Holds the text-store lock until an index commit finishes, excluding intervening updates. */
+    fun commitIndexIfCurrent(expected: List<MemoryTextRecord>, commit: () -> Unit) {
+        synchronized(pathLock) {
+            val current = when (val loaded = loadLocked()) {
+                MemoryTextLoadResult.Missing -> emptyList()
+                is MemoryTextLoadResult.Loaded -> loaded.records
+                is MemoryTextLoadResult.Corrupt -> error(loaded.safeReason)
+            }
+            check(current.sortedBy { it.id } == expected.sortedBy { it.id }) {
+                "Source text changed during index rebuild."
+            }
+            commit()
+        }
+    }
+
     /** Retrieval treats missing storage as no memories, but refuses to use corrupt text. */
     override fun loadMemoryTexts(): List<MemoryTextRecord> = when (val result = load()) {
         MemoryTextLoadResult.Missing -> emptyList()
@@ -93,19 +108,24 @@ class AtomicMemoryTextStore(
     private fun loadLocked(): MemoryTextLoadResult {
         val baseFile = atomicFile.baseFile
         val backup = File(baseFile.path + ".bak")
-        val identity = if (baseFile.exists()) baseFile else backup
-        if (!identity.exists()) return MemoryTextLoadResult.Missing
+        if (!baseFile.exists() && !backup.exists()) return MemoryTextLoadResult.Missing
         if (maxOf(baseFile.length(), backup.length()) > MemoryTextCodec.MAX_STORE_BYTES) {
             return MemoryTextLoadResult.Corrupt("Memory text store exceeds the size limit.")
         }
-        val key = MemoryTextMemoryCache.key(baseFile, identity)
-        if (key != null) {
-            MemoryTextMemoryCache.find(key)?.let { return MemoryTextLoadResult.Loaded(it) }
-        }
+        val beforeOpen = MemoryTextMemoryCache.key(baseFile)
         return try {
-            val decoded = atomicFile.openRead().use { input -> MemoryTextCodec.decode(input.readBytes()) }
-            val records = if (key != null) MemoryTextMemoryCache.store(key, decoded) else decoded
-            MemoryTextLoadResult.Loaded(records)
+            atomicFile.openRead().use { input ->
+                // AtomicFile must recover .bak even when a decoded entry is already cached.
+                val openedKey = MemoryTextMemoryCache.key(baseFile)
+                val stableKey = openedKey?.takeIf { it == beforeOpen && it.length == input.channel.size() }
+                if (stableKey != null) {
+                    MemoryTextMemoryCache.find(baseFile, stableKey)?.let {
+                        return MemoryTextLoadResult.Loaded(it)
+                    }
+                }
+                val decoded = MemoryTextCodec.decode(input.readBytes())
+                MemoryTextLoadResult.Loaded(MemoryTextMemoryCache.store(baseFile, stableKey, decoded))
+            }
         } catch (_: IOException) {
             MemoryTextLoadResult.Corrupt("Memory text store could not be read.")
         } catch (_: IllegalArgumentException) {

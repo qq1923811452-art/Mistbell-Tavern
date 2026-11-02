@@ -59,7 +59,7 @@ class MemoryIndexRebuilderIncrementalTest {
         val records = (1..10).map { MemoryTextRecord("r%02d".format(it), "text $it") }
         val result = rebuild(runtime, records, previous = null)
 
-        assertEquals(3, result.progress.inferenceBatches)
+        assertEquals(3, result.progress.embeddingRequests)
         assertEquals(10, runtime.embedded.size)
         assertTrue("runtime never received more than its batch limit", runtime.maxObservedBatch <= 4)
     }
@@ -91,6 +91,43 @@ class MemoryIndexRebuilderIncrementalTest {
             val updated = after.first { it.id == hit.id }
             assertEquals(hit.score, updated.score, 0.0)
         }
+    }
+
+    @Test
+    fun repeatedPersistedRebuildsKeepQuantizedDirectionsAndScores() = runBlocking {
+        val runtime = BatchRuntime(dimensions = 64)
+        val records = (1..25).map { MemoryTextRecord("r%02d".format(it), "text $it") }
+        fun persisted(snapshot: VectorSnapshot): VectorSnapshot = VectorSnapshotCodec.decodeMapped(
+            java.nio.ByteBuffer.wrap(VectorSnapshotCodec.encode(snapshot)),
+        )
+        var previous = persisted(rebuild(runtime, records, null).snapshot)
+        val query = previous.records[3].values.toList()
+        val originalHits = VectorSimilaritySearch.search(previous, query, limit = 25, minimumScore = -1.0)
+        runtime.embedded.clear()
+        repeat(30) {
+            val outcome = rebuild(runtime, records, previous)
+            assertEquals(25, outcome.progress.reusedRecords)
+            assertEquals(0, outcome.progress.embeddingRequests)
+            previous = persisted(outcome.snapshot)
+            val hits = VectorSimilaritySearch.search(previous, query, limit = 25, minimumScore = -1.0)
+            assertEquals(originalHits.map { it.id }, hits.map { it.id })
+            originalHits.zip(hits).forEach { (before, after) -> assertEquals(before.score, after.score, 0.0) }
+        }
+        assertTrue(runtime.embedded.isEmpty())
+    }
+
+    @Test
+    fun aStoredZeroVectorIsReembeddedInsteadOfReusedForever() = runBlocking {
+        val record = MemoryTextRecord("r1", "text 1")
+        val previous = VectorSnapshot(
+            "model-a", 8,
+            listOf(StoredVector(record.id, record.sourceTextSha256, 0L, List(8) { 0f })),
+        )
+        val runtime = BatchRuntime()
+        val outcome = rebuild(runtime, listOf(record), previous)
+        assertEquals(0, outcome.progress.reusedRecords)
+        assertEquals(1, outcome.progress.embeddedRecords)
+        assertTrue(outcome.snapshot.records.single().values.any { it != 0f })
     }
 
     private class RebuildOutcome(

@@ -27,7 +27,8 @@ interface PassageEmbeddingRuntime : IdentifiedQueryEmbeddingProvider {
 data class MemoryIndexRebuildProgress(
     val reusedRecords: Int,
     val embeddedRecords: Int,
-    val inferenceBatches: Int,
+    /** Calls to embedPassages, not native inference calls (which may split or hit a cache). */
+    val embeddingRequests: Int,
 )
 
 /** Result of rebuilding the durable source-text/vector pair. */
@@ -97,7 +98,7 @@ class MemoryIndexRebuilder(
             MemoryIndexRebuildProgress(
                 reusedRecords = reusedById.size,
                 embeddedRecords = embedded.vectors.size,
-                inferenceBatches = embedded.batches,
+                embeddingRequests = embedded.batches,
             ),
         )
 
@@ -283,6 +284,7 @@ class MemoryIndexRebuilder(
             for (position in copy.indices) copy[position] = values[position]
         }
         require(copy.all(Float::isFinite)) { "Stored vector contains invalid values." }
+        require(copy.any { it != 0f }) { "Stored vector is a zero vector." }
         return copy.asList()
     }
 }

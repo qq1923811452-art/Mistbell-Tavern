@@ -2,6 +2,10 @@ package com.mistbell.tavern.v3.core.storage
 
 import com.mistbell.tavern.v3.core.memory.MemoryTextRecord
 import java.io.File
+import java.io.IOException
+import java.nio.file.Files
+import java.nio.file.attribute.BasicFileAttributes
+import java.nio.file.attribute.FileTime
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 
@@ -15,9 +19,9 @@ import java.util.concurrent.atomic.AtomicLong
  *
  * Correctness rules:
  *
- * - Entries are keyed by canonical path, an in-process write generation, length, and mtime, so a
- *   save through *any* store instance invalidates the entry immediately — including two saves that
- *   land in the same millisecond with an identical length.
+ * - Entries include stable file identity and precise timestamps, plus an in-process write generation.
+ *   A save through any store invalidates immediately; a same-metadata replacement has a new identity.
+ *   Providers without stable identities do not cache.
  * - Only successfully decoded, hash-verified lists are cached. Missing or corrupt files always
  *   re-read the disk, so corruption is never remembered as valid data.
  * - Cached lists are read-only views, so a caller cannot mutate shared state.
@@ -31,8 +35,10 @@ internal object MemoryTextMemoryCache {
     data class Key(
         val path: String,
         val generation: Long,
+        val fileKey: Any,
         val length: Long,
-        val lastModified: Long,
+        val lastModified: FileTime,
+        val created: FileTime,
     )
 
     private val pathLocks = ConcurrentHashMap<String, Any>()
@@ -45,21 +51,34 @@ internal object MemoryTextMemoryCache {
     /** One monitor per canonical path, shared by every store instance that touches the file. */
     fun lockFor(file: File): Any = pathLocks.computeIfAbsent(canonicalPath(file)) { Any() }
 
-    fun key(baseFile: File, identityFile: File = baseFile): Key? {
-        // The path always identifies the store (so invalidation matches); the identity file
-        // supplies the freshness fields, because a recovery read may come from the `.bak` copy.
-        val path = canonicalPath(baseFile)
-        if (!identityFile.exists()) return null
-        return Key(
-            path = path,
-            generation = generations.computeIfAbsent(path) { AtomicLong() }.get(),
-            length = identityFile.length(),
-            lastModified = identityFile.lastModified(),
-        )
+    /** Never substitute length/mtime for an unavailable stable file identity. */
+    fun key(file: File): Key? = try {
+        val attributes = Files.readAttributes(file.toPath(), BasicFileAttributes::class.java)
+        val fileKey = attributes.fileKey()
+        if (!attributes.isRegularFile || fileKey == null) {
+            null
+        } else {
+            val path = canonicalPath(file)
+            Key(
+                path = path,
+                generation = generations.computeIfAbsent(path) { AtomicLong() }.get(),
+                fileKey = fileKey,
+                length = attributes.size(),
+                lastModified = attributes.lastModifiedTime(),
+                created = attributes.creationTime(),
+            )
+        }
+    } catch (_: IOException) {
+        null
+    } catch (_: UnsupportedOperationException) {
+        null
+    } catch (_: SecurityException) {
+        null
     }
 
     @Synchronized
-    fun find(key: Key): List<MemoryTextRecord>? = entries[key]
+    fun find(file: File, key: Key): List<MemoryTextRecord>? =
+        if (key(file) == key) entries[key] else null
 
     /**
      * Caches [records] and returns the stored read-only view, so the load that populated the cache
@@ -67,9 +86,12 @@ internal object MemoryTextMemoryCache {
      * difference between a cache miss and a cache hit.
      */
     @Synchronized
-    fun store(key: Key, records: List<MemoryTextRecord>): List<MemoryTextRecord> {
+    fun store(file: File, key: Key?, records: List<MemoryTextRecord>): List<MemoryTextRecord> {
         val snapshot = java.util.Collections.unmodifiableList(ArrayList(records))
-        entries[key] = snapshot
+        if (key != null && key(file) == key) {
+            entries.keys.removeAll { it.path == key.path }
+            entries[key] = snapshot
+        }
         return snapshot
     }
 

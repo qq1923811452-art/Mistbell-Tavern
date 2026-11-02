@@ -126,6 +126,100 @@ class MemoryTextStoreCacheTest {
         }
     }
 
+    @Test
+    fun backupRecoveryRunsBeforeACacheHit() {
+        val store = AtomicMemoryTextStore(context, fileName)
+        val base = File(context.filesDir, fileName)
+        try {
+            store.save(listOf(record("a", "alpha")))
+            val oldBytes = base.readBytes()
+            store.save(listOf(record("a", "ALPHA")))
+            assertTrue(store.load() is MemoryTextLoadResult.Loaded)
+            File(base.path + ".bak").writeBytes(oldBytes)
+
+            val recovered = store.load() as MemoryTextLoadResult.Loaded
+            assertEquals("alpha", recovered.records.single().text)
+            assertTrue(!File(base.path + ".bak").exists())
+        } finally {
+            deleteFiles()
+        }
+    }
+
+    @Test
+    fun sameMetadataReplacementDoesNotReuseTheOldInode() {
+        val store = AtomicMemoryTextStore(context, fileName)
+        val base = File(context.filesDir, fileName)
+        val replacement = File(base.path + ".replacement")
+        try {
+            store.save(listOf(record("a", "alpha")))
+            assertTrue(store.load() is MemoryTextLoadResult.Loaded)
+            val modified = base.lastModified()
+            replacement.writeBytes(com.mistbell.tavern.v3.core.memory.MemoryTextCodec.encode(listOf(record("a", "ALPHA"))))
+            assertEquals(base.length(), replacement.length())
+            assertTrue(replacement.setLastModified(modified))
+            assertTrue(replacement.renameTo(base))
+
+            val reloaded = store.load() as MemoryTextLoadResult.Loaded
+            assertEquals("ALPHA", reloaded.records.single().text)
+        } finally {
+            replacement.delete()
+            deleteFiles()
+        }
+    }
+
+    @Test
+    fun sourceUpdateWaitsUntilIndexCommitFinishes() {
+        val store = AtomicMemoryTextStore(context, fileName)
+        val expected = listOf(record("a", "alpha"))
+        val entered = java.util.concurrent.CountDownLatch(1)
+        val release = java.util.concurrent.CountDownLatch(1)
+        val attempted = java.util.concurrent.CountDownLatch(1)
+        val finished = java.util.concurrent.CountDownLatch(1)
+        val executor = java.util.concurrent.Executors.newFixedThreadPool(2)
+        try {
+            store.save(expected)
+            val commit = executor.submit {
+                store.commitIndexIfCurrent(expected) {
+                    entered.countDown()
+                    check(release.await(5, java.util.concurrent.TimeUnit.SECONDS))
+                }
+            }
+            assertTrue(entered.await(5, java.util.concurrent.TimeUnit.SECONDS))
+            val update = executor.submit {
+                attempted.countDown()
+                store.update { it + record("b", "beta") }
+                finished.countDown()
+            }
+            assertTrue(attempted.await(5, java.util.concurrent.TimeUnit.SECONDS))
+            assertTrue(!finished.await(100, java.util.concurrent.TimeUnit.MILLISECONDS))
+            release.countDown()
+            commit.get(5, java.util.concurrent.TimeUnit.SECONDS)
+            update.get(5, java.util.concurrent.TimeUnit.SECONDS)
+            assertEquals(2, (store.load() as MemoryTextLoadResult.Loaded).records.size)
+        } finally {
+            release.countDown()
+            executor.shutdownNow()
+            deleteFiles()
+        }
+    }
+
+    @Test
+    fun staleIndexCommitDoesNotResurrectDeletedSource() {
+        val store = AtomicMemoryTextStore(context, fileName)
+        val expected = listOf(record("a", "alpha"))
+        try {
+            store.save(expected)
+            assertTrue(File(context.filesDir, fileName).delete())
+            var committed = false
+            val failure = runCatching { store.commitIndexIfCurrent(expected) { committed = true } }
+            assertTrue(failure.isFailure)
+            assertTrue(!committed)
+            assertTrue(store.load() is MemoryTextLoadResult.Missing)
+        } finally {
+            deleteFiles()
+        }
+    }
+
     private fun record(id: String, text: String) = MemoryTextRecord(id = id, text = text)
 
     private fun deleteFiles() {

@@ -55,7 +55,9 @@ class VectorSimilaritySearchQuantizedTest {
         val full = VectorSimilaritySearch.search(snapshot, query, limit = 100, minimumScore = -1.0)
         listOf(1, 2, 5, 10, 100).forEach { limit ->
             val limited = VectorSimilaritySearch.search(snapshot, query, limit = limit, minimumScore = -1.0)
+            val reference = dequantizedSearch(snapshot, query, limit)
             assertEquals(limit, limited.size)
+            assertEquals(reference.map(VectorSearchHit::id), limited.map(VectorSearchHit::id))
             assertEquals(full.take(limit).map(VectorSearchHit::id), limited.map(VectorSearchHit::id))
         }
     }
@@ -69,8 +71,31 @@ class VectorSimilaritySearchQuantizedTest {
         assertTrue(hits.size <= 100)
     }
 
+    @Test
+    fun mappedDecodeRejectsQuantizedValuesThatWouldOverflowFloat() {
+        val encoded = VectorSnapshotCodec.encode(
+            VectorSnapshot(MODEL, 1, listOf(StoredVector("r", HASH, 0L, listOf(1f)))),
+        )
+        val input = ByteBuffer.wrap(encoded)
+        val payloadLength = input.int
+        input.position(4 + 8)
+        input.position(input.position() + 2 + (input.short.toInt() and 0xffff))
+        input.position(input.position() + 8)
+        repeat(2) {
+            val bytes = input.short.toInt() and 0xffff
+            input.position(input.position() + bytes)
+        }
+        input.position(input.position() + 8)
+        input.putFloat(Float.MAX_VALUE / 127f)
+        input.put(Byte.MIN_VALUE)
+        val digest = java.security.MessageDigest.getInstance("SHA-256").digest(encoded.copyOfRange(4, 4 + payloadLength))
+        digest.copyInto(encoded, 4 + payloadLength)
+        assertTrue(runCatching { VectorSnapshotCodec.decodeMapped(ByteBuffer.wrap(encoded)) }.isFailure)
+        assertTrue(runCatching { VectorSnapshotCodec.decode(encoded) }.isFailure)
+    }
+
     /** Same algorithm as before the change, kept here as the reference for equivalence. */
-    private fun dequantizedSearch(snapshot: VectorSnapshot, query: List<Float>): List<VectorSearchHit> {
+    private fun dequantizedSearch(snapshot: VectorSnapshot, query: List<Float>, limit: Int = 20): List<VectorSearchHit> {
         val queryValues = query.toFloatArray()
         var querySquared = 0.0
         for (value in queryValues) querySquared += value.toDouble() * value.toDouble()
@@ -89,7 +114,7 @@ class VectorSimilaritySearchQuantizedTest {
                 VectorSearchHit(record.id, score, record.sourceTextSha256, record.createdAtEpochMillis)
             }
             .sortedWith(compareByDescending<VectorSearchHit> { it.score }.thenBy { it.id })
-            .take(20)
+            .take(limit)
             .toList()
     }
 

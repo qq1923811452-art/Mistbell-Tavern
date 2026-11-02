@@ -10,7 +10,7 @@ import org.junit.Test
 /**
  * Answers the question an equivalence test cannot: does the stored int8 form still surface the
  * neighbours an exact float search would return? Equivalence only proves the new scorer matches
- * the old one; both could be equally wrong about relevance.
+ * the old one; neither establishes relevance on real text queries.
  *
  * Ground truth is computed over the pre-quantization float vectors, so any gap is caused by the
  * snapshot format itself and would also affect the previous dequantizing implementation.
@@ -34,7 +34,7 @@ class VectorSearchRecallQualityTest {
             assertEquals(TOP_K, found.size)
             recallAtFive += found.intersect(truth.toSet()).size / TOP_K.toDouble()
             if (found.first() == truth.first()) rankOneMatches++
-            maxScoreError = maxOf(maxScoreError, abs(hits.first().score - exactCosine(vectors[truth.first()], query)))
+            maxScoreError = maxOf(maxScoreError, abs(hits.first().score - exactCosine(vectors[found.first()], query)))
         }
 
         assertTrue(
@@ -49,7 +49,7 @@ class VectorSearchRecallQualityTest {
     }
 
     @Test
-    fun repeatedSearchesReuseTheCachedMagnitudeWithoutDrifting() {
+    fun repeatedSearchesProduceStableScores() {
         val vectors = clusteredVectors()
         val snapshot = mappedSnapshot(vectors)
         val query = noisyQuery(vectors[7], java.util.Random(3L)).toList()
@@ -57,8 +57,7 @@ class VectorSearchRecallQualityTest {
         val first = VectorSimilaritySearch.search(snapshot, query, TOP_K, minimumScore = -1.0)
         val second = VectorSimilaritySearch.search(snapshot, query, TOP_K, minimumScore = -1.0)
 
-        // The magnitude is cached per mapped vector after the first score; a stale or shared cache
-        // would show up as a score or ordering change on the second search.
+        // This checks determinism only; recomputing norms would also pass. It is not a cache-hit test.
         assertEquals(first.map(VectorSearchHit::id), second.map(VectorSearchHit::id))
         first.zip(second).forEach { (left, right) -> assertEquals(left.score, right.score, 0.0) }
     }
@@ -71,7 +70,7 @@ class VectorSearchRecallQualityTest {
             val center = centers[index / RECORDS_PER_CLUSTER]
             normalize(
                 FloatArray(DIMENSIONS) { position ->
-                    (center[position] + (random.nextGaussian() * 0.55).toFloat())
+                    (center[position] + (random.nextGaussian() * (0.55 / sqrt(DIMENSIONS.toDouble()))).toFloat())
                 },
             )
         }
@@ -92,8 +91,16 @@ class VectorSearchRecallQualityTest {
 
     private fun exactCosine(left: FloatArray, right: FloatArray): Double {
         var dot = 0.0
-        for (position in left.indices) dot += left[position].toDouble() * right[position].toDouble()
-        return dot
+        var leftSquared = 0.0
+        var rightSquared = 0.0
+        for (position in left.indices) {
+            val l = left[position].toDouble()
+            val r = right[position].toDouble()
+            dot += l * r
+            leftSquared += l * l
+            rightSquared += r * r
+        }
+        return dot / sqrt(leftSquared * rightSquared)
     }
 
     private fun exactTopK(vectors: List<FloatArray>, query: FloatArray, k: Int): List<Int> =
@@ -122,7 +129,7 @@ class VectorSearchRecallQualityTest {
         const val QUERY_COUNT = 100
         const val TOP_K = 5
 
-        /** Measured 0.994 on this fixture; the bound only guards against a real regression. */
+        /** Synthetic storage-neighbour regression bounds, not semantic recall claims. */
         const val MINIMUM_RECALL = 0.95
         const val MINIMUM_RANK_ONE_AGREEMENT = 0.99
         const val MAXIMUM_SCORE_ERROR = 2e-3

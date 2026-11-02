@@ -11,7 +11,6 @@ import com.mistbell.tavern.v3.core.memory.MemoryTextRecord
 import com.mistbell.tavern.v3.core.memory.PassageEmbeddingRuntime
 import com.mistbell.tavern.v3.core.storage.AtomicMemoryTextStore
 import com.mistbell.tavern.v3.core.storage.AtomicVectorSnapshotStore
-import com.mistbell.tavern.v3.core.storage.MemoryTextLoadResult
 import com.mistbell.tavern.v3.core.storage.VectorSnapshotLoadResult
 
 /**
@@ -54,13 +53,16 @@ internal class ChatMemoryIndexRebuildCoordinator(
             val previous = (loaded as? VectorSnapshotLoadResult.Loaded)?.snapshot
             val result = MemoryIndexRebuilder(
                 runtime = runtime,
-                saveSourceTexts = { rebuiltRecords -> commitSourceTexts(rebuiltRecords, memoryTextStore) },
-                saveSnapshot = vectorSnapshotStore::save,
+                // Source text is already durable; validate it and save vectors under one lock.
+                saveSourceTexts = { },
+                saveSnapshot = { snapshot ->
+                    memoryTextStore.commitIndexIfCurrent(records) { vectorSnapshotStore.save(snapshot) }
+                },
                 onProgress = { progress ->
                     diagnosticStore.info(
                         "memory.index.rebuild_work",
                         "reused=${progress.reusedRecords}; embedded=${progress.embeddedRecords}; " +
-                            "batches=${progress.inferenceBatches}; scope=$scopePrefix",
+                            "embeddingRequests=${progress.embeddingRequests}; scope=$scopePrefix",
                     )
                 },
             ).rebuild(records, previous)
@@ -87,28 +89,6 @@ internal class ChatMemoryIndexRebuildCoordinator(
                         }
                     }
                 }
-            }
-        }
-    }
-
-    /**
-     * Do not let a long-running rebuild overwrite facts/manual memories added after it took its
-     * input snapshot. The vector snapshot is committed only while the durable source text still
-     * matches the records it indexed.
-     */
-    private fun commitSourceTexts(
-        rebuiltRecords: List<MemoryTextRecord>,
-        memoryTextStore: AtomicMemoryTextStore,
-    ) {
-        when (val latest = memoryTextStore.load()) {
-            MemoryTextLoadResult.Missing -> memoryTextStore.save(rebuiltRecords)
-            is MemoryTextLoadResult.Corrupt -> error(
-                "Source text changed or became unreadable during index rebuild.",
-            )
-            is MemoryTextLoadResult.Loaded -> {
-                val current = latest.records.sortedBy { it.id }
-                val candidate = rebuiltRecords.sortedBy { it.id }
-                check(current == candidate) { "Source text changed during index rebuild." }
             }
         }
     }

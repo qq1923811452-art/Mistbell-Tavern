@@ -314,6 +314,15 @@ object VectorSnapshotCodec {
             val vectorStart = input.position()
             val vectorBytes = if (formatVersion == LEGACY_FORMAT_VERSION) dimensions * Float.SIZE_BYTES else dimensions
             require(input.remaining() >= vectorBytes) { "Vector data is truncated." }
+            // A signed byte can be -128, although our encoder emits only [-127, 127].
+            // Preserve the finite-value contract even when the byte-space scorer skips scaling.
+            if (formatVersion == FORMAT_VERSION && !(Byte.MIN_VALUE.toFloat() * scale).isFinite()) {
+                repeat(dimensions) { index ->
+                    require(input.get(vectorStart + index) != Byte.MIN_VALUE) {
+                        "Mapped vector contains a non-finite value."
+                    }
+                }
+            }
             input.position(vectorStart + vectorBytes)
             val values = MappedVectorValues(
                 buffer = mapped,
