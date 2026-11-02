@@ -87,6 +87,7 @@ class AtomicMemoryTextStore(
         }
     }
 
+    @Suppress("ReturnCount") // Guard clauses distinguish missing, oversized, cached and corrupt.
     private fun loadLocked(): MemoryTextLoadResult {
         val baseFile = atomicFile.baseFile
         val backup = File(baseFile.path + ".bak")

@@ -65,38 +65,15 @@ class MemoryIndexRebuilder(
     private val clockMillis: () -> Long = System::currentTimeMillis,
     private val onProgress: (MemoryIndexRebuildProgress) -> Unit = {},
 ) {
+    @Suppress("ReturnCount") // Each early return maps to one distinct, reportable failure stage.
     suspend fun rebuild(
         records: List<MemoryTextRecord>,
         previous: VectorSnapshot? = null,
     ): MemoryIndexRebuildResult {
         val modelId = runtime.modelId
         val dimensions = runtime.dimensions
-        if (modelId.isBlank() ||
-            dimensions !in 1..VectorSnapshotCodec.MAX_DIMENSIONS ||
-            records.size > MemoryTextCodec.MAX_RECORDS
-        ) {
-            return MemoryIndexRebuildResult.Failed(
-                MemoryIndexRebuildResult.Stage.INVALID_INPUT,
-                "Model metadata or source record set is invalid.",
-            )
-        }
-        val seenIds = HashSet<String>(records.size)
-        var sourceTextBytes = 0L
-        for (record in records) {
-            if (!seenIds.add(record.id)) {
-                return MemoryIndexRebuildResult.Failed(
-                    MemoryIndexRebuildResult.Stage.INVALID_INPUT,
-                    "Model metadata or source record set is invalid.",
-                )
-            }
-            sourceTextBytes += record.text.toByteArray(Charsets.UTF_8).size.toLong()
-            if (sourceTextBytes > MemoryTextCodec.MAX_STORE_BYTES) {
-                return MemoryIndexRebuildResult.Failed(
-                    MemoryIndexRebuildResult.Stage.INVALID_INPUT,
-                    "Source text exceeds the persistence size limit.",
-                )
-            }
-        }
+        metadataFailure(records, modelId, dimensions)?.let { return it }
+        sourceTextFailure(records)?.let { return it }
         val timestamp = try {
             clockMillis().also { require(it >= 0L) }
         } catch (_: Exception) {
@@ -107,88 +84,28 @@ class MemoryIndexRebuilder(
         }
 
         val ordered = records.sortedBy(MemoryTextRecord::id)
-        val previousById = reusableVectors(previous, modelId, dimensions)
-        val reusedById = LinkedHashMap<String, StoredVector>(ordered.size)
-        val pending = ArrayList<MemoryTextRecord>()
-        for (record in ordered) {
-            val candidate = previousById[record.id]
-            // A damaged reuse candidate must never abort the rebuild; fall back to re-embedding.
-            val reused = candidate
-                ?.takeIf { it.sourceTextSha256 == record.sourceTextSha256 }
-                ?.let { previousVector ->
-                    runCatching {
-                        StoredVector(
-                            id = record.id,
-                            sourceTextSha256 = record.sourceTextSha256,
-                            createdAtEpochMillis = previousVector.createdAtEpochMillis,
-                            values = copyValues(previousVector.values, dimensions),
-                        )
-                    }.getOrNull()
-                }
-            if (reused != null) {
-                reusedById[record.id] = reused
-            } else {
-                pending += record
-            }
-        }
-
-        val batchSize = runtime.passageBatchSize.coerceAtLeast(1)
-        val embeddedById = LinkedHashMap<String, StoredVector>(pending.size)
-        var batches = 0
-        try {
-            for (chunk in pending.chunked(batchSize)) {
-                val vectors = runtime.embedPassages(chunk.map { it.text })
-                batches++
-                require(vectors.size == chunk.size) {
-                    "Embedding runtime returned a mismatched batch size."
-                }
-                chunk.forEachIndexed { index, record ->
-                    val vector = vectors[index]
-                    require(vector.size == dimensions) {
-                        "Embedding dimension does not match the loaded model."
-                    }
-                    require(vector.isNotEmpty() && vector.all(Float::isFinite)) {
-                        "Embedding output contains invalid values."
-                    }
-                    require(vector.any { it != 0f }) {
-                        "Embedding output is a zero vector."
-                    }
-                    embeddedById[record.id] = StoredVector(
-                        id = record.id,
-                        sourceTextSha256 = record.sourceTextSha256,
-                        createdAtEpochMillis = timestamp,
-                        values = vector.toFloatArray().asList(),
-                    )
-                }
-            }
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (_: Exception) {
-            return MemoryIndexRebuildResult.Failed(
+        val reusedById = reusedVectors(ordered, previous, modelId, dimensions)
+        val pending = ordered.filterNot { reusedById.containsKey(it.id) }
+        val embedded = when (val outcome = embedPending(pending, dimensions, timestamp)) {
+            is EmbeddingOutcome.Ready -> outcome
+            EmbeddingOutcome.Failed -> return MemoryIndexRebuildResult.Failed(
                 MemoryIndexRebuildResult.Stage.EMBEDDING,
                 "Local embedding failed or returned an invalid vector; no data was saved.",
             )
         }
-
-        val snapshotRecords = ordered.map { record ->
-            reusedById[record.id] ?: embeddedById.getValue(record.id)
-        }
         onProgress(
             MemoryIndexRebuildProgress(
                 reusedRecords = reusedById.size,
-                embeddedRecords = embeddedById.size,
-                inferenceBatches = batches,
+                embeddedRecords = embedded.vectors.size,
+                inferenceBatches = embedded.batches,
             ),
         )
 
-        val snapshot = try {
-            VectorSnapshot(modelId = modelId, dimensions = dimensions, records = snapshotRecords)
-        } catch (_: IllegalArgumentException) {
-            return MemoryIndexRebuildResult.Failed(
+        val snapshot = assembleSnapshot(modelId, dimensions, ordered, reusedById, embedded.vectors)
+            ?: return MemoryIndexRebuildResult.Failed(
                 MemoryIndexRebuildResult.Stage.INVALID_INPUT,
                 "The generated snapshot failed validation.",
             )
-        }
 
         try {
             saveSourceTexts(ordered)
@@ -215,15 +132,143 @@ class MemoryIndexRebuilder(
         )
     }
 
-    private fun reusableVectors(
+    private fun metadataFailure(
+        records: List<MemoryTextRecord>,
+        modelId: String,
+        dimensions: Int,
+    ): MemoryIndexRebuildResult.Failed? =
+        if (modelId.isBlank() ||
+            dimensions !in 1..VectorSnapshotCodec.MAX_DIMENSIONS ||
+            records.size > MemoryTextCodec.MAX_RECORDS
+        ) {
+            MemoryIndexRebuildResult.Failed(
+                MemoryIndexRebuildResult.Stage.INVALID_INPUT,
+                "Model metadata or source record set is invalid.",
+            )
+        } else {
+            null
+        }
+
+    @Suppress("ReturnCount") // Guard clauses report which limit was crossed.
+    private fun sourceTextFailure(records: List<MemoryTextRecord>): MemoryIndexRebuildResult.Failed? {
+        val seenIds = HashSet<String>(records.size)
+        var sourceTextBytes = 0L
+        for (record in records) {
+            if (!seenIds.add(record.id)) {
+                return MemoryIndexRebuildResult.Failed(
+                    MemoryIndexRebuildResult.Stage.INVALID_INPUT,
+                    "Model metadata or source record set is invalid.",
+                )
+            }
+            sourceTextBytes += record.text.toByteArray(Charsets.UTF_8).size.toLong()
+            if (sourceTextBytes > MemoryTextCodec.MAX_STORE_BYTES) {
+                return MemoryIndexRebuildResult.Failed(
+                    MemoryIndexRebuildResult.Stage.INVALID_INPUT,
+                    "Source text exceeds the persistence size limit.",
+                )
+            }
+        }
+        return null
+    }
+
+    private sealed interface EmbeddingOutcome {
+        data class Ready(val vectors: Map<String, StoredVector>, val batches: Int) : EmbeddingOutcome
+        data object Failed : EmbeddingOutcome
+    }
+
+    /** Embeds every record that could not be reused, in configured batches. */
+    private suspend fun embedPending(
+        pending: List<MemoryTextRecord>,
+        dimensions: Int,
+        timestamp: Long,
+    ): EmbeddingOutcome {
+        val batchSize = runtime.passageBatchSize.coerceAtLeast(1)
+        val embedded = LinkedHashMap<String, StoredVector>(pending.size)
+        var batches = 0
+        try {
+            for (chunk in pending.chunked(batchSize)) {
+                val vectors = runtime.embedPassages(chunk.map { it.text })
+                batches++
+                require(vectors.size == chunk.size) {
+                    "Embedding runtime returned a mismatched batch size."
+                }
+                chunk.forEachIndexed { index, record ->
+                    embedded[record.id] = storedVector(record, vectors[index], dimensions, timestamp)
+                }
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            return EmbeddingOutcome.Failed
+        }
+        return EmbeddingOutcome.Ready(embedded, batches)
+    }
+
+    private fun storedVector(
+        record: MemoryTextRecord,
+        vector: List<Float>,
+        dimensions: Int,
+        timestamp: Long,
+    ): StoredVector {
+        require(vector.size == dimensions) { "Embedding dimension does not match the loaded model." }
+        require(vector.isNotEmpty() && vector.all(Float::isFinite)) {
+            "Embedding output contains invalid values."
+        }
+        require(vector.any { it != 0f }) { "Embedding output is a zero vector." }
+        return StoredVector(
+            id = record.id,
+            sourceTextSha256 = record.sourceTextSha256,
+            createdAtEpochMillis = timestamp,
+            values = vector.toFloatArray().asList(),
+        )
+    }
+
+    private fun assembleSnapshot(
+        modelId: String,
+        dimensions: Int,
+        ordered: List<MemoryTextRecord>,
+        reusedById: Map<String, StoredVector>,
+        embeddedById: Map<String, StoredVector>,
+    ): VectorSnapshot? {
+        val records = ordered.map { record ->
+            reusedById[record.id] ?: embeddedById.getValue(record.id)
+        }
+        return try {
+            VectorSnapshot(modelId = modelId, dimensions = dimensions, records = records)
+        } catch (_: IllegalArgumentException) {
+            null
+        }
+    }
+
+    /**
+     * Copies reusable vectors out of the previous snapshot. Model and dimension must match, and
+     * each record must keep its ID and source-text hash; anything else is re-embedded.
+     */
+    private fun reusedVectors(
+        ordered: List<MemoryTextRecord>,
         previous: VectorSnapshot?,
         modelId: String,
         dimensions: Int,
     ): Map<String, StoredVector> {
-        if (previous == null) return emptyMap()
-        // A different model or vector size invalidates every stored vector, even for identical text.
-        if (previous.modelId != modelId || previous.dimensions != dimensions) return emptyMap()
-        return previous.records.associateBy(StoredVector::id)
+        val usable = previous?.takeIf { it.modelId == modelId && it.dimensions == dimensions }
+            ?: return emptyMap()
+        val byId = usable.records.associateBy(StoredVector::id)
+        val reused = LinkedHashMap<String, StoredVector>(ordered.size)
+        for (record in ordered) {
+            val candidate = byId[record.id] ?: continue
+            if (candidate.sourceTextSha256 != record.sourceTextSha256) continue
+            // A damaged reuse candidate must never abort the rebuild; re-embed instead.
+            val copy = runCatching {
+                StoredVector(
+                    id = record.id,
+                    sourceTextSha256 = record.sourceTextSha256,
+                    createdAtEpochMillis = candidate.createdAtEpochMillis,
+                    values = copyValues(candidate.values, dimensions),
+                )
+            }.getOrNull() ?: continue
+            reused[record.id] = copy
+        }
+        return reused
     }
 
     private fun copyValues(values: List<Float>, dimensions: Int): List<Float> {

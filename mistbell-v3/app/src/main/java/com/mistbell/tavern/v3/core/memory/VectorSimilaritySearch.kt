@@ -46,59 +46,72 @@ object VectorSimilaritySearch {
             "Minimum similarity must be finite and between -1 and 1."
         }
 
-        val queryValues = query.toFloatArray()
-        val queryNorm = norm(queryValues)
-        require(queryNorm > 0.0) { "Query vector must not be a zero vector." }
+        val scorer = Scorer(snapshot, query.toFloatArray())
+        require(scorer.queryNorm > 0.0) { "Query vector must not be a zero vector." }
 
         // Bounded selection: keeping only the best `limit` hits avoids ordering every record.
         val best = PriorityQueue(limit, WORST_FIRST)
-        var legacyValues: FloatArray? = null
-        var legacyNorms: DoubleArray? = null
-
         for (index in snapshot.records.indices) {
-            val record = snapshot.records[index]
-            val values = record.values
-            val score = if (values is QuantizedVectorView && values.isQuantized) {
-                values.score(queryValues, queryNorm)
-            } else {
-                // Legacy float32 path, unchanged: dequantize once, then a dot product.
-                val scratch = legacyValues ?: FloatArray(snapshot.dimensions).also { legacyValues = it }
-                if (values is FloatVectorView) {
-                    values.fillInto(scratch)
-                } else {
-                    for (position in scratch.indices) {
-                        scratch[position] = values[position]
-                    }
-                }
-                val norms = legacyNorms ?: snapshot.norms.also { legacyNorms = it }
-                val recordNorm = norms[index]
-                if (recordNorm == 0.0) {
-                    Double.NaN
-                } else {
-                    var dot = 0.0
-                    for (position in queryValues.indices) {
-                        dot += queryValues[position].toDouble() * scratch[position].toDouble()
-                    }
-                    (dot / (queryNorm * recordNorm)).coerceIn(-1.0, 1.0)
-                }
-            }
+            val score = scorer.score(index)
             if (score.isNaN() || score < minimumScore) continue
-
-            val hit = VectorSearchHit(
-                id = record.id,
-                score = score,
-                sourceTextSha256 = record.sourceTextSha256,
-                createdAtEpochMillis = record.createdAtEpochMillis,
-            )
-            if (best.size < limit) {
-                best.add(hit)
-            } else if (BEST_FIRST.compare(hit, best.peek()) < 0) {
-                best.poll()
-                best.add(hit)
-            }
+            offer(best, snapshot.records[index], score, limit)
         }
-
         return best.sortedWith(BEST_FIRST).take(limit)
+    }
+
+    private fun offer(
+        best: PriorityQueue<VectorSearchHit>,
+        record: StoredVector,
+        score: Double,
+        limit: Int,
+    ) {
+        val hit = VectorSearchHit(
+            id = record.id,
+            score = score,
+            sourceTextSha256 = record.sourceTextSha256,
+            createdAtEpochMillis = record.createdAtEpochMillis,
+        )
+        if (best.size < limit) {
+            best.add(hit)
+        } else if (BEST_FIRST.compare(hit, best.peek()) < 0) {
+            best.poll()
+            best.add(hit)
+        }
+    }
+
+    /**
+     * Scores one record against a fixed query, reusing the scratch buffer and the cached
+     * magnitudes of a legacy float32 snapshot.
+     */
+    private class Scorer(
+        private val snapshot: VectorSnapshot,
+        private val query: FloatArray,
+    ) {
+        val queryNorm: Double = norm(query)
+        private var legacyValues: FloatArray? = null
+        private var legacyNorms: DoubleArray? = null
+
+        /** Returns [Double.NaN] for a stored zero vector, which has no defined direction. */
+        fun score(index: Int): Double {
+            val values = snapshot.records[index].values
+            if (values is QuantizedVectorView && values.isQuantized) {
+                return values.score(query, queryNorm)
+            }
+            val scratch = legacyValues ?: FloatArray(snapshot.dimensions).also { legacyValues = it }
+            if (values is FloatVectorView) {
+                values.fillInto(scratch)
+            } else {
+                for (position in scratch.indices) scratch[position] = values[position]
+            }
+            // Legacy float32 path, unchanged: dequantize once, then a dot product.
+            val recordNorm = (legacyNorms ?: snapshot.norms.also { legacyNorms = it })[index]
+            if (recordNorm == 0.0) return Double.NaN
+            var dot = 0.0
+            for (position in query.indices) {
+                dot += query[position].toDouble() * scratch[position].toDouble()
+            }
+            return (dot / (queryNorm * recordNorm)).coerceIn(-1.0, 1.0)
+        }
     }
 
     private fun norm(vector: FloatArray): Double {

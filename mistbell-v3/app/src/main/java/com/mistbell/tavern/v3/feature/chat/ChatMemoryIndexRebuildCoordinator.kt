@@ -50,28 +50,11 @@ internal class ChatMemoryIndexRebuildCoordinator(
         coroutineScope.launch(Dispatchers.IO) {
             // Reuse vectors that are already on disk. A missing/corrupt/incompatible snapshot just
             // means a full rebuild, which is the previous behaviour.
-            val previous = (vectorSnapshotStore.load(runtime.modelId, runtime.dimensions) as? VectorSnapshotLoadResult.Loaded)
-                ?.snapshot
+            val loaded = vectorSnapshotStore.load(runtime.modelId, runtime.dimensions)
+            val previous = (loaded as? VectorSnapshotLoadResult.Loaded)?.snapshot
             val result = MemoryIndexRebuilder(
                 runtime = runtime,
-                saveSourceTexts = { rebuiltRecords ->
-                    // Do not let a long-running rebuild overwrite facts/manual memories added
-                    // after this rebuild took its input snapshot. The vector snapshot is committed
-                    // only while the durable source text still matches the records it indexed.
-                    when (val latest = memoryTextStore.load()) {
-                        MemoryTextLoadResult.Missing -> memoryTextStore.save(rebuiltRecords)
-                        is MemoryTextLoadResult.Corrupt -> error(
-                            "Source text changed or became unreadable during index rebuild.",
-                        )
-                        is MemoryTextLoadResult.Loaded -> {
-                            val current = latest.records.sortedBy { it.id }
-                            val candidate = rebuiltRecords.sortedBy { it.id }
-                            check(current == candidate) {
-                                "Source text changed during index rebuild."
-                            }
-                        }
-                    }
-                },
+                saveSourceTexts = { rebuiltRecords -> commitSourceTexts(rebuiltRecords, memoryTextStore) },
                 saveSnapshot = vectorSnapshotStore::save,
                 onProgress = { progress ->
                     diagnosticStore.info(
@@ -96,9 +79,36 @@ internal class ChatMemoryIndexRebuildCoordinator(
                             "memory.index.background_rebuild_failed",
                             "stage=${result.stage}; reason=${result.reason}; scope=$scopePrefix",
                         )
-                        if (!isBusy()) setStatus("本地记忆索引重建失败（${result.stage}）；本轮不会注入记忆，聊天仍可继续。")
+                        if (!isBusy()) {
+                            setStatus(
+                                "本地记忆索引重建失败（${result.stage}）；" +
+                                    "本轮不会注入记忆，聊天仍可继续。",
+                            )
+                        }
                     }
                 }
+            }
+        }
+    }
+
+    /**
+     * Do not let a long-running rebuild overwrite facts/manual memories added after it took its
+     * input snapshot. The vector snapshot is committed only while the durable source text still
+     * matches the records it indexed.
+     */
+    private fun commitSourceTexts(
+        rebuiltRecords: List<MemoryTextRecord>,
+        memoryTextStore: AtomicMemoryTextStore,
+    ) {
+        when (val latest = memoryTextStore.load()) {
+            MemoryTextLoadResult.Missing -> memoryTextStore.save(rebuiltRecords)
+            is MemoryTextLoadResult.Corrupt -> error(
+                "Source text changed or became unreadable during index rebuild.",
+            )
+            is MemoryTextLoadResult.Loaded -> {
+                val current = latest.records.sortedBy { it.id }
+                val candidate = rebuiltRecords.sortedBy { it.id }
+                check(current == candidate) { "Source text changed during index rebuild." }
             }
         }
     }
