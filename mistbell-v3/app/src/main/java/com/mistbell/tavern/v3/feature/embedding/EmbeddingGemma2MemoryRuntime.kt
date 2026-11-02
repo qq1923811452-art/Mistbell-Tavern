@@ -23,4 +23,19 @@ class EmbeddingGemma2MemoryRuntime(
 
     override suspend fun embedPassage(text: String): List<Float> =
         adapter.embedDocuments(listOf(text)).vectors.single()
+
+    /** The adapter caps one inference call at the model's configured batch size. */
+    override val passageBatchSize: Int
+        get() = adapter.model.maxBatchSize
+
+    override suspend fun embedPassages(texts: List<String>): List<List<Float>> {
+        if (texts.isEmpty()) return emptyList()
+        // One call per configured batch; embedDocuments rejects an oversized batch instead of
+        // silently splitting it, so the caller's chunking stays authoritative.
+        val result = ArrayList<List<Float>>(texts.size)
+        for (chunk in texts.chunked(adapter.model.maxBatchSize.coerceAtLeast(1))) {
+            result += adapter.embedDocuments(chunk).vectors
+        }
+        return result
+    }
 }

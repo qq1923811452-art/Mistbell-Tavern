@@ -12,6 +12,7 @@ import com.mistbell.tavern.v3.core.memory.PassageEmbeddingRuntime
 import com.mistbell.tavern.v3.core.storage.AtomicMemoryTextStore
 import com.mistbell.tavern.v3.core.storage.AtomicVectorSnapshotStore
 import com.mistbell.tavern.v3.core.storage.MemoryTextLoadResult
+import com.mistbell.tavern.v3.core.storage.VectorSnapshotLoadResult
 
 /**
  * Owns the existing background rebuild scheduling and guarded index persistence flow.
@@ -47,6 +48,10 @@ internal class ChatMemoryIndexRebuildCoordinator(
             "reason=$reason; records=${records.size}; scope=$scopePrefix",
         )
         coroutineScope.launch(Dispatchers.IO) {
+            // Reuse vectors that are already on disk. A missing/corrupt/incompatible snapshot just
+            // means a full rebuild, which is the previous behaviour.
+            val previous = (vectorSnapshotStore.load(runtime.modelId, runtime.dimensions) as? VectorSnapshotLoadResult.Loaded)
+                ?.snapshot
             val result = MemoryIndexRebuilder(
                 runtime = runtime,
                 saveSourceTexts = { rebuiltRecords ->
@@ -68,7 +73,14 @@ internal class ChatMemoryIndexRebuildCoordinator(
                     }
                 },
                 saveSnapshot = vectorSnapshotStore::save,
-            ).rebuild(records)
+                onProgress = { progress ->
+                    diagnosticStore.info(
+                        "memory.index.rebuild_work",
+                        "reused=${progress.reusedRecords}; embedded=${progress.embeddedRecords}; " +
+                            "batches=${progress.inferenceBatches}; scope=$scopePrefix",
+                    )
+                },
+            ).rebuild(records, previous)
             withContext(Dispatchers.Main) {
                 setInFlight(false)
                 when (result) {

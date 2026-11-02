@@ -27,65 +27,87 @@ class AtomicMemoryTextStore(
 ) : MemoryTextPersistence {
     private val atomicFile: AtomicFile
 
+    /** Shared with every other store instance for the same path, not just this object. */
+    private val pathLock: Any
+
     init {
         require(
             fileName.isNotBlank() && fileName != "." && fileName != ".." &&
                 '/' !in fileName && '\\' !in fileName,
         ) { "Memory text file name must be a simple file name." }
         atomicFile = AtomicFile(File(context.filesDir, fileName))
+        pathLock = MemoryTextMemoryCache.lockFor(atomicFile.baseFile)
     }
 
-    @Synchronized
     override fun save(records: List<MemoryTextRecord>) {
-        val bytes = MemoryTextCodec.encode(records)
-        val stream = atomicFile.startWrite()
-        try {
-            stream.write(bytes)
-            atomicFile.finishWrite(stream)
-        } catch (failure: Throwable) {
-            atomicFile.failWrite(stream)
-            throw failure
-        }
+        synchronized(pathLock) { saveLocked(records) }
     }
 
-    @Synchronized
+    /**
+     * Read-modify-write under the shared per-path lock, so two store instances cannot interleave
+     * a load and a save and silently drop each other's records.
+     */
     override fun update(
         transform: (List<MemoryTextRecord>) -> List<MemoryTextRecord>,
-    ): List<MemoryTextRecord> {
-        val current = when (val loaded = load()) {
+    ): List<MemoryTextRecord> = synchronized(pathLock) {
+        val current = when (val loaded = loadLocked()) {
             MemoryTextLoadResult.Missing -> emptyList()
             is MemoryTextLoadResult.Loaded -> loaded.records
             is MemoryTextLoadResult.Corrupt -> throw IllegalStateException(loaded.safeReason)
         }
         val updated = transform(current)
-        if (updated != current) save(updated)
-        return updated
+        if (updated != current) saveLocked(updated)
+        updated
     }
 
-    @Synchronized
-    override fun load(): MemoryTextLoadResult {
-        val baseFile = atomicFile.baseFile
-        val backup = File(baseFile.path + ".bak")
-        if (!baseFile.exists() && !backup.exists()) return MemoryTextLoadResult.Missing
-        if (maxOf(baseFile.length(), backup.length()) > MemoryTextCodec.MAX_STORE_BYTES) {
-            return MemoryTextLoadResult.Corrupt("Memory text store exceeds the size limit.")
-        }
-        return try {
-            MemoryTextLoadResult.Loaded(
-                atomicFile.openRead().use { input -> MemoryTextCodec.decode(input.readBytes()) },
-            )
-        } catch (_: IOException) {
-            MemoryTextLoadResult.Corrupt("Memory text store could not be read.")
-        } catch (_: IllegalArgumentException) {
-            MemoryTextLoadResult.Corrupt("Memory text store failed integrity or validation checks.")
-        }
-    }
+    override fun load(): MemoryTextLoadResult = synchronized(pathLock) { loadLocked() }
 
     /** Retrieval treats missing storage as no memories, but refuses to use corrupt text. */
     override fun loadMemoryTexts(): List<MemoryTextRecord> = when (val result = load()) {
         MemoryTextLoadResult.Missing -> emptyList()
         is MemoryTextLoadResult.Loaded -> result.records
         is MemoryTextLoadResult.Corrupt -> throw IllegalStateException(result.safeReason)
+    }
+
+    private fun saveLocked(records: List<MemoryTextRecord>) {
+        try {
+            val bytes = MemoryTextCodec.encode(records)
+            val stream = atomicFile.startWrite()
+            try {
+                stream.write(bytes)
+                atomicFile.finishWrite(stream)
+            } catch (failure: Throwable) {
+                atomicFile.failWrite(stream)
+                throw failure
+            }
+        } finally {
+            // Bump even on failure: the on-disk state may be half-written, so the next read must
+            // go back to disk instead of trusting a previous decode.
+            MemoryTextMemoryCache.invalidate(atomicFile.baseFile)
+        }
+    }
+
+    private fun loadLocked(): MemoryTextLoadResult {
+        val baseFile = atomicFile.baseFile
+        val backup = File(baseFile.path + ".bak")
+        val identity = if (baseFile.exists()) baseFile else backup
+        if (!identity.exists()) return MemoryTextLoadResult.Missing
+        if (maxOf(baseFile.length(), backup.length()) > MemoryTextCodec.MAX_STORE_BYTES) {
+            return MemoryTextLoadResult.Corrupt("Memory text store exceeds the size limit.")
+        }
+        val key = MemoryTextMemoryCache.key(baseFile, identity)
+        if (key != null) {
+            MemoryTextMemoryCache.find(key)?.let { return MemoryTextLoadResult.Loaded(it) }
+        }
+        return try {
+            val decoded = atomicFile.openRead().use { input -> MemoryTextCodec.decode(input.readBytes()) }
+            val records = if (key != null) MemoryTextMemoryCache.store(key, decoded) else decoded
+            MemoryTextLoadResult.Loaded(records)
+        } catch (_: IOException) {
+            MemoryTextLoadResult.Corrupt("Memory text store could not be read.")
+        } catch (_: IllegalArgumentException) {
+            MemoryTextLoadResult.Corrupt("Memory text store failed integrity or validation checks.")
+        }
     }
 
     companion object {

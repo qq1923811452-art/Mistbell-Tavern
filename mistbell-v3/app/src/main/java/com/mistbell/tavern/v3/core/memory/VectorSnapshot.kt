@@ -8,13 +8,52 @@ internal interface FloatVectorView {
     fun fillInto(destination: FloatArray, destinationOffset: Int = 0)
 }
 
+/**
+ * A mapped vector that stores one signed byte per dimension plus a single positive scale.
+ *
+ * Because every dimension shares the same positive scale, cosine similarity is unchanged when the
+ * scale is dropped: `cos(u, v) = (u . b) / (|u| * |b|)` for `v = scale * b`. Scoring therefore reads
+ * the mapped bytes directly and never materialises a dequantized `FloatArray`.
+ */
+internal interface QuantizedVectorView {
+    /** False for legacy float32 snapshots, which must use the dequantizing path. */
+    val isQuantized: Boolean
+
+    /**
+     * Cosine similarity against [query] in a single pass over the mapped bytes.
+     *
+     * Returns [Double.NaN] for a stored zero vector, which has no defined direction.
+     * [queryNorm] must be the Euclidean norm of [query]; [query] must contain only finite values.
+     */
+    fun score(query: FloatArray, queryNorm: Double): Double
+}
+
 private class MappedVectorValues(
     private val buffer: ByteBuffer,
     private val start: Int,
     override val size: Int,
     private val legacyFloat32: Boolean,
     private val scale: Float,
-) : AbstractList<Float>(), FloatVectorView {
+) : AbstractList<Float>(), FloatVectorView, QuantizedVectorView {
+
+    override val isQuantized: Boolean
+        get() = !legacyFloat32
+
+    override fun score(query: FloatArray, queryNorm: Double): Double {
+        require(!legacyFloat32) { "Legacy float32 vectors cannot be scored from quantized bytes." }
+        require(query.size == size) { "Query vector dimension does not match the mapped vector." }
+        // One pass: the numerator and the magnitude both come from the same byte reads. The
+        // dequantizing path previously read every value twice (fill, then dot) and validated each.
+        var dot = 0.0
+        var squared = 0.0
+        for (index in 0 until size) {
+            val value = buffer.get(start + index).toInt()
+            dot += query[index].toDouble() * value.toDouble()
+            squared += (value * value).toDouble()
+        }
+        if (squared == 0.0) return Double.NaN
+        return dot / (queryNorm * kotlin.math.sqrt(squared))
+    }
     override fun get(index: Int): Float {
         if (index !in 0 until size) throw IndexOutOfBoundsException(index)
         val value = if (legacyFloat32) {
