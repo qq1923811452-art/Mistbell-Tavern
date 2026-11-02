@@ -279,25 +279,32 @@ fun ChatScreen(
     val historySaveMutex = remember { Mutex() }
     val historySaveRevision = remember { java.util.concurrent.atomic.AtomicLong(0L) }
     val diagnosticStore = remember(context) { DiagnosticLogStore(context.applicationContext.filesDir) }
-    // Copy the active conversation's memory files into the role scope the first time that scope
-    // is opened. Copy-only: the per-conversation originals are never modified or deleted.
-    LaunchedEffect(memoryScopeId, conversationMemoryScopeId) {
-        val outcome = withContext(Dispatchers.IO) {
+    var memoryScopeReady by remember(memoryScopeId, conversationMemoryScopeId) { mutableStateOf(false) }
+    var memoryScopeFailed by remember(memoryScopeId, conversationMemoryScopeId) { mutableStateOf(false) }
+    var memoryScopeRetry by remember(memoryScopeId, conversationMemoryScopeId) { mutableStateOf(0) }
+    // Queue claim validation and the copy are serialized: an old in-flight worker cannot write
+    // into the legacy store between copying it and rebinding its persisted job.
+    LaunchedEffect(memoryScopeId, conversationMemoryScopeId, memoryScopeRetry) {
+        memoryScopeReady = false
+        memoryScopeFailed = false
+        val migrated = withContext(Dispatchers.IO) {
             runCatching {
-                MemoryScopeMigration.copyConversationScopeToRole(
-                    context.applicationContext,
-                    memoryScopeId,
-                    conversationMemoryScopeId,
-                )
-            }.getOrNull()
+                MemoryExtractionJobRepository(MemoryExtractionJobStore(context.applicationContext)).migrateScope(
+                    legacyMemoryScopeId = conversationMemoryScopeId,
+                    roleMemoryScopeId = memoryScopeId,
+                    historyScopeId = conversationHistoryScope,
+                ) {
+                    !MemoryScopeMigration.copyConversationScopeToRole(
+                        context.applicationContext, memoryScopeId, conversationMemoryScopeId,
+                    ).failed
+                }
+            }.isSuccess
         }
-        if (outcome != null && outcome.didCopy) {
-            diagnosticStore.info(
-                "memory.scope.copied_to_role_scope",
-                "files=${outcome.copiedFiles}; facts=${outcome.rewrittenFacts}; " +
-                    "overrides=${outcome.rewrittenOverrides}; scope=${memoryScopeId.take(8)}",
-            )
-        }
+        memoryScopeReady = migrated
+        memoryScopeFailed = !migrated
+        diagnosticStore.info(
+            "memory.scope.migration_checked", "ready=$migrated; scope=${memoryScopeId.take(8)}",
+        )
     }
     val activeWorldbookId = remember(settings) {
         settings.getString("active_worldbook_id", "") ?: ""
@@ -699,6 +706,23 @@ fun ChatScreen(
             ?: "Token 用量：本轮尚无服务端 usage 数据"
     }
 
+
+    // Do not compose interactive memory/chat surfaces before migration and queue rebinding.
+    // Loading the repository itself may materialize empty projections and block a later copy.
+    if (!memoryScopeReady) {
+        Column(
+            modifier = Modifier.fillMaxSize().padding(24.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(if (memoryScopeFailed) "记忆迁移未完成，原始数据已保留。请重试后再继续。" else "正在准备角色共享记忆…")
+            if (memoryScopeFailed) {
+                Button(onClick = { memoryScopeRetry++ }) { Text("重试") }
+            }
+            Button(onClick = onBack) { Text("返回") }
+        }
+        return
+    }
 
     if (showCreateSession) {
         CreateSessionDialog(
