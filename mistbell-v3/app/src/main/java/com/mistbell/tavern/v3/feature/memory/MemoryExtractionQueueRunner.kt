@@ -119,6 +119,7 @@ internal object MemoryExtractionFailurePolicy {
             httpStatus != null && httpStatus in 500..599 -> "server"
             httpStatus != null && httpStatus in 400..499 -> "client"
             safeMessage.contains("timed out", ignoreCase = true) -> "timeout"
+            safeMessage == "Memory extraction was cancelled." -> "cancelled"
             safeMessage.contains("failed validation", ignoreCase = true) ||
                 safeMessage.contains("empty or too large", ignoreCase = true) ||
                 safeMessage.contains("could not be processed", ignoreCase = true) -> "response"
