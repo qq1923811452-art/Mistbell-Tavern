@@ -240,9 +240,7 @@ internal object MemoryStatusDiagnosis {
             !snapshot.configured -> "未配置记忆模型或接口地址，请先完善记忆设置。"
             !snapshot.credentialSaved -> "未保存记忆 API Key，抽取任务不会入队。"
             snapshot.queueUnreadable -> "抽取队列读取失败，原始队列已保留。"
-            snapshot.failedJobs > 0 && snapshot.factsCurrent > 0 ->
-                "有 ${snapshot.failedJobs} 条抽取批次失败；已保存的 ${snapshot.factsCurrent} 条记忆仍可用，可重试失败批次。"
-            snapshot.failedJobs > 0 -> "有 ${snapshot.failedJobs} 条抽取任务永久失败，请检查接口配置与任务状态。"
+            snapshot.failedJobs > 0 -> failedJobsHint(snapshot)
             snapshot.factIssue != null -> "事实库读取异常：${snapshot.factIssue}。"
             snapshot.textIssue != null -> "记忆文本读取异常：${snapshot.textIssue}。"
             snapshot.queuedJobs + snapshot.runningJobs + snapshot.retryJobs > 0 ->
@@ -250,5 +248,12 @@ internal object MemoryStatusDiagnosis {
             snapshot.factsTotal == 0 -> "还没有任何记忆事实：继续聊天，抽取成功后这里会出现条目。"
             snapshot.vectorBytes == null -> "事实已写入但向量索引未生成，记忆注入需等待索引就绪。"
             else -> snapshot.lastRetrieval ?: "已有记忆文件；尚无本会话检索记录，暂不能确认链路正常。"
+        }
+
+    private fun failedJobsHint(snapshot: MemoryStatusSnapshot): String =
+        if (snapshot.factsCurrent > 0) {
+            "有 ${snapshot.failedJobs} 条抽取批次失败；已保存的 ${snapshot.factsCurrent} 条记忆仍可用，可重试失败批次。"
+        } else {
+            "有 ${snapshot.failedJobs} 条抽取任务永久失败，请检查接口配置与任务状态。"
         }
 }
