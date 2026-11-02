@@ -15,6 +15,7 @@ import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
 import java.io.IOException
+import java.net.SocketTimeoutException
 import java.net.URI
 import java.util.Locale
 import java.util.concurrent.TimeUnit
@@ -93,12 +94,21 @@ class MemoryExtractionClient(
     private val providers: ProviderProfileSet,
     private val credentials: MemoryCredentialResolver,
     client: OkHttpClient = OkHttpClient(),
+    readTimeoutMillis: Long = DEFAULT_READ_TIMEOUT_MILLIS,
     private val onDiagnostic: (String, String) -> Unit = { _, _ -> },
 ) : MemoryFactExtractor {
+    private val socketReadTimeoutMillis =
+        readTimeoutMillis.also { require(it > 0L) { "Memory extraction read timeout must be positive." } }
+
+    // A non-streamed completion sends no bytes until the whole answer is generated, so the socket
+    // read timeout — not the call timeout — decides whether a slow but healthy provider succeeds.
     private val httpClient = client.newBuilder()
         .followRedirects(false)
         .followSslRedirects(false)
-        .callTimeout(90, TimeUnit.SECONDS)
+        .connectTimeout(CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .readTimeout(socketReadTimeoutMillis, TimeUnit.MILLISECONDS)
+        .writeTimeout(WRITE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .callTimeout(CALL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .build()
 
     override fun extract(input: MemoryExtractionInput, observer: MemoryExtractionObserver): Call {
@@ -133,7 +143,12 @@ class MemoryExtractionClient(
             .header("Content-Type", "application/json")
             .post(requestBody)
         if (key != null) builder.header("Authorization", "Bearer $key")
-        report("memory.extraction.request.started", "model=${profile.modelId}; host=${host.orEmpty()}")
+        report(
+            "memory.extraction.request.started",
+            "model=${profile.modelId}; host=${host.orEmpty()}; " +
+                "turns=${input.turns.size}; chars=${input.turns.sumOf { input.textByTurnId.getValue(it.id).length }}",
+        )
+        val startedAtNanos = System.nanoTime()
         val call = httpClient.newCall(builder.build())
         val finished = AtomicBoolean(false)
         fun finish(outcome: MemoryExtractionOutcome) {
@@ -141,7 +156,7 @@ class MemoryExtractionClient(
         }
         call.enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
-                finish(requestFailure(call))
+                finish(requestFailure(call, e, startedAtNanos))
             }
 
             override fun onResponse(call: Call, response: Response) {
@@ -150,8 +165,8 @@ class MemoryExtractionClient(
                 // exception for a transport failure (or deliver a second completion).
                 val outcome = try {
                     response.use { opened -> readOutcome(opened, input) }
-                } catch (_: IOException) {
-                    requestFailure(call)
+                } catch (failure: IOException) {
+                    requestFailure(call, failure, startedAtNanos)
                 } catch (_: Exception) {
                     MemoryExtractionOutcome.Failure("Memory-extraction response could not be processed.")
                 }
@@ -192,21 +207,61 @@ class MemoryExtractionClient(
             )
     }
 
-    private fun requestFailure(call: Call): MemoryExtractionOutcome.Failure =
-        MemoryExtractionOutcome.Failure(
-            if (call.isCanceled()) "Memory extraction was cancelled."
-            else "Memory-extraction request failed.",
+    /**
+     * A socket timeout means the provider was still generating, not that the network is flaky.
+     * Reporting it as a timeout keeps the durable retry category honest; the exception message is
+     * never logged because it can contain request URLs.
+     */
+    private fun requestFailure(
+        call: Call,
+        error: IOException,
+        startedAtNanos: Long,
+    ): MemoryExtractionOutcome.Failure {
+        val timedOut = error is SocketTimeoutException
+        report(
+            "memory.extraction.request_failed",
+            "kind=${error::class.java.simpleName}; timedOut=$timedOut; " +
+                "elapsedMs=${(System.nanoTime() - startedAtNanos) / NANOS_PER_MILLI}",
         )
+        return MemoryExtractionOutcome.Failure(
+            when {
+                call.isCanceled() -> "Memory extraction was cancelled."
+                timedOut -> "Memory-extraction request timed out."
+                else -> "Memory-extraction request failed."
+            },
+        )
+    }
 
     /** Diagnostics are best-effort: a full disk must not turn a valid response into a failure. */
     private fun report(event: String, detail: String) {
         runCatching { onDiagnostic(event, detail) }
     }
 
+    /**
+     * Provider error codes are protocol metadata such as `context_length_exceeded`; the
+     * human-readable message and every prompt fragment stay out of diagnostics.
+     */
+    private fun safeProviderErrorCode(response: Response): String? =
+        runCatching {
+            val body = response.body
+            val text =
+                if (body == null || body.contentLength() > MAX_ERROR_BODY_BYTES) null
+                else readBoundedBody(response)
+            val error = text?.let { JSONObject(it).optJSONObject("error") }
+            val raw =
+                if (error == null) ""
+                else error.optString("code").ifBlank { error.optString("type") }
+            raw.takeIf {
+                it.isNotBlank() && it.length <= MAX_ERROR_CODE_CHARS &&
+                    it.all { character -> character.isLetterOrDigit() || character in SAFE_ERROR_CODE_PUNCTUATION }
+            }
+        }.getOrNull()
+
     @Suppress("TooGenericExceptionCaught")
     private fun readOutcome(response: Response, input: MemoryExtractionInput): MemoryExtractionOutcome {
         if (!response.isSuccessful) {
-            report("memory.extraction.http_error", "status=${response.code}")
+            val code = safeProviderErrorCode(response)
+            report("memory.extraction.http_error", "status=${response.code}; code=${code ?: "none"}")
             return MemoryExtractionOutcome.Failure(
                 safeMessage = "Memory-extraction provider returned HTTP ${response.code}.",
                 httpStatus = response.code,
@@ -298,5 +353,19 @@ class MemoryExtractionClient(
         private const val MAX_RESPONSE_BYTES = 256 * 1024L
         private const val MAX_FACTS = 100
         private const val MAX_FIELD_CHARS = 2_000
+        private const val MAX_ERROR_BODY_BYTES = 8_192L
+        private const val MAX_ERROR_CODE_CHARS = 64
+        private const val SAFE_ERROR_CODE_PUNCTUATION = "_-."
+        private const val NANOS_PER_MILLI = 1_000_000L
+        private const val CONNECT_TIMEOUT_SECONDS = 30L
+        private const val WRITE_TIMEOUT_SECONDS = 60L
+        private const val CALL_TIMEOUT_SECONDS = 180L
+
+        /**
+         * Non-streamed completions return nothing until generation finishes. OkHttp's default
+         * 10-second read timeout silently killed healthy batches that needed longer, which showed
+         * up in diagnostics as "network" failures after roughly eleven seconds.
+         */
+        internal const val DEFAULT_READ_TIMEOUT_MILLIS = 120_000L
     }
 }
