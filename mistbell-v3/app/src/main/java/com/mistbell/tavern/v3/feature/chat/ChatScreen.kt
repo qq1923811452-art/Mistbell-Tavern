@@ -890,9 +890,19 @@ fun ChatScreen(
             onRetryFailed = {
                 coroutineScope.launch {
                     val retried = withContext(Dispatchers.IO) {
-                        MemoryExtractionJobRepository(
-                            MemoryExtractionJobStore(context.applicationContext),
-                        ).retryPermanentFailures(memoryScopeId, System.currentTimeMillis())
+                        val handle = settings.getString("memory_api_credential_handle", null)
+                            ?.takeIf { it.isNotBlank() && memoryCredentialStore.contains(it) }
+                        if (handle == null) {
+                            null
+                        } else {
+                            MemoryExtractionJobRepository(
+                                MemoryExtractionJobStore(context.applicationContext),
+                            ).retryPermanentFailures(memoryScopeId, System.currentTimeMillis(), handle)
+                        }
+                    }
+                    if (retried == null) {
+                        refreshSessionMemory("请先在记忆 API 设置中保存有效的 API Key，再重试失败任务。")
+                        return@launch
                     }
                     if (retried > 0) {
                         MemoryExtractionQueueWorker.enqueue(context.applicationContext)

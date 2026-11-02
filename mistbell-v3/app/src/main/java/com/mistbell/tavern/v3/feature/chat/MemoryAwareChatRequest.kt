@@ -1,6 +1,7 @@
 package com.mistbell.tavern.v3.feature.chat
 
 import com.mistbell.tavern.v3.core.diagnostics.DiagnosticLogStore
+import com.mistbell.tavern.v3.core.diagnostics.bestEffortDiagnostic
 import com.mistbell.tavern.v3.core.memory.VectorMemoryContextResult
 import com.mistbell.tavern.v3.core.memory.VectorMemoryContextService
 import kotlinx.coroutines.CancellationException
@@ -45,23 +46,25 @@ class MemoryAwareChatRequest(
                 )
             }
         }
-        when (memoryResult) {
-            is VectorMemoryContextResult.Ready -> {
-                if (memoryResult.memories.isNotEmpty()) {
-                    val scores = memoryResult.memories.map { it.similarity }
-                    diagnosticStore?.info(
-                        "memory.injected",
-                        "count=${memoryResult.memories.size}; " +
-                            "minScore=${"%.3f".format(scores.min())}; maxScore=${"%.3f".format(scores.max())}",
-                    )
-                } else {
-                    diagnosticStore?.info("memory.retrieval.empty", "reason=ready_without_memories")
+        bestEffortDiagnostic {
+            when (memoryResult) {
+                is VectorMemoryContextResult.Ready -> {
+                    if (memoryResult.memories.isNotEmpty()) {
+                        val scores = memoryResult.memories.map { it.similarity }
+                        diagnosticStore?.info(
+                            "memory.injected",
+                            "count=${memoryResult.memories.size}; " +
+                                "minScore=${"%.3f".format(scores.min())}; maxScore=${"%.3f".format(scores.max())}",
+                        )
+                    } else {
+                        diagnosticStore?.info("memory.retrieval.empty", "reason=ready_without_memories")
+                    }
                 }
+                VectorMemoryContextResult.NoRelevantMemories ->
+                    diagnosticStore?.info("memory.retrieval.empty", "reason=no_relevant_memories")
+                is VectorMemoryContextResult.Unavailable ->
+                    diagnosticStore?.warn("memory.retrieval.unavailable", "reason=${memoryResult.reason}")
             }
-            VectorMemoryContextResult.NoRelevantMemories ->
-                diagnosticStore?.info("memory.retrieval.empty", "reason=no_relevant_memories")
-            is VectorMemoryContextResult.Unavailable ->
-                diagnosticStore?.warn("memory.retrieval.unavailable", "reason=${memoryResult.reason}")
         }
         onMemoryStatus(
             when (memoryResult) {

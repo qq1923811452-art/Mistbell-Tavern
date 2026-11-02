@@ -1,16 +1,21 @@
 package com.mistbell.tavern.v3.feature.memory
 
 import com.mistbell.tavern.v3.core.network.EndpointPolicy
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.suspendCancellableCoroutine
+import okhttp3.Call
+import okhttp3.Callback
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Response
 import okhttp3.ResponseBody
 import okio.Buffer
 import org.json.JSONObject
+import java.io.IOException
 import java.net.URI
 import java.util.Locale
 import java.util.concurrent.TimeUnit
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 /**
  * Read-only model discovery for the memory settings screen.
@@ -34,7 +39,7 @@ class MemoryModelCatalogClient(
         apiKey: String?,
         onDiagnostic: (String, String) -> Unit = { _, _ -> },
     ): List<String> =
-        withContext(Dispatchers.IO) {
+        suspendCancellableCoroutine { continuation ->
             val validation = EndpointPolicy.validateBaseUrl(baseUrl)
             require(validation.isAllowed) { validation.reason ?: "Base URL is invalid." }
             val normalized = requireNotNull(validation.normalizedBaseUrl)
@@ -46,21 +51,45 @@ class MemoryModelCatalogClient(
             apiKey?.trim()?.takeIf(String::isNotEmpty)?.let {
                 requestBuilder.header("Authorization", "Bearer $it")
             }
-            client.newCall(requestBuilder.build()).execute().use { response ->
-                if (!response.isSuccessful) {
-                    error("模型列表接口返回 HTTP ${response.code}。")
-                }
-                val body = response.body ?: error("模型列表响应为空。")
-                val text = readBoundedBody(body)
-                val models = parseModels(text)
-                runCatching {
-                    onDiagnostic(
-                        "memory.model_catalog.fetched",
-                        "count=${models.size}; host=${uri.host.orEmpty().lowercase(Locale.ROOT)}",
-                    )
-                }
-                models
-            }
+            val call = client.newCall(requestBuilder.build())
+            continuation.invokeOnCancellation { call.cancel() }
+            call.enqueue(
+                object : Callback {
+                    override fun onFailure(
+                        call: Call,
+                        e: IOException,
+                    ) {
+                        continuation.resumeWithException(e)
+                    }
+
+                    override fun onResponse(
+                        call: Call,
+                        response: Response,
+                    ) {
+                        val result =
+                            runCatching {
+                                response.use {
+                                    check(it.isSuccessful) { "模型列表接口返回 HTTP ${it.code}。" }
+                                    val body = it.body ?: error("模型列表响应为空。")
+                                    parseModels(readBoundedBody(body))
+                                }
+                            }
+                        if (!continuation.isActive) return
+                        result.fold(
+                            onSuccess = { models ->
+                                runCatching {
+                                    onDiagnostic(
+                                        "memory.model_catalog.fetched",
+                                        "count=${models.size}; host=${uri.host.orEmpty().lowercase(Locale.ROOT)}",
+                                    )
+                                }
+                                continuation.resume(models)
+                            },
+                            onFailure = continuation::resumeWithException,
+                        )
+                    }
+                },
+            )
         }
 
     private fun readBoundedBody(body: ResponseBody): String {
