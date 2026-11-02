@@ -27,7 +27,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.mistbell.tavern.v3.core.memory.EffectiveMemory
 import com.mistbell.tavern.v3.core.memory.MemoryOrigin
@@ -77,7 +76,7 @@ internal fun SessionMemoryScreen(
                 Text("刷新")
             }
         }
-        Text(scopeTitle, style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.7f))
+        Text(scopeTitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         status?.let { MemoryStatusBlock(it, onRetryFailed = actions.onRetryFailed) }
         when (state) {
             SessionMemoryUiState.Loading ->
@@ -125,7 +124,7 @@ private fun MemoryStatusBlock(
         Modifier
             .fillMaxWidth()
             .padding(top = 8.dp)
-            .background(Color.White.copy(alpha = 0.04f))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
             .padding(10.dp),
     ) {
         Text(
@@ -137,13 +136,13 @@ private fun MemoryStatusBlock(
             "抽取队列：待处理 ${status.queuedJobs} · 重试 ${status.retryJobs} · " +
                 "执行中 ${status.runningJobs} · 失败 ${status.failedJobs}",
             style = MaterialTheme.typography.labelSmall,
-            color = Color.White.copy(alpha = 0.65f),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         status.lastQueueError?.let {
             Text(
                 "最近队列错误：${it.take(PREVIEW_CHARS)}（详情见诊断日志）",
                 style = MaterialTheme.typography.labelSmall,
-                color = Color.White.copy(alpha = 0.65f),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
         if (status.failedJobs > 0) {
@@ -156,7 +155,7 @@ private fun MemoryStatusBlock(
                 "向量 ${MemoryStatusFormat.bytes(status.vectorBytes)}" +
                 (status.lastRetrieval?.let { " · 最近：${it.take(PREVIEW_CHARS)}" } ?: ""),
             style = MaterialTheme.typography.labelSmall,
-            color = Color.White.copy(alpha = 0.65f),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
@@ -213,7 +212,7 @@ private fun MemoryEntryCard(
     Column(
         Modifier
             .fillMaxWidth()
-            .background(Color.White.copy(alpha = 0.06f))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
             .padding(12.dp),
     ) {
         Text(entry.subject, style = MaterialTheme.typography.titleSmall)
@@ -224,7 +223,7 @@ private fun MemoryEntryCard(
             Text(
                 "$origin · 来源轮 ${entry.sourceTurnId.take(ID_PREVIEW_CHARS)}",
                 style = MaterialTheme.typography.labelSmall,
-                color = Color.White.copy(alpha = 0.6f),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.weight(1f),
             )
             if (editable) {
