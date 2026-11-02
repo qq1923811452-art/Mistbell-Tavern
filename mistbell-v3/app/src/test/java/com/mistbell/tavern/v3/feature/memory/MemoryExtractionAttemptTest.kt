@@ -14,6 +14,15 @@ import org.junit.Test
 
 class MemoryExtractionAttemptTest {
     @Test
+    fun outerWaitIncludesTheEntireHttpBudgetAndPersistenceGrace() {
+        assertTrue(MemoryExtractionTimeouts.ATTEMPT_MILLIS > MemoryExtractionTimeouts.CALL_MILLIS)
+        assertEquals(
+            MemoryExtractionTimeouts.PERSISTENCE_GRACE_MILLIS,
+            MemoryExtractionTimeouts.ATTEMPT_MILLIS - MemoryExtractionTimeouts.CALL_MILLIS,
+        )
+    }
+
+    @Test
     fun completedAndIdleDispatchesReturnWithoutCancellingRequest() = runBlocking {
         for (hasJob in listOf(true, false)) {
             val attempt = MemoryExtractionAttempt()

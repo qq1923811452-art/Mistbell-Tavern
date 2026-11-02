@@ -15,6 +15,7 @@ import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
 import java.io.IOException
+import java.io.InterruptedIOException
 import java.net.SocketTimeoutException
 import java.net.URI
 import java.util.Locale
@@ -108,7 +109,7 @@ class MemoryExtractionClient(
         .connectTimeout(CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .readTimeout(socketReadTimeoutMillis, TimeUnit.MILLISECONDS)
         .writeTimeout(WRITE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-        .callTimeout(CALL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .callTimeout(MemoryExtractionTimeouts.CALL_MILLIS, TimeUnit.MILLISECONDS)
         .build()
 
     override fun extract(input: MemoryExtractionInput, observer: MemoryExtractionObserver): Call {
@@ -163,12 +164,18 @@ class MemoryExtractionClient(
                 // OkHttp does not call onFailure if reading inside onResponse throws.
                 // Close the response before notifying consumers, and never mistake a consumer
                 // exception for a transport failure (or deliver a second completion).
+                val httpFailure = response.takeUnless { it.isSuccessful }?.let {
+                    MemoryExtractionOutcome.Failure(
+                        safeMessage = "Memory-extraction provider returned HTTP ${it.code}.",
+                        httpStatus = it.code,
+                    )
+                }
                 val outcome = try {
                     response.use { opened -> readOutcome(opened, input) }
                 } catch (failure: IOException) {
-                    requestFailure(call, failure, startedAtNanos)
+                    httpFailure ?: requestFailure(call, failure, startedAtNanos)
                 } catch (_: Exception) {
-                    MemoryExtractionOutcome.Failure("Memory-extraction response could not be processed.")
+                    httpFailure ?: MemoryExtractionOutcome.Failure("Memory-extraction response could not be processed.")
                 }
                 finish(outcome)
             }
@@ -208,16 +215,17 @@ class MemoryExtractionClient(
     }
 
     /**
-     * A socket timeout means the provider was still generating, not that the network is flaky.
-     * Reporting it as a timeout keeps the durable retry category honest; the exception message is
-     * never logged because it can contain request URLs.
+     * Socket and overall call expiry are timeouts, not proof of a healthy or generating provider.
+     * OkHttp's overall expiry also marks the call cancelled, so recognize it before cancellation.
+     * Exception messages are never logged because they can contain request URLs.
      */
     private fun requestFailure(
         call: Call,
         error: IOException,
         startedAtNanos: Long,
     ): MemoryExtractionOutcome.Failure {
-        val timedOut = error is SocketTimeoutException
+        val timedOut = error is SocketTimeoutException ||
+            (error is InterruptedIOException && error.message == "timeout")
         report(
             "memory.extraction.request_failed",
             "kind=${error::class.java.simpleName}; timedOut=$timedOut; " +
@@ -225,8 +233,8 @@ class MemoryExtractionClient(
         )
         return MemoryExtractionOutcome.Failure(
             when {
-                call.isCanceled() -> "Memory extraction was cancelled."
                 timedOut -> "Memory-extraction request timed out."
+                call.isCanceled() -> "Memory extraction was cancelled."
                 else -> "Memory-extraction request failed."
             },
         )
@@ -237,25 +245,44 @@ class MemoryExtractionClient(
         runCatching { onDiagnostic(event, detail) }
     }
 
-    /**
-     * Provider error codes are protocol metadata such as `context_length_exceeded`; the
-     * human-readable message and every prompt fragment stay out of diagnostics.
-     */
+    /** Only known protocol labels are logged; arbitrary remote tokens can contain private text. */
     private fun safeProviderErrorCode(response: Response): String? =
         runCatching {
-            val body = response.body
-            val text =
-                if (body == null || body.contentLength() > MAX_ERROR_BODY_BYTES) null
-                else readBoundedBody(response)
+            val text = readErrorBody(response)
             val error = text?.let { JSONObject(it).optJSONObject("error") }
-            val raw =
-                if (error == null) ""
-                else error.optString("code").ifBlank { error.optString("type") }
-            raw.takeIf {
-                it.isNotBlank() && it.length <= MAX_ERROR_CODE_CHARS &&
-                    it.all { character -> character.isLetterOrDigit() || character in SAFE_ERROR_CODE_PUNCTUATION }
+            val raw = error?.opt("code") as? String
+            val type = error?.opt("type") as? String
+            when {
+                raw in SAFE_ERROR_CODES -> raw
+                type in SAFE_ERROR_CODES -> type
+                error != null -> "unrecognized"
+                else -> null
             }
         }.getOrNull()
+
+    /** Diagnostic reads have both a byte cap and a fixed total deadline (not per-read timeouts). */
+    private fun readErrorBody(response: Response): String? {
+        val body = response.body
+        if (body == null || body.contentLength() > MAX_ERROR_BODY_BYTES) return null
+        val source = body.source()
+        val timeout = source.timeout()
+        val hadDeadline = timeout.hasDeadline()
+        val oldDeadline = if (hadDeadline) timeout.deadlineNanoTime() else 0L
+        val diagnosticDeadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(ERROR_BODY_TIMEOUT_MILLIS)
+        timeout.deadlineNanoTime(if (hadDeadline) minOf(oldDeadline, diagnosticDeadline) else diagnosticDeadline)
+        return try {
+            val buffer = okio.Buffer()
+            while (buffer.size <= MAX_ERROR_BODY_BYTES) {
+                if (System.nanoTime() - diagnosticDeadline >= 0L) throw InterruptedIOException("timeout")
+                timeout.throwIfReached()
+                val remaining = MAX_ERROR_BODY_BYTES + 1 - buffer.size
+                if (source.read(buffer, minOf(RESPONSE_READ_CHUNK_BYTES, remaining)) == -1L) break
+            }
+            if (buffer.size > MAX_ERROR_BODY_BYTES) null else buffer.readUtf8().takeIf(String::isNotBlank)
+        } finally {
+            if (hadDeadline) timeout.deadlineNanoTime(oldDeadline) else timeout.clearDeadline()
+        }
+    }
 
     @Suppress("TooGenericExceptionCaught")
     private fun readOutcome(response: Response, input: MemoryExtractionInput): MemoryExtractionOutcome {
@@ -354,17 +381,20 @@ class MemoryExtractionClient(
         private const val MAX_FACTS = 100
         private const val MAX_FIELD_CHARS = 2_000
         private const val MAX_ERROR_BODY_BYTES = 8_192L
-        private const val MAX_ERROR_CODE_CHARS = 64
-        private const val SAFE_ERROR_CODE_PUNCTUATION = "_-."
+        private const val ERROR_BODY_TIMEOUT_MILLIS = 1_000L
+        private val SAFE_ERROR_CODES = setOf(
+            "context_length_exceeded", "invalid_request_error", "authentication_error",
+            "invalid_api_key", "permission_error", "permission_denied", "not_found_error",
+            "model_not_found", "rate_limit_exceeded", "rate_limit_error", "insufficient_quota",
+            "server_error", "api_error", "overloaded_error", "content_filter", "content_policy_violation",
+        )
         private const val NANOS_PER_MILLI = 1_000_000L
         private const val CONNECT_TIMEOUT_SECONDS = 30L
         private const val WRITE_TIMEOUT_SECONDS = 60L
-        private const val CALL_TIMEOUT_SECONDS = 180L
 
         /**
          * Non-streamed completions return nothing until generation finishes. OkHttp's default
-         * 10-second read timeout silently killed healthy batches that needed longer, which showed
-         * up in diagnostics as "network" failures after roughly eleven seconds.
+         * 10-second read timeout could abort slow responses; it does not bound the entire call.
          */
         internal const val DEFAULT_READ_TIMEOUT_MILLIS = 120_000L
     }

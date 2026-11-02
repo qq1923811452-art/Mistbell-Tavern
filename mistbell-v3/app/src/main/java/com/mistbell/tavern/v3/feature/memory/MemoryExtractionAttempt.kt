@@ -32,7 +32,7 @@ internal class MemoryExtractionAttempt {
         call = request
     }
 
-    suspend fun await(timeoutMillis: Long = DEFAULT_TIMEOUT_MILLIS): Boolean {
+    suspend fun await(timeoutMillis: Long = MemoryExtractionTimeouts.ATTEMPT_MILLIS): Boolean {
         return try {
             val hasJob = withTimeoutOrNull(timeoutMillis) { completion.await() }
             if (hasJob == null) {
@@ -57,10 +57,5 @@ internal class MemoryExtractionAttempt {
             call?.cancel()
             completion.cancel()
         }
-    }
-
-    companion object {
-        // The client's entire call is bounded at 90 seconds; leave time for persistence callbacks.
-        private const val DEFAULT_TIMEOUT_MILLIS = 120_000L
     }
 }
