@@ -81,7 +81,7 @@ object VectorSimilaritySearch {
 
     /**
      * Scores one record against a fixed query, reusing the scratch buffer and the cached
-     * magnitudes of a legacy float32 snapshot.
+     * magnitude of a legacy float32 snapshot.
      */
     private class Scorer(
         private val snapshot: VectorSnapshot,
@@ -95,9 +95,22 @@ object VectorSimilaritySearch {
         fun score(index: Int): Double {
             val values = snapshot.records[index].values
             return if (values is QuantizedVectorView && values.isQuantized) {
-                values.score(query, queryNorm)
+                quantizedScore(values)
             } else {
                 legacyScore(values, index)
+            }
+        }
+
+        /**
+         * Byte-space cosine. Only the dot product touches the query; the stored magnitude is
+         * computed once per vector and cached, so repeated searches do not re-derive it.
+         */
+        private fun quantizedScore(values: QuantizedVectorView): Double {
+            val recordNorm = values.byteNorm()
+            return if (recordNorm == 0.0) {
+                Double.NaN
+            } else {
+                (values.dot(query) / (queryNorm * recordNorm)).coerceIn(-1.0, 1.0)
             }
         }
 

@@ -243,6 +243,11 @@ class MemoryIndexRebuilder(
     /**
      * Copies reusable vectors out of the previous snapshot. Model and dimension must match, and
      * each record must keep its ID and source-text hash; anything else is re-embedded.
+     *
+     * The source-text hash stands in for the embedded input only because the memory runtime
+     * embeds `formatDocument(text)` with no title. Changing that formatting policy (or swapping the
+     * model file behind the same model ID) makes old vectors stale while this key still matches;
+     * such a change must bump the model identity or the whole index is silently reused.
      */
     private fun reusedVectors(
         ordered: List<MemoryTextRecord>,

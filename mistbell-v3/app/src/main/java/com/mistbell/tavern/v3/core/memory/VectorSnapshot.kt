@@ -20,12 +20,21 @@ internal interface QuantizedVectorView {
     val isQuantized: Boolean
 
     /**
-     * Cosine similarity against [query] in a single pass over the mapped bytes.
+     * Dot product with [query], read straight from the mapped bytes.
      *
-     * Returns [Double.NaN] for a stored zero vector, which has no defined direction.
-     * [queryNorm] must be the Euclidean norm of [query]; [query] must contain only finite values.
+     * The stored vector is `scale * q` with one positive `scale`, so the cosine numerator is this
+     * value times `scale` while the denominator carries the same `scale`: dividing by [byteNorm]
+     * cancels it. [query] must be finite and match [AbstractList.size].
      */
-    fun score(query: FloatArray, queryNorm: Double): Double
+    fun dot(query: FloatArray): Double
+
+    /**
+     * Euclidean norm of the stored bytes, computed on first use and cached per mapped vector.
+     *
+     * A query must not pay this cost again. Dequantizing every candidate on every search was the
+     * dominant cost of the previous path. Returns 0.0 for a stored zero vector.
+     */
+    fun byteNorm(): Double
 }
 
 private class MappedVectorValues(
@@ -39,21 +48,35 @@ private class MappedVectorValues(
     override val isQuantized: Boolean
         get() = !legacyFloat32
 
-    override fun score(query: FloatArray, queryNorm: Double): Double {
+    /** Cached byte-space magnitude. A lost race recomputes the same value, so plain double is safe. */
+    @Volatile
+    private var cachedByteNorm: Double = Double.NaN
+
+    override fun dot(query: FloatArray): Double {
         require(!legacyFloat32) { "Legacy float32 vectors cannot be scored from quantized bytes." }
         require(query.size == size) { "Query vector dimension does not match the mapped vector." }
-        // One pass: the numerator and the magnitude both come from the same byte reads. The
-        // dequantizing path previously read every value twice (fill, then dot) and validated each.
+        // Only the numerator is read per query; the magnitude is cached by [byteNorm].
         var dot = 0.0
+        for (index in 0 until size) {
+            dot += query[index].toDouble() * buffer.get(start + index).toDouble()
+        }
+        return dot
+    }
+
+    override fun byteNorm(): Double {
+        val cached = cachedByteNorm
+        if (!cached.isNaN()) return cached
+        require(!legacyFloat32) { "Legacy float32 vectors do not use byte-space norms." }
         var squared = 0.0
         for (index in 0 until size) {
             val value = buffer.get(start + index).toInt()
-            dot += query[index].toDouble() * value.toDouble()
             squared += (value * value).toDouble()
         }
-        if (squared == 0.0) return Double.NaN
-        return dot / (queryNorm * kotlin.math.sqrt(squared))
+        val computed = kotlin.math.sqrt(squared)
+        cachedByteNorm = computed
+        return computed
     }
+
     override fun get(index: Int): Float {
         if (index !in 0 until size) throw IndexOutOfBoundsException(index)
         val value = if (legacyFloat32) {
