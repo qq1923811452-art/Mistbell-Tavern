@@ -1,28 +1,17 @@
 package com.mistbell.tavern.v3.core.storage
 
 import android.content.Context
-import com.mistbell.tavern.v3.core.memory.TemporalFactIdentity
+import com.mistbell.tavern.v3.core.memory.EffectiveMemoryResolver
+import com.mistbell.tavern.v3.core.memory.MemoryProjection
+import com.mistbell.tavern.v3.core.memory.MemoryTextCodec
+import com.mistbell.tavern.v3.core.memory.TemporalFactCodec
+import com.mistbell.tavern.v3.core.memory.TemporalFactLedger
+import com.mistbell.tavern.v3.core.memory.TemporalFactObservation
+import com.mistbell.tavern.v3.core.memory.VectorSnapshotCodec
 import com.mistbell.tavern.v3.core.storage.MemoryScopeFileNames.forScope
 import java.io.File
 
-/**
- * One-way, copy-only migration from a conversation-scoped memory folder to a role-scoped one.
- *
- * When memory becomes shared across every conversation with the same role, the previous
- * per-conversation files are no longer reachable. Rather than merge histories (which can mix
- * unrelated story lines), the active conversation's files are *copied* into the role scope the
- * first time that scope is opened. The originals are never deleted or modified, so switching back
- * to per-conversation isolation still finds its data intact.
- *
- * Two record types embed the scope id itself and must be rewritten during the copy:
- *
- * - temporal facts group "current value" per `conversationId`, so a stale conversation id would
- *   stop new observations from superseding the copied ones;
- * - manual overrides are matched against `fact.conversationId` through `scopeId`.
- *
- * Everything here is best-effort: a failure leaves the role scope empty (a normal first run)
- * instead of breaking chat.
- */
+/** Copy only the current conversation, never merge it into an existing role's memory. */
 object MemoryScopeMigration {
     data class Outcome(
         val copiedFiles: Int,
@@ -33,101 +22,96 @@ object MemoryScopeMigration {
         val didCopy: Boolean get() = copiedFiles > 0
     }
 
-    private val SCOPED_FILE_NAMES = listOf(
+    private val fileNames = listOf(
         AtomicMemoryTextStore.DEFAULT_FILE_NAME,
         AtomicVectorSnapshotStore.DEFAULT_FILE_NAME,
         AtomicMemoryOverrideStore.DEFAULT_FILE_NAME,
         AtomicTemporalFactStore.DEFAULT_FILE_NAME,
     )
 
-    @Suppress("ReturnCount") // Guard clauses separate "nothing to do" from "copied" and "failed".
+    @Suppress("ReturnCount", "LongMethod")
     fun copyConversationScopeToRole(
         context: Context,
         roleScopeId: String,
         conversationScopeId: String,
     ): Outcome {
         require(roleScopeId.isNotBlank() && conversationScopeId.isNotBlank())
-        if (roleScopeId == conversationScopeId) {
-            return Outcome(copiedFiles = 0, rewrittenFacts = 0, rewrittenOverrides = 0, failed = false)
-        }
-        var copiedFiles = 0
-        try {
-            for (fileName in SCOPED_FILE_NAMES) {
-                val source = File(context.filesDir, forScope(fileName, conversationScopeId))
-                val target = File(context.filesDir, forScope(fileName, roleScopeId))
-                // Never overwrite: an existing role scope is authoritative.
-                if (!source.exists() || target.exists()) continue
-                source.copyTo(target, overwrite = false)
-                copiedFiles++
-                val sourceBackup = File(source.path + ".bak")
-                if (sourceBackup.exists()) {
-                    sourceBackup.copyTo(File(target.path + ".bak"), overwrite = false)
+        return try {
+            MemoryScopeStorageLock.withLock(File(context.filesDir, "memory-migration")) {
+                if (roleScopeId == conversationScopeId || fileNames.any { name ->
+                    val target = File(context.filesDir, forScope(name, roleScopeId))
+                    target.exists() || File(target.path + ".bak").exists() || File(target.path + ".new").exists()
+                }) return Outcome(0, 0, 0, false)
+
+                // Decode a consistent committed snapshot without modifying the original, even
+                // when AtomicFile left only a backup. A .new file is never committed data.
+                fun committed(name: String, limit: Long): ByteArray? {
+                    val base = File(context.filesDir, forScope(name, conversationScopeId))
+                    val backup = File(base.path + ".bak")
+                    val source = if (backup.exists()) backup else base
+                    if (!source.exists()) return null
+                    require(source.length() <= limit)
+                    return source.readBytes()
                 }
+                val factBytes = committed(AtomicTemporalFactStore.DEFAULT_FILE_NAME, TemporalFactCodec.MAX_STORE_BYTES.toLong())
+                val overrideBytes = committed(AtomicMemoryOverrideStore.DEFAULT_FILE_NAME, AtomicMemoryOverrideStore.MAX_STORE_BYTES)
+                val textBytes = committed(AtomicMemoryTextStore.DEFAULT_FILE_NAME, MemoryTextCodec.MAX_STORE_BYTES.toLong())
+                val facts = factBytes?.let(TemporalFactCodec::decode).orEmpty()
+                val overrides = overrideBytes?.let(MemoryOverrideCodec::decode).orEmpty()
+                val texts = textBytes?.let(MemoryTextCodec::decode).orEmpty()
+                val idMap = facts.associate { fact ->
+                    fact.id to if (fact.conversationId != conversationScopeId) fact.id else
+                        TemporalFactLedger.stableId(TemporalFactObservation(
+                            roleScopeId, fact.sourceTurnId, fact.subject, fact.predicate,
+                            fact.value, fact.observedAtEpochMillis,
+                        ))
+                }
+                val rewrittenFacts = facts.map { fact ->
+                    if (fact.conversationId == conversationScopeId) {
+                        fact.copy(conversationId = roleScopeId, id = idMap.getValue(fact.id))
+                    } else fact
+                }
+                val factsById = facts.associateBy { it.id }
+                val rewrittenOverrides = overrides.map { override ->
+                    if (override.scopeId == conversationScopeId) override.copy(
+                        scopeId = roleScopeId,
+                        factId = idMap[override.factId] ?: override.factId,
+                        sourceLogicalKey = EffectiveMemoryResolver.originalKey(override, factsById),
+                    ) else override
+                }
+                val textIdMap = idMap.mapKeys { MemoryProjection.factRecordId(it.key) }
+                    .mapValues { MemoryProjection.factRecordId(it.value) }
+                val files = linkedMapOf<String, ByteArray>()
+                fun put(name: String, bytes: ByteArray) { files[forScope(name, roleScopeId)] = bytes }
+                // Keep unrelated legacy texts; rebuild all fact texts using the migrated edits.
+                if (textBytes != null || factBytes != null) put(
+                    AtomicMemoryTextStore.DEFAULT_FILE_NAME,
+                    MemoryTextCodec.encode(if (factBytes == null) texts else
+                        texts.filterNot { it.id.startsWith(MemoryProjection.FACT_TEXT_ID_PREFIX) } +
+                            EffectiveMemoryResolver.currentTexts(rewrittenFacts, rewrittenOverrides)),
+                )
+                if (factBytes != null) put(AtomicTemporalFactStore.DEFAULT_FILE_NAME, TemporalFactCodec.encode(rewrittenFacts))
+                if (overrideBytes != null) put(AtomicMemoryOverrideStore.DEFAULT_FILE_NAME, MemoryOverrideCodec.encode(rewrittenOverrides))
+                val vectorFile = File(context.filesDir, forScope(AtomicVectorSnapshotStore.DEFAULT_FILE_NAME, conversationScopeId))
+                val vectorBackup = File(vectorFile.path + ".bak")
+                // Read the committed recovery copy without touching the original source files.
+                val committedVector = if (vectorBackup.exists()) vectorBackup else vectorFile
+                if (committedVector.exists()) {
+                    require(committedVector.length() <= VectorSnapshotCodec.MAX_SNAPSHOT_BYTES)
+                    val snapshot = VectorSnapshotCodec.decode(committedVector.readBytes())
+                    put(AtomicVectorSnapshotStore.DEFAULT_FILE_NAME, VectorSnapshotCodec.encode(snapshot.copy(
+                        records = snapshot.records.map { record -> record.copy(id = textIdMap[record.id] ?: record.id) },
+                    )))
+                }
+                if (files.isEmpty()) return Outcome(0, 0, 0, false)
+                MemoryScopeStorageLock.publish(context.filesDir, files)
+                Outcome(files.size, facts.count { it.conversationId == conversationScopeId },
+                    overrides.count { it.scopeId == conversationScopeId }, false)
             }
-            if (copiedFiles == 0) {
-                return Outcome(copiedFiles = 0, rewrittenFacts = 0, rewrittenOverrides = 0, failed = false)
-            }
-            return Outcome(
-                copiedFiles = copiedFiles,
-                rewrittenFacts = rewriteFacts(context, roleScopeId, conversationScopeId),
-                rewrittenOverrides = rewriteOverrides(context, roleScopeId, conversationScopeId),
-                failed = false,
-            )
         } catch (_: Exception) {
-            return Outcome(copiedFiles, rewrittenFacts = 0, rewrittenOverrides = 0, failed = true)
+            // Before the manifest there are no targets. After it, every store recovers the snapshot
+            // before allowing a read/write. Never expose or accept writes over a partial migration.
+            Outcome(0, 0, 0, true)
         }
-    }
-
-    @Suppress("ReturnCount") // Guard clauses skip a missing or already-rewritten store.
-    private fun rewriteFacts(context: Context, roleScopeId: String, conversationScopeId: String): Int {
-        val store = AtomicTemporalFactStore(
-            context,
-            forScope(AtomicTemporalFactStore.DEFAULT_FILE_NAME, roleScopeId),
-        )
-        val loaded = store.load()
-        if (loaded !is TemporalFactLoadResult.Loaded) return 0
-        val changed = loaded.facts.count { it.conversationId == conversationScopeId }
-        if (changed == 0) return 0
-        store.save(
-            loaded.facts.map { fact ->
-                if (fact.conversationId != conversationScopeId) {
-                    fact
-                } else {
-                    // The id is derived from the conversation scope, so rewriting the scope
-                    // without recomputing the id would defeat deduplication forever after.
-                    fact.copy(
-                        conversationId = roleScopeId,
-                        id = TemporalFactIdentity.forObservation(
-                            conversationId = roleScopeId,
-                            sourceTurnId = fact.sourceTurnId,
-                            subject = fact.subject,
-                            predicate = fact.predicate,
-                            value = fact.value,
-                        ),
-                    )
-                }
-            },
-        )
-        return changed
-    }
-
-    @Suppress("ReturnCount") // Guard clauses skip a missing or already-rewritten store.
-    private fun rewriteOverrides(context: Context, roleScopeId: String, conversationScopeId: String): Int {
-        val store = AtomicMemoryOverrideStore(
-            context,
-            forScope(AtomicMemoryOverrideStore.DEFAULT_FILE_NAME, roleScopeId),
-        )
-        val loaded = store.load()
-        if (loaded !is MemoryOverrideLoadResult.Loaded) return 0
-        val changed = loaded.overrides.size
-        if (changed == 0) return 0
-        // The override store has no public save(); its read-modify-write API is the only writer,
-        // so reuse it to keep the same atomic path and path-scoped lock.
-        store.update { overrides ->
-            overrides.map { override ->
-                if (override.scopeId == conversationScopeId) override.copy(scopeId = roleScopeId) else override
-            }
-        }
-        return changed
     }
 }

@@ -40,7 +40,7 @@ class AtomicMemoryTextStore(
     }
 
     override fun save(records: List<MemoryTextRecord>) {
-        synchronized(pathLock) { saveLocked(records) }
+        MemoryScopeStorageLock.withLock(atomicFile.baseFile) { synchronized(pathLock) { saveLocked(records) } }
     }
 
     /**
@@ -49,7 +49,7 @@ class AtomicMemoryTextStore(
      */
     override fun update(
         transform: (List<MemoryTextRecord>) -> List<MemoryTextRecord>,
-    ): List<MemoryTextRecord> = synchronized(pathLock) {
+    ): List<MemoryTextRecord> = MemoryScopeStorageLock.withLock(atomicFile.baseFile) { synchronized(pathLock) {
         val current = when (val loaded = loadLocked()) {
             MemoryTextLoadResult.Missing -> emptyList()
             is MemoryTextLoadResult.Loaded -> loaded.records
@@ -58,9 +58,11 @@ class AtomicMemoryTextStore(
         val updated = transform(current)
         if (updated != current) saveLocked(updated)
         updated
-    }
+    } }
 
-    override fun load(): MemoryTextLoadResult = synchronized(pathLock) { loadLocked() }
+    override fun load(): MemoryTextLoadResult = MemoryScopeStorageLock.withLock(atomicFile.baseFile) {
+        synchronized(pathLock) { loadLocked() }
+    }
 
     /** Retrieval treats missing storage as no memories, but refuses to use corrupt text. */
     override fun loadMemoryTexts(): List<MemoryTextRecord> = when (val result = load()) {

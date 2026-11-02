@@ -53,10 +53,9 @@ class AtomicVectorSnapshotStore(
         atomicFile = AtomicFile(File(context.filesDir, fileName))
     }
 
-    private val pathLock = VectorSnapshotMemoryCache.lockFor(atomicFile.baseFile)
 
     override fun save(snapshot: VectorSnapshot): Unit =
-        synchronized(pathLock) {
+        MemoryScopeStorageLock.withLock(atomicFile.baseFile) {
             val bytes = VectorSnapshotCodec.encode(snapshot)
             try {
                 val stream = atomicFile.startWrite()
@@ -78,7 +77,7 @@ class AtomicVectorSnapshotStore(
         expectedModelId: String,
         expectedDimensions: Int,
     ): VectorSnapshotLoadResult {
-        return synchronized(pathLock) {
+        return MemoryScopeStorageLock.withLock(atomicFile.baseFile) {
             require(expectedModelId.isNotBlank())
             require(expectedDimensions > 0)
             val file = atomicFile.baseFile
