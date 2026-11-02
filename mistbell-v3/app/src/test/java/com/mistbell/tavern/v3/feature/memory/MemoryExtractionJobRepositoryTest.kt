@@ -15,6 +15,18 @@ class MemoryExtractionJobRepositoryTest {
         assertEquals("Extraction attempt failed.", repository.list().single().lastSafeError)
     }
 
+    @Test fun responseValidationFailurePersistsAnAccurateSafeCategory() {
+        val repository = repository()
+        assertTrue(repository.enqueue(job("response-failure", createdAt = 100L)))
+        repository.claimDue(100L)
+        assertTrue(repository.fail("response-failure", 200L, "response"))
+
+        assertEquals(
+            "Provider response failed validation.",
+            repository.list().single().lastSafeError,
+        )
+    }
+
     @Test fun enqueueIsIdempotentForSameJobAndRejectsIdCollision() {
         val repository = repository()
         val original = job("same-id", createdAt = 100L)

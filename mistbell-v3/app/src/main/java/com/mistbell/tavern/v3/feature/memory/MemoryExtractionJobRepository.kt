@@ -76,6 +76,9 @@ class MemoryExtractionJobRepository(private val store: MemoryExtractionJobPersis
             "timeout" -> "Request timed out."
             "rate_limit" -> "Provider rate limit reached."
             "server" -> "Provider server error."
+            "response" -> "Provider response failed validation."
+            "client" -> "Provider rejected the request."
+            "source_unavailable" -> "Source chat history is temporarily unavailable."
             else -> "Extraction attempt failed."
         }
         return update(id) { job ->

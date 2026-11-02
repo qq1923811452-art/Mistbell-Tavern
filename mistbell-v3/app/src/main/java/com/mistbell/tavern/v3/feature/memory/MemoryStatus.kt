@@ -240,6 +240,8 @@ internal object MemoryStatusDiagnosis {
             !snapshot.configured -> "未配置记忆模型或接口地址，请先完善记忆设置。"
             !snapshot.credentialSaved -> "未保存记忆 API Key，抽取任务不会入队。"
             snapshot.queueUnreadable -> "抽取队列读取失败，原始队列已保留。"
+            snapshot.failedJobs > 0 && snapshot.factsCurrent > 0 ->
+                "有 ${snapshot.failedJobs} 条抽取批次失败；已保存的 ${snapshot.factsCurrent} 条记忆仍可用，可重试失败批次。"
             snapshot.failedJobs > 0 -> "有 ${snapshot.failedJobs} 条抽取任务永久失败，请检查接口配置与任务状态。"
             snapshot.factIssue != null -> "事实库读取异常：${snapshot.factIssue}。"
             snapshot.textIssue != null -> "记忆文本读取异常：${snapshot.textIssue}。"
