@@ -2,9 +2,13 @@ package com.mistbell.tavern.v3.feature.memory
 
 /** Queue state transitions are persisted before work is dispatched. */
 @Suppress("TooManyFunctions") // Keep queue transitions and claim validation behind the same shared lock.
-class MemoryExtractionJobRepository(private val store: MemoryExtractionJobPersistence) {
+class MemoryExtractionJobRepository(
+    private val store: MemoryExtractionJobPersistence,
+    private val scopeRegistry: MemoryExtractionScopeRegistry = store.scopeRegistry ?: InMemoryExtractionScopeRegistry(),
+) {
     fun enqueue(job: MemoryExtractionJob): Boolean =
         synchronized(QUEUE_LOCK) {
+            check(!scopeBlocked(job.conversationId)) { "Extraction scope has migrated or migration is pending." }
             val jobs = read()
             val existing = jobs.firstOrNull { it.id == job.id }
             if (existing != null) {
@@ -59,7 +63,7 @@ class MemoryExtractionJobRepository(private val store: MemoryExtractionJobPersis
                         eligible.any { earlier ->
                             blocksLaterJob(earlier, job)
                         }
-                    due && job.migrationRoleScopeId == null && !hasEarlierOutstandingJob
+                    due && job.migrationRoleScopeId == null && !scopeBlocked(job.conversationId) && !hasEarlierOutstandingJob
                 }.minByOrNull { eligible[it].createdAtEpochMillis } ?: return null
             val job = eligible[index]
             val claimed = job.copy(state = MemoryExtractionJob.State.RUNNING, attemptCount = job.attemptCount + 1)
@@ -192,6 +196,13 @@ class MemoryExtractionJobRepository(private val store: MemoryExtractionJobPersis
                 "Legacy extraction job belongs to a different history scope."
             }
         }
+        val bindings = scopeRegistry.load()
+        val previous = bindings.firstOrNull { it.legacyScopeId == legacyMemoryScopeId }
+        require(previous == null ||
+            (previous.roleScopeId == roleMemoryScopeId && previous.historyScopeId == historyScopeId))
+        val binding = MemoryExtractionScopeBinding(legacyMemoryScopeId, roleMemoryScopeId, historyScopeId, pending = true)
+        val pendingBindings = bindings.filterNot { it.legacyScopeId == legacyMemoryScopeId } + binding
+        scopeRegistry.save(pendingBindings)
         // Persist a fence BEFORE touching memory files. If copy or final queue persistence fails,
         // a restarted worker must not resume writing the old store. The same migration can retry.
         val fenced = jobs.map { job ->
@@ -215,19 +226,21 @@ class MemoryExtractionJobRepository(private val store: MemoryExtractionJobPersis
             }
         }
         if (rebound > 0) store.save(next)
+        scopeRegistry.save(pendingBindings.map { if (it.legacyScopeId == legacyMemoryScopeId) it.copy(pending = false) else it })
         rebound
     }
 
     /** Held through fact/text writes AND their completion callback, against scope migration. */
     fun commitIfCurrent(claim: MemoryExtractionJob, commit: () -> Unit): Boolean = synchronized(QUEUE_LOCK) {
-        if (claim.state != MemoryExtractionJob.State.RUNNING || claim.migrationRoleScopeId != null ||
+        if (scopeBlocked(claim.conversationId) ||
+            claim.state != MemoryExtractionJob.State.RUNNING || claim.migrationRoleScopeId != null ||
             read().none { it == claim }) return false
         commit()
         true
     }
 
     fun complete(claim: MemoryExtractionJob): Boolean = synchronized(QUEUE_LOCK) {
-        if (read().none { it == claim }) false else complete(claim.id)
+        if (scopeBlocked(claim.conversationId) || read().none { it == claim }) false else complete(claim.id)
     }
 
     fun fail(
@@ -236,7 +249,7 @@ class MemoryExtractionJobRepository(private val store: MemoryExtractionJobPersis
         safeError: String,
         permanent: Boolean = false,
     ): Boolean = synchronized(QUEUE_LOCK) {
-        if (read().none { it == claim }) false else fail(claim.id, now, safeError, permanent)
+        if (scopeBlocked(claim.conversationId) || read().none { it == claim }) false else fail(claim.id, now, safeError, permanent)
     }
 
     /** Includes completed batches even when the preference cursor was lost or predates migration. */
@@ -246,6 +259,10 @@ class MemoryExtractionJobRepository(private val store: MemoryExtractionJobPersis
     }
 
     fun list(): List<MemoryExtractionJob> = synchronized(QUEUE_LOCK) { read() }
+
+    private fun scopeBlocked(scopeId: String): Boolean = scopeRegistry.load().any {
+        it.legacyScopeId == scopeId || (it.pending && it.roleScopeId == scopeId)
+    }
 
     private fun blocksLaterJob(
         earlier: MemoryExtractionJob,

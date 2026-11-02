@@ -263,6 +263,53 @@ class MemoryExtractionJobRepositoryTest {
 
     private fun repository(): MemoryExtractionJobRepository = MemoryExtractionJobRepository(InMemoryJobStore())
 
+    @Test fun zeroJobMigrationRejectsLateLegacyEnqueueAfterRepositoryRestart() {
+        val store = InMemoryJobStore()
+        val registry = InMemoryExtractionScopeRegistry()
+        val repository = MemoryExtractionJobRepository(store, registry)
+        assertEquals(0, repository.migrateScope("conversation-1", "role", "history") { true })
+        val restarted = MemoryExtractionJobRepository(store, registry)
+        org.junit.Assert.assertThrows(IllegalStateException::class.java) {
+            restarted.enqueue(job("late", 100L))
+        }
+        assertTrue(restarted.enqueue(job("new", 100L).copy(conversationId = "role", historyScopeId = "history")))
+        assertEquals("role", restarted.claimDue(100L)!!.conversationId)
+    }
+
+    @Test fun failedZeroJobMigrationBlocksBothScopesUntilRetry() {
+        val store = InMemoryJobStore()
+        val registry = InMemoryExtractionScopeRegistry()
+        val repository = MemoryExtractionJobRepository(store, registry)
+        org.junit.Assert.assertThrows(IllegalStateException::class.java) {
+            repository.migrateScope("conversation-1", "role", "history") { false }
+        }
+        val restarted = MemoryExtractionJobRepository(store, registry)
+        listOf("conversation-1", "role").forEach { scope ->
+            org.junit.Assert.assertThrows(IllegalStateException::class.java) {
+                restarted.enqueue(job("late-$scope", 100L).copy(conversationId = scope))
+            }
+        }
+        assertEquals(null, restarted.claimDue(100L))
+        restarted.migrateScope("conversation-1", "role", "history") { true }
+        assertTrue(restarted.enqueue(job("new", 100L).copy(conversationId = "role", historyScopeId = "history")))
+    }
+
+    @Test fun pendingMigrationBlocksExistingRoleClaimsAndCommits() {
+        val store = InMemoryJobStore()
+        val registry = InMemoryExtractionScopeRegistry()
+        val repository = MemoryExtractionJobRepository(store, registry)
+        repository.enqueue(job("role-inflight", 100L).copy(conversationId = "role"))
+        val claim = repository.claimDue(100L)!!
+        org.junit.Assert.assertThrows(IllegalStateException::class.java) {
+            repository.migrateScope("conversation-1", "role", "history") { false }
+        }
+        org.junit.Assert.assertFalse(repository.commitIfCurrent(claim) { error("must not commit") })
+        repository.recoverInterrupted(100L)
+        assertEquals(null, repository.claimDue(100L))
+        repository.migrateScope("conversation-1", "role", "history") { true }
+        assertEquals("role", repository.claimDue(100L)!!.conversationId)
+    }
+
     @Test fun migrationRebindsEveryStateButPreservesCompletedAndOtherConversations() {
         val repository = repository()
         MemoryExtractionJob.State.values().forEachIndexed { index, state ->
