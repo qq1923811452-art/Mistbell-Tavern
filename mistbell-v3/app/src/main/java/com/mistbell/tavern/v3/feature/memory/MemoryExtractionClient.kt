@@ -176,6 +176,9 @@ class MemoryExtractionClient(
             "subject", "predicate", "value", and "source_turn_id". source_turn_id must be one of the
             supplied turn IDs. Do not infer uncertain details, invent facts, include secrets, or
             repeat transient small talk. Return {"facts":[]} when nothing qualifies.
+            Write atomic facts: subject is a short entity name, predicate is a short relation,
+            value is a concise object. Do not put a full sentence, question, or yes/no answer
+            into predicate or value. Skip transient states and assistant suggestions.
             Return the JSON object directly as the message content, without Markdown code
             fences, prefixes, or commentary.
         """.trimIndent()
