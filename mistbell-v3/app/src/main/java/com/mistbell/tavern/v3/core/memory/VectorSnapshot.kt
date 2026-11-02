@@ -8,13 +8,75 @@ internal interface FloatVectorView {
     fun fillInto(destination: FloatArray, destinationOffset: Int = 0)
 }
 
+/**
+ * A mapped vector that stores one signed byte per dimension plus a single positive scale.
+ *
+ * Because every dimension shares the same positive scale, cosine similarity is unchanged when the
+ * scale is dropped: `cos(u, v) = (u . b) / (|u| * |b|)` for `v = scale * b`. Scoring therefore reads
+ * the mapped bytes directly and never materialises a dequantized `FloatArray`.
+ */
+internal interface QuantizedVectorView {
+    /** False for legacy float32 snapshots, which must use the dequantizing path. */
+    val isQuantized: Boolean
+
+    /**
+     * Dot product with [query], read straight from the mapped bytes.
+     *
+     * The stored vector is `scale * q` with one positive `scale`, so the cosine numerator is this
+     * value times `scale` while the denominator carries the same `scale`: dividing by [byteNorm]
+     * cancels it. [query] must be finite and match [AbstractList.size].
+     */
+    fun dot(query: FloatArray): Double
+
+    /**
+     * Euclidean norm of the stored bytes, computed on first use and cached per mapped vector.
+     *
+     * A query must not pay this cost again. Dequantizing every candidate on every search was the
+     * dominant cost of the previous path. Returns 0.0 for a stored zero vector.
+     */
+    fun byteNorm(): Double
+}
+
 private class MappedVectorValues(
     private val buffer: ByteBuffer,
     private val start: Int,
     override val size: Int,
     private val legacyFloat32: Boolean,
     private val scale: Float,
-) : AbstractList<Float>(), FloatVectorView {
+) : AbstractList<Float>(), FloatVectorView, QuantizedVectorView {
+
+    override val isQuantized: Boolean
+        get() = !legacyFloat32
+
+    /** Cached byte-space magnitude. A lost race recomputes the same value, so plain double is safe. */
+    @Volatile
+    private var cachedByteNorm: Double = Double.NaN
+
+    override fun dot(query: FloatArray): Double {
+        require(!legacyFloat32) { "Legacy float32 vectors cannot be scored from quantized bytes." }
+        require(query.size == size) { "Query vector dimension does not match the mapped vector." }
+        // Only the numerator is read per query; the magnitude is cached by [byteNorm].
+        var dot = 0.0
+        for (index in 0 until size) {
+            dot += query[index].toDouble() * buffer.get(start + index).toDouble()
+        }
+        return dot
+    }
+
+    override fun byteNorm(): Double {
+        val cached = cachedByteNorm
+        if (!cached.isNaN()) return cached
+        require(!legacyFloat32) { "Legacy float32 vectors do not use byte-space norms." }
+        var squared = 0.0
+        for (index in 0 until size) {
+            val value = buffer.get(start + index).toInt()
+            squared += (value * value).toDouble()
+        }
+        val computed = kotlin.math.sqrt(squared)
+        cachedByteNorm = computed
+        return computed
+    }
+
     override fun get(index: Int): Float {
         if (index !in 0 until size) throw IndexOutOfBoundsException(index)
         val value = if (legacyFloat32) {
@@ -252,6 +314,15 @@ object VectorSnapshotCodec {
             val vectorStart = input.position()
             val vectorBytes = if (formatVersion == LEGACY_FORMAT_VERSION) dimensions * Float.SIZE_BYTES else dimensions
             require(input.remaining() >= vectorBytes) { "Vector data is truncated." }
+            // A signed byte can be -128, although our encoder emits only [-127, 127].
+            // Preserve the finite-value contract even when the byte-space scorer skips scaling.
+            if (formatVersion == FORMAT_VERSION && !(Byte.MIN_VALUE.toFloat() * scale).isFinite()) {
+                repeat(dimensions) { index ->
+                    require(input.get(vectorStart + index) != Byte.MIN_VALUE) {
+                        "Mapped vector contains a non-finite value."
+                    }
+                }
+            }
             input.position(vectorStart + vectorBytes)
             val values = MappedVectorValues(
                 buffer = mapped,

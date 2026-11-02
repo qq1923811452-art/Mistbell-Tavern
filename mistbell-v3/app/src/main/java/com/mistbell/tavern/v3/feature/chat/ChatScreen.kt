@@ -70,6 +70,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.mistbell.tavern.v3.core.storage.MemoryScopeId
+import com.mistbell.tavern.v3.core.storage.MemoryScopeMigration
 import com.mistbell.tavern.v3.feature.sessions.ChatSession
 import com.mistbell.tavern.v3.feature.sessions.SessionStore
 import com.mistbell.tavern.v3.feature.sessions.SessionKind
@@ -86,6 +87,7 @@ internal val CHAT_EMBEDDING_DIMENSION_OPTIONS = listOf(128, 256, 512, 768, 1024,
  * Minimal end-to-end chat screen for 3.0 development.
  * Provider settings and the API key remain in screen memory only; they are not persisted.
  */
+@Suppress("ReturnCount") // Loading, memory and settings surfaces exit before composing the chat.
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatScreen(
@@ -157,11 +159,18 @@ fun ChatScreen(
         mutableStateOf(settings.getString("active_character_id", "") ?: "")
     }
     val activeMemoryRoleId = selectedCharacterId.takeIf(String::isNotBlank) ?: "default-character"
-    val memoryScopeId = remember(activeMemoryRoleId, memoryConversationId) {
+    val sessionStore = remember(context) { SessionStore(context) }
+    // Resolve persisted kind before selecting a memory scope, including initial app startup.
+    var sessions by remember(sessionStore) { mutableStateOf(sessionStore.list()) }
+    val isGroupMemoryScope = sessions.firstOrNull { it.id == memoryConversationId }?.kind == SessionKind.GROUP
+    // Only one-to-one conversations share character memory. A group's other participants must
+    // not write facts into the host character's private conversations.
+    val conversationMemoryScopeId = remember(activeMemoryRoleId, memoryConversationId) {
         MemoryScopeId.forRoleAndConversation(activeMemoryRoleId, memoryConversationId)
     }
-    val sessionStore = remember(context) { SessionStore(context) }
-    var sessions by remember { mutableStateOf(emptyList<ChatSession>()) }
+    val memoryScopeId = remember(activeMemoryRoleId, conversationMemoryScopeId, isGroupMemoryScope) {
+        if (isGroupMemoryScope) conversationMemoryScopeId else MemoryScopeId.forRole(activeMemoryRoleId)
+    }
     var showSessionList by remember { mutableStateOf(true) }
     LaunchedEffect(showSessionList) { onSessionListVisibilityChange(showSessionList) }
     var lastGroupSpeakerId by remember { mutableStateOf<String?>(null) }
@@ -190,7 +199,7 @@ fun ChatScreen(
     val history = remember { mutableStateListOf<ChatLine>() }
     var loadedHistoryScope by remember { mutableStateOf<String?>(null) }
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
-    val conversationHistoryScope = memoryConversationId.ifBlank { memoryScopeId }
+    val conversationHistoryScope = memoryConversationId.ifBlank { conversationMemoryScopeId }
     val historyWindowPlanner = remember(conversationHistoryScope) { StableConversationWindowPlanner() }
 
     // Manual memory edits live in their own scope-partitioned store; the ledger stays untouched.
@@ -225,8 +234,9 @@ fun ChatScreen(
             context.applicationContext,
             conversationHistoryScope,
             legacyStore,
-            legacyScopeId = memoryScopeId.takeIf { it.isNotBlank() && it != conversationHistoryScope },
-            legacyFileStore = memoryScopeId
+            legacyScopeId = conversationMemoryScopeId
+                .takeIf { it.isNotBlank() && it != conversationHistoryScope },
+            legacyFileStore = conversationMemoryScopeId
                 .takeIf { it.isNotBlank() && it != conversationHistoryScope }
                 ?.let { scope ->
                     ChatHistoryStore(
@@ -271,6 +281,38 @@ fun ChatScreen(
     val historySaveMutex = remember { Mutex() }
     val historySaveRevision = remember { java.util.concurrent.atomic.AtomicLong(0L) }
     val diagnosticStore = remember(context) { DiagnosticLogStore(context.applicationContext.filesDir) }
+    var memoryScopeReady by remember(memoryScopeId, conversationMemoryScopeId) { mutableStateOf(false) }
+    var memoryScopeFailed by remember(memoryScopeId, conversationMemoryScopeId) { mutableStateOf(false) }
+    var memoryScopeRetry by remember(memoryScopeId, conversationMemoryScopeId) { mutableStateOf(0) }
+    // Queue claim validation and the copy are serialized: an old in-flight worker cannot write
+    // into the legacy store between copying it and rebinding its persisted job.
+    LaunchedEffect(memoryScopeId, conversationMemoryScopeId, memoryScopeRetry) {
+        memoryScopeReady = false
+        memoryScopeFailed = false
+        if (isGroupMemoryScope) {
+            memoryScopeReady = true
+            return@LaunchedEffect
+        }
+        val migrated = withContext(Dispatchers.IO) {
+            runCatching {
+                MemoryExtractionJobRepository(MemoryExtractionJobStore(context.applicationContext)).migrateScope(
+                    legacyMemoryScopeId = conversationMemoryScopeId,
+                    roleMemoryScopeId = memoryScopeId,
+                    historyScopeId = conversationHistoryScope,
+                ) {
+                    !MemoryScopeMigration.copyConversationScopeToRole(
+                        context.applicationContext, memoryScopeId, conversationMemoryScopeId,
+                    ).failed
+                }
+            }.isSuccess
+        }
+        if (migrated) MemoryExtractionQueueWorker.enqueue(context.applicationContext)
+        memoryScopeReady = migrated
+        memoryScopeFailed = !migrated
+        diagnosticStore.info(
+            "memory.scope.migration_checked", "ready=$migrated; scope=${memoryScopeId.take(8)}",
+        )
+    }
     val activeWorldbookId = remember(settings) {
         settings.getString("active_worldbook_id", "") ?: ""
     }
@@ -672,6 +714,23 @@ fun ChatScreen(
     }
 
 
+    // Do not compose interactive memory/chat surfaces before migration and queue rebinding.
+    // Loading the repository itself may materialize empty projections and block a later copy.
+    if (!memoryScopeReady) {
+        Column(
+            modifier = Modifier.fillMaxSize().padding(24.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(if (memoryScopeFailed) "记忆迁移未完成，原始数据已保留。请重试后再继续。" else "正在准备角色共享记忆…")
+            if (memoryScopeFailed) {
+                Button(onClick = { memoryScopeRetry++ }) { Text("重试") }
+            }
+            Button(onClick = onBack) { Text("返回") }
+        }
+        return
+    }
+
     if (showCreateSession) {
         CreateSessionDialog(
             characters = characterCards,
@@ -842,7 +901,11 @@ fun ChatScreen(
     if (showMemoryScreen) {
         BackHandler { showMemoryScreen = false }
         SessionMemoryScreen(
-            scopeTitle = "当前角色 · 本会话（作用域 ${memoryScopeId.take(8)}）",
+            scopeTitle = if (isGroupMemoryScope) {
+                "当前群聊 · 独立记忆（作用域 ${memoryScopeId.take(8)}）"
+            } else {
+                "当前角色 · 跨会话共享（作用域 ${memoryScopeId.take(8)}）"
+            },
             state = memoryScreenState,
             status = memoryStatus,
             actions = SessionMemoryActions(

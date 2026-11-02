@@ -48,7 +48,7 @@ class AtomicTemporalFactStore(
         atomicFile = AtomicFile(File(context.filesDir, fileName))
     }
 
-    override fun save(facts: List<TemporalMemoryFact>) = synchronized(lockFor(atomicFile.baseFile)) {
+    override fun save(facts: List<TemporalMemoryFact>) = MemoryScopeStorageLock.withLock(atomicFile.baseFile) {
         val bytes = TemporalFactCodec.encode(facts)
         val stream = atomicFile.startWrite()
         try {
@@ -60,7 +60,7 @@ class AtomicTemporalFactStore(
         }
     }
 
-    override fun load(): TemporalFactLoadResult = synchronized(lockFor(atomicFile.baseFile)) {
+    override fun load(): TemporalFactLoadResult = MemoryScopeStorageLock.withLock(atomicFile.baseFile) {
         val baseFile = atomicFile.baseFile
         val backup = File(baseFile.path + ".bak")
         if (!baseFile.exists() && !backup.exists()) return TemporalFactLoadResult.Missing
@@ -80,7 +80,7 @@ class AtomicTemporalFactStore(
 
     override fun update(
         transform: (List<TemporalMemoryFact>) -> List<TemporalMemoryFact>,
-    ): List<TemporalMemoryFact> = synchronized(lockFor(atomicFile.baseFile)) {
+    ): List<TemporalMemoryFact> = MemoryScopeStorageLock.withLock(atomicFile.baseFile) {
         val current = when (val loaded = loadUnlocked()) {
             TemporalFactLoadResult.Missing -> emptyList()
             is TemporalFactLoadResult.Loaded -> loaded.facts
@@ -126,12 +126,5 @@ class AtomicTemporalFactStore(
 
     companion object {
         const val DEFAULT_FILE_NAME = "mistbell-v3-temporal-facts.bin"
-
-        private val LOCKS = Array(LOCK_STRIPES) { Any() }
-
-        private fun lockFor(file: File): Any =
-            LOCKS[(file.absolutePath.hashCode() and Int.MAX_VALUE) % LOCK_STRIPES]
-
-        private const val LOCK_STRIPES = 16
     }
 }

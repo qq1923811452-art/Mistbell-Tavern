@@ -1,27 +1,35 @@
 package com.mistbell.tavern.v3.core.storage
 
+import com.mistbell.tavern.v3.core.memory.MemoryIndexRebuildProgress
 import com.mistbell.tavern.v3.core.memory.MemoryIndexRebuildResult
 import com.mistbell.tavern.v3.core.memory.MemoryIndexRebuilder
 import com.mistbell.tavern.v3.core.memory.MemoryTextRecord
 import com.mistbell.tavern.v3.core.memory.PassageEmbeddingRuntime
+import com.mistbell.tavern.v3.core.memory.VectorSnapshot
 
 /**
  * Connects the rebuild algorithm to app-private durable stores.
  *
  * This adapter intentionally receives an already-loaded local embedding runtime. It does not
  * download models, silently switch providers, or claim a hardware backend that was not verified.
+ *
+ * Passing [loadPreviousSnapshot] enables incremental rebuilds: unchanged records keep their stored
+ * vectors and only new or edited passages reach the inference runtime.
  */
 class PersistedMemoryIndexRebuilder(
     private val textStore: MemoryTextPersistence,
     private val vectorStore: VectorSnapshotSaver,
     runtime: PassageEmbeddingRuntime,
     clockMillis: () -> Long = System::currentTimeMillis,
+    private val loadPreviousSnapshot: () -> VectorSnapshot? = { null },
+    onProgress: (MemoryIndexRebuildProgress) -> Unit = {},
 ) {
     private val rebuilder = MemoryIndexRebuilder(
         runtime = runtime,
         saveSourceTexts = textStore::save,
         saveSnapshot = vectorStore::save,
         clockMillis = clockMillis,
+        onProgress = onProgress,
     )
 
     suspend fun rebuildCurrentIndex(): MemoryIndexRebuildResult {
@@ -35,9 +43,9 @@ class PersistedMemoryIndexRebuilder(
                 )
             }
         }
-        return rebuilder.rebuild(currentRecords)
+        return rebuild(currentRecords)
     }
 
     suspend fun rebuild(records: List<MemoryTextRecord>): MemoryIndexRebuildResult =
-        rebuilder.rebuild(records)
+        rebuilder.rebuild(records, loadPreviousSnapshot())
 }

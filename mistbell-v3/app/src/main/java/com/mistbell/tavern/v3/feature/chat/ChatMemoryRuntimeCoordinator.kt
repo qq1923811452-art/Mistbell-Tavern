@@ -109,7 +109,7 @@ if (installedModel == null || configuredDimensions !in CHAT_EMBEDDING_DIMENSION_
         engine = engine,
         outputDimensions = configuredDimensions,
     )
-    val memoryRuntime = EmbeddingGemma2MemoryRuntime(adapter)
+    val memoryRuntime = EmbeddingGemma2MemoryRuntime(adapter, installedModel.sha256)
     val memoryTextStore = AtomicMemoryTextStore(
         context,
         com.mistbell.tavern.v3.core.storage.MemoryScopeFileNames.forScope(

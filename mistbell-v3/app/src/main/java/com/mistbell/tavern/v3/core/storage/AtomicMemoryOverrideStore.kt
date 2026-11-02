@@ -43,7 +43,7 @@ class AtomicMemoryOverrideStore(
     }
 
     override fun load(): MemoryOverrideLoadResult =
-        synchronized(lockFor(atomicFile.baseFile)) {
+        MemoryScopeStorageLock.withLock(atomicFile.baseFile) {
             val baseFile = atomicFile.baseFile
             val backup = File(baseFile.path + ".bak")
             if (!baseFile.exists() && !backup.exists()) return MemoryOverrideLoadResult.Missing
@@ -63,7 +63,7 @@ class AtomicMemoryOverrideStore(
         }
 
     override fun update(transform: (List<MemoryOverride>) -> List<MemoryOverride>): List<MemoryOverride> =
-        synchronized(lockFor(atomicFile.baseFile)) {
+        MemoryScopeStorageLock.withLock(atomicFile.baseFile) {
             val current =
                 when (val loaded = loadUnlocked()) {
                     MemoryOverrideLoadResult.Missing -> emptyList()
@@ -95,10 +95,6 @@ class AtomicMemoryOverrideStore(
     companion object {
         const val DEFAULT_FILE_NAME = "mistbell-v3-memory-overrides.json"
         const val MAX_STORE_BYTES = 8L * 1024 * 1024
-        private const val LOCK_STRIPES = 16
-        private val LOCKS = Array(LOCK_STRIPES) { Any() }
-
-        private fun lockFor(file: File): Any = LOCKS[(file.absolutePath.hashCode() and Int.MAX_VALUE) % LOCK_STRIPES]
     }
 }
 

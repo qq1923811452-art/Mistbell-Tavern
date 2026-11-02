@@ -100,7 +100,7 @@ class TemporalFactExtractionPipeline(
                         subject = fact.subject,
                         predicate = fact.predicate,
                         value = fact.value,
-                        observedAtEpochMillis = observedAt,
+                        observedAtEpochMillis = input.turnObservedAtEpochMillis[fact.sourceTurnId] ?: observedAt,
                     )
                 }
             TemporalFactLedger.apply(existing, observations)

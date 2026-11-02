@@ -160,6 +160,42 @@ class TemporalFactExtractionPipelineTest {
         }
     }
 
+    @Test
+    fun delayedOldConversationDoesNotOverwriteNewerSharedRoleFact() {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setBody(extractionCompletionBody()))
+        server.start()
+        try {
+            val profile = ProviderProfile(
+                id = "memory", kind = ProviderKind.MEMORY_EXTRACTION,
+                baseUrl = server.url("/v1").toString(), modelId = "memory-model", credentialHandle = "key",
+            )
+            val facts = InMemoryFacts()
+            facts.save(listOf(TemporalMemoryFact(
+                "newer", "shared-role", "new-session-turn", "user", "likes", "coffee", 200L, 200L,
+            )))
+            val client = MemoryExtractionClient(
+                ProviderProfileSet(listOf(profile), mapOf(ProviderKind.MEMORY_EXTRACTION to profile.id)),
+                MemoryCredentialResolver { "secret" },
+            )
+            val latch = CountDownLatch(1)
+            val result = AtomicReference<TemporalFactPipelineOutcome>()
+            TemporalFactExtractionPipeline(client, facts, InMemoryTexts(), clockMillis = { 9_000L })
+                .extractAndPersist(MemoryExtractionInput(
+                    "shared-role", listOf(EligibleConversationTurn("turn-1", 1L)),
+                    mapOf("turn-1" to "old conversation: user likes tea"),
+                    turnObservedAtEpochMillis = mapOf("turn-1" to 100L),
+                )) { result.set(it); latch.countDown() }
+            assertTrue(latch.await(3, TimeUnit.SECONDS))
+            assertTrue(result.get() is TemporalFactPipelineOutcome.Saved)
+            val current = (facts.load() as TemporalFactLoadResult.Loaded).facts.filter { it.isCurrent }
+            assertEquals("coffee", current.single().value)
+            assertEquals(200L, current.single().observedAtEpochMillis)
+        } finally {
+            server.shutdown()
+        }
+    }
+
     private fun extractionCompletionBody(): String {
         val content = """{"facts":[{"subject":"user","predicate":"likes","value":"tea","source_turn_id":"turn-1"}]}"""
         return org.json.JSONObject().put(

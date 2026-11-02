@@ -60,9 +60,9 @@ class MemoryExtractionQueueRunner(
             val currentTime = runCatching(::now).getOrElse { job.createdAtEpochMillis }
             val terminal: Result = try {
                 when (result) {
-                    ExecutionResult.Success -> repository.complete(job.id)
+                    ExecutionResult.Success -> repository.complete(job)
                     is ExecutionResult.Failure -> repository.fail(
-                        id = job.id,
+                        claim = job,
                         now = currentTime,
                         safeError = result.safeCategory,
                         permanent = result.permanent,

@@ -15,12 +15,15 @@ sealed interface MemoryExtractionJobLoadResult {
 interface MemoryExtractionJobPersistence {
     fun save(jobs: List<MemoryExtractionJob>)
     fun load(): MemoryExtractionJobLoadResult
+    val scopeRegistry: MemoryExtractionScopeRegistry? get() = null
 }
 
 /** App-private atomic persistence; corrupt queue data is reported, never silently replaced. */
 class MemoryExtractionJobStore private constructor(targetFile: File, @Suppress("UNUSED_PARAMETER") marker: Unit) :
     MemoryExtractionJobPersistence {
     private val file = AtomicFile(targetFile)
+    override val scopeRegistry: MemoryExtractionScopeRegistry =
+        AtomicMemoryExtractionScopeRegistry(requireNotNull(targetFile.parentFile), targetFile.name)
 
     constructor(context: Context, fileName: String = DEFAULT_FILE_NAME) :
         this(File(context.filesDir, validatedFileName(fileName)), Unit)

@@ -263,6 +263,167 @@ class MemoryExtractionJobRepositoryTest {
 
     private fun repository(): MemoryExtractionJobRepository = MemoryExtractionJobRepository(InMemoryJobStore())
 
+    @Test fun zeroJobMigrationRejectsLateLegacyEnqueueAfterRepositoryRestart() {
+        val store = InMemoryJobStore()
+        val registry = InMemoryExtractionScopeRegistry()
+        val repository = MemoryExtractionJobRepository(store, registry)
+        assertEquals(0, repository.migrateScope("conversation-1", "role", "history") { true })
+        val restarted = MemoryExtractionJobRepository(store, registry)
+        org.junit.Assert.assertThrows(IllegalStateException::class.java) {
+            restarted.enqueue(job("late", 100L))
+        }
+        assertTrue(restarted.enqueue(job("new", 100L).copy(conversationId = "role", historyScopeId = "history")))
+        assertEquals("role", restarted.claimDue(100L)!!.conversationId)
+    }
+
+    @Test fun failedZeroJobMigrationBlocksBothScopesUntilRetry() {
+        val store = InMemoryJobStore()
+        val registry = InMemoryExtractionScopeRegistry()
+        val repository = MemoryExtractionJobRepository(store, registry)
+        org.junit.Assert.assertThrows(IllegalStateException::class.java) {
+            repository.migrateScope("conversation-1", "role", "history") { false }
+        }
+        val restarted = MemoryExtractionJobRepository(store, registry)
+        listOf("conversation-1", "role").forEach { scope ->
+            org.junit.Assert.assertThrows(IllegalStateException::class.java) {
+                restarted.enqueue(job("late-$scope", 100L).copy(conversationId = scope))
+            }
+        }
+        assertEquals(null, restarted.claimDue(100L))
+        restarted.migrateScope("conversation-1", "role", "history") { true }
+        assertTrue(restarted.enqueue(job("new", 100L).copy(conversationId = "role", historyScopeId = "history")))
+    }
+
+    @Test fun pendingMigrationBlocksExistingRoleClaimsAndCommits() {
+        val store = InMemoryJobStore()
+        val registry = InMemoryExtractionScopeRegistry()
+        val repository = MemoryExtractionJobRepository(store, registry)
+        repository.enqueue(job("role-inflight", 100L).copy(conversationId = "role"))
+        val claim = repository.claimDue(100L)!!
+        org.junit.Assert.assertThrows(IllegalStateException::class.java) {
+            repository.migrateScope("conversation-1", "role", "history") { false }
+        }
+        org.junit.Assert.assertFalse(repository.commitIfCurrent(claim) { error("must not commit") })
+        repository.recoverInterrupted(100L)
+        assertEquals(null, repository.claimDue(100L))
+        repository.migrateScope("conversation-1", "role", "history") { true }
+        assertEquals("role", repository.claimDue(100L)!!.conversationId)
+    }
+
+    @Test fun migrationRebindsEveryStateButPreservesCompletedAndOtherConversations() {
+        val repository = repository()
+        MemoryExtractionJob.State.values().forEachIndexed { index, state ->
+            repository.enqueue(job(state.name, 100L + index, state = state))
+        }
+        repository.enqueue(job("other", 10L).copy(conversationId = "other"))
+        assertEquals(5, repository.migrateScope("conversation-1", "role", "history") { true })
+        val rebound = repository.list().filter { it.id != "other" }
+        assertTrue(rebound.all { it.conversationId == "role" && it.historyScopeId == "history" })
+        assertTrue(rebound.all { it.legacyHistoryScopeId == "conversation-1" && it.migrationRoleScopeId == null })
+        assertEquals(MemoryExtractionJob.State.COMPLETED, rebound.first { it.id == "COMPLETED" }.state)
+        assertEquals(MemoryExtractionJob.State.RETRY_WAIT, rebound.first { it.id == "RUNNING" }.state)
+        assertEquals("other", repository.list().first { it.id == "other" }.conversationId)
+    }
+
+    @Test fun revokedRunningClaimCannotWriteOrFinishReboundJob() {
+        val repository = repository()
+        repository.enqueue(job("in-flight", 100L))
+        val oldClaim = repository.claimDue(100L)!!
+        repository.migrateScope("conversation-1", "role", "history") { true }
+        val newClaim = repository.claimDue(100L)!!
+        var writes = 0
+        org.junit.Assert.assertFalse(repository.commitIfCurrent(oldClaim) { writes++ })
+        org.junit.Assert.assertFalse(repository.complete(oldClaim))
+        org.junit.Assert.assertFalse(repository.fail(oldClaim, 200L, "network"))
+        assertTrue(repository.commitIfCurrent(newClaim) { writes++; repository.complete(newClaim) })
+        assertEquals(1, writes)
+        assertEquals(MemoryExtractionJob.State.COMPLETED, repository.list().single().state)
+    }
+
+    @Test fun failedMigrationFencesClaimsAcrossReloadUntilSuccessfulRetry() {
+        val store = CodecBackedJobStore()
+        val repository = MemoryExtractionJobRepository(store)
+        repository.enqueue(job("fenced", 100L))
+        val claim = repository.claimDue(100L)!!
+        org.junit.Assert.assertThrows(IllegalStateException::class.java) {
+            repository.migrateScope("conversation-1", "role", "history") { false }
+        }
+        val restarted = MemoryExtractionJobRepository(store)
+        restarted.recoverInterrupted(100L)
+        assertEquals(null, restarted.claimDue(100L))
+        org.junit.Assert.assertFalse(restarted.commitIfCurrent(claim) { error("must not write") })
+        restarted.migrateScope("conversation-1", "role", "history") { true }
+        assertEquals("role", restarted.claimDue(100L)!!.conversationId)
+    }
+
+    @Test fun failedFinalQueueSaveLeavesPersistentFenceAndPreservesRetryBudget() {
+        val backing = CodecBackedJobStore()
+        var failSave = false
+        val store = object : MemoryExtractionJobPersistence {
+            override fun load() = backing.load()
+            override fun save(jobs: List<MemoryExtractionJob>) {
+                if (failSave) { failSave = false; error("simulated queue save failure") }
+                backing.save(jobs)
+            }
+        }
+        val repository = MemoryExtractionJobRepository(store)
+        repository.enqueue(job("last-attempt", 100L, attemptCount = 4))
+        val stale = repository.claimDue(100L)!!
+        org.junit.Assert.assertThrows(IllegalStateException::class.java) {
+            repository.migrateScope("conversation-1", "role", "history") { failSave = true; true }
+        }
+        val restarted = MemoryExtractionJobRepository(backing)
+        restarted.recoverInterrupted(100L)
+        assertEquals(null, restarted.claimDue(100L))
+        org.junit.Assert.assertFalse(restarted.commitIfCurrent(stale) { error("stale write") })
+        restarted.migrateScope("conversation-1", "role", "history") { true }
+        assertEquals(5, restarted.claimDue(100L)!!.attemptCount)
+    }
+
+    @Test fun completedTurnsStayCoveredByHistoryAfterScopeChanges() {
+        val repository = repository()
+        repository.enqueue(job("done", 100L, state = MemoryExtractionJob.State.COMPLETED))
+        repository.enqueue(job("other-history", 100L).copy(conversationId = "other", historyScopeId = "different"))
+        repository.migrateScope("conversation-1", "role", "history") { true }
+        assertEquals(setOf("turn-done"), repository.coveredTurnIds("history"))
+        assertEquals(setOf("turn-other-history"), repository.coveredTurnIds("different"))
+    }
+
+    @Test fun migrationWaitsForCommitAndCompletionBeforeCopying() {
+        val repository = repository()
+        repository.enqueue(job("race", 100L))
+        val claim = repository.claimDue(100L)!!
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val migrationStarted = CountDownLatch(1)
+        val pool = Executors.newFixedThreadPool(2)
+        try {
+            val commit = pool.submit {
+                repository.commitIfCurrent(claim) {
+                    entered.countDown()
+                    assertTrue(release.await(5, TimeUnit.SECONDS))
+                    repository.complete(claim)
+                }
+            }
+            assertTrue(entered.await(5, TimeUnit.SECONDS))
+            val migration = pool.submit {
+                migrationStarted.countDown()
+                repository.migrateScope("conversation-1", "role", "history") {
+                    assertEquals(MemoryExtractionJob.State.COMPLETED, repository.list().single().state)
+                    true
+                }
+            }
+            assertTrue(migrationStarted.await(5, TimeUnit.SECONDS))
+            release.countDown()
+            commit.get(5, TimeUnit.SECONDS)
+            migration.get(5, TimeUnit.SECONDS)
+            assertEquals(MemoryExtractionJob.State.COMPLETED, repository.list().single().state)
+        } finally {
+            release.countDown()
+            pool.shutdownNow()
+        }
+    }
+
     private class CodecBackedJobStore : MemoryExtractionJobPersistence {
         private var encoded: ByteArray? = null
 

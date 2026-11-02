@@ -19,7 +19,7 @@ object MemoryScopeFileNames {
     }
 }
 
-/** Stable role-and-conversation identity; either dimension changing creates an isolated scope. */
+/** Stable memory-scope identities; each distinct scope gets its own partitioned files. */
 object MemoryScopeId {
     fun forRoleAndConversation(roleId: String, conversationId: String): String {
         require(roleId.isNotBlank()) { "Character/role ID must not be blank." }
@@ -27,6 +27,18 @@ object MemoryScopeId {
         // Length-prefix both values so delimiter characters inside either ID cannot alias a
         // different role/conversation pair and accidentally share private memory files.
         val identity = "${roleId.length}:$roleId${conversationId.length}:$conversationId"
+        return UUID.nameUUIDFromBytes(identity.toByteArray(Charsets.UTF_8)).toString()
+    }
+
+    /**
+     * Role-wide identity shared by every conversation with the same role.
+     *
+     * The `role:` prefix cannot collide with [forRoleAndConversation], whose identity always starts
+     * with a decimal length, so the two schemes can coexist while a user migrates.
+     */
+    fun forRole(roleId: String): String {
+        require(roleId.isNotBlank()) { "Character/role ID must not be blank." }
+        val identity = "role:${roleId.length}:$roleId"
         return UUID.nameUUIDFromBytes(identity.toByteArray(Charsets.UTF_8)).toString()
     }
 }
