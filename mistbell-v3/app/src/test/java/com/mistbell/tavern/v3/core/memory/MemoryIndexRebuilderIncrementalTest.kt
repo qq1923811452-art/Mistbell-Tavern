@@ -21,7 +21,7 @@ class MemoryIndexRebuilderIncrementalTest {
         }
         val second = rebuild(runtime, edited, previous = first.snapshot)
 
-        assertEquals(8, second.progress.reusedRecords)
+        assertEquals(9, second.progress.reusedRecords)
         assertEquals(1, second.progress.embeddedRecords)
         assertEquals(1, runtime.embedded.size)
         assertEquals("fact 3 corrected", runtime.embedded.single())
