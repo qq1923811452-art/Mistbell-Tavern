@@ -11,9 +11,24 @@ import com.mistbell.tavern.v3.core.memory.PassageEmbeddingRuntime
  */
 class EmbeddingGemma2MemoryRuntime(
     private val adapter: EmbeddingGemma2RuntimeAdapter,
+    verifiedModelSha256: String,
 ) : PassageEmbeddingRuntime {
-    override val modelId: String
-        get() = adapter.model.modelId
+    // Snapshot identity includes the verified asset and all input/output policy dependencies.
+    // Unknown legacy identities fail closed and trigger a background rebuild once.
+    override val modelId: String = snapshotIdentity(adapter.model.modelId, verifiedModelSha256)
+
+    companion object {
+        internal fun snapshotIdentity(
+            modelId: String,
+            modelSha256: String,
+            policyVersion: Int = EmbeddingGemma2TextPolicy.POLICY_VERSION,
+        ): String {
+            require(modelSha256.matches(Regex("[0-9a-fA-F]{64}"))) { "Verified model SHA-256 is required." }
+            return "$modelId;sha256=${modelSha256.lowercase(java.util.Locale.ROOT)};policy=$policyVersion;" +
+                "chars=${EmbeddingGemma2TextPolicy.MAX_EMBED_CHARS};" +
+                "bytes=${EmbeddingGemma2RuntimeAdapter.MAX_FORMATTED_INPUT_BYTES};normalization=1"
+        }
+    }
 
     override val dimensions: Int
         get() = adapter.model.dimensions
