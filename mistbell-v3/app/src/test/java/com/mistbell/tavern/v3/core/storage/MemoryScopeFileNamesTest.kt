@@ -2,6 +2,7 @@ package com.mistbell.tavern.v3.core.storage
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -36,5 +37,24 @@ class MemoryScopeFileNamesTest {
         val second = MemoryScopeId.forRoleAndConversation("role", "part|conversation")
 
         assertNotEquals(first, second)
+    }
+
+    @Test
+    fun roleScopeIsSharedByEveryConversationOfThatRole() {
+        val shared = MemoryScopeId.forRole("role-A")
+        val sameRoleConversation1 = MemoryScopeId.forRoleAndConversation("role-A", "conversation-1")
+        val sameRoleConversation2 = MemoryScopeId.forRoleAndConversation("role-A", "conversation-2")
+
+        assertEquals(shared, MemoryScopeId.forRole("role-A"))
+        // The shared scope must never alias a per-conversation scope, or a migration could read
+        // or overwrite another conversation's private files.
+        assertNotEquals(shared, sameRoleConversation1)
+        assertNotEquals(shared, sameRoleConversation2)
+        assertNotEquals(MemoryScopeId.forRole("role-A"), MemoryScopeId.forRole("role-B"))
+    }
+
+    @Test
+    fun roleScopeRejectsBlankRoles() {
+        assertThrows(IllegalArgumentException::class.java) { MemoryScopeId.forRole(" ") }
     }
 }

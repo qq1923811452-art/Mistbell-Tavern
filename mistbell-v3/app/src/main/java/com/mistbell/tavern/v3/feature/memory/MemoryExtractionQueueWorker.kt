@@ -157,7 +157,12 @@ class MemoryExtractionQueueWorker(
                                         null
                                     }
                                     val turnId = completedJob?.turnIds?.lastOrNull()
-                                    val scopeId = completedJob?.conversationId
+                                    // The turn cursor belongs to one conversation, not to the
+                                    // memory scope: a shared scope must not make switching back
+                                    // to an older conversation re-extract its whole history.
+                                    val scopeId = completedJob?.run {
+                                        historyScopeId.takeIf(String::isNotBlank) ?: conversationId
+                                    }
                                     if (turnId != null && !scopeId.isNullOrBlank()) {
                                         applicationContext.getSharedPreferences(
                                             "mistbell-v3-settings",

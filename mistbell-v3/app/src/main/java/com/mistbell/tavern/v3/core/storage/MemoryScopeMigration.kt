@@ -1,6 +1,7 @@
 package com.mistbell.tavern.v3.core.storage
 
 import android.content.Context
+import com.mistbell.tavern.v3.core.memory.TemporalFactIdentity
 import com.mistbell.tavern.v3.core.storage.MemoryScopeFileNames.forScope
 import java.io.File
 
@@ -39,6 +40,7 @@ object MemoryScopeMigration {
         AtomicTemporalFactStore.DEFAULT_FILE_NAME,
     )
 
+    @Suppress("ReturnCount") // Guard clauses separate "nothing to do" from "copied" and "failed".
     fun copyConversationScopeToRole(
         context: Context,
         roleScopeId: String,
@@ -76,6 +78,7 @@ object MemoryScopeMigration {
         }
     }
 
+    @Suppress("ReturnCount") // Guard clauses skip a missing or already-rewritten store.
     private fun rewriteFacts(context: Context, roleScopeId: String, conversationScopeId: String): Int {
         val store = AtomicTemporalFactStore(
             context,
@@ -87,12 +90,28 @@ object MemoryScopeMigration {
         if (changed == 0) return 0
         store.save(
             loaded.facts.map { fact ->
-                if (fact.conversationId == conversationScopeId) fact.copy(conversationId = roleScopeId) else fact
+                if (fact.conversationId != conversationScopeId) {
+                    fact
+                } else {
+                    // The id is derived from the conversation scope, so rewriting the scope
+                    // without recomputing the id would defeat deduplication forever after.
+                    fact.copy(
+                        conversationId = roleScopeId,
+                        id = TemporalFactIdentity.forObservation(
+                            conversationId = roleScopeId,
+                            sourceTurnId = fact.sourceTurnId,
+                            subject = fact.subject,
+                            predicate = fact.predicate,
+                            value = fact.value,
+                        ),
+                    )
+                }
             },
         )
         return changed
     }
 
+    @Suppress("ReturnCount") // Guard clauses skip a missing or already-rewritten store.
     private fun rewriteOverrides(context: Context, roleScopeId: String, conversationScopeId: String): Int {
         val store = AtomicMemoryOverrideStore(
             context,

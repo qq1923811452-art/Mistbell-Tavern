@@ -70,6 +70,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.mistbell.tavern.v3.core.storage.MemoryScopeId
+import com.mistbell.tavern.v3.core.storage.MemoryScopeMigration
 import com.mistbell.tavern.v3.feature.sessions.ChatSession
 import com.mistbell.tavern.v3.feature.sessions.SessionStore
 import com.mistbell.tavern.v3.feature.sessions.SessionKind
@@ -157,8 +158,14 @@ fun ChatScreen(
         mutableStateOf(settings.getString("active_character_id", "") ?: "")
     }
     val activeMemoryRoleId = selectedCharacterId.takeIf(String::isNotBlank) ?: "default-character"
-    val memoryScopeId = remember(activeMemoryRoleId, memoryConversationId) {
+    // Memory belongs to the character, not to one session: every conversation with the same role
+    // reads and writes the same store. The conversation-scoped id is kept for the one-time copy
+    // of existing per-session data and for history-file compatibility.
+    val conversationMemoryScopeId = remember(activeMemoryRoleId, memoryConversationId) {
         MemoryScopeId.forRoleAndConversation(activeMemoryRoleId, memoryConversationId)
+    }
+    val memoryScopeId = remember(activeMemoryRoleId) {
+        MemoryScopeId.forRole(activeMemoryRoleId)
     }
     val sessionStore = remember(context) { SessionStore(context) }
     var sessions by remember { mutableStateOf(emptyList<ChatSession>()) }
@@ -190,7 +197,7 @@ fun ChatScreen(
     val history = remember { mutableStateListOf<ChatLine>() }
     var loadedHistoryScope by remember { mutableStateOf<String?>(null) }
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
-    val conversationHistoryScope = memoryConversationId.ifBlank { memoryScopeId }
+    val conversationHistoryScope = memoryConversationId.ifBlank { conversationMemoryScopeId }
     val historyWindowPlanner = remember(conversationHistoryScope) { StableConversationWindowPlanner() }
 
     // Manual memory edits live in their own scope-partitioned store; the ledger stays untouched.
@@ -225,8 +232,9 @@ fun ChatScreen(
             context.applicationContext,
             conversationHistoryScope,
             legacyStore,
-            legacyScopeId = memoryScopeId.takeIf { it.isNotBlank() && it != conversationHistoryScope },
-            legacyFileStore = memoryScopeId
+            legacyScopeId = conversationMemoryScopeId
+                .takeIf { it.isNotBlank() && it != conversationHistoryScope },
+            legacyFileStore = conversationMemoryScopeId
                 .takeIf { it.isNotBlank() && it != conversationHistoryScope }
                 ?.let { scope ->
                     ChatHistoryStore(
@@ -271,6 +279,26 @@ fun ChatScreen(
     val historySaveMutex = remember { Mutex() }
     val historySaveRevision = remember { java.util.concurrent.atomic.AtomicLong(0L) }
     val diagnosticStore = remember(context) { DiagnosticLogStore(context.applicationContext.filesDir) }
+    // Copy the active conversation's memory files into the role scope the first time that scope
+    // is opened. Copy-only: the per-conversation originals are never modified or deleted.
+    LaunchedEffect(memoryScopeId, conversationMemoryScopeId) {
+        val outcome = withContext(Dispatchers.IO) {
+            runCatching {
+                MemoryScopeMigration.copyConversationScopeToRole(
+                    context.applicationContext,
+                    memoryScopeId,
+                    conversationMemoryScopeId,
+                )
+            }.getOrNull()
+        }
+        if (outcome != null && outcome.didCopy) {
+            diagnosticStore.info(
+                "memory.scope.copied_to_role_scope",
+                "files=${outcome.copiedFiles}; facts=${outcome.rewrittenFacts}; " +
+                    "overrides=${outcome.rewrittenOverrides}; scope=${memoryScopeId.take(8)}",
+            )
+        }
+    }
     val activeWorldbookId = remember(settings) {
         settings.getString("active_worldbook_id", "") ?: ""
     }
@@ -842,7 +870,7 @@ fun ChatScreen(
     if (showMemoryScreen) {
         BackHandler { showMemoryScreen = false }
         SessionMemoryScreen(
-            scopeTitle = "当前角色 · 本会话（作用域 ${memoryScopeId.take(8)}）",
+            scopeTitle = "当前角色 · 跨会话共享（作用域 ${memoryScopeId.take(8)}）",
             state = memoryScreenState,
             status = memoryStatus,
             actions = SessionMemoryActions(
