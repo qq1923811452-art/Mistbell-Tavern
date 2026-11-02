@@ -14,6 +14,10 @@ data class MemoryExtractionJob(
     val nextAttemptAtEpochMillis: Long = createdAtEpochMillis,
     val state: State = State.PENDING,
     val lastSafeError: String? = null,
+    /** Original conversation memory scope, used only to find pre-SQLite source history. */
+    val legacyHistoryScopeId: String? = null,
+    /** Durable migration fence: no claims or commits until the copy is retried and finalized. */
+    val migrationRoleScopeId: String? = null,
 ) {
     enum class State { PENDING, RUNNING, RETRY_WAIT, COMPLETED, PERMANENT_FAILURE }
 
@@ -21,6 +25,8 @@ data class MemoryExtractionJob(
         require(id.isNotBlank() && id.length <= 256)
         require(conversationId.isNotBlank() && conversationId.length <= 256)
         require(historyScopeId.isNotBlank() && historyScopeId.length <= 256)
+        require(legacyHistoryScopeId == null || legacyHistoryScopeId.isNotBlank() && legacyHistoryScopeId.length <= 256)
+        require(migrationRoleScopeId == null || migrationRoleScopeId.isNotBlank() && migrationRoleScopeId.length <= 256)
         require(turnIds.isNotEmpty() && turnIds.size <= 20)
         require(turnIds.all { it.isNotBlank() && it.length <= 256 })
         require(turnIds.distinct().size == turnIds.size)

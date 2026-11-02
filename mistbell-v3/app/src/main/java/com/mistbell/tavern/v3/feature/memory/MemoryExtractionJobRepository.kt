@@ -31,7 +31,7 @@ class MemoryExtractionJobRepository(private val store: MemoryExtractionJobPersis
                                 job.state == MemoryExtractionJob.State.RETRY_WAIT
                         ) &&
                             job.nextAttemptAtEpochMillis <= now
-                    if (due && job.attemptCount >= MemoryExtractionJob.MAX_ATTEMPTS) {
+                    if (due && job.migrationRoleScopeId == null && job.attemptCount >= MemoryExtractionJob.MAX_ATTEMPTS) {
                         changed = true
                         job.copy(
                             state = MemoryExtractionJob.State.PERMANENT_FAILURE,
@@ -56,7 +56,7 @@ class MemoryExtractionJobRepository(private val store: MemoryExtractionJobPersis
                         eligible.any { earlier ->
                             blocksLaterJob(earlier, job)
                         }
-                    due && !hasEarlierOutstandingJob
+                    due && job.migrationRoleScopeId == null && !hasEarlierOutstandingJob
                 }.minByOrNull { eligible[it].createdAtEpochMillis } ?: return null
             val job = eligible[index]
             val claimed = job.copy(state = MemoryExtractionJob.State.RUNNING, attemptCount = job.attemptCount + 1)
@@ -119,7 +119,7 @@ class MemoryExtractionJobRepository(private val store: MemoryExtractionJobPersis
             var recovered = 0
             val next =
                 jobs.map { job ->
-                    if (job.state != MemoryExtractionJob.State.RUNNING) {
+                    if (job.state != MemoryExtractionJob.State.RUNNING || job.migrationRoleScopeId != null) {
                         job
                     } else {
                         recovered++
@@ -166,6 +166,94 @@ class MemoryExtractionJobRepository(private val store: MemoryExtractionJobPersis
             if (retried > 0) store.save(next)
             return retried
         }
+
+    /**
+     * Copies memory and rebinds only the selected conversation as one queue/commit critical section.
+     * The callback must return true only after a durable, retry-safe migration succeeds (including
+     * the existing-role/no-copy case). Failure leaves a durable fence; retry this same migration
+     * before allowing further work. The fence also covers a crash between copy and queue save.
+     * Call on IO before exposing role memory or scheduling work for this conversation.
+     */
+    fun migrateScope(
+        legacyMemoryScopeId: String,
+        roleMemoryScopeId: String,
+        historyScopeId: String,
+        migrate: () -> Boolean,
+    ): Int = synchronized(QUEUE_LOCK) {
+        require(legacyMemoryScopeId.isNotBlank() && roleMemoryScopeId.isNotBlank() && historyScopeId.isNotBlank())
+        if (legacyMemoryScopeId == roleMemoryScopeId) return 0
+        val jobs = read()
+        // Validate before the copy can change any store.
+        jobs.filter { it.conversationId == legacyMemoryScopeId }.forEach { job ->
+            require(job.historyScopeId == legacyMemoryScopeId || job.historyScopeId == historyScopeId) {
+                "Legacy extraction job belongs to a different history scope."
+            }
+        }
+        // Persist a fence BEFORE touching memory files. If copy or final queue persistence fails,
+        // a restarted worker must not resume writing the old store. The same migration can retry.
+        val fenced = jobs.map { job ->
+            if (job.conversationId == legacyMemoryScopeId && legacyMemoryScopeId != roleMemoryScopeId) {
+                require(job.migrationRoleScopeId == null || job.migrationRoleScopeId == roleMemoryScopeId)
+                job.copy(migrationRoleScopeId = roleMemoryScopeId)
+            } else job
+        }
+        if (fenced != jobs) store.save(fenced)
+        check(migrate()) { "Memory scope migration did not complete." }
+        var rebound = 0
+        val next = fenced.map { job ->
+            if (job.conversationId != legacyMemoryScopeId || legacyMemoryScopeId == roleMemoryScopeId) {
+                job
+            } else {
+                require(job.historyScopeId == legacyMemoryScopeId || job.historyScopeId == historyScopeId) {
+                    "Legacy extraction job belongs to a different history scope."
+                }
+                rebound++
+                job.copy(
+                    conversationId = roleMemoryScopeId,
+                    historyScopeId = historyScopeId,
+                    legacyHistoryScopeId = job.legacyHistoryScopeId ?: legacyMemoryScopeId,
+                    migrationRoleScopeId = null,
+                    attemptCount = if (job.state == MemoryExtractionJob.State.RUNNING) {
+                        (job.attemptCount - 1).coerceAtLeast(0)
+                    } else job.attemptCount,
+                    // An in-flight request has stores and input bound to the old scope. Revoke it;
+                    // its late response cannot commit or change the rebound job's retry state.
+                    state = if (job.state == MemoryExtractionJob.State.RUNNING) {
+                        MemoryExtractionJob.State.RETRY_WAIT
+                    } else job.state,
+                )
+            }
+        }
+        if (rebound > 0) store.save(next)
+        rebound
+    }
+
+    /** Held through fact/text writes AND their completion callback, against scope migration. */
+    fun commitIfCurrent(claim: MemoryExtractionJob, commit: () -> Unit): Boolean = synchronized(QUEUE_LOCK) {
+        if (claim.state != MemoryExtractionJob.State.RUNNING || claim.migrationRoleScopeId != null ||
+            read().none { it == claim }) return false
+        commit()
+        true
+    }
+
+    fun complete(claim: MemoryExtractionJob): Boolean = synchronized(QUEUE_LOCK) {
+        if (read().none { it == claim }) false else complete(claim.id)
+    }
+
+    fun fail(
+        claim: MemoryExtractionJob,
+        now: Long,
+        safeError: String,
+        permanent: Boolean = false,
+    ): Boolean = synchronized(QUEUE_LOCK) {
+        if (read().none { it == claim }) false else fail(claim.id, now, safeError, permanent)
+    }
+
+    /** Includes completed batches even when the preference cursor was lost or predates migration. */
+    fun coveredTurnIds(historyScopeId: String): Set<String> = synchronized(QUEUE_LOCK) {
+        read().filter { it.historyScopeId == historyScopeId && it.state != MemoryExtractionJob.State.PERMANENT_FAILURE }
+            .flatMap { it.turnIds }.toSet()
+    }
 
     fun list(): List<MemoryExtractionJob> = synchronized(QUEUE_LOCK) { read() }
 

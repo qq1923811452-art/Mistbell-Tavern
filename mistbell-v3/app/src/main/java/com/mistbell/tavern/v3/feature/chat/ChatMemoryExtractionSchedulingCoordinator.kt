@@ -85,10 +85,7 @@ internal class ChatMemoryExtractionSchedulingCoordinator(
                         // A failed or still-running batch keeps its turns pending. Without this
                         // filter every new turn would enqueue another growing batch that overlaps
                         // the unfinished one, so the queue would accumulate duplicate work.
-                        val activeTurnIds = existingJobs
-                            .filter { it.conversationId == conversationId && it.state in ACTIVE_STATES }
-                            .flatMap { it.turnIds }
-                            .toSet()
+                        val activeTurnIds = repository.coveredTurnIds(historyScopeId)
                         val jobs = pending
                             .filterNot { it.first.id in activeTurnIds }
                             .chunked(MemoryExtractionInput.MAX_TURNS)
@@ -136,11 +133,4 @@ internal class ChatMemoryExtractionSchedulingCoordinator(
         }
     }
 
-    private companion object {
-        val ACTIVE_STATES = setOf(
-            MemoryExtractionJob.State.PENDING,
-            MemoryExtractionJob.State.RUNNING,
-            MemoryExtractionJob.State.RETRY_WAIT,
-        )
-    }
 }

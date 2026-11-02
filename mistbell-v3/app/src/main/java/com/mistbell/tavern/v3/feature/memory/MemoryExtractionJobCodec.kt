@@ -23,6 +23,8 @@ object MemoryExtractionJobCodec {
                             .put("id", job.id)
                             .put("conversation", job.conversationId)
                             .put("history_scope", job.historyScopeId)
+                            .put("legacy_history_scope", job.legacyHistoryScopeId)
+                            .put("migration_role_scope", job.migrationRoleScopeId)
                             .put("turns", JSONArray(job.turnIds))
                             .put("provider", job.providerProfileId)
                             .put("credential_handle", job.credentialHandle)
@@ -70,6 +72,8 @@ object MemoryExtractionJobCodec {
                 nextAttemptAtEpochMillis = item.getLong("next_attempt"),
                 state = MemoryExtractionJob.State.valueOf(item.getString("state")),
                 lastSafeError = item.optionalNonBlankString("error"),
+                legacyHistoryScopeId = item.optionalNonBlankString("legacy_history_scope"),
+                migrationRoleScopeId = item.optionalNonBlankString("migration_role_scope"),
             )
         }
         require(jobs.map { it.id }.distinct().size == jobs.size)

@@ -93,7 +93,15 @@ class MemoryExtractionQueueWorker(
                                 ),
                             )
                             val jobPrefix = job.id.take(JOB_ID_PREFIX_CHARS)
-                            val call = pipeline.extractAndPersist(input, commitGate = attempt::commit) { outcome ->
+                            val call = pipeline.extractAndPersist(input, commitGate = { commit ->
+                                attempt.commit {
+                                    if (!repository.commitIfCurrent(job, commit)) {
+                                        // Migration revoked this request while it was on the network.
+                                        // Wake the worker; the rebound job remains due for a new claim.
+                                        complete(MemoryExtractionQueueRunner.ExecutionResult.Failure())
+                                    }
+                                }
+                            }) { outcome ->
                                 when (outcome) {
                                     is TemporalFactPipelineOutcome.Saved -> {
                                         bestEffortDiagnostic {
@@ -231,7 +239,7 @@ class MemoryExtractionQueueWorker(
             // once if the conversation has not been opened since the upgrade, so background
             // extraction reads the same source as chat.
             val historyScopeId = job.historyScopeId
-            val legacyScopeId = job.conversationId
+            val legacyScopeId = (job.legacyHistoryScopeId ?: job.conversationId)
                 .takeIf { it.isNotBlank() && it != historyScopeId }
             val historyRepository = SqliteChatHistoryRepository(
                 applicationContext,
@@ -291,9 +299,7 @@ class MemoryExtractionQueueWorker(
 
     private fun scheduleNextRetry(repository: MemoryExtractionJobRepository): Long {
         val active = repository.list().filter {
-            it.state == MemoryExtractionJob.State.PENDING ||
-                it.state == MemoryExtractionJob.State.RUNNING ||
-                it.state == MemoryExtractionJob.State.RETRY_WAIT
+            it.migrationRoleScopeId == null && it.state in ACTIVE_STATES
         }
         // Only the oldest outstanding batch in each conversation may run. If that batch is
         // waiting for retry, do not spin on later batches whose due time is already in the past.

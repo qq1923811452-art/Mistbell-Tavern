@@ -8,9 +8,9 @@ import android.content.SharedPreferences
 internal class ChatScopeSwitchCoordinator(
     private val settings: SharedPreferences,
 ) {
-    fun persist(previousConversationId: String, newConversationId: String) {
+    fun persist(@Suppress("UNUSED_PARAMETER") previousConversationId: String, newConversationId: String) {
+        // Completed extraction cursors belong to their conversation and survive switching away.
         settings.edit()
-            .remove("memory_extraction_last_success_turn_id_$previousConversationId")
             .remove("memory_extraction_last_success_turn_id")
             .putString("memory_extraction_conversation_id", newConversationId)
             .apply()
