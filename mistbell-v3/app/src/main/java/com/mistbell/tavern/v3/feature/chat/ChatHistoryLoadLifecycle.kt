@@ -69,7 +69,9 @@ internal fun ChatHistoryLoadLifecycle(
             }
             ChatHistoryLoadResult.Unavailable -> {
                 setHistoryLoadFailed(true)
-                runCatching { diagnosticStore.warn("chat.history.load_failed", "reason=temporarily_unavailable; retried=true") }
+                runCatching {
+                    diagnosticStore.warn("chat.history.load_failed", "reason=temporarily_unavailable; retried=true")
+                }
                 setStatus("聊天记录暂时无法读取；原文件未修改，请稍后重试。")
             }
         }

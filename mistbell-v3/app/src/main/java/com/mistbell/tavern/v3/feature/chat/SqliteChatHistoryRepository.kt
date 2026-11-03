@@ -38,6 +38,7 @@ class SqliteChatHistoryRepository(
         ChatHistoryLoadResult.Unavailable
     }
 
+    @Suppress("ReturnCount", "TooGenericExceptionCaught") // Preserve source files on every migration failure.
     private fun loadSnapshot(): ChatHistoryLoadResult {
         migrateLegacyScopeIfNeeded()
         val existingCount = runCatching { store.count(scopeId) }
