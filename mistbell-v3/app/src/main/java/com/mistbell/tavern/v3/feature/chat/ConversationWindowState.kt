@@ -33,7 +33,7 @@ internal data class ConversationWindowState(
         val expectedThroughId = messages.getOrNull(archivedMessageCount - 1)?.id
         val boundaryIdsMatch = expectedStartId == startId && expectedThroughId == summaryThroughId
         val pinWholeTurn = pinnedMessageCount == 0 ||
-            (pinnedMessageCount <= messages.size &&
+            (pinnedMessageCount in 0..messages.size &&
                 (pinnedMessageCount == messages.size || messages[pinnedMessageCount].role == PromptRole.USER))
         val wholeTurn = pinWholeTurn &&
             (next == null || archivedMessageCount == pinnedMessageCount || next.role == PromptRole.USER)

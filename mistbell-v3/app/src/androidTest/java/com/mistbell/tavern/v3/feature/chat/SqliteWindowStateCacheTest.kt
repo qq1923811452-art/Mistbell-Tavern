@@ -74,6 +74,37 @@ class SqliteWindowStateCacheTest {
     }
 
     @Test
+    fun upgradesSchemaFourAndPreservesTranscriptWhileInvalidatingOldWindow() {
+        store.append(
+            SCOPE,
+            PersistedChatMessage(
+                "kept", "user", "version four content", 1L, PersistedChatMessage.DeliveryState.COMPLETE,
+            ),
+        )
+        val db = store.writableDatabase
+        db.execSQL("DROP TABLE window_state")
+        db.execSQL(
+            "CREATE TABLE window_state (scope_id TEXT PRIMARY KEY NOT NULL, version INTEGER NOT NULL, " +
+                "recent_turns INTEGER NOT NULL, summary_max_chars INTEGER NOT NULL, " +
+                "max_history_chars INTEGER NOT NULL, block_turns INTEGER NOT NULL, " +
+                "source_count INTEGER NOT NULL, source_fingerprint TEXT NOT NULL, " +
+                "start_id TEXT, through_id TEXT, archived_count INTEGER NOT NULL, summary TEXT NOT NULL)",
+        )
+        db.execSQL(
+            "INSERT INTO window_state VALUES ('session', 1, 40, 4000, 24000, 5, " +
+                "0, 'old', NULL, NULL, 0, '')",
+        )
+        db.version = 4
+        store.close()
+        store = SqliteChatStore(context, name)
+        assertEquals(5, store.writableDatabase.version)
+        assertEquals("version four content", store.loadRecent(SCOPE, 1).single().content)
+        val cached = checkNotNull(SqliteWindowStateCache(store).load(SCOPE))
+        assertEquals(0, cached.pinnedMessageCount)
+        assertFalse(cached.matches(SCOPE, emptyList(), HistoryWindowConfig()))
+    }
+
+    @Test
     fun explicitInvalidationReplacesLargerArchiveAndSurvivesReopen() {
         val planner = StableConversationWindowPlanner()
         val config = HistoryWindowConfig(recentTurns = 100, maxHistoryChars = 4_000)

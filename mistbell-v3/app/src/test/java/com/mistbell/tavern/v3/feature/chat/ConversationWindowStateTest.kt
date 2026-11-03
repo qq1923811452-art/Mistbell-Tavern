@@ -8,6 +8,15 @@ import org.junit.Test
 
 class ConversationWindowStateTest {
     @Test
+    fun negativePinnedCacheCountIsRejectedWithoutIndexingTheTranscript() {
+        val source = history(4)
+        val planner = StableConversationWindowPlanner()
+        planner.plan(SCOPE, source, CONFIG)
+        val invalid = checkNotNull(planner.exportState()).copy(pinnedMessageCount = -1)
+        assertFalse(invalid.matches(SCOPE, source, CONFIG))
+    }
+
+    @Test
     fun restartRestoresStableFortyFourTurnAnchorAndAllowsAppend() {
         val planner = StableConversationWindowPlanner()
         planner.plan(SCOPE, history(40), CONFIG)
