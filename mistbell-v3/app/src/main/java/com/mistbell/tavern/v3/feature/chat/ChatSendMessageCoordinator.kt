@@ -81,6 +81,7 @@ internal class ChatSendMessageCoordinator(
             activatedWorldbook = activationReport.activatedEntries.map { it.entry },
             latestUserMessage = userText,
             postHistoryInstructions = postHistoryInstructions,
+            cardSystemInstructions = selectedCard?.systemPrompt,
         )
         val assemblyMs = (System.nanoTime() - assemblyStarted) / NANOS_PER_MILLI
         diagnosticStore.info(

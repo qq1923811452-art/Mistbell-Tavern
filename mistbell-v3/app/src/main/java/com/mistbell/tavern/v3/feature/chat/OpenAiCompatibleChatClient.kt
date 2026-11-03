@@ -185,7 +185,8 @@ class OpenAiCompatibleChatClient(
         val endpoint = ChatCompletionParser.endpointLabel(baseUrl)
         observer.onDiagnostic(
             "request",
-            "endpoint=$endpoint; stream=${options.stream}; maxTokens=${options.maxTokens}",
+            "endpoint=$endpoint; stream=${options.stream}; maxTokens=${options.maxTokens}; " +
+                PromptCacheDiagnostics.describe(messages, 0),
         )
         val requestBuilder = Request.Builder()
             .url("$baseUrl/chat/completions")

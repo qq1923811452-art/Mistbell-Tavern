@@ -15,6 +15,7 @@ internal class SqliteWindowStateCache(private val store: SqliteChatStore) : Wind
     override fun save(state: ConversationWindowState, replaceExisting: Boolean) {
         runCatching {
             require(state.summary.length <= state.config.summaryMaxChars)
+            require(state.pinnedMessageCount in 0..state.archivedMessageCount)
             val db = store.writableDatabase
             db.beginTransaction()
             try {
@@ -44,6 +45,7 @@ internal class SqliteWindowStateCache(private val store: SqliteChatStore) : Wind
         put("start_id", state.startId)
         put("through_id", state.summaryThroughId)
         put("archived_count", state.archivedMessageCount)
+        put("pinned_count", state.pinnedMessageCount)
         put("summary", state.summary)
     }
 
@@ -58,6 +60,7 @@ internal class SqliteWindowStateCache(private val store: SqliteChatStore) : Wind
         startId = getString(getColumnIndexOrThrow("start_id")),
         summaryThroughId = getString(getColumnIndexOrThrow("through_id")),
         archivedMessageCount = int("archived_count"),
+        pinnedMessageCount = int("pinned_count"),
         summary = text("summary"),
     )
 
@@ -74,7 +77,8 @@ internal class SqliteWindowStateCache(private val store: SqliteChatStore) : Wind
                     "max_history_chars INTEGER NOT NULL, block_turns INTEGER NOT NULL, " +
                     "source_count INTEGER NOT NULL, " +
                     "source_fingerprint TEXT NOT NULL, start_id TEXT, through_id TEXT, " +
-                    "archived_count INTEGER NOT NULL, summary TEXT NOT NULL)",
+                    "archived_count INTEGER NOT NULL, pinned_count INTEGER NOT NULL DEFAULT 0, " +
+                    "summary TEXT NOT NULL)",
             )
         }
 

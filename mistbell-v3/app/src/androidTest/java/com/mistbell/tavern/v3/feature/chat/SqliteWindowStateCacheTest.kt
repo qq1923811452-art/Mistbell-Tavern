@@ -61,7 +61,7 @@ class SqliteWindowStateCacheTest {
         store.writableDatabase.version = 3
         store.close()
         store = SqliteChatStore(context, name)
-        assertEquals(4, store.writableDatabase.version)
+        assertEquals(5, store.writableDatabase.version)
         assertEquals("kept content", store.loadRecent(SCOPE, 1).single().content)
         val planner = StableConversationWindowPlanner()
         planner.plan(SCOPE, emptyList(), HistoryWindowConfig())
@@ -71,6 +71,37 @@ class SqliteWindowStateCacheTest {
         assertNull(cache.load("other"))
         store.deleteScope(SCOPE)
         assertNull(cache.load(SCOPE))
+    }
+
+    @Test
+    fun upgradesSchemaFourAndPreservesTranscriptWhileInvalidatingOldWindow() {
+        store.append(
+            SCOPE,
+            PersistedChatMessage(
+                "kept", "user", "version four content", 1L, PersistedChatMessage.DeliveryState.COMPLETE,
+            ),
+        )
+        val db = store.writableDatabase
+        db.execSQL("DROP TABLE window_state")
+        db.execSQL(
+            "CREATE TABLE window_state (scope_id TEXT PRIMARY KEY NOT NULL, version INTEGER NOT NULL, " +
+                "recent_turns INTEGER NOT NULL, summary_max_chars INTEGER NOT NULL, " +
+                "max_history_chars INTEGER NOT NULL, block_turns INTEGER NOT NULL, " +
+                "source_count INTEGER NOT NULL, source_fingerprint TEXT NOT NULL, " +
+                "start_id TEXT, through_id TEXT, archived_count INTEGER NOT NULL, summary TEXT NOT NULL)",
+        )
+        db.execSQL(
+            "INSERT INTO window_state VALUES ('session', 1, 40, 4000, 24000, 5, " +
+                "0, 'old', NULL, NULL, 0, '')",
+        )
+        db.version = 4
+        store.close()
+        store = SqliteChatStore(context, name)
+        assertEquals(5, store.writableDatabase.version)
+        assertEquals("version four content", store.loadRecent(SCOPE, 1).single().content)
+        val cached = checkNotNull(SqliteWindowStateCache(store).load(SCOPE))
+        assertEquals(0, cached.pinnedMessageCount)
+        assertFalse(cached.matches(SCOPE, emptyList(), HistoryWindowConfig()))
     }
 
     @Test
@@ -86,11 +117,12 @@ class SqliteWindowStateCacheTest {
         for (turns in 4..13) planner.plan(SCOPE, source.take(turns * 2), config)
         val cache = SqliteWindowStateCache(store)
         val stable = checkNotNull(planner.exportState())
-        assertEquals(20, stable.archivedMessageCount)
+        assertTrue(stable.archivedMessageCount >= stable.pinnedMessageCount)
+        assertEquals(stable.pinnedMessageCount, planner.plan(SCOPE, source, config).window.pinnedPrefixMessages.size)
         cache.save(stable)
         planner.plan(SCOPE, source, config, invalidate = true)
         val rebuilt = checkNotNull(planner.exportState())
-        assertEquals(18, rebuilt.archivedMessageCount)
+        assertEquals(stable.pinnedMessageCount, rebuilt.pinnedMessageCount)
         cache.save(rebuilt)
         assertEquals(stable, cache.load(SCOPE))
         cache.save(rebuilt, replaceExisting = true)

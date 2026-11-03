@@ -2,8 +2,10 @@ package com.mistbell.tavern.v3.feature.chat
 
 import android.content.SharedPreferences
 import com.mistbell.tavern.v3.core.diagnostics.DiagnosticLogStore
+import com.mistbell.tavern.v3.core.settings.getIntCompat
 import com.mistbell.tavern.v3.feature.character.CharacterCard
 import com.mistbell.tavern.v3.feature.worldbook.LocalWorldBookService
+import com.mistbell.tavern.v3.feature.worldbook.WorldBookActivationReport
 import com.mistbell.tavern.v3.feature.worldbook.WorldBookActivationState
 import com.mistbell.tavern.v3.feature.worldbook.WorldBookEntry
 import com.mistbell.tavern.v3.feature.worldbook.WorldBookParser
@@ -23,23 +25,27 @@ internal class ChatWorldBookActivationCoordinator(
         state: WorldBookActivationState,
         stateKey: String,
         onBudgetExceeded: (Int) -> Unit,
-    ) = LocalWorldBookService().activateEntriesWithReport(
-        entries = localEntries + embeddedEntries(selectedCard),
-        scanText = scanText,
-        recentTexts = recentTexts,
-        maxBudget = LocalWorldBookService.DEFAULT_MAX_BUDGET,
-        state = state,
-    ).also { report ->
+    ): WorldBookActivationReport {
+        val effectiveBudget = settings
+            .getIntCompat("worldbook_max_chars", LocalWorldBookService.DEFAULT_MAX_BUDGET)
+            .coerceIn(LocalWorldBookService.MIN_MAX_BUDGET, LocalWorldBookService.MAX_MAX_BUDGET)
+        val report = LocalWorldBookService().activateEntriesWithReport(
+            entries = localEntries + embeddedEntries(selectedCard),
+            scanText = scanText,
+            recentTexts = recentTexts,
+            maxBudget = effectiveBudget,
+            state = state,
+        )
         diagnosticStore.info(
             "worldbook.activated",
             "count=${report.activatedEntries.size}; " +
                 "chars=${report.activatedEntries.sumOf { it.entry.content.length }}; " +
-                "dropped=${report.droppedByBudget}; source=${localEntries.size}",
+                "effectiveBudget=$effectiveBudget; dropped=${report.droppedByBudget}; source=${localEntries.size}",
         )
         if (report.droppedByBudget > 0) {
             diagnosticStore.warn(
                 "worldbook.budget_dropped",
-                "count=${report.droppedByBudget}; budget=${LocalWorldBookService.DEFAULT_MAX_BUDGET}",
+                "count=${report.droppedByBudget}; effectiveBudget=$effectiveBudget",
             )
             onBudgetExceeded(report.droppedByBudget)
         }
@@ -56,6 +62,7 @@ internal class ChatWorldBookActivationCoordinator(
                 "reason=${error::class.java.simpleName}",
             )
         }
+        return report
     }
 
     private fun embeddedEntries(selectedCard: CharacterCard?): List<WorldBookEntry> =

@@ -8,6 +8,15 @@ import org.junit.Test
 
 class ConversationWindowStateTest {
     @Test
+    fun negativePinnedCacheCountIsRejectedWithoutIndexingTheTranscript() {
+        val source = history(4)
+        val planner = StableConversationWindowPlanner()
+        planner.plan(SCOPE, source, CONFIG)
+        val invalid = checkNotNull(planner.exportState()).copy(pinnedMessageCount = -1)
+        assertFalse(invalid.matches(SCOPE, source, CONFIG))
+    }
+
+    @Test
     fun restartRestoresStableFortyFourTurnAnchorAndAllowsAppend() {
         val planner = StableConversationWindowPlanner()
         planner.plan(SCOPE, history(40), CONFIG)
@@ -16,10 +25,26 @@ class ConversationWindowStateTest {
         val restarted = StableConversationWindowPlanner()
         assertTrue(restarted.restore(state, SCOPE, history(45), CONFIG))
         val result = restarted.plan(SCOPE, history(45), CONFIG)
-        assertEquals("u5", result.startId)
-        assertEquals(5, result.archivedTurnCount)
-        assertEquals("u0", before.startId)
+        assertEquals(before.window.pinnedPrefixMessages, result.window.pinnedPrefixMessages)
+        assertEquals(before.window.pinnedPrefixMessages.size, state.pinnedMessageCount)
+        assertEquals("u10", before.startId)
         assertEquals(planner.plan(SCOPE, history(45), CONFIG).window, result.window)
+    }
+
+    @Test
+    fun restartBeforePinThresholdCanContinueGrowingPin() {
+        val config = HistoryWindowConfig(recentTurns = 8, maxHistoryChars = 1_000)
+        val short = history(1)
+        val first = StableConversationWindowPlanner().plan(SCOPE, short, config)
+        assertEquals(0, first.window.pinnedPrefixMessages.size)
+        val state = checkNotNull(StableConversationWindowPlanner().let { planner ->
+            planner.plan(SCOPE, short, config)
+            planner.exportState()
+        })
+        val restarted = StableConversationWindowPlanner()
+        assertTrue(restarted.restore(state, SCOPE, short, config))
+        val grown = restarted.plan(SCOPE, history(4), config)
+        assertTrue(grown.window.pinnedPrefixMessages.isNotEmpty())
     }
 
     @Test
@@ -97,6 +122,7 @@ class ConversationWindowStateTest {
         }
         assertFalse(state.matches("other", source, CONFIG))
         assertFalse(state.matches(SCOPE, source, CONFIG.copy(recentTurns = 1)))
+        assertFalse(state.copy(pinnedMessageCount = state.archivedMessageCount + 1).matches(SCOPE, source, CONFIG))
     }
 
     @Test

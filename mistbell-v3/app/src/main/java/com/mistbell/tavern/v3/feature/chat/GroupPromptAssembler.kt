@@ -80,11 +80,14 @@ object GroupPromptAssembler {
     fun labelHistoryAssistantMessages(
         messages: List<PromptMessage>,
         assistantNames: List<String?>,
+        pinnedAssistantCount: Int = 0,
     ): List<PromptMessage> {
         val retainedAssistantCount = messages.count {
             it.role == PromptRole.ASSISTANT && !it.synthetic
         }
-        val windowedNames = assistantNames.takeLast(retainedAssistantCount)
+        val pinnedCount = pinnedAssistantCount.coerceIn(0, retainedAssistantCount)
+        val windowedNames = assistantNames.take(pinnedCount) +
+            assistantNames.drop(pinnedCount).takeLast(retainedAssistantCount - pinnedCount)
         var assistantIndex = 0
         return messages.map { message ->
             if (message.role != PromptRole.ASSISTANT || message.synthetic) {

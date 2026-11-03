@@ -12,13 +12,20 @@ class StableConversationWindowPlannerTest {
         val planner = StableConversationWindowPlanner()
         val config = HistoryWindowConfig(maxHistoryChars = LARGE_BUDGET)
         var previous = planner.plan(SCOPE, turns(0), config)
+        var pinnedIds = emptyList<String>()
         for (count in 1..TOTAL_TURNS) {
             val history = turns(count)
             val result = planner.plan(SCOPE, history, config)
-            val expectedArchivedTurns = ((count - RECENT_TURNS).coerceAtLeast(0) / BLOCK_TURNS) * BLOCK_TURNS
-            assertEquals(expectedArchivedTurns, result.archivedTurnCount)
+            if (pinnedIds.isEmpty() && result.window.pinnedPrefixMessages.isNotEmpty()) {
+                pinnedIds = result.window.pinnedPrefixMessages.mapIndexed { index, _ -> history[index].id }
+            }
+            assertEquals(pinnedIds, result.window.pinnedPrefixMessages.mapIndexed { index, _ -> history[index].id })
             assertPartition(history, result)
-            if (result.archivedTurnCount == previous.archivedTurnCount) {
+            assertTrue(result.window.retainedHistoryChars <= config.maxHistoryChars + HIGH_WATER_TEST_ALLOWANCE)
+            assertTrue(result.window.pinnedPrefixMessages.count { it.role == PromptRole.USER } <= MAX_TEST_PIN_TURNS)
+            assertTrue(result.window.pinnedPrefixMessages.count { it.role == PromptRole.USER } +
+                result.window.recentMessages.count { it.role == PromptRole.USER } <= RECENT_TURNS + BLOCK_TURNS)
+            if (result.window.archivedMessageCount == previous.window.archivedMessageCount) {
                 assertEquals(previous.window.earlierSummary, result.window.earlierSummary)
                 assertFalse(result.summaryRebuilt)
                 if (count > 1) assertEquals(previous.startId, result.startId)
@@ -38,15 +45,14 @@ class StableConversationWindowPlannerTest {
         val config = HistoryWindowConfig(maxHistoryChars = LARGE_BUDGET)
         val first = planner.plan(SCOPE, turns(RECENT_TURNS), config)
         val before = planner.plan(SCOPE, turns(RECENT_TURNS + BLOCK_TURNS - 1), config)
-        assertEquals(first.startId, before.startId)
+        assertEquals(first.window.pinnedPrefixMessages, before.window.pinnedPrefixMessages)
         assertFalse(before.summaryRebuilt)
         val boundary = planner.plan(SCOPE, turns(RECENT_TURNS + BLOCK_TURNS), config)
-        assertEquals("u5", boundary.startId)
-        assertEquals("a4", boundary.summaryThroughId)
-        assertEquals(BLOCK_TURNS, boundary.archivedTurnCount)
+        assertEquals(first.window.pinnedPrefixMessages, boundary.window.pinnedPrefixMessages)
+        assertTrue(boundary.window.archivedMessageCount >= boundary.window.pinnedPrefixMessages.size)
         val next = planner.plan(SCOPE, turns(RECENT_TURNS + BLOCK_TURNS * 2), config)
-        assertEquals("u10", next.startId)
-        assertEquals("a9", next.summaryThroughId)
+        assertEquals(boundary.window.pinnedPrefixMessages, next.window.pinnedPrefixMessages)
+        assertTrue(next.window.archivedMessageCount >= boundary.window.archivedMessageCount)
     }
 
     @Test
@@ -55,11 +61,10 @@ class StableConversationWindowPlannerTest {
         val config = HistoryWindowConfig(recentTurns = TURN_LIMIT, maxHistoryChars = LOW_WATER)
         val first = planner.plan(SCOPE, turns(BLOCK_TURNS - 1, TEXT_SIZE), config)
         val exact = planner.plan(SCOPE, turns(EXACT_HIGH_WATER_TURNS, TEXT_SIZE), config)
-        assertEquals(first.startId, exact.startId)
-        assertEquals(HIGH_WATER.toLong(), exact.window.recentHistoryChars)
+        assertEquals(first.window.pinnedPrefixMessages, exact.window.pinnedPrefixMessages)
         val evicted = planner.plan(SCOPE, turns(EXACT_HIGH_WATER_TURNS + 1, TEXT_SIZE), config)
-        assertEquals(BLOCK_TURNS * 2, evicted.archivedTurnCount)
-        assertTrue(evicted.window.recentHistoryChars < LOW_WATER)
+        assertEquals(exact.window.pinnedPrefixMessages, evicted.window.pinnedPrefixMessages)
+        assertTrue(evicted.window.retainedHistoryChars <= config.maxHistoryChars.toLong())
         assertPartition(turns(EXACT_HIGH_WATER_TURNS + 1, TEXT_SIZE), evicted)
     }
 
@@ -73,8 +78,9 @@ class StableConversationWindowPlannerTest {
         val result = planner.plan(SCOPE, history, config)
         assertTrue(result.window.isOverHistoryBudget)
         assertEquals(history.last().content, result.window.recentMessages.last().content)
-        assertEquals(history.sumOf { it.content.length.toLong() }, result.window.recentHistoryChars)
-        assertEquals("u0", result.startId)
+        assertEquals(history.sumOf { it.content.length.toLong() } - result.window.pinnedPrefixChars,
+            result.window.recentHistoryChars)
+        assertEquals("u1", result.startId)
         assertPartition(history, result)
     }
 
@@ -127,18 +133,17 @@ class StableConversationWindowPlannerTest {
         val history = turns(INITIAL_LONG_HISTORY)
         val config = HistoryWindowConfig(summaryMaxChars = LARGE_BUDGET, maxHistoryChars = LARGE_BUDGET)
         val initial = planner.plan(SCOPE, history, config)
-        assertEquals("u10", initial.startId)
-        assertEquals("a9", initial.summaryThroughId)
+        assertTrue(initial.window.pinnedPrefixMessages.isNotEmpty())
         val appended = turns(INITIAL_LONG_HISTORY + BLOCK_TURNS)
         val result = planner.plan(SCOPE, appended, config)
-        assertEquals("u15", result.startId)
-        assertNotEquals(initial.startId, result.startId)
+        assertEquals(initial.window.pinnedPrefixMessages, result.window.pinnedPrefixMessages)
         assertPartition(appended, result)
-        val expectedSummary = ConversationContextWindowBuilder.build(
-            appended.take(result.window.archivedMessageCount).map(WindowHistoryMessage::toPromptMessage),
-            recentTurns = 0,
-            summaryMaxChars = LARGE_BUDGET,
-        ).earlierSummary
+        val pinCount = result.window.pinnedPrefixMessages.size
+        val expectedSummary = ConversationContextWindowBuilder.summarizeOlder(
+            appended.subList(pinCount, result.window.archivedMessageCount)
+                .map(WindowHistoryMessage::toPromptMessage),
+            config.summaryMaxChars,
+        )
         assertEquals(expectedSummary, result.window.earlierSummary)
     }
 
@@ -153,17 +158,44 @@ class StableConversationWindowPlannerTest {
                 }
             }
         val result = StableConversationWindowPlanner().plan(SCOPE, history, HistoryWindowConfig())
-        assertEquals("u10", result.startId)
-        assertEquals("a9extra", result.summaryThroughId)
+        assertTrue(result.window.pinnedPrefixMessages.isNotEmpty())
         assertPartition(history, result)
     }
 
     private fun assertPartition(history: List<WindowHistoryMessage>, result: HistoryWindowDecision) {
         val split = result.window.archivedMessageCount
+        val pinCount = result.window.pinnedPrefixMessages.size
+        assertEquals(
+            history.take(pinCount).map(WindowHistoryMessage::toPromptMessage),
+            result.window.pinnedPrefixMessages,
+        )
         assertEquals(history.drop(split).map(WindowHistoryMessage::toPromptMessage), result.window.recentMessages)
         assertEquals(history.getOrNull(split)?.id, result.startId)
         assertEquals(history.getOrNull(split - 1)?.id, result.summaryThroughId)
-        assertEquals(history.take(split).count { it.role == PromptRole.USER }, result.archivedTurnCount)
+        assertEquals(
+            history.subList(pinCount.coerceAtMost(split), split).count { it.role == PromptRole.USER },
+            result.archivedTurnCount,
+        )
+    }
+
+    @Test
+    fun growingPinFreezesBeforeAssistantCompletionAndHandlesOpeningAssistant() {
+        val planner = StableConversationWindowPlanner()
+        val config = HistoryWindowConfig(recentTurns = 8, maxHistoryChars = 1_000)
+        val early = turns(1, 300)
+        val first = planner.plan(SCOPE, early, config)
+        assertTrue(first.window.pinnedPrefixMessages.isEmpty())
+        val partial = early + WindowHistoryMessage("u1", PromptRole.USER, "next")
+        val grown = planner.plan(SCOPE, partial, config)
+        val pin = grown.window.pinnedPrefixMessages
+        val completed = partial + WindowHistoryMessage("a1", PromptRole.ASSISTANT, "reply")
+        val afterAssistant = planner.plan(SCOPE, completed, config)
+        assertEquals(pin, afterAssistant.window.pinnedPrefixMessages)
+
+        val opening = listOf(WindowHistoryMessage("opening", PromptRole.ASSISTANT, "intro")) + turns(10)
+        val openingResult = StableConversationWindowPlanner().plan(SCOPE, opening, config)
+        assertTrue(openingResult.window.pinnedPrefixChars <= config.maxHistoryChars / 4)
+        assertTrue(openingResult.window.pinnedPrefixMessages.first().content == "intro")
     }
 
     private fun turns(count: Int, chars: Int = 1): List<WindowHistoryMessage> = (0 until count).flatMap { turn ->
@@ -182,8 +214,9 @@ private const val INITIAL_LONG_HISTORY = 50
 private const val LARGE_BUDGET = 100_000
 private const val TURN_LIMIT = 100
 private const val LOW_WATER = 4_000
-private const val HIGH_WATER = 12_000
 private const val EXACT_HIGH_WATER_TURNS = 12
 private const val TEXT_SIZE = 500
 private const val SMALL_BUDGET = 100
 private const val LONG_TEXT_SIZE = 10_000
+private const val HIGH_WATER_TEST_ALLOWANCE = 8_000
+private const val MAX_TEST_PIN_TURNS = 10

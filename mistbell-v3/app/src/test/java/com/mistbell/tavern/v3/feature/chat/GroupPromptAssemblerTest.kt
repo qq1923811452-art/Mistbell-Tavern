@@ -7,6 +7,21 @@ import org.junit.Test
 
 class GroupPromptAssemblerTest {
     @Test
+    fun pinnedAndRollingAssistantNamesSkipTheArchivedMiddle() {
+        val messages = listOf(
+            PromptMessage(PromptRole.SYSTEM, "Rules"),
+            PromptMessage(PromptRole.ASSISTANT, "opening"),
+            PromptMessage(PromptRole.ASSISTANT, "recent"),
+            PromptMessage(PromptRole.USER, "next"),
+        )
+        val result = GroupPromptAssembler.labelHistoryAssistantMessages(
+            messages, listOf("Opening speaker", "Archived speaker", "Recent speaker"), pinnedAssistantCount = 1,
+        )
+        assertEquals("[Opening speaker] opening", result[1].content)
+        assertEquals("[Recent speaker] recent", result[2].content)
+    }
+
+    @Test
     fun systemBlockDescribesSingleMemberAndTurnSpeaker() {
         val expected = """
             这是一个多角色群聊；每轮只由一个角色回复；请保持各自的人设，不要代替其他角色发言。

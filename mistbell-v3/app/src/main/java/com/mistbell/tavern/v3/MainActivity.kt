@@ -79,6 +79,7 @@ class MainActivity : ComponentActivity() {
     private var contextTokens by mutableStateOf(32_000)
     private var recentTurns by mutableStateOf(40)
     private var summaryMaxChars by mutableStateOf(4_000)
+    private var worldbookMaxChars by mutableStateOf(16_000)
     private var memoryEnabled by mutableStateOf(true)
     private var maxOutputTokens by mutableStateOf(4096)
     private var allowCustomModel by mutableStateOf(false)
@@ -119,6 +120,7 @@ class MainActivity : ComponentActivity() {
         contextTokens = settings.getIntCompat("chat_context_tokens", 32_000)
         recentTurns = settings.getIntCompat("chat_history_recent_turns", 40).coerceIn(1, 100)
         summaryMaxChars = settings.getIntCompat("chat_history_summary_max_chars", 4_000).coerceIn(0, 10_000)
+        worldbookMaxChars = settings.getIntCompat("worldbook_max_chars", 16_000).coerceIn(4_000, 64_000)
         memoryEnabled = settings.getBoolean("memory_extraction_enabled", true)
         maxOutputTokens = settings.getInt("chat_max_tokens", 4096).coerceIn(1, 200_000)
         allowCustomModel = settings.getBoolean("embedding_allow_custom_model", false)
@@ -342,6 +344,14 @@ class MainActivity : ComponentActivity() {
                                             contextTokens = contextTokens,
                                             recentTurns = recentTurns,
                                             summaryMaxChars = summaryMaxChars,
+                                            worldbookMaxChars = worldbookMaxChars,
+                                            onWorldbookMaxCharsChange = { chars ->
+                                                worldbookMaxChars = chars
+                                                getSharedPreferences("mistbell-v3-settings", MODE_PRIVATE)
+                                                    .edit()
+                                                    .putInt("worldbook_max_chars", chars)
+                                                    .apply()
+                                            },
                                             onRecentTurnsChange = { turns ->
                                                 recentTurns = turns
                                                 getSharedPreferences("mistbell-v3-settings", MODE_PRIVATE)
