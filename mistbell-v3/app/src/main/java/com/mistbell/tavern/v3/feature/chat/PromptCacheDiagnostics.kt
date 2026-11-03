@@ -1,5 +1,6 @@
 package com.mistbell.tavern.v3.feature.chat
 
+import java.nio.ByteBuffer
 import java.security.MessageDigest
 
 /** Hashes roles and length-framed content; diagnostic logs never include the prompt text. */
@@ -16,7 +17,7 @@ internal object PromptCacheDiagnostics {
         messages.forEach { message ->
             val bytes = message.content.toByteArray(Charsets.UTF_8)
             digest.update(message.role.ordinal.toByte())
-            for (shift in intArrayOf(24, 16, 8, 0)) digest.update((bytes.size ushr shift).toByte())
+            digest.update(ByteBuffer.allocate(Int.SIZE_BYTES).putInt(bytes.size).array())
             digest.update(bytes)
         }
         return digest.digest().joinToString("") { "%02x".format(it) }

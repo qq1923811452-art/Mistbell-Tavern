@@ -2,22 +2,25 @@ package com.mistbell.tavern.v3.feature.chat
 
 /** Reads only explicit card instruction fields; descriptive text and examples are not policies. */
 internal object ReplyLengthPolicy {
-    private val context = "(?:单次回复|每次回复|每轮回复|回复篇幅|正文篇幅|回复正文|正文)"
-    private val contextualClause = Regex(context)
-    private val units = "(?:中文字符|中文字|汉字|字符|字)"
+    private const val CONTEXT = "(?:单次回复|每次回复|每轮回复|回复篇幅|正文篇幅|回复正文|正文)"
+    private val contextualClause = Regex(CONTEXT)
+    private const val UNITS = "(?:中文字符|中文字|汉字|字符|字)"
+    private const val TARGET_UNIT_GROUP = 3
     private data class Target(val mode: String, val count: Int, val chineseOnly: Boolean)
     private val target = Regex(
         "^(?:[0-9]+[.、]\\s*)?(?:叙事篇幅与细节密度[：:]\\s*)?" +
-            "(?:请)?\\s*$context(?:的)?(?:篇幅|长度|字数)?\\s*" +
+            "(?:请)?\\s*$CONTEXT(?:的)?(?:篇幅|长度|字数)?\\s*" +
             "(?:(?:应当|应该|应|必须|须|需要|需|请|保持|以|为|目标为|目标是)\\s*)*" +
-            "[：:]?\\s*(约|大约|不少于|至少|达到)?\\s*([0-9]{2,5})\\s*(?:个)?($units)",
+            "[：:]?\\s*(约|大约|不少于|至少|达到)?\\s*([0-9]{2,5})\\s*(?:个)?($UNITS)",
     )
     private val ambiguous = Regex(
         "不超过|至多|最多|以内|以下|(?<!不)少于|不多于|小于|低于|" +
             "[0-9]\\s*(?:[-~～—–至到]|字\\s*(?:至|到))\\s*[0-9]",
     )
-    private val characterCount = Regex("[0-9]+\\s*(?:个)?$units")
+    private val characterCount = Regex("[0-9]+\\s*(?:个)?$UNITS")
 
+    // Guard exits intentionally reject ambiguous policies before any guidance can gain system weight.
+    @Suppress("ReturnCount")
     fun cardGuidance(systemInstructions: String?, postHistory: String?): String? {
         val clauses = listOfNotNull(systemInstructions, postHistory)
             .flatMap { it.split(Regex("[。！？!?；;\\n\\r]")) }
@@ -39,7 +42,7 @@ internal object ReplyLengthPolicy {
                 "约", "大约" -> "约"
                 else -> ""
             }
-            val chineseOnly = match.groupValues[3] in setOf("中文字符", "中文字", "汉字")
+            val chineseOnly = match.groupValues[TARGET_UNIT_GROUP] in setOf("中文字符", "中文字", "汉字")
             targets += Target(mode, count, chineseOnly)
         }
         val (mode, count, chineseOnly) = targets.distinct().singleOrNull() ?: return null

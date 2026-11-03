@@ -43,6 +43,8 @@ internal data class HistoryWindowDecision(
 }
 
 /** Keeps an opening prefix fixed while rolling a bounded, whole-turn recent tail. */
+// Keep validation, persistence and boundary transitions together in this small state machine.
+@Suppress("TooManyFunctions")
 internal class StableConversationWindowPlanner {
     private var previous: WindowSnapshot? = null
 
@@ -67,10 +69,10 @@ internal class StableConversationWindowPlanner {
             state.archivedMessageCount,
             pinned.map(WindowHistoryMessage::toPromptMessage),
         )
-        val pinLimit = minOf(config.recentTurns / 4, MAX_PIN_TURNS)
+        val pinLimit = minOf(config.recentTurns / PIN_BUDGET_DIVISOR, MAX_PIN_TURNS)
         val pinFrozen = state.archivedMessageCount > 0 ||
             messages.count { it.role == PromptRole.USER } > pinLimit ||
-            messages.sumOf { it.content.length.toLong() } > config.maxHistoryChars.toLong() / 4
+            messages.sumOf { it.content.length.toLong() } > config.maxHistoryChars.toLong() / PIN_BUDGET_DIVISOR
         previous = WindowSnapshot(
             scopeId, config, source, decision(messages, window, "restored", false),
             state.pinnedMessageCount, pinFrozen,
@@ -114,8 +116,8 @@ internal class StableConversationWindowPlanner {
             scopeId, config, history.map { it.copy(variants = it.variants.toList()) }, next,
             next.window.pinnedPrefixMessages.size,
             (resetReason == null && old?.pinFrozen == true) || next.window.archivedMessageCount > 0 ||
-                messages.count { it.role == PromptRole.USER } > minOf(config.recentTurns / 4, MAX_PIN_TURNS) ||
-                messages.sumOf { it.content.length.toLong() } > config.maxHistoryChars.toLong() / 4,
+                messages.count { it.role == PromptRole.USER } > minOf(config.recentTurns / PIN_BUDGET_DIVISOR, MAX_PIN_TURNS) ||
+                messages.sumOf { it.content.length.toLong() } > config.maxHistoryChars.toLong() / PIN_BUDGET_DIVISOR,
         )
         return next
     }
@@ -135,8 +137,8 @@ internal class StableConversationWindowPlanner {
             return decision(messages, empty, reason, true)
         }
         val starts = turnStarts(messages)
-        val pinBudget = config.maxHistoryChars.toLong() / 4
-        val pinTurnLimit = minOf(config.recentTurns / 4, MAX_PIN_TURNS)
+        val pinBudget = config.maxHistoryChars.toLong() / PIN_BUDGET_DIVISOR
+        val pinTurnLimit = minOf(config.recentTurns / PIN_BUDGET_DIVISOR, MAX_PIN_TURNS)
         val totalChars = messages.sumOf { it.content.length.toLong() }
         val growable = starts.size <= pinTurnLimit && totalChars <= pinBudget
         val pinEnd = if (growable) 0 else selectPrefixBoundary(
@@ -203,13 +205,13 @@ internal class StableConversationWindowPlanner {
         val sourceChars = messages.sumOf { it.content.length.toLong() }
         val canGrowPin = !old.pinFrozen && oldSplit == 0 && (
             messages.count { it.role == PromptRole.USER } >
-                minOf(config.recentTurns / 4, MAX_PIN_TURNS) ||
-                sourceChars > config.maxHistoryChars.toLong() / 4
+                minOf(config.recentTurns / PIN_BUDGET_DIVISOR, MAX_PIN_TURNS) ||
+                sourceChars > config.maxHistoryChars.toLong() / PIN_BUDGET_DIVISOR
             )
         if (!disabled && canGrowPin) {
             pinCount = selectPrefixBoundary(
-                messages, turnStarts(messages), config.maxHistoryChars.toLong() / 4,
-                minOf(config.recentTurns / 4, MAX_PIN_TURNS),
+                messages, turnStarts(messages), config.maxHistoryChars.toLong() / PIN_BUDGET_DIVISOR,
+                minOf(config.recentTurns / PIN_BUDGET_DIVISOR, MAX_PIN_TURNS),
             )
             tail = maxOf(tail, pinCount)
         }
@@ -283,6 +285,8 @@ internal class StableConversationWindowPlanner {
         return end
     }
 
+    // Separate exits preserve newest-turn retention and stop before exceeding either soft limit.
+    @Suppress("LoopWithTooManyJumpStatements")
     private fun selectTailBoundary(
         messages: List<WindowHistoryMessage>,
         starts: List<Int>,
@@ -339,3 +343,4 @@ private data class WindowSnapshot(
 
 private const val HIGH_WATER_HEADROOM = 8_000L
 private const val MAX_PIN_TURNS = 10
+private const val PIN_BUDGET_DIVISOR = 4

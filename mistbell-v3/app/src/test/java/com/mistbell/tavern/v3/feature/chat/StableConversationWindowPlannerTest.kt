@@ -165,11 +165,17 @@ class StableConversationWindowPlannerTest {
     private fun assertPartition(history: List<WindowHistoryMessage>, result: HistoryWindowDecision) {
         val split = result.window.archivedMessageCount
         val pinCount = result.window.pinnedPrefixMessages.size
-        assertEquals(history.take(pinCount).map(WindowHistoryMessage::toPromptMessage), result.window.pinnedPrefixMessages)
+        assertEquals(
+            history.take(pinCount).map(WindowHistoryMessage::toPromptMessage),
+            result.window.pinnedPrefixMessages,
+        )
         assertEquals(history.drop(split).map(WindowHistoryMessage::toPromptMessage), result.window.recentMessages)
         assertEquals(history.getOrNull(split)?.id, result.startId)
         assertEquals(history.getOrNull(split - 1)?.id, result.summaryThroughId)
-        assertEquals(history.subList(pinCount.coerceAtMost(split), split).count { it.role == PromptRole.USER }, result.archivedTurnCount)
+        assertEquals(
+            history.subList(pinCount.coerceAtMost(split), split).count { it.role == PromptRole.USER },
+            result.archivedTurnCount,
+        )
     }
 
     @Test
@@ -208,7 +214,6 @@ private const val INITIAL_LONG_HISTORY = 50
 private const val LARGE_BUDGET = 100_000
 private const val TURN_LIMIT = 100
 private const val LOW_WATER = 4_000
-private const val HIGH_WATER = 12_000
 private const val EXACT_HIGH_WATER_TURNS = 12
 private const val TEXT_SIZE = 500
 private const val SMALL_BUDGET = 100

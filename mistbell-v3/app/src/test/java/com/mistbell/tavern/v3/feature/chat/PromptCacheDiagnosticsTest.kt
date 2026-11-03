@@ -14,7 +14,10 @@ class PromptCacheDiagnosticsTest {
             PromptMessage(PromptRole.USER, "tail"),
         )
         val first = PromptCacheDiagnostics.describe(messages, 1)
-        val second = PromptCacheDiagnostics.describe(messages.dropLast(1) + PromptMessage(PromptRole.USER, "changed"), 1)
+        val second = PromptCacheDiagnostics.describe(
+            messages.dropLast(1) + PromptMessage(PromptRole.USER, "changed"),
+            1,
+        )
         assertEquals(first, second)
         assertFalse(first.contains("private"))
     }

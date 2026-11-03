@@ -6,6 +6,7 @@ import com.mistbell.tavern.v3.feature.worldbook.WorldBookEntry
  * Owns assembly of the existing stable system prefix and per-turn prompt sections.
  */
 internal class ChatPromptAssemblyCoordinator {
+    @Suppress("LongParameterList")
     fun assemble(
         characterDefinition: String?,
         contextWindow: ConversationContextWindow,
