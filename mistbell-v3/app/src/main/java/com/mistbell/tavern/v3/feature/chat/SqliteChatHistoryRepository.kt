@@ -30,11 +30,19 @@ class SqliteChatHistoryRepository(
     private var cachedById: Map<String, PersistedChatMessage>? = null
 
     @Synchronized
-    fun load(): ChatHistoryLoadResult {
+    @Suppress("TooGenericExceptionCaught") // Storage failures must leave the UI able to retry.
+    fun load(): ChatHistoryLoadResult = try {
+        loadSnapshot()
+    } catch (error: Exception) {
+        diagnostic("chat.history.load_failed", describeFailure(error))
+        ChatHistoryLoadResult.Unavailable
+    }
+
+    private fun loadSnapshot(): ChatHistoryLoadResult {
         migrateLegacyScopeIfNeeded()
         val existingCount = runCatching { store.count(scopeId) }
             .getOrElse {
-                onDiagnostic("chat.history.load_failed", describeFailure(it))
+                diagnostic("chat.history.load_failed", describeFailure(it))
                 return ChatHistoryLoadResult.Unavailable
             }
 
@@ -76,7 +84,8 @@ class SqliteChatHistoryRepository(
                     }
                     cachedById = migrated.messages.associateBy(PersistedChatMessage::id)
                     migrated
-                } catch (_: Exception) {
+                } catch (error: Exception) {
+                    diagnostic("chat.history.load_failed", describeFailure(error))
                     // Never delete or rewrite the source JSON when migration fails.
                     ChatHistoryLoadResult.Unavailable
                 }
@@ -141,19 +150,15 @@ class SqliteChatHistoryRepository(
             "Chat message IDs must be unique."
         }
 
-        val previous = cachedById ?: when (val loaded = load()) {
-            is ChatHistoryLoadResult.Loaded -> loaded.messages.associateBy(PersistedChatMessage::id)
-            ChatHistoryLoadResult.Missing -> {
-                // Another repository instance may have written rows after load() checked the count.
-                when (val current = loadAllFromSqlite()) {
-                    is ChatHistoryLoadResult.Loaded -> current.messages.associateBy(PersistedChatMessage::id)
-                    else -> throw IllegalStateException("Chat history is unavailable; refusing to replace it.")
-                }
+        // Refuse replacement if the source cannot be read at all. A partial recovery is safe:
+        // the replacement transaction removes physical rows rather than just cached message IDs.
+        if (cachedById == null) {
+            check(load() is ChatHistoryLoadResult.Loaded || cachedById != null) {
+                "Chat history is unavailable; refusing to replace it."
             }
-            else -> throw IllegalStateException("Chat history is unavailable; refusing to replace it.")
         }
         val currentById = messages.associateBy(PersistedChatMessage::id)
-        store.syncSnapshot(scopeId, messages, previous.keys - currentById.keys)
+        store.replaceScope(scopeId, messages)
         cachedById = currentById
     }
 
@@ -164,21 +169,19 @@ class SqliteChatHistoryRepository(
             val newestFirst = mutableListOf<PersistedChatMessage>()
             var cursor: ChatMessageCursor? = null
             while (true) {
-                val page = store.loadRecent(scopeId, PAGE_SIZE, cursor) { error ->
+                val page = store.loadPage(scopeId, PAGE_SIZE, cursor) { error ->
                     skippedRows++
                     // Bounded logging: one broken batch must not flood the diagnostic file.
                     if (skippedRows <= MAX_LOGGED_REJECTIONS) {
-                        onDiagnostic("chat.history.row_rejected", describeFailure(error))
+                        diagnostic("chat.history.row_rejected", describeFailure(error))
                     }
                 }
-                if (page.isEmpty()) break
-                newestFirst += page
-                val oldest = page.last()
-                cursor = ChatMessageCursor(oldest.createdAtEpochMillis, oldest.id)
-                if (page.size < PAGE_SIZE) break
+                newestFirst += page.messages
+                cursor = page.nextCursor
+                if (page.rowsRead < PAGE_SIZE) break
             }
             if (skippedRows > 0) {
-                onDiagnostic(
+                diagnostic(
                     "chat.history.partially_loaded",
                     "scope=${scopeId.take(SCOPE_PREFIX_CHARS)}; skipped=$skippedRows",
                 )
@@ -186,9 +189,14 @@ class SqliteChatHistoryRepository(
             ChatHistoryLoadResult.Loaded(newestFirst.asReversed(), skippedRows)
         } catch (error: Exception) {
             // The scope, not just the exception name, decides which conversation is unreadable.
-            onDiagnostic("chat.history.load_failed", describeFailure(error))
+            diagnostic("chat.history.load_failed", describeFailure(error))
             ChatHistoryLoadResult.Unavailable
         }
+    }
+
+    private fun diagnostic(event: String, detail: String) {
+        // Diagnostic storage can fail too (for example, a full disk). It must not break recovery.
+        runCatching { onDiagnostic(event, detail) }
     }
 
     private fun describeFailure(error: Throwable): String =

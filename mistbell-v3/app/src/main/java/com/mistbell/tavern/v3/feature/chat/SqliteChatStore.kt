@@ -142,19 +142,18 @@ class SqliteChatStore(
         scopeId: String,
         limit: Int,
         before: ChatMessageCursor?,
-    ): List<PersistedChatMessage> = loadRecent(scopeId, limit, before) { }
+    ): List<PersistedChatMessage> = loadPage(scopeId, limit, before) { throw it }.messages
 
     /**
      * Tolerant read: a row that fails validation is reported and skipped instead of aborting the
      * page. One malformed record must not make every message in a conversation unreadable.
      */
-    @Suppress("TooGenericExceptionCaught") // One unparsable row must not abort the page.
-    internal fun loadRecent(
+    internal fun loadPage(
         scopeId: String,
         limit: Int,
         before: ChatMessageCursor?,
-        onRowRejected: (Throwable) -> Unit,
-    ): List<PersistedChatMessage> {
+        onRowRejected: (IllegalArgumentException) -> Unit,
+    ): ChatMessagePage {
         validateScope(scopeId)
         require(limit in 1..MAX_PAGE_SIZE) { "Page size must be between 1 and $MAX_PAGE_SIZE." }
         val selection: String
@@ -181,17 +180,42 @@ class SqliteChatStore(
             "created_at DESC, id DESC",
             limit.toString(),
         ).use { cursor ->
-            buildList(cursor.count) {
+            var nextCursor: ChatMessageCursor? = null
+            var rowsRead = 0
+            val messages = buildList(cursor.count) {
                 while (cursor.moveToNext()) {
+                    rowsRead++
+                    nextCursor = ChatMessageCursor(
+                        cursor.getLong(cursor.getColumnIndexOrThrow("created_at")),
+                        cursor.getString(cursor.getColumnIndexOrThrow("id")),
+                    )
                     val message = try {
                         cursor.toPersistedMessage()
-                    } catch (error: Exception) {
+                    } catch (error: IllegalArgumentException) {
                         onRowRejected(error)
                         null
                     }
                     if (message != null) add(message)
                 }
             }
+            ChatMessagePage(messages, rowsRead, nextCursor)
+        }
+    }
+
+    /** Replace every physical row, including unreadable rows, in one transaction. */
+    fun replaceScope(scopeId: String, messages: List<PersistedChatMessage>) {
+        validateScope(scopeId)
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            deleteScope(scopeId)
+            messages.forEach { message ->
+                db.insertOrThrow(TABLE_MESSAGES, null, values(scopeId, message))
+            }
+            markLegacyImported(scopeId)
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
         }
     }
 
@@ -408,3 +432,10 @@ class SqliteChatStore(
         }
     }
 }
+
+/** Pagination follows physical rows even when validation rejects every message in a page. */
+internal data class ChatMessagePage(
+    val messages: List<PersistedChatMessage>,
+    val rowsRead: Int,
+    val nextCursor: ChatMessageCursor?,
+)
