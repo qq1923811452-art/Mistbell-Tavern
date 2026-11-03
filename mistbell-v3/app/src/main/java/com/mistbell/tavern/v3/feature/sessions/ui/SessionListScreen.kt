@@ -7,11 +7,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
@@ -67,6 +67,10 @@ fun SessionListScreen(
             SessionListBackdrop()
             Scaffold(
                 containerColor = Color.Transparent,
+                // The tab bar is drawn by the host below this surface and already reserves the
+                // system navigation inset. Reserving it again leaves a dead black band that clips
+                // the last rows and pushes the FAB upwards.
+                contentWindowInsets = WindowInsets(0, 0, 0, 0),
                 topBar = {
                     SessionListHeader(
                         showGroupAction = characters.isNotEmpty(),
@@ -90,7 +94,6 @@ fun SessionListScreen(
                 onClick = onCreateSession,
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .navigationBarsPadding()
                     .padding(end = FAB_END_PADDING, bottom = FAB_BOTTOM_PADDING),
             )
         }

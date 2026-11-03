@@ -304,6 +304,53 @@ class SqliteChatHistoryRepositoryTest {
         }
     }
 
+    @Test
+    fun oneUnparsableRowIsSkippedInsteadOfHidingTheWholeConversation() {
+        val suffix = UUID.randomUUID().toString()
+        val databaseName = "history-tolerant-$suffix.db"
+        val legacyName = "history-tolerant-$suffix.json"
+        val legacy = ChatHistoryStore(context, legacyName)
+        val scope = "role/session-$suffix"
+        val good = message("good-1", "user", "kept", 10L)
+        val seed = SqliteChatStore(context, databaseName)
+        try {
+            seed.append(scope, good)
+            // 100,001 characters exceeds PersistedChatMessage.MAX_MESSAGE_CHARS. The table has no
+            // length check, so this reproduces a row that a previous build could have persisted.
+            seed.writableDatabase.execSQL(
+                "INSERT INTO chat_messages " +
+                    "(scope_id, id, role, content, created_at, delivery_state, variants, active_variant) " +
+                    "VALUES (?, ?, 'assistant', ?, 11, 'COMPLETE', '[]', 0)",
+                arrayOf(scope, "broken-1", "x".repeat(PersistedChatMessage.MAX_MESSAGE_CHARS + 1)),
+            )
+        } finally {
+            seed.close()
+        }
+
+        val events = mutableListOf<String>()
+        val repository = SqliteChatHistoryRepository(
+            context,
+            scope,
+            legacy,
+            databaseName,
+            onDiagnostic = { event, _ -> events += event },
+        )
+        try {
+            val result = repository.load()
+            assertEquals(
+                ChatHistoryLoadResult.Loaded(listOf(good), skippedRows = 1),
+                result,
+            )
+            assertTrue("rejection must be reported", events.contains("chat.history.row_rejected"))
+            assertTrue("summary must be reported", events.contains("chat.history.partially_loaded"))
+        } finally {
+            repository.close()
+            context.deleteDatabase(databaseName)
+            context.deleteFile(legacyName)
+            context.deleteFile("$legacyName.bak")
+        }
+    }
+
     private fun message(
         id: String,
         role: String,

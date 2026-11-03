@@ -142,6 +142,18 @@ class SqliteChatStore(
         scopeId: String,
         limit: Int,
         before: ChatMessageCursor?,
+    ): List<PersistedChatMessage> = loadRecent(scopeId, limit, before) { }
+
+    /**
+     * Tolerant read: a row that fails validation is reported and skipped instead of aborting the
+     * page. One malformed record must not make every message in a conversation unreadable.
+     */
+    @Suppress("TooGenericExceptionCaught") // One unparsable row must not abort the page.
+    internal fun loadRecent(
+        scopeId: String,
+        limit: Int,
+        before: ChatMessageCursor?,
+        onRowRejected: (Throwable) -> Unit,
     ): List<PersistedChatMessage> {
         validateScope(scopeId)
         require(limit in 1..MAX_PAGE_SIZE) { "Page size must be between 1 and $MAX_PAGE_SIZE." }
@@ -170,7 +182,15 @@ class SqliteChatStore(
             limit.toString(),
         ).use { cursor ->
             buildList(cursor.count) {
-                while (cursor.moveToNext()) add(cursor.toPersistedMessage())
+                while (cursor.moveToNext()) {
+                    val message = try {
+                        cursor.toPersistedMessage()
+                    } catch (error: Exception) {
+                        onRowRejected(error)
+                        null
+                    }
+                    if (message != null) add(message)
+                }
             }
         }
     }

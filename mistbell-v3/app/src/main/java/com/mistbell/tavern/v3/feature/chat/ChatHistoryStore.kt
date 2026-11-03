@@ -42,8 +42,18 @@ data class PersistedChatMessage(
 
 sealed interface ChatHistoryLoadResult {
     data object Missing : ChatHistoryLoadResult
-    data class Loaded(val messages: List<PersistedChatMessage>) : ChatHistoryLoadResult
+
+    /**
+     * [skippedRows] counts rows that could not be parsed and were dropped so one bad record cannot
+     * make an entire conversation unreadable. Non-zero means the remainder was recovered.
+     */
+    data class Loaded(
+        val messages: List<PersistedChatMessage>,
+        val skippedRows: Int = 0,
+    ) : ChatHistoryLoadResult
+
     data object Corrupt : ChatHistoryLoadResult
+
     /** A read failed transiently; callers may retry without treating the source as corrupt. */
     data object Unavailable : ChatHistoryLoadResult
 }
