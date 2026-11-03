@@ -45,7 +45,8 @@ data class PromptAssemblyInput(
  * turns reusable.
  */
 object PromptAssembler {
-    @Suppress("CyclomaticComplexMethod")
+    // Keep the ordered prompt layers together so cache-prefix and instruction placement remain auditable.
+    @Suppress("CyclomaticComplexMethod", "LongMethod")
     fun assemble(input: PromptAssemblyInput): List<PromptMessage> {
         require(input.stableSystemPrefix.isNotBlank()) { "A stable system prefix is required." }
         require(input.latestUserMessage.isNotBlank()) { "The latest user message is required." }

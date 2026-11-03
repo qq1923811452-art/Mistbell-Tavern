@@ -116,7 +116,8 @@ internal class StableConversationWindowPlanner {
             scopeId, config, history.map { it.copy(variants = it.variants.toList()) }, next,
             next.window.pinnedPrefixMessages.size,
             (resetReason == null && old?.pinFrozen == true) || next.window.archivedMessageCount > 0 ||
-                messages.count { it.role == PromptRole.USER } > minOf(config.recentTurns / PIN_BUDGET_DIVISOR, MAX_PIN_TURNS) ||
+                messages.count { it.role == PromptRole.USER } >
+                minOf(config.recentTurns / PIN_BUDGET_DIVISOR, MAX_PIN_TURNS) ||
                 messages.sumOf { it.content.length.toLong() } > config.maxHistoryChars.toLong() / PIN_BUDGET_DIVISOR,
         )
         return next
