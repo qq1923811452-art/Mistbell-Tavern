@@ -64,18 +64,18 @@ internal fun ChatHistoryLoadLifecycle(
             }
             ChatHistoryLoadResult.Corrupt -> {
                 setHistoryLoadFailed(true)
-                diagnosticStore.warn("chat.history.load_failed", "reason=corrupt_or_unsupported_format")
+                runCatching { diagnosticStore.warn("chat.history.load_failed", "reason=corrupt_or_unsupported_format") }
                 setStatus("聊天记录文件损坏或版本不兼容；为避免覆盖原文件，未自动清空记录。")
             }
             ChatHistoryLoadResult.Unavailable -> {
                 setHistoryLoadFailed(true)
-                diagnosticStore.warn("chat.history.load_failed", "reason=temporarily_unavailable; retried=true")
+                runCatching { diagnosticStore.warn("chat.history.load_failed", "reason=temporarily_unavailable; retried=true") }
                 setStatus("聊天记录暂时无法读取；原文件未修改，请稍后重试。")
             }
         }
         setHistoryReady(true)
         val loadMillis = (System.nanoTime() - loadStartedNanos) / NANOS_PER_MILLI
-        diagnosticStore.info("chat.history.loaded", "messages=${history.size}; elapsedMs=$loadMillis")
+        runCatching { diagnosticStore.info("chat.history.loaded", "messages=${history.size}; elapsedMs=$loadMillis") }
         resumePendingExtraction(context, diagnosticStore)
     }
 }
@@ -95,7 +95,7 @@ private suspend fun resumePendingExtraction(
                     job.state == MemoryExtractionJob.State.RETRY_WAIT
             }
         }.getOrElse {
-            diagnosticStore.warn("memory.extraction.queue_load_failed", "reason=queue_unavailable")
+            runCatching { diagnosticStore.warn("memory.extraction.queue_load_failed", "reason=queue_unavailable") }
             false
         }
     }
