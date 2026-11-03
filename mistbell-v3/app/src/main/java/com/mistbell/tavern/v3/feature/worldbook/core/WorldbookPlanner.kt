@@ -218,7 +218,7 @@ class WorldbookPlanner(
     }
 
     companion object {
-        const val DEFAULT_MAX_BUDGET = 8_000
+        const val DEFAULT_MAX_BUDGET = 16_000
         const val DEFAULT_SCAN_DEPTH = 3
         const val DEFAULT_RECURSIVE_DEPTH = 4
         const val MAX_DEPTH = 10

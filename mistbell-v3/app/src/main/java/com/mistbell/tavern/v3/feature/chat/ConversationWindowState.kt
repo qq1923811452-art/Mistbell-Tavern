@@ -17,6 +17,7 @@ internal data class ConversationWindowState(
     val startId: String?,
     val summaryThroughId: String?,
     val archivedMessageCount: Int,
+    val pinnedMessageCount: Int,
     val summary: String,
 ) {
     fun matches(scope: String, history: List<WindowHistoryMessage>, currentConfig: HistoryWindowConfig): Boolean {
@@ -25,14 +26,20 @@ internal data class ConversationWindowState(
         if (!matchingMetadata || !sourceFits) return false
         val prefix = history.take(sourceCount)
         val messages = prefix.filter { it.content.isNotBlank() }
-        val validBoundary = archivedMessageCount in 0..messages.size
+        val validBoundary = archivedMessageCount in 0..messages.size &&
+            pinnedMessageCount in 0..archivedMessageCount
         val next = messages.getOrNull(archivedMessageCount)
-        val boundaryIdsMatch = next?.id == startId &&
-            messages.getOrNull(archivedMessageCount - 1)?.id == summaryThroughId
-        val wholeTurn = next == null || archivedMessageCount == 0 || next.role == PromptRole.USER
+        val expectedStartId = next?.id
+        val expectedThroughId = messages.getOrNull(archivedMessageCount - 1)?.id
+        val boundaryIdsMatch = expectedStartId == startId && expectedThroughId == summaryThroughId
+        val pinWholeTurn = pinnedMessageCount == 0 ||
+            (pinnedMessageCount <= messages.size &&
+                (pinnedMessageCount == messages.size || messages[pinnedMessageCount].role == PromptRole.USER))
+        val wholeTurn = pinWholeTurn &&
+            (next == null || archivedMessageCount == pinnedMessageCount || next.role == PromptRole.USER)
         val safeSummary = summary.length <= config.summaryMaxChars
-        // A summary must describe archived messages; nothing archived means no summary.
-        val summaryConsistent = archivedMessageCount > 0 || summary.isEmpty()
+        // The summary covers only the middle gap; a pin-only window has no summary.
+        val summaryConsistent = archivedMessageCount > pinnedMessageCount || summary.isEmpty()
         val matchingSource = sourceFingerprint == WindowSourceFingerprint.hash(prefix)
         return listOf(
             validBoundary, safeSummary, summaryConsistent, boundaryIdsMatch, wholeTurn, matchingSource,
@@ -40,7 +47,7 @@ internal data class ConversationWindowState(
     }
 
     companion object {
-        const val VERSION = 1
+        const val VERSION = 2
     }
 }
 

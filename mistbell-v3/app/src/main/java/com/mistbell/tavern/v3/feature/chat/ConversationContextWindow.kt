@@ -13,12 +13,15 @@ data class ConversationContextWindow(
     val maxHistoryChars: Int = ConversationContextWindowBuilder.DEFAULT_MAX_HISTORY_CHARS,
     /** Older-prefix size passed to summary extraction, including when extraction is disabled. */
     val archivedMessageCount: Int = 0,
+    val pinnedPrefixMessages: List<PromptMessage> = emptyList(),
 ) {
     /** UTF-16 content characters only, not tokens or the size of the assembled prompt. */
     val recentHistoryChars: Long = recentMessages.sumOf { it.content.length.toLong() }
+    val pinnedPrefixChars: Long = pinnedPrefixMessages.sumOf { it.content.length.toLong() }
+    val retainedHistoryChars: Long = pinnedPrefixChars + recentHistoryChars
 
     /** The latest whole turn may exceed this soft budget; callers may still send it. */
-    val isOverHistoryBudget: Boolean = recentHistoryChars > maxHistoryChars.toLong()
+    val isOverHistoryBudget: Boolean = retainedHistoryChars > maxHistoryChars.toLong()
 }
 
 object ConversationContextWindowBuilder {

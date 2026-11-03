@@ -90,6 +90,18 @@ class LocalWorldBookServiceTest {
         assertEquals(0, report.droppedByBudget)
     }
 
+    @Test fun defaultWorldbookBudgetIsSixteenThousandUtf16Chars() {
+        assertEquals(16_000, LocalWorldBookService.DEFAULT_MAX_BUDGET)
+
+        val report = LocalWorldBookService().activateEntriesWithReport(
+            listOf(entry("large", listOf("key"), content = "x".repeat(12_000))),
+            scanText = "key",
+        )
+
+        assertEquals(listOf("large"), report.activatedEntries.map { it.entry.id })
+        assertEquals(0, report.droppedByBudget)
+    }
+
     @Test fun historyScanDepthUsesOnlyMostRecentItems() {
         val service = LocalWorldBookService()
         val corpus = service.buildScanCorpus("current", listOf("old", "middle", "recent"), 2)

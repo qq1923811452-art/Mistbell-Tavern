@@ -76,7 +76,8 @@ internal class ChatTurnPromptPreparationCoordinator(
         diagnosticStore.info(
             "chat.prompt.assembled",
             "messages=${finalMessages.size}; promptChars=$promptChars; elapsedMs=$elapsedMillis; " +
-                "formatMs=$formatMs; prepareMs=$prepareMs",
+                "formatMs=$formatMs; prepareMs=$prepareMs; " +
+                PromptCacheDiagnostics.describe(finalMessages, historyPlanner.exportState()?.pinnedMessageCount ?: 0),
         )
         return finalMessages
     }
@@ -92,7 +93,10 @@ internal class ChatTurnPromptPreparationCoordinator(
             .filter { it.role == "assistant" && it.content.isNotBlank() }
             .map { it.speakerName }
         val block = GroupPromptAssembler.systemBlock(context.members, context.speakerName)
-        val labelled = GroupPromptAssembler.labelHistoryAssistantMessages(messages, assistantNames)
+        val pinnedMessages = historyPlanner.exportState()?.pinnedMessageCount ?: 0
+        val pinnedAssistants = completed.filter { it.content.isNotBlank() }.take(pinnedMessages)
+            .count { it.role == "assistant" }
+        val labelled = GroupPromptAssembler.labelHistoryAssistantMessages(messages, assistantNames, pinnedAssistants)
         return labelled.map { message ->
             if (message.role == PromptRole.SYSTEM) {
                 message.copy(content = message.content + "\n\n" + block)

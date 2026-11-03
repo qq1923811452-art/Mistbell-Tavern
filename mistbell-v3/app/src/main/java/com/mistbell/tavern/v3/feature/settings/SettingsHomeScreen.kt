@@ -38,6 +38,8 @@ fun SettingsHomeScreen(
     contextTokens: Int,
     recentTurns: Int,
     summaryMaxChars: Int,
+    worldbookMaxChars: Int,
+    onWorldbookMaxCharsChange: (Int) -> Unit,
     onRecentTurnsChange: (Int) -> Unit,
     onSummaryMaxCharsChange: (Int) -> Unit,
     memoryEnabled: Boolean,
@@ -71,8 +73,8 @@ fun SettingsHomeScreen(
             MaxOutputTokensRow(maxOutputTokens, onMaxOutputTokensChange)
             ContextLengthRow(contextTokens, onContextTokensChange)
             NumberSettingRow(
-                title = "保留最近轮数",
-                subtitle = "未超过水位时窗口起点不变；1–100",
+                title = "历史原文轮数目标",
+                subtitle = "含固定开头与近期历史；整块裁剪可短暂超出；1–100",
                 value = recentTurns,
                 range = 1..100,
                 onChange = onRecentTurnsChange,
@@ -83,6 +85,13 @@ fun SettingsHomeScreen(
                 value = summaryMaxChars,
                 range = 0..10_000,
                 onChange = onSummaryMaxCharsChange,
+            )
+            NumberSettingRow(
+                title = "世界书字符预算（非 token）",
+                subtitle = "激活世界书条目的 UTF-16 字符上限；4000–64000",
+                value = worldbookMaxChars,
+                range = 4_000..64_000,
+                onChange = onWorldbookMaxCharsChange,
             )
             BackupSettingsSection()
         }
