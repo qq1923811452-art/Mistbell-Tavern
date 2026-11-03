@@ -39,10 +39,12 @@ internal class ChatHistoryLoadCoordinator(
             runCatching {
                 withContext(Dispatchers.IO) { historyStore.save(recoveredMessages) }
             }.onFailure { error ->
-                diagnosticStore.warn(
-                    "chat.history.recovery_save_failed",
-                    "reason=${error::class.java.simpleName}",
-                )
+                runCatching {
+                    diagnosticStore.warn(
+                        "chat.history.recovery_save_failed",
+                        "reason=${error::class.java.simpleName}",
+                    )
+                }
                 onRecoverySaveFailed()
             }
         }

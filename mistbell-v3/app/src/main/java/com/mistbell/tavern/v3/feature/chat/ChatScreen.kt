@@ -225,6 +225,7 @@ fun ChatScreen(
         mutableStateOf<SessionMemoryUiState>(SessionMemoryUiState.Loading)
     }
     var memoryStatus by remember(memoryScopeId) { mutableStateOf<MemoryStatusSnapshot?>(null) }
+    val diagnosticStore = remember(context) { DiagnosticLogStore(context.applicationContext.filesDir) }
     val historyStore = remember(context, conversationHistoryScope) {
         val legacyStore = ChatHistoryStore(
             context.applicationContext,
@@ -244,6 +245,7 @@ fun ChatScreen(
                         MemoryScopeFileNames.forScope(ChatHistoryStore.DEFAULT_FILE_NAME, scope),
                     )
                 },
+            onDiagnostic = { event, detail -> diagnosticStore.warn(event, detail) },
         )
     }
     DisposableEffect(historyStore) {
@@ -280,7 +282,6 @@ fun ChatScreen(
     }
     val historySaveMutex = remember { Mutex() }
     val historySaveRevision = remember { java.util.concurrent.atomic.AtomicLong(0L) }
-    val diagnosticStore = remember(context) { DiagnosticLogStore(context.applicationContext.filesDir) }
     var memoryScopeReady by remember(memoryScopeId, conversationMemoryScopeId) { mutableStateOf(false) }
     var memoryScopeFailed by remember(memoryScopeId, conversationMemoryScopeId) { mutableStateOf(false) }
     var memoryScopeRetry by remember(memoryScopeId, conversationMemoryScopeId) { mutableStateOf(0) }

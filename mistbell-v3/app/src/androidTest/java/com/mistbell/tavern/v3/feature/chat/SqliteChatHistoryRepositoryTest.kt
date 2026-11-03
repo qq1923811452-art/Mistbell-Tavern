@@ -304,6 +304,140 @@ class SqliteChatHistoryRepositoryTest {
         }
     }
 
+    @Test
+    fun oneUnparsableRowIsSkippedInsteadOfHidingTheWholeConversation() {
+        val suffix = UUID.randomUUID().toString()
+        val databaseName = "history-tolerant-$suffix.db"
+        val legacyName = "history-tolerant-$suffix.json"
+        val legacy = ChatHistoryStore(context, legacyName)
+        val scope = "role/session-$suffix"
+        val good = message("good-1", "user", "kept", 10L)
+        val seed = SqliteChatStore(context, databaseName)
+        try {
+            seed.append(scope, good)
+            // 100,001 characters exceeds PersistedChatMessage.MAX_MESSAGE_CHARS. The table has no
+            // length check, so this reproduces a row that a previous build could have persisted.
+            seed.writableDatabase.execSQL(
+                "INSERT INTO chat_messages " +
+                    "(scope_id, id, role, content, created_at, delivery_state, variants, active_variant) " +
+                    "VALUES (?, ?, 'assistant', ?, 11, 'COMPLETE', '[]', 0)",
+                arrayOf(scope, "broken-1", "x".repeat(PersistedChatMessage.MAX_MESSAGE_CHARS + 1)),
+            )
+        } finally {
+            seed.close()
+        }
+
+        val events = mutableListOf<String>()
+        val repository = SqliteChatHistoryRepository(
+            context,
+            scope,
+            legacy,
+            databaseName,
+            onDiagnostic = { event, _ -> events += event },
+        )
+        try {
+            val result = repository.load()
+            assertEquals(
+                ChatHistoryLoadResult.Loaded(listOf(good), skippedRows = 1),
+                result,
+            )
+            assertTrue("rejection must be reported", events.contains("chat.history.row_rejected"))
+            assertTrue("summary must be reported", events.contains("chat.history.partially_loaded"))
+        } finally {
+            repository.close()
+            context.deleteDatabase(databaseName)
+            context.deleteFile(legacyName)
+            context.deleteFile("$legacyName.bak")
+        }
+    }
+
+    @Test
+    fun rejectedRowDoesNotTruncateOlderPagesWithTiedTimestamps() {
+        withRecoveryFixture { store, repository, scope ->
+            val good = (0..500).map { message("good-%04d".format(it), "user", "kept", 10L) }
+            store.upsertAll(scope, good)
+            insertRejectedRows(store, scope, 1)
+            assertEquals(ChatHistoryLoadResult.Loaded(good, skippedRows = 1), repository.load())
+            val appended = message("new", "assistant", "new reply", 11L)
+            repository.save(good + appended)
+            assertEquals(ChatHistoryLoadResult.Loaded(good + appended, skippedRows = 1), repository.load())
+            assertEquals("normal save preserves rejected source rows", 503L, store.count(scope))
+        }
+    }
+
+    @Test
+    fun entirelyRejectedPageStillLoadsOlderMessagesAndBoundsDiagnostics() {
+        val events = mutableListOf<String>()
+        withRecoveryFixture({ event, _ -> events += event }) { store, repository, scope ->
+            val good = message("older", "user", "kept", 1L)
+            store.append(scope, good)
+            insertRejectedRows(store, scope, 500)
+            assertEquals(ChatHistoryLoadResult.Loaded(listOf(good), skippedRows = 500), repository.load())
+            assertEquals(5, events.count { it == "chat.history.row_rejected" })
+        }
+    }
+
+    @Test
+    fun failedDiagnosticsDoNotPreventPartialRecovery() {
+        withRecoveryFixture({ _, _ -> throw java.io.IOException("diagnostic disk full") }) { store, repository, scope ->
+            val good = message("good", "user", "kept", 1L)
+            store.append(scope, good)
+            insertRejectedRows(store, scope, 1)
+            assertEquals(ChatHistoryLoadResult.Loaded(listOf(good), skippedRows = 1), repository.load())
+        }
+    }
+
+    @Test
+    fun replacementRemovesRejectedRowsAndEmptyReplacementDoesNotResurrectLegacy() {
+        withRecoveryFixture { store, repository, scope ->
+            store.append(scope, message("old", "user", "old", 1L))
+            insertRejectedRows(store, scope, 1)
+            assertEquals(1, (repository.load() as ChatHistoryLoadResult.Loaded).skippedRows)
+            val replacement = message("new", "user", "imported", 20L)
+            repository.replaceAll(listOf(replacement))
+            assertEquals(1L, store.count(scope))
+            assertEquals(ChatHistoryLoadResult.Loaded(listOf(replacement)), repository.load())
+            repository.replaceAll(emptyList())
+            assertEquals(0L, store.count(scope))
+            assertEquals(ChatHistoryLoadResult.Missing, repository.load())
+        }
+    }
+
+    private fun withRecoveryFixture(
+        onDiagnostic: (String, String) -> Unit = { _, _ -> },
+        test: (SqliteChatStore, SqliteChatHistoryRepository, String) -> Unit,
+    ) {
+        val suffix = UUID.randomUUID().toString()
+        val databaseName = "recovery-$suffix.db"
+        val legacyName = "recovery-$suffix.json"
+        val scope = "session-$suffix"
+        val legacy = ChatHistoryStore(context, legacyName)
+        legacy.save(listOf(message("legacy", "user", "recovery copy", 0L)))
+        val store = SqliteChatStore(context, databaseName)
+        val repository = SqliteChatHistoryRepository(context, scope, legacy, databaseName, onDiagnostic = onDiagnostic)
+        try {
+            test(store, repository, scope)
+        } finally {
+            repository.close()
+            store.close()
+            context.deleteDatabase(databaseName)
+            context.deleteFile(legacyName)
+            context.deleteFile("$legacyName.bak")
+        }
+    }
+
+    private fun insertRejectedRows(store: SqliteChatStore, scope: String, count: Int) {
+        repeat(count) { index ->
+            // Invalid variant index keeps the fixture small while exercising row validation.
+            store.writableDatabase.execSQL(
+                "INSERT INTO chat_messages " +
+                    "(scope_id, id, role, content, created_at, delivery_state, variants, active_variant) " +
+                    "VALUES (?, ?, 'assistant', 'broken', 10, 'COMPLETE', '[\"one\"]', 9)",
+                arrayOf(scope, "z-broken-$index"),
+            )
+        }
+    }
+
     private fun message(
         id: String,
         role: String,
