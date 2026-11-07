@@ -2,8 +2,8 @@ package com.mistbell.tavern.v3.feature.chat
 
 /**
  * Reads only explicit card instruction fields; descriptive text and examples are not policies.
- * The result is appended once, at the end of the latest user message, and never in SYSTEM, so a
- * card that already names its own target is not restated twice per prompt.
+ * [tailGuidance] omits a derived target already stated in post-history instructions. Original card
+ * text is preserved, including any repetitions across card fields.
  */
 internal object ReplyLengthPolicy {
     private const val CONTEXT = "(?:单次回复|每次回复|每轮回复|回复篇幅|正文篇幅|回复正文|正文)"
@@ -65,11 +65,10 @@ internal object ReplyLengthPolicy {
     /**
      * What may be appended after the latest user message.
      *
-     * Post-history instructions are already the last block of that message. When they name the
-     * target themselves, appending the normalised target would put two statements of the same
-     * number in the same breath, so the card's own clause is left to stand alone. A target that
-     * only lives in SYSTEM keeps its trailing reminder, because there the two occurrences are
-     * separated by the whole conversation and the later one is the one models actually weight.
+     * Post-history instructions already occupy the tail, so do not restate their numeric target.
+     * A target supplied only by system instructions retains its tail reminder. Resolve the combined
+     * policy first so conflicts, ambiguous units and unsupported clauses still suppress guidance.
+     * Shared counting rules remain in [PromptAssembler.RESPONSE_COMPLETENESS_RULE].
      */
     fun tailGuidance(systemInstructions: String?, postHistory: String?): String? =
         cardGuidance(systemInstructions, postHistory)

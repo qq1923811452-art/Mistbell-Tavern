@@ -55,10 +55,9 @@ object PromptAssembler {
         }) { "Conversation history may contain only user and assistant messages." }
 
         val plan = WorldBookPlacement.plan(input.worldbookEntries)
-        // A card that names its own length already states the number next to the tail. Emitting the
-        // normalised target in SYSTEM as well made such cards read as three competing length rules;
-        // now the number appears exactly once, in the card clause, while SYSTEM keeps the count-free
-        // policy in RESPONSE_COMPLETENESS_RULE.
+        // Never add a derived numeric target to SYSTEM. Post-history targets already reach the tail
+        // verbatim; only a system-instruction target needs a derived tail reminder. Preserve card
+        // text even when the card itself repeats a target across multiple fields.
         val lengthGuidance = ReplyLengthPolicy.tailGuidance(input.cardSystemInstructions, input.postHistoryInstructions)
         val stableSections = buildList {
             add(input.stableSystemPrefix.trimEnd())
@@ -169,7 +168,9 @@ object PromptAssembler {
     /** Stable, model-agnostic completion policy; max_tokens is a ceiling, not a length request. */
     const val RESPONSE_COMPLETENESS_RULE =
         "回复篇幅与完整性规则：当前用户明确要求的长度、格式优先于角色卡默认值；" +
-            "否则遵守角色卡中适用的篇幅目标。字数指可见正文字符，不是token数量，" +
+            "否则遵守角色卡中适用的篇幅目标。字数默认指可见正文字符，不含标签或字数说明；" +
+            "角色卡明确以中文字符、中文字或汉字计数时，仅统计正文汉字，" +
+            "不以标点、空格、拉丁字母或标签补足。字数不是token数量，" +
             "不要将最大输出token数当作目标字数。角色卡若写‘约N字’，应尽量达到N字，" +
             "不要在明显不足时主动收尾；发送前自行检查是否已完成要求。" +
             "示例对白只示范口吻，不示范整篇长度；对白短促不代表叙述也必须简短。" +
