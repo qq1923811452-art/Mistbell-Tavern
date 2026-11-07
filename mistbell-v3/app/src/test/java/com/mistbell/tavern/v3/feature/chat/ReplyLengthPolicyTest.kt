@@ -1,5 +1,7 @@
 package com.mistbell.tavern.v3.feature.chat
 
+import com.mistbell.tavern.v3.feature.character.CharacterCard
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -131,7 +133,7 @@ class ReplyLengthPolicyTest {
     }
 
     @Test
-    fun explicitCardPolicyGetsSystemWeightAndTailReminderWithoutMovingDynamicData() {
+    fun explicitCardPolicyStaysInTheTailReminderWithoutMovingDynamicData() {
         val result = PromptAssembler.assemble(
             PromptAssemblyInput(
                 stableSystemPrefix = "应用规则",
@@ -146,10 +148,114 @@ class ReplyLengthPolicyTest {
         assertFalse(result.first().content.contains("保持角色口吻。"))
         assertTrue(result.first().content.contains("post-history writing preferences"))
         assertTrue(result.first().content.contains("亲密或高羁绊不等于失去个性"))
-        assertTrue(result.first().content.contains("正文约800字"))
+        assertFalse(result.first().content.contains("正文约800字"))
         assertTrue(result.first().content.contains("当前用户明确要求"))
         assertFalse(result.first().content.contains("PRIVATE_DYNAMIC_MEMORY"))
         assertTrue(result.last().content.contains("这次只回答一句。"))
+        assertTrue(result.last().content.contains("正文约800字"))
         assertTrue(result.last().content.contains("优先满足当前请求"))
+    }
+
+    @Test
+    fun derivedNumericGuidanceIsNeverAddedToTheSystemPrefix() {
+        val result = PromptAssembler.assemble(
+            PromptAssemblyInput(
+                stableSystemPrefix = "应用规则",
+                stableCharacterDefinition = "角色设定。",
+                cardSystemInstructions = "单次回复约800字。",
+                latestUserMessage = "继续",
+            ),
+        )
+        val system = result.first().content
+        assertFalse(system.contains("800"))
+        assertFalse(system.contains("角色卡默认篇幅目标"))
+        assertEquals(1, Regex("800").findAll(result.last().content).count())
+    }
+
+    @Test
+    fun aCardThatNamesItsOwnLengthInPostHistoryIsNeverRestatedAtTheTail() {
+        // Post-history instructions are already the tail. Appending the normalised target there
+        // would put two statements of the same number one line apart, so the card clause stands
+        // alone and the whole prompt carries exactly one statement of it.
+        val result = PromptAssembler.assemble(
+            PromptAssemblyInput(
+                stableSystemPrefix = "应用规则",
+                stableCharacterDefinition = "角色设定。",
+                postHistoryInstructions = "单次回复不少于 800 个中文字符。",
+                latestUserMessage = "继续",
+            ),
+        )
+        assertFalse(result.first().content.contains("800"))
+        assertTrue(result.last().content.contains("单次回复不少于 800 个中文字符。"))
+        assertFalse(result.last().content.contains("角色卡默认篇幅目标"))
+        assertEquals(1, result.sumOf { Regex("800").findAll(it.content).count() })
+        assertTrue(result.first().content.contains("仅统计正文汉字"))
+        assertTrue(result.first().content.contains("不以标点、空格、拉丁字母或标签补足"))
+        assertTrue(result.first().content.contains("当前用户明确要求的长度、格式优先"))
+    }
+
+    @Test
+    fun aLengthThatOnlyLivesInTheSystemPrefixStillGetsATailReminder() {
+        // Mirrors ChatSendMessageCoordinator: the card's systemPrompt is formatted into the stable
+        // definition and is also passed as cardSystemInstructions. Here the card text sits in the
+        // cached prefix; preserve it and add only one derived tail reminder.
+        val result = PromptAssembler.assemble(
+            PromptAssemblyInput(
+                stableSystemPrefix = "应用规则",
+                stableCharacterDefinition = "角色设定。\n\nSystem instructions: 单次回复约800字。",
+                cardSystemInstructions = "单次回复约800字。",
+                postHistoryInstructions = "保持角色口吻。",
+                latestUserMessage = "继续",
+            ),
+        )
+        assertTrue(result.first().content.contains("单次回复约800字。"))
+        assertTrue(result.last().content.contains("角色卡默认篇幅目标：正文约800字"))
+        assertEquals(1, Regex("角色卡默认篇幅目标").findAll(result.last().content).count())
+    }
+
+    @Test
+    fun tailGuidancePreservesCombinedPolicyGuards() {
+        for (postHistory in listOf(
+            "正文约300字", "正文至少800字", "正文不超过1000字",
+            "正文约800-1000字", "不要写正文约800字",
+        )) {
+            assertNull(postHistory, ReplyLengthPolicy.tailGuidance("单次回复约800字", postHistory))
+        }
+        assertNull(ReplyLengthPolicy.tailGuidance("正文至少800汉字", "每轮回复至少800字符"))
+        assertNull(ReplyLengthPolicy.tailGuidance("单次回复约300字", "正文约800字"))
+    }
+
+    @Test
+    fun tailGuidanceDoesNotInventTargetsOrCancelSystemTargetsForStyleOnlyNotes() {
+        for (postHistory in listOf(null, "", "  ", "正文保持第三人称。")) {
+            assertNull(ReplyLengthPolicy.tailGuidance(null, postHistory))
+            assertEquals(
+                ReplyLengthPolicy.cardGuidance("单次回复约800字", postHistory),
+                ReplyLengthPolicy.tailGuidance("单次回复约800字", postHistory),
+            )
+        }
+    }
+
+    @Test
+    fun equivalentTargetsInBothCardFieldsPreserveOriginalTextWithoutDerivedCopies() {
+        val system = "单次回复不少于 800 个中文字符。"
+        val postHistory = "每轮回复至少800汉字。保持角色口吻。"
+        val card = CharacterCard(name = "测试角色", systemPrompt = system, postHistoryInstructions = postHistory)
+        val result = PromptAssembler.assemble(
+            PromptAssemblyInput(
+                stableSystemPrefix = "应用规则",
+                stableCharacterDefinition = card.stableDefinition(),
+                cardSystemInstructions = card.systemPrompt,
+                postHistoryInstructions = card.postHistoryInstructions,
+                conversationHistory = listOf(PromptMessage(PromptRole.ASSISTANT, "上轮回复")),
+                latestUserMessage = "这次只回答一句。",
+            ),
+        )
+        assertTrue(result.first().content.contains(system))
+        assertTrue(result.last().content.endsWith("${PromptAssembler.POST_HISTORY_HEADER}\n$postHistory"))
+        assertTrue(result.last().content.contains("这次只回答一句。"))
+        assertTrue(result.none { it.content.contains("角色卡默认篇幅目标") })
+        assertEquals(2, result.sumOf { Regex("800").findAll(it.content).count() })
+        assertEquals("上轮回复", result[1].content)
     }
 }

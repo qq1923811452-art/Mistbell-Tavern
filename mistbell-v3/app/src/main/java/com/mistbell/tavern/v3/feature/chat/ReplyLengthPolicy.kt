@@ -1,6 +1,10 @@
 package com.mistbell.tavern.v3.feature.chat
 
-/** Reads only explicit card instruction fields; descriptive text and examples are not policies. */
+/**
+ * Reads only explicit card instruction fields; descriptive text and examples are not policies.
+ * [tailGuidance] omits a derived target already stated in post-history instructions. Original card
+ * text is preserved, including any repetitions across card fields.
+ */
 internal object ReplyLengthPolicy {
     private const val CONTEXT = "(?:单次回复|每次回复|每轮回复|回复篇幅|正文篇幅|回复正文|正文)"
     private val contextualClause = Regex(CONTEXT)
@@ -19,7 +23,7 @@ internal object ReplyLengthPolicy {
     )
     private val characterCount = Regex("[0-9]+\\s*(?:个)?$UNITS")
 
-    // Guard exits intentionally reject ambiguous policies before any guidance can gain system weight.
+    // Guard exits intentionally reject ambiguous policies before any guidance reaches the prompt.
     @Suppress("ReturnCount")
     fun cardGuidance(systemInstructions: String?, postHistory: String?): String? {
         val clauses = listOfNotNull(systemInstructions, postHistory)
@@ -57,4 +61,16 @@ internal object ReplyLengthPolicy {
             "用户明确要求简短、指定不同字数或非叙事回答时，优先满足当前请求。" +
             "不要展示检查过程，不得为达标重复内容或替用户安排言行。"
     }
+
+    /**
+     * What may be appended after the latest user message.
+     *
+     * Post-history instructions already occupy the tail, so do not restate their numeric target.
+     * A target supplied only by system instructions retains its tail reminder. Resolve the combined
+     * policy first so conflicts, ambiguous units and unsupported clauses still suppress guidance.
+     * Shared counting rules remain in [PromptAssembler.RESPONSE_COMPLETENESS_RULE].
+     */
+    fun tailGuidance(systemInstructions: String?, postHistory: String?): String? =
+        cardGuidance(systemInstructions, postHistory)
+            ?.takeIf { cardGuidance(null, postHistory) == null }
 }
