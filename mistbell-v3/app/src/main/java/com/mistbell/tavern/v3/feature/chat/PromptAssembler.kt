@@ -55,7 +55,11 @@ object PromptAssembler {
         }) { "Conversation history may contain only user and assistant messages." }
 
         val plan = WorldBookPlacement.plan(input.worldbookEntries)
-        val lengthGuidance = ReplyLengthPolicy.cardGuidance(input.cardSystemInstructions, input.postHistoryInstructions)
+        // A card that names its own length already states the number next to the tail. Emitting the
+        // normalised target in SYSTEM as well made such cards read as three competing length rules;
+        // now the number appears exactly once, in the card clause, while SYSTEM keeps the count-free
+        // policy in RESPONSE_COMPLETENESS_RULE.
+        val lengthGuidance = ReplyLengthPolicy.tailGuidance(input.cardSystemInstructions, input.postHistoryInstructions)
         val stableSections = buildList {
             add(input.stableSystemPrefix.trimEnd())
             input.stableCharacterDefinition?.trim()?.takeIf(String::isNotEmpty)?.let(::add)
@@ -64,7 +68,6 @@ object PromptAssembler {
             add(DYNAMIC_CONTENT_TRUST_RULE)
             if (!input.stableCharacterDefinition.isNullOrBlank()) add(CHARACTERIZATION_RULE)
             add(RESPONSE_COMPLETENESS_RULE)
-            lengthGuidance?.let(::add)
         }
         val systemMessage = PromptMessage(PromptRole.SYSTEM, stableSections.joinToString("\n\n"))
 
