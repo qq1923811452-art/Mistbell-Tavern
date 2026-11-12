@@ -5,7 +5,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class WorldbookPlannerTest {
-
     private val planner = WorldbookPlanner(randomDouble = { 0.5 })
 
     @Suppress("LongParameterList")
@@ -50,10 +49,11 @@ class WorldbookPlannerTest {
 
     @Test
     fun keywordEntriesActivateOnChineseSubstring() {
-        val plan = planner.activate(
-            listOf(entry("a", keys = listOf("北京"))),
-            scanText = "我今天去了北京",
-        )
+        val plan =
+            planner.activate(
+                listOf(entry("a", keys = listOf("北京"))),
+                scanText = "我今天去了北京",
+            )
         assertEquals(listOf("a"), plan.activated.map { it.entry.id })
         assertEquals(listOf("北京"), plan.activated.single().matchedKeys)
     }
@@ -67,55 +67,61 @@ class WorldbookPlannerTest {
 
     @Test
     fun budgetDropsOversizedEntries() {
-        val plan = planner.activate(
-            listOf(
-                entry("a", content = "x".repeat(20), keys = listOf("trigger")),
-                entry("b", content = "y".repeat(20), keys = listOf("trigger")),
-            ),
-            scanText = "trigger",
-            limits = WorldbookPlanner.ActivationLimits(maxBudget = 30),
-            state = null,
-        )
+        val plan =
+            planner.activate(
+                listOf(
+                    entry("a", content = "x".repeat(20), keys = listOf("trigger")),
+                    entry("b", content = "y".repeat(20), keys = listOf("trigger")),
+                ),
+                scanText = "trigger",
+                limits = WorldbookPlanner.ActivationLimits(maxBudget = 30),
+                state = null,
+            )
         assertEquals(1, plan.activated.size)
         assertEquals(1, plan.droppedByBudget)
     }
 
     @Test
     fun recursionExpandsOnceAndStops() {
-        val entries = listOf(
-            entry("a", keys = listOf("alpha"), content = "alpha introduces beta", recursive = true),
-            entry("b", keys = listOf("beta"), content = "beta introduces gamma", recursive = true),
-            entry("c", keys = listOf("gamma"), content = "gamma"),
-        )
-        val plan = planner.activate(
-            entries,
-            scanText = "alpha",
-            limits = WorldbookPlanner.ActivationLimits(maxRecursiveDepth = 4),
-        )
+        val entries =
+            listOf(
+                entry("a", keys = listOf("alpha"), content = "alpha introduces beta", recursive = true),
+                entry("b", keys = listOf("beta"), content = "beta introduces gamma", recursive = true),
+                entry("c", keys = listOf("gamma"), content = "gamma"),
+            )
+        val plan =
+            planner.activate(
+                entries,
+                scanText = "alpha",
+                limits = WorldbookPlanner.ActivationLimits(maxRecursiveDepth = 4),
+            )
         assertEquals(listOf("a", "b", "c").sorted(), plan.activated.map { it.entry.id }.sorted())
     }
 
     @Test
     fun recursionDepthLimitIsRespected() {
-        val entries = listOf(
-            entry("a", keys = listOf("alpha"), content = "beta", recursive = true),
-            entry("b", keys = listOf("beta"), content = "gamma", recursive = true),
-            entry("c", keys = listOf("gamma"), content = "done"),
-        )
-        val plan = planner.activate(
-            entries,
-            scanText = "alpha",
-            limits = WorldbookPlanner.ActivationLimits(maxRecursiveDepth = 0),
-        )
+        val entries =
+            listOf(
+                entry("a", keys = listOf("alpha"), content = "beta", recursive = true),
+                entry("b", keys = listOf("beta"), content = "gamma", recursive = true),
+                entry("c", keys = listOf("gamma"), content = "done"),
+            )
+        val plan =
+            planner.activate(
+                entries,
+                scanText = "alpha",
+                limits = WorldbookPlanner.ActivationLimits(maxRecursiveDepth = 0),
+            )
         assertEquals(listOf("a"), plan.activated.map { it.entry.id })
     }
 
     @Test
     fun groupActivatesOnlyOneEntry() {
-        val entries = listOf(
-            entry("a", keys = listOf("alpha"), group = "g", order = 0),
-            entry("b", keys = listOf("alpha"), group = "g", order = 1),
-        )
+        val entries =
+            listOf(
+                entry("a", keys = listOf("alpha"), group = "g", order = 0),
+                entry("b", keys = listOf("alpha"), group = "g", order = 1),
+            )
         val plan = planner.activate(entries, scanText = "alpha")
         assertEquals(1, plan.activated.size)
         assertEquals("a", plan.activated.single().entry.id)
@@ -156,10 +162,11 @@ class WorldbookPlannerTest {
 
     @Test
     fun disabledEntriesAreIgnored() {
-        val plan = planner.activate(
-            listOf(entry("a", keys = listOf("x"), disabled = true), entry("b", constant = true)),
-            "x",
-        )
+        val plan =
+            planner.activate(
+                listOf(entry("a", keys = listOf("x"), disabled = true), entry("b", constant = true)),
+                "x",
+            )
         assertEquals(listOf("b"), plan.activated.map { it.entry.id })
     }
 }

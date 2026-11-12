@@ -1,10 +1,10 @@
 package com.mistbell.tavern.v3.feature.memory
 
-import java.util.concurrent.CancellationException
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.util.concurrent.CancellationException
 
 class MemoryExtractionQueueRunnerTest {
     @Test fun successfulExecutionCompletesClaimedJob() {
@@ -12,10 +12,11 @@ class MemoryExtractionQueueRunnerTest {
         repository.enqueue(job("success"))
         val runner = MemoryExtractionQueueRunner(repository) { 1_000L }
 
-        val dispatch = runner.runNext(
-            buildInput = { it.turnIds },
-            execute = { _, _, complete -> complete(MemoryExtractionQueueRunner.ExecutionResult.Success) },
-        )
+        val dispatch =
+            runner.runNext(
+                buildInput = { it.turnIds },
+                execute = { _, _, complete -> complete(MemoryExtractionQueueRunner.ExecutionResult.Success) },
+            )
 
         assertEquals(
             MemoryExtractionQueueRunner.Result.Finished("success", MemoryExtractionJob.State.COMPLETED),
@@ -132,10 +133,11 @@ class MemoryExtractionQueueRunnerTest {
     @Test fun noDueJobReturnsIdle() {
         val repository = repository()
         repository.enqueue(job("future").copy(nextAttemptAtEpochMillis = 50_000L))
-        val result = MemoryExtractionQueueRunner(repository) { 10_000L }.runNext(
-            buildInput = { it.id },
-            execute = { _, _, _ -> error("Must not dispatch a future job.") },
-        )
+        val result =
+            MemoryExtractionQueueRunner(repository) { 10_000L }.runNext(
+                buildInput = { it.id },
+                execute = { _, _, _ -> error("Must not dispatch a future job.") },
+            )
         assertEquals(MemoryExtractionQueueRunner.Result.Idle, result)
     }
 
@@ -146,21 +148,23 @@ class MemoryExtractionQueueRunnerTest {
         val runner = MemoryExtractionQueueRunner(repository) { 10_000L }
         var observed: MemoryExtractionQueueRunner.Result? = null
 
-        val result = runner.runNext(
-            buildInput = { it.id },
-            execute = { _, _, complete -> complete(MemoryExtractionQueueRunner.ExecutionResult.Success) },
-            observer = { observed = it },
-        )
+        val result =
+            runner.runNext(
+                buildInput = { it.id },
+                execute = { _, _, complete -> complete(MemoryExtractionQueueRunner.ExecutionResult.Success) },
+                observer = { observed = it },
+            )
 
         assertTrue(result is MemoryExtractionQueueRunner.Result.PersistenceFailure)
         assertTrue(observed is MemoryExtractionQueueRunner.Result.PersistenceFailure)
     }
 
     @Test fun unauthorizedProviderResponseIsPermanentClientFailure() {
-        val failure = MemoryExtractionFailurePolicy.classify(
-            safeMessage = "Memory-extraction provider returned HTTP 401.",
-            httpStatus = 401,
-        )
+        val failure =
+            MemoryExtractionFailurePolicy.classify(
+                safeMessage = "Memory-extraction provider returned HTTP 401.",
+                httpStatus = 401,
+            )
 
         assertEquals("client", failure.safeCategory)
         assertTrue(failure.permanent)
@@ -193,10 +197,11 @@ class MemoryExtractionQueueRunnerTest {
     }
 
     @Test fun invalidProviderPayloadIsARetryableResponseFailure() {
-        val failure = MemoryExtractionFailurePolicy.classify(
-            safeMessage = "Memory-extraction response failed validation.",
-            httpStatus = null,
-        )
+        val failure =
+            MemoryExtractionFailurePolicy.classify(
+                safeMessage = "Memory-extraction response failed validation.",
+                httpStatus = null,
+            )
 
         assertEquals("response", failure.safeCategory)
         assertTrue(!failure.permanent)
@@ -228,8 +233,7 @@ class MemoryExtractionQueueRunnerTest {
                 ?: MemoryExtractionJobLoadResult.Missing
     }
 
-    private fun repository(): MemoryExtractionJobRepository =
-        MemoryExtractionJobRepository(InMemoryJobStore())
+    private fun repository(): MemoryExtractionJobRepository = MemoryExtractionJobRepository(InMemoryJobStore())
 
     private class InMemoryJobStore : MemoryExtractionJobPersistence {
         private var savedJobs: List<MemoryExtractionJob>? = null
@@ -243,12 +247,13 @@ class MemoryExtractionQueueRunnerTest {
                 ?: MemoryExtractionJobLoadResult.Missing
     }
 
-    private fun job(id: String) = MemoryExtractionJob(
-        id = id,
-        conversationId = "conversation-1",
-        turnIds = listOf("turn-1"),
-        providerProfileId = "memory",
-        credentialHandle = "saved-opaque-handle",
-        createdAtEpochMillis = 1_000L,
-    )
+    private fun job(id: String) =
+        MemoryExtractionJob(
+            id = id,
+            conversationId = "conversation-1",
+            turnIds = listOf("turn-1"),
+            providerProfileId = "memory",
+            credentialHandle = "saved-opaque-handle",
+            createdAtEpochMillis = 1_000L,
+        )
 }

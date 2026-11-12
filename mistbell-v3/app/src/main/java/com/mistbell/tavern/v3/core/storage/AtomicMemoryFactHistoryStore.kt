@@ -9,13 +9,17 @@ import java.io.IOException
 
 sealed interface MemoryFactHistoryLoadResult {
     data object Missing : MemoryFactHistoryLoadResult
+
     data class Loaded(val history: List<MemoryFact>) : MemoryFactHistoryLoadResult
+
     data class Corrupt(val safeReason: String) : MemoryFactHistoryLoadResult
 }
 
 interface MemoryFactHistoryPersistence {
     fun save(history: List<MemoryFact>)
+
     fun load(): MemoryFactHistoryLoadResult
+
     fun update(transform: (List<MemoryFact>) -> List<MemoryFact>): List<MemoryFact>
 }
 
@@ -49,11 +53,12 @@ class AtomicMemoryFactHistoryStore(
 
     @Synchronized
     override fun update(transform: (List<MemoryFact>) -> List<MemoryFact>): List<MemoryFact> {
-        val current = when (val loaded = load()) {
-            MemoryFactHistoryLoadResult.Missing -> emptyList()
-            is MemoryFactHistoryLoadResult.Loaded -> loaded.history
-            is MemoryFactHistoryLoadResult.Corrupt -> throw IllegalStateException(loaded.safeReason)
-        }
+        val current =
+            when (val loaded = load()) {
+                MemoryFactHistoryLoadResult.Missing -> emptyList()
+                is MemoryFactHistoryLoadResult.Loaded -> loaded.history
+                is MemoryFactHistoryLoadResult.Corrupt -> throw IllegalStateException(loaded.safeReason)
+            }
         val updated = transform(current)
         if (updated != current) save(updated)
         return updated
@@ -68,9 +73,10 @@ class AtomicMemoryFactHistoryStore(
             return MemoryFactHistoryLoadResult.Corrupt("Fact history exceeds the size limit.")
         }
         return try {
-            val history = atomicFile.openRead().use { input ->
-                MemoryFactHistoryCodec.decode(input.readBytes())
-            }
+            val history =
+                atomicFile.openRead().use { input ->
+                    MemoryFactHistoryCodec.decode(input.readBytes())
+                }
             MemoryFactHistoryLoadResult.Loaded(history)
         } catch (_: IOException) {
             MemoryFactHistoryLoadResult.Corrupt("Fact history could not be read.")

@@ -62,13 +62,15 @@ object MemoryScopeMigration {
                 val texts = textBytes?.let(MemoryTextCodec::decode).orEmpty()
                 val idMap =
                     facts.associate { fact -> fact.id to migratedFactId(fact, conversationScopeId, roleScopeId) }
-                val rewrittenFacts = facts.map { fact ->
-                    migratedFact(fact, conversationScopeId, roleScopeId, idMap)
-                }
+                val rewrittenFacts =
+                    facts.map { fact ->
+                        migratedFact(fact, conversationScopeId, roleScopeId, idMap)
+                    }
                 val factsById = facts.associateBy { it.id }
-                val rewrittenOverrides = overrides.map { override ->
-                    migratedOverride(override, conversationScopeId, roleScopeId, idMap, factsById)
-                }
+                val rewrittenOverrides =
+                    overrides.map { override ->
+                        migratedOverride(override, conversationScopeId, roleScopeId, idMap, factsById)
+                    }
                 val textIdMap =
                     idMap.mapKeys { MemoryProjection.factRecordId(it.key) }
                         .mapValues { MemoryProjection.factRecordId(it.value) }
@@ -199,7 +201,9 @@ object MemoryScopeMigration {
         // Read the committed recovery copy without touching the original source files.
         val bytes =
             committedBytes(
-                directory, scopeId, AtomicVectorSnapshotStore.DEFAULT_FILE_NAME,
+                directory,
+                scopeId,
+                AtomicVectorSnapshotStore.DEFAULT_FILE_NAME,
                 VectorSnapshotCodec.MAX_SNAPSHOT_BYTES.toLong(),
             )
                 ?: return null

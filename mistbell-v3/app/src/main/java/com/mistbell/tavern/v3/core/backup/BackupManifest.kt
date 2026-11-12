@@ -13,22 +13,28 @@ data class BackupManifest(
     val entries: List<BackupEntry>,
     val format: String = FORMAT,
 ) {
-    fun toJson(): String = JSONObject()
-        .put("format", format)
-        .put("version", version)
-        .put("createdAt", createdAt)
-        .put("appVersion", appVersion)
-        .put("entryCount", entryCount)
-        .put("totalBytes", totalBytes)
-        .put("entries", JSONArray().apply {
-            entries.forEach { entry ->
-                put(JSONObject()
-                    .put("path", entry.path)
-                    .put("size", entry.size)
-                    .put("sha256", entry.sha256))
-            }
-        })
-        .toString()
+    fun toJson(): String =
+        JSONObject()
+            .put("format", format)
+            .put("version", version)
+            .put("createdAt", createdAt)
+            .put("appVersion", appVersion)
+            .put("entryCount", entryCount)
+            .put("totalBytes", totalBytes)
+            .put(
+                "entries",
+                JSONArray().apply {
+                    entries.forEach { entry ->
+                        put(
+                            JSONObject()
+                                .put("path", entry.path)
+                                .put("size", entry.size)
+                                .put("sha256", entry.sha256),
+                        )
+                    }
+                },
+            )
+            .toString()
 
     companion object {
         const val FORMAT = "mistbell-backup"
@@ -39,14 +45,15 @@ data class BackupManifest(
                 val root = JSONObject(json)
                 require(root.getString("format") == FORMAT) { "Unsupported backup format." }
                 val parsedEntries = root.getJSONArray("entries")
-                val entries = (0 until parsedEntries.length()).map { index ->
-                    val entry = parsedEntries.getJSONObject(index)
-                    BackupEntry(
-                        path = entry.getString("path"),
-                        size = entry.getLong("size"),
-                        sha256 = entry.getString("sha256"),
-                    )
-                }
+                val entries =
+                    (0 until parsedEntries.length()).map { index ->
+                        val entry = parsedEntries.getJSONObject(index)
+                        BackupEntry(
+                            path = entry.getString("path"),
+                            size = entry.getLong("size"),
+                            sha256 = entry.getString("sha256"),
+                        )
+                    }
                 return BackupManifest(
                     version = root.getInt("version"),
                     createdAt = root.getString("createdAt"),

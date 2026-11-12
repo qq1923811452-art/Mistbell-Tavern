@@ -12,18 +12,22 @@ class PromptWindowCacheIntegrationTest {
         var previous = emptyList<PromptMessage>()
         var evictions = 0
         for (turn in 1..200) {
-            val source = (0 until turn).flatMap { index ->
-                listOf(
-                    WindowHistoryMessage("u$index", PromptRole.USER, "user $index"),
-                    WindowHistoryMessage("a$index", PromptRole.ASSISTANT, "reply $index"),
-                )
-            }
+            val source =
+                (0 until turn).flatMap { index ->
+                    listOf(
+                        WindowHistoryMessage("u$index", PromptRole.USER, "user $index"),
+                        WindowHistoryMessage("a$index", PromptRole.ASSISTANT, "reply $index"),
+                    )
+                }
             val result = planner.plan("scope", source, config)
             val window = result.window
-            val prompt = ChatPromptAssemblyCoordinator().assemble(
-                characterDefinition = "Character", contextWindow = window,
-                activatedWorldbook = emptyList(), latestUserMessage = "continue $turn",
-            )
+            val prompt =
+                ChatPromptAssemblyCoordinator().assemble(
+                    characterDefinition = "Character",
+                    contextWindow = window,
+                    activatedWorldbook = emptyList(),
+                    latestUserMessage = "continue $turn",
+                )
             val pins = window.pinnedPrefixMessages
             if (window.earlierSummary.isNotEmpty()) {
                 evictions++

@@ -6,9 +6,9 @@ import android.content.ContentValues
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
-import java.util.UUID
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.UUID
 
 /**
  * Durable session index for the conversation list.
@@ -21,7 +21,6 @@ class SessionStore(
     context: Context,
     databaseName: String = DEFAULT_DATABASE_NAME,
 ) : SQLiteOpenHelper(context.applicationContext, databaseName, null, DATABASE_VERSION) {
-
     init {
         openStores.add(this)
     }
@@ -36,7 +35,11 @@ class SessionStore(
         db.execSQL(CREATE_ORDER_INDEX)
     }
 
-    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+    override fun onUpgrade(
+        db: SQLiteDatabase,
+        oldVersion: Int,
+        newVersion: Int,
+    ) {
         if (oldVersion < 2) {
             db.execSQL("ALTER TABLE $TABLE ADD COLUMN $COLUMN_KIND TEXT NOT NULL DEFAULT 'single'")
             db.execSQL("ALTER TABLE $TABLE ADD COLUMN $COLUMN_PARTICIPANTS TEXT NOT NULL DEFAULT '[]'")
@@ -71,15 +74,16 @@ class SessionStore(
         participants: List<SessionParticipant> = emptyList(),
         worldbookId: String = "",
     ): ChatSession {
-        val session = ChatSession(
-            id = id,
-            roleId = roleId,
-            title = title.ifBlank { DEFAULT_TITLE },
-            updatedAt = now,
-            kind = kind,
-            participants = participants,
-            worldbookId = worldbookId,
-        )
+        val session =
+            ChatSession(
+                id = id,
+                roleId = roleId,
+                title = title.ifBlank { DEFAULT_TITLE },
+                updatedAt = now,
+                kind = kind,
+                participants = participants,
+                worldbookId = worldbookId,
+            )
         writableDatabase.insertOrThrow(
             TABLE,
             null,
@@ -120,7 +124,10 @@ class SessionStore(
         }.getOrDefault(emptyList())
     }
 
-    fun rename(id: String, title: String): Boolean {
+    fun rename(
+        id: String,
+        title: String,
+    ): Boolean {
         val normalized = title.trim().take(MAX_TITLE_CHARS)
         if (normalized.isEmpty()) return false
         return writableDatabase.update(
@@ -131,7 +138,10 @@ class SessionStore(
         ) > 0
     }
 
-    fun setRoleId(id: String, roleId: String): Boolean {
+    fun setRoleId(
+        id: String,
+        roleId: String,
+    ): Boolean {
         if (id.isBlank() || roleId.isBlank()) return false
         return writableDatabase.update(
             TABLE,
@@ -162,7 +172,10 @@ class SessionStore(
         ) > 0
     }
 
-    fun setWorldbookId(id: String, worldbookId: String): Boolean =
+    fun setWorldbookId(
+        id: String,
+        worldbookId: String,
+    ): Boolean =
         writableDatabase.update(
             TABLE,
             ContentValues().apply { put(COLUMN_WORLDBOOK_ID, worldbookId) },
@@ -170,7 +183,10 @@ class SessionStore(
             arrayOf(id),
         ) > 0
 
-    fun setPinned(id: String, pinned: Boolean): Boolean =
+    fun setPinned(
+        id: String,
+        pinned: Boolean,
+    ): Boolean =
         writableDatabase.update(
             TABLE,
             ContentValues().apply { put(COLUMN_PINNED, if (pinned) 1 else 0) },
@@ -178,7 +194,12 @@ class SessionStore(
             arrayOf(id),
         ) > 0
 
-    fun touch(id: String, preview: String, messageCount: Int, now: Long = System.currentTimeMillis()): Boolean =
+    fun touch(
+        id: String,
+        preview: String,
+        messageCount: Int,
+        now: Long = System.currentTimeMillis(),
+    ): Boolean =
         writableDatabase.update(
             TABLE,
             ContentValues().apply {
@@ -190,24 +211,25 @@ class SessionStore(
             arrayOf(id),
         ) > 0
 
-    fun delete(id: String): Boolean =
-        writableDatabase.delete(TABLE, "$COLUMN_ID = ?", arrayOf(id)) > 0
+    fun delete(id: String): Boolean = writableDatabase.delete(TABLE, "$COLUMN_ID = ?", arrayOf(id)) > 0
 
-    private fun android.database.Cursor.toSession(): ChatSession = ChatSession(
-        id = getString(getColumnIndexOrThrow(COLUMN_ID)),
-        roleId = getString(getColumnIndexOrThrow(COLUMN_ROLE_ID)),
-        title = getString(getColumnIndexOrThrow(COLUMN_TITLE)),
-        preview = getString(getColumnIndexOrThrow(COLUMN_PREVIEW)),
-        updatedAt = getLong(getColumnIndexOrThrow(COLUMN_UPDATED_AT)),
-        messageCount = getInt(getColumnIndexOrThrow(COLUMN_MESSAGE_COUNT)),
-        pinned = getInt(getColumnIndexOrThrow(COLUMN_PINNED)) != 0,
-        kind = when (getString(getColumnIndexOrThrow(COLUMN_KIND)).lowercase()) {
-            "group" -> SessionKind.GROUP
-            else -> SessionKind.SINGLE
-        },
-        participants = decodeParticipants(getString(getColumnIndexOrThrow(COLUMN_PARTICIPANTS))),
-        worldbookId = getString(getColumnIndexOrThrow(COLUMN_WORLDBOOK_ID)),
-    )
+    private fun android.database.Cursor.toSession(): ChatSession =
+        ChatSession(
+            id = getString(getColumnIndexOrThrow(COLUMN_ID)),
+            roleId = getString(getColumnIndexOrThrow(COLUMN_ROLE_ID)),
+            title = getString(getColumnIndexOrThrow(COLUMN_TITLE)),
+            preview = getString(getColumnIndexOrThrow(COLUMN_PREVIEW)),
+            updatedAt = getLong(getColumnIndexOrThrow(COLUMN_UPDATED_AT)),
+            messageCount = getInt(getColumnIndexOrThrow(COLUMN_MESSAGE_COUNT)),
+            pinned = getInt(getColumnIndexOrThrow(COLUMN_PINNED)) != 0,
+            kind =
+                when (getString(getColumnIndexOrThrow(COLUMN_KIND)).lowercase()) {
+                    "group" -> SessionKind.GROUP
+                    else -> SessionKind.SINGLE
+                },
+            participants = decodeParticipants(getString(getColumnIndexOrThrow(COLUMN_PARTICIPANTS))),
+            worldbookId = getString(getColumnIndexOrThrow(COLUMN_WORLDBOOK_ID)),
+        )
 
     companion object {
         private val openStores: MutableSet<SessionStore> =
@@ -238,11 +260,12 @@ class SessionStore(
         private const val COLUMN_PARTICIPANTS = "participants"
         private const val COLUMN_WORLDBOOK_ID = "worldbook_id"
 
-        private val COLUMNS = arrayOf(
-            COLUMN_ID, COLUMN_ROLE_ID, COLUMN_TITLE, COLUMN_PREVIEW,
-            COLUMN_UPDATED_AT, COLUMN_MESSAGE_COUNT, COLUMN_PINNED, COLUMN_KIND, COLUMN_PARTICIPANTS,
-            COLUMN_WORLDBOOK_ID,
-        )
+        private val COLUMNS =
+            arrayOf(
+                COLUMN_ID, COLUMN_ROLE_ID, COLUMN_TITLE, COLUMN_PREVIEW,
+                COLUMN_UPDATED_AT, COLUMN_MESSAGE_COUNT, COLUMN_PINNED, COLUMN_KIND, COLUMN_PARTICIPANTS,
+                COLUMN_WORLDBOOK_ID,
+            )
 
         private const val CREATE_TABLE = """
             CREATE TABLE $TABLE (

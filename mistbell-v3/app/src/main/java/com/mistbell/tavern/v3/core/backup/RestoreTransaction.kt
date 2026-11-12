@@ -51,7 +51,10 @@ class RestoreTransaction(
         deleteBackups(backups.values)
     }
 
-    private fun validatePlan(pairs: List<Map.Entry<File, File>>, destinations: List<File>) {
+    private fun validatePlan(
+        pairs: List<Map.Entry<File, File>>,
+        destinations: List<File>,
+    ) {
         require(destinations.map { it.canonicalPath }.distinct().size == destinations.size) {
             "Restore contains duplicate destination targets."
         }
@@ -110,12 +113,14 @@ class RestoreTransaction(
     private fun rollback(state: RollbackState) {
         val failure = state.failure
         runCatching(state.beforeRollback).onFailure(failure::addSuppressed)
-        val callbackCreatedRemovals = state.removeDestinations.filter { destination ->
-            destination !in state.originallyExisted || destination in state.backups
-        }
-        val rollbackTargets = (state.installed + callbackCreatedRemovals)
-            .distinctBy { it.canonicalPath }
-            .asReversed()
+        val callbackCreatedRemovals =
+            state.removeDestinations.filter { destination ->
+                destination !in state.originallyExisted || destination in state.backups
+            }
+        val rollbackTargets =
+            (state.installed + callbackCreatedRemovals)
+                .distinctBy { it.canonicalPath }
+                .asReversed()
         rollbackTargets.forEach { destination ->
             if (destination.exists() && !destination.deleteRecursively()) {
                 failure.addSuppressed(IOException("Failed to remove partially restored data."))

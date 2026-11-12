@@ -8,7 +8,6 @@ package com.mistbell.tavern.v3.feature.chat
  * variant instead of creating a new message.
  */
 internal object RegeneratePlanner {
-
     data class Plan(
         /** History before the user turn that produced the target reply. */
         val prefixHistory: List<ChatLine>,
@@ -18,14 +17,18 @@ internal object RegeneratePlanner {
         val targetIndex: Int,
     )
 
-    fun plan(history: List<ChatLine>, targetMessageId: String): Plan? {
+    fun plan(
+        history: List<ChatLine>,
+        targetMessageId: String,
+    ): Plan? {
         val targetIndex = history.indexOfFirst { it.id == targetMessageId }
         val isAssistant = history.getOrNull(targetIndex)?.role == "assistant"
-        val userIndex = if (isAssistant) {
-            ((targetIndex - 1) downTo 0).firstOrNull { history[it].role == "user" }
-        } else {
-            null
-        }
+        val userIndex =
+            if (isAssistant) {
+                ((targetIndex - 1) downTo 0).firstOrNull { history[it].role == "user" }
+            } else {
+                null
+            }
         val userText = userIndex?.let { history[it].content.trim() }
         return if (userIndex != null && !userText.isNullOrEmpty()) {
             Plan(

@@ -21,11 +21,12 @@ class AtomicTemporalFactStoreConcurrencyTest {
         val stores = listOf(AtomicTemporalFactStore(context, name), AtomicTemporalFactStore(context, name))
         val pool = Executors.newFixedThreadPool(THREADS)
         try {
-            val updates = (0 until WRITES).map { index ->
-                pool.submit {
-                    stores[index % stores.size].update { existing -> existing + fact(index) }
+            val updates =
+                (0 until WRITES).map { index ->
+                    pool.submit {
+                        stores[index % stores.size].update { existing -> existing + fact(index) }
+                    }
                 }
-            }
             updates.forEach { it.get(30, TimeUnit.SECONDS) }
             val loaded = AtomicTemporalFactStore(context, name).load()
             val facts = (loaded as TemporalFactLoadResult.Loaded).facts
@@ -39,16 +40,17 @@ class AtomicTemporalFactStoreConcurrencyTest {
         }
     }
 
-    private fun fact(index: Int) = TemporalMemoryFact(
-        id = "fact-$index",
-        conversationId = "conversation",
-        sourceTurnId = "turn-$index",
-        subject = "user",
-        predicate = "likes",
-        value = "value-$index",
-        observedAtEpochMillis = index.toLong(),
-        validFromEpochMillis = index.toLong(),
-    )
+    private fun fact(index: Int) =
+        TemporalMemoryFact(
+            id = "fact-$index",
+            conversationId = "conversation",
+            sourceTurnId = "turn-$index",
+            subject = "user",
+            predicate = "likes",
+            value = "value-$index",
+            observedAtEpochMillis = index.toLong(),
+            validFromEpochMillis = index.toLong(),
+        )
 
     private companion object {
         const val THREADS = 8

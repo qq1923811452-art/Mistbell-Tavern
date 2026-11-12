@@ -5,10 +5,11 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class GroupSpeakerResolverTest {
-    private val members = listOf(
-        GroupMember(id = "luna", name = "露娜"),
-        GroupMember(id = "bob", name = "Bob"),
-    )
+    private val members =
+        listOf(
+            GroupMember(id = "luna", name = "露娜"),
+            GroupMember(id = "bob", name = "Bob"),
+        )
 
     @Test
     fun resolvesMentionedMemberExactly() {
@@ -72,20 +73,22 @@ class GroupSpeakerResolverTest {
 
     @Test
     fun prefersLongerNameOverShorterPrefixName() {
-        val overlapping = listOf(
-            GroupMember(id = "short", name = "Alice"),
-            GroupMember(id = "long", name = "Alice Chen"),
-        )
+        val overlapping =
+            listOf(
+                GroupMember(id = "short", name = "Alice"),
+                GroupMember(id = "long", name = "Alice Chen"),
+            )
         assertEquals("long", resolve("@Alice Chen 你好", overlapping).speakerId)
         assertEquals("short", resolve("@Alice 你好", overlapping).speakerId)
     }
 
     @Test
     fun prefersLongerChineseNameOverShorterPrefixName() {
-        val overlapping = listOf(
-            GroupMember(id = "luna", name = "露娜"),
-            GroupMember(id = "luna2", name = "露娜二号"),
-        )
+        val overlapping =
+            listOf(
+                GroupMember(id = "luna", name = "露娜"),
+                GroupMember(id = "luna2", name = "露娜二号"),
+            )
         assertEquals("luna2", resolve("@露娜二号 你好", overlapping).speakerId)
         assertEquals("luna", resolve("@露娜 你好", overlapping).speakerId)
     }
@@ -127,6 +130,5 @@ class GroupSpeakerResolverTest {
         message: String,
         participants: List<GroupMember>,
         previousSpeakerId: String? = null,
-    ): GroupSpeakerResolution =
-        requireNotNull(GroupSpeakerResolver.resolve(message, participants, previousSpeakerId))
+    ): GroupSpeakerResolution = requireNotNull(GroupSpeakerResolver.resolve(message, participants, previousSpeakerId))
 }

@@ -5,7 +5,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class ChatViewModelTest {
-
     @Test
     fun restoresDraftFromSavedStateHandle() {
         val viewModel = ChatViewModel(SavedStateHandle(mapOf("chat.draft" to "hello")))

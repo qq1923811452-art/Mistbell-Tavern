@@ -31,18 +31,23 @@ object GroupPromptAssembler {
      * and an empty [members] list renders a placeholder, so this method never throws for missing
      * participants.
      */
-    fun systemBlock(members: List<Member>, speakerName: String): String {
-        val renderedMembers = members.mapNotNull { member ->
-            val name = singleLine(member.name)
-            if (name.isEmpty()) null else name to singleLine(member.brief)
-        }
-        val memberList = if (renderedMembers.isEmpty()) {
-            NO_MEMBERS
-        } else {
-            renderedMembers.joinToString("\n") { (name, brief) ->
-                if (brief.isEmpty()) "- $name" else "- $name：$brief"
+    fun systemBlock(
+        members: List<Member>,
+        speakerName: String,
+    ): String {
+        val renderedMembers =
+            members.mapNotNull { member ->
+                val name = singleLine(member.name)
+                if (name.isEmpty()) null else name to singleLine(member.brief)
             }
-        }
+        val memberList =
+            if (renderedMembers.isEmpty()) {
+                NO_MEMBERS
+            } else {
+                renderedMembers.joinToString("\n") { (name, brief) ->
+                    if (brief.isEmpty()) "- $name" else "- $name：$brief"
+                }
+            }
         val speaker = singleLine(speakerName)
         val speakerLine = if (speaker.isEmpty()) GENERIC_SPEAKER_LINE else "本轮由「$speaker」回复。"
         return listOf(RULES, "$MEMBER_HEADER\n$memberList", speakerLine).joinToString("\n\n")
@@ -58,7 +63,10 @@ object GroupPromptAssembler {
      * and trailing run of whitespace around [content] is removed, including an existing label's
      * surrounding whitespace.
      */
-    fun labelAssistantContent(speakerName: String?, content: String): String {
+    fun labelAssistantContent(
+        speakerName: String?,
+        content: String,
+    ): String {
         val name = singleLine(speakerName.orEmpty())
         if (name.isEmpty()) return content
         val trimmedContent = content.trim()
@@ -82,12 +90,14 @@ object GroupPromptAssembler {
         assistantNames: List<String?>,
         pinnedAssistantCount: Int = 0,
     ): List<PromptMessage> {
-        val retainedAssistantCount = messages.count {
-            it.role == PromptRole.ASSISTANT && !it.synthetic
-        }
+        val retainedAssistantCount =
+            messages.count {
+                it.role == PromptRole.ASSISTANT && !it.synthetic
+            }
         val pinnedCount = pinnedAssistantCount.coerceIn(0, retainedAssistantCount)
-        val windowedNames = assistantNames.take(pinnedCount) +
-            assistantNames.drop(pinnedCount).takeLast(retainedAssistantCount - pinnedCount)
+        val windowedNames =
+            assistantNames.take(pinnedCount) +
+                assistantNames.drop(pinnedCount).takeLast(retainedAssistantCount - pinnedCount)
         var assistantIndex = 0
         return messages.map { message ->
             if (message.role != PromptRole.ASSISTANT || message.synthetic) {

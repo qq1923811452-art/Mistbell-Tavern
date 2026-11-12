@@ -8,7 +8,6 @@ package com.mistbell.tavern.v3.feature.chat
  * this path.
  */
 internal object GroupChatTurnBuilder {
-
     fun build(
         stableSystemPrefix: String,
         members: List<GroupPromptAssembler.Member>,
@@ -18,19 +17,22 @@ internal object GroupChatTurnBuilder {
     ): List<PromptMessage> {
         require(stableSystemPrefix.isNotBlank()) { "A stable system prefix is required." }
         require(latestUserMessage.isNotBlank()) { "The latest user message is required." }
-        val system = buildString {
-            append(stableSystemPrefix.trim())
-            append("\n\n")
-            append(GroupPromptAssembler.systemBlock(members, speakerName))
-        }
+        val system =
+            buildString {
+                append(stableSystemPrefix.trim())
+                append("\n\n")
+                append(GroupPromptAssembler.systemBlock(members, speakerName))
+            }
         val messages = mutableListOf(PromptMessage(PromptRole.SYSTEM, system))
         history.forEach { line ->
             when (line.role) {
                 "user" -> messages += PromptMessage(PromptRole.USER, line.content)
-                "assistant" -> messages += PromptMessage(
-                    PromptRole.ASSISTANT,
-                    GroupPromptAssembler.labelAssistantContent(line.speakerName, line.activeContent),
-                )
+                "assistant" ->
+                    messages +=
+                        PromptMessage(
+                            PromptRole.ASSISTANT,
+                            GroupPromptAssembler.labelAssistantContent(line.speakerName, line.activeContent),
+                        )
             }
         }
         messages += PromptMessage(PromptRole.USER, latestUserMessage.trim())

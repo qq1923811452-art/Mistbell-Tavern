@@ -12,7 +12,11 @@ object PromptHistoryBudget {
     /** Extra characters allowed when the aligned window expands past the budget. */
     const val ALIGNMENT_SLACK_CHARS = 2_000
 
-    fun select(history: List<PromptMessage>, maxCharacters: Int, maxMessages: Int): List<PromptMessage> {
+    fun select(
+        history: List<PromptMessage>,
+        maxCharacters: Int,
+        maxMessages: Int,
+    ): List<PromptMessage> {
         require(maxCharacters >= 0) { "maxCharacters must be non-negative." }
         require(maxMessages >= 0) { "maxMessages must be non-negative." }
         if (maxMessages == 0 || history.isEmpty()) return emptyList()

@@ -3,27 +3,27 @@ package com.mistbell.tavern.v3.core.storage
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.mistbell.tavern.v3.core.memory.MemoryTextRecord
-import com.mistbell.tavern.v3.core.memory.TemporalFactLedger
-import com.mistbell.tavern.v3.core.memory.TemporalFactObservation
+import com.mistbell.tavern.v3.core.memory.EffectiveMemoryResolver
 import com.mistbell.tavern.v3.core.memory.MemoryOverride
 import com.mistbell.tavern.v3.core.memory.MemoryProjection
-import com.mistbell.tavern.v3.core.memory.EffectiveMemoryResolver
 import com.mistbell.tavern.v3.core.memory.MemoryTextCodec
+import com.mistbell.tavern.v3.core.memory.MemoryTextRecord
 import com.mistbell.tavern.v3.core.memory.TemporalFactCodec
-import java.io.File
-import java.io.IOException
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
-import kotlin.concurrent.thread
+import com.mistbell.tavern.v3.core.memory.TemporalFactLedger
+import com.mistbell.tavern.v3.core.memory.TemporalFactObservation
 import com.mistbell.tavern.v3.core.memory.TemporalMemoryFact
-import java.util.UUID
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.io.File
+import java.io.IOException
+import java.util.UUID
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import kotlin.concurrent.thread
 
 /**
  * Copying a conversation scope into a role scope is one-way and must never damage the original.
@@ -106,8 +106,9 @@ class MemoryScopeMigrationTest {
     fun rewritesManualReferencesIncludingLegacyAndHistoricalOverrides() {
         val source = MemoryScopeId.forRoleAndConversation(roleId, "edits")
         val target = MemoryScopeId.forRole(roleId)
-        val historical = fact("old", "t0", source, "Mira", "location", "home")
-            .copy(validUntilEpochMillis = 1_000L)
+        val historical =
+            fact("old", "t0", source, "Mira", "location", "home")
+                .copy(validUntilEpochMillis = 1_000L)
         val current = fact("current", "t1", source, "Mira", "location", "harbour")
         factStore(source).save(listOf(historical, current))
         overrideStore(source).update {
@@ -131,16 +132,22 @@ class MemoryScopeMigrationTest {
     fun replayOfMigratedHistoricalObservationDoesNotResurrectOldValue() {
         val source = MemoryScopeId.forRoleAndConversation(roleId, "replay")
         val target = MemoryScopeId.forRole(roleId)
-        val old = fact("old", "t0", source, "Mira", "location", "home")
-            .copy(validUntilEpochMillis = 2_000L)
-        val current = fact("new", "t1", source, "Mira", "location", "harbour")
-            .copy(observedAtEpochMillis = 2_000L, validFromEpochMillis = 2_000L)
+        val old =
+            fact("old", "t0", source, "Mira", "location", "home")
+                .copy(validUntilEpochMillis = 2_000L)
+        val current =
+            fact("new", "t1", source, "Mira", "location", "harbour")
+                .copy(observedAtEpochMillis = 2_000L, validFromEpochMillis = 2_000L)
         factStore(source).save(listOf(old, current))
         MemoryScopeMigration.copyConversationScopeToRole(context, target, source)
         val migrated = (factStore(target).load() as TemporalFactLoadResult.Loaded).facts
-        val replay = TemporalFactLedger.apply(migrated, listOf(
-            TemporalFactObservation(target, "t0", "Mira", "location", "home", 9_000L),
-        ))
+        val replay =
+            TemporalFactLedger.apply(
+                migrated,
+                listOf(
+                    TemporalFactObservation(target, "t0", "Mira", "location", "home", 9_000L),
+                ),
+            )
         assertEquals(migrated, replay)
     }
 
@@ -190,29 +197,32 @@ class MemoryScopeMigrationTest {
         val textName = MemoryScopeFileNames.forScope(AtomicMemoryTextStore.DEFAULT_FILE_NAME, target)
         val factName = MemoryScopeFileNames.forScope(AtomicTemporalFactStore.DEFAULT_FILE_NAME, target)
         val original = fact("original", "t1", target, "Mira", "location", "home")
-        val files = linkedMapOf(
-            textName to MemoryTextCodec.encode(listOf(MemoryTextRecord("custom", "preserved"))),
-            factName to TemporalFactCodec.encode(listOf(original)),
-        )
+        val files =
+            linkedMapOf(
+                textName to MemoryTextCodec.encode(listOf(MemoryTextRecord("custom", "preserved"))),
+                factName to TemporalFactCodec.encode(listOf(original)),
+            )
         val blocked = CountDownLatch(1)
         val release = CountDownLatch(1)
         val completed = CountDownLatch(1)
-        val publisher = thread {
-            MemoryScopeStorageLock.withLock(File(context.filesDir, "test-migration")) {
-                runCatching {
-                    MemoryScopeStorageLock.publish(context.filesDir, files) {
-                        blocked.countDown()
-                        check(release.await(5, TimeUnit.SECONDS))
-                        throw IOException("injected interruption after first target")
+        val publisher =
+            thread {
+                MemoryScopeStorageLock.withLock(File(context.filesDir, "test-migration")) {
+                    runCatching {
+                        MemoryScopeStorageLock.publish(context.filesDir, files) {
+                            blocked.countDown()
+                            check(release.await(5, TimeUnit.SECONDS))
+                            throw IOException("injected interruption after first target")
+                        }
                     }
                 }
             }
-        }
         assertTrue(blocked.await(5, TimeUnit.SECONDS))
-        val writer = thread {
-            factStore(target).update { it + fact("later", "t2", target, "Mira", "mood", "calm") }
-            completed.countDown()
-        }
+        val writer =
+            thread {
+                factStore(target).update { it + fact("later", "t2", target, "Mira", "mood", "calm") }
+                completed.countDown()
+            }
         assertFalse(completed.await(100, TimeUnit.MILLISECONDS))
         release.countDown()
         publisher.join(5_000L)
@@ -231,30 +241,41 @@ class MemoryScopeMigrationTest {
         val text = MemoryTextRecord(MemoryProjection.factRecordId(original.id), "Mira location: home")
         textStore(source).save(listOf(text))
         AtomicVectorSnapshotStore(context, MemoryScopeFileNames.forScope(AtomicVectorSnapshotStore.DEFAULT_FILE_NAME, source))
-            .save(com.mistbell.tavern.v3.core.memory.VectorSnapshot("model", 1, listOf(
-                com.mistbell.tavern.v3.core.memory.StoredVector(text.id, text.sourceTextSha256, 1L, listOf(1f)),
-            )))
+            .save(
+                com.mistbell.tavern.v3.core.memory.VectorSnapshot(
+                    "model",
+                    1,
+                    listOf(
+                        com.mistbell.tavern.v3.core.memory.StoredVector(text.id, text.sourceTextSha256, 1L, listOf(1f)),
+                    ),
+                ),
+            )
         assertTrue(MemoryScopeMigration.copyConversationScopeToRole(context, target, source).didCopy)
         val texts = (textStore(target).load() as MemoryTextLoadResult.Loaded).records
-        val vectors = AtomicVectorSnapshotStore(context, MemoryScopeFileNames.forScope(AtomicVectorSnapshotStore.DEFAULT_FILE_NAME, target))
-            .load("model", 1) as VectorSnapshotLoadResult.Loaded
+        val vectors =
+            AtomicVectorSnapshotStore(context, MemoryScopeFileNames.forScope(AtomicVectorSnapshotStore.DEFAULT_FILE_NAME, target))
+                .load("model", 1) as VectorSnapshotLoadResult.Loaded
         assertEquals(texts.single().id, vectors.snapshot.records.single().id)
         assertEquals(texts.single().sourceTextSha256, vectors.snapshot.records.single().sourceTextSha256)
     }
 
-    private fun overrideStore(scope: String) = AtomicMemoryOverrideStore(
-        context, MemoryScopeFileNames.forScope(AtomicMemoryOverrideStore.DEFAULT_FILE_NAME, scope),
-    )
+    private fun overrideStore(scope: String) =
+        AtomicMemoryOverrideStore(
+            context,
+            MemoryScopeFileNames.forScope(AtomicMemoryOverrideStore.DEFAULT_FILE_NAME, scope),
+        )
 
-    private fun textStore(scope: String) = AtomicMemoryTextStore(
-        context,
-        MemoryScopeFileNames.forScope(AtomicMemoryTextStore.DEFAULT_FILE_NAME, scope),
-    )
+    private fun textStore(scope: String) =
+        AtomicMemoryTextStore(
+            context,
+            MemoryScopeFileNames.forScope(AtomicMemoryTextStore.DEFAULT_FILE_NAME, scope),
+        )
 
-    private fun factStore(scope: String) = AtomicTemporalFactStore(
-        context,
-        MemoryScopeFileNames.forScope(AtomicTemporalFactStore.DEFAULT_FILE_NAME, scope),
-    )
+    private fun factStore(scope: String) =
+        AtomicTemporalFactStore(
+            context,
+            MemoryScopeFileNames.forScope(AtomicTemporalFactStore.DEFAULT_FILE_NAME, scope),
+        )
 
     private fun fact(
         id: String,

@@ -39,9 +39,11 @@ class EmbeddingGemma2TextPolicyTest {
     @Test
     fun supportedDimensionTiersNeverExceedNativeModelOutput() {
         assertEquals(setOf(128, 256, 512, 768), EmbeddingGemma2TextPolicy.supportedDimensions)
-        assertTrue(EmbeddingGemma2TextPolicy.supportedDimensions.all {
-            it <= EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS
-        })
+        assertTrue(
+            EmbeddingGemma2TextPolicy.supportedDimensions.all {
+                it <= EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS
+            },
+        )
         assertFalse(1024 in EmbeddingGemma2TextPolicy.supportedDimensions)
         assertFalse(1536 in EmbeddingGemma2TextPolicy.supportedDimensions)
         assertFalse(2048 in EmbeddingGemma2TextPolicy.supportedDimensions)
@@ -60,18 +62,24 @@ class EmbeddingGemma2TextPolicyTest {
     fun unsupportedDimensionsAndInvalidVectorsAreRejected() {
         val vector = List(EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS) { 1f }
         for (dimension in listOf(300, 1024, 1536, 2048)) {
-            assertTrue(runCatching {
-                EmbeddingGemma2TextPolicy.truncateAndNormalize(vector, dimension)
-            }.isFailure)
-        }
-        assertTrue(runCatching {
-            EmbeddingGemma2TextPolicy.truncateAndNormalize(List(10) { 1f }, 128)
-        }.isFailure)
-        assertTrue(runCatching {
-            EmbeddingGemma2TextPolicy.truncateAndNormalize(
-                List(EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS) { 0f },
-                128,
+            assertTrue(
+                runCatching {
+                    EmbeddingGemma2TextPolicy.truncateAndNormalize(vector, dimension)
+                }.isFailure,
             )
-        }.isFailure)
+        }
+        assertTrue(
+            runCatching {
+                EmbeddingGemma2TextPolicy.truncateAndNormalize(List(10) { 1f }, 128)
+            }.isFailure,
+        )
+        assertTrue(
+            runCatching {
+                EmbeddingGemma2TextPolicy.truncateAndNormalize(
+                    List(EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS) { 0f },
+                    128,
+                )
+            }.isFailure,
+        )
     }
 }

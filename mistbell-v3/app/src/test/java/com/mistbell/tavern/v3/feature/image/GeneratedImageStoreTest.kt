@@ -1,8 +1,5 @@
 package com.mistbell.tavern.v3.feature.image
 
-import java.io.ByteArrayOutputStream
-import java.nio.file.Files
-import java.util.Base64
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -10,6 +7,9 @@ import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import java.io.ByteArrayOutputStream
+import java.nio.file.Files
+import java.util.Base64
 
 class GeneratedImageStoreTest {
     private lateinit var directory: java.io.File
@@ -29,11 +29,12 @@ class GeneratedImageStoreTest {
     @Test
     fun savesListsAndExportsInlinePngWithoutChangingBytes() {
         val bytes = Base64.getDecoder().decode(ONE_PIXEL_PNG_BASE64)
-        val saved = store.save(
-            GeneratedImage(base64Data = ONE_PIXEL_PNG_BASE64),
-            prompt = "a tiny test image",
-            model = "test-image-model",
-        )
+        val saved =
+            store.save(
+                GeneratedImage(base64Data = ONE_PIXEL_PNG_BASE64),
+                prompt = "a tiny test image",
+                model = "test-image-model",
+            )
 
         assertEquals("image/png", saved.mimeType)
         assertEquals(bytes.size.toLong(), saved.sizeBytes)
@@ -48,13 +49,14 @@ class GeneratedImageStoreTest {
 
     @Test
     fun refusesRemoteUrlInsteadOfFetchingItImplicitly() {
-        val error = assertThrows(IllegalArgumentException::class.java) {
-            store.save(
-                GeneratedImage(remoteUrl = "https://images.example.test/generated.png"),
-                prompt = "remote image",
-                model = "test-model",
-            )
-        }
+        val error =
+            assertThrows(IllegalArgumentException::class.java) {
+                store.save(
+                    GeneratedImage(remoteUrl = "https://images.example.test/generated.png"),
+                    prompt = "remote image",
+                    model = "test-model",
+                )
+            }
         assertTrue(error.message.orEmpty().contains("not downloaded automatically"))
         assertTrue(store.list().isEmpty())
     }
@@ -62,9 +64,10 @@ class GeneratedImageStoreTest {
     @Test
     fun rejectsOversizedBase64BeforeDecoding() {
         val oversized = "A".repeat(((GeneratedImageStore.MAX_IMAGE_BYTES + 2) / 3) * 4 + 4)
-        val error = assertThrows(IllegalArgumentException::class.java) {
-            store.save(GeneratedImage(base64Data = oversized), prompt = "large image", model = null)
-        }
+        val error =
+            assertThrows(IllegalArgumentException::class.java) {
+                store.save(GeneratedImage(base64Data = oversized), prompt = "large image", model = null)
+            }
 
         assertTrue(error.message.orEmpty().contains("Encoded image exceeds"))
         assertTrue(store.list().isEmpty())
@@ -73,8 +76,11 @@ class GeneratedImageStoreTest {
     @Test
     fun rejectsNonImageDataAndInvalidBase64() {
         assertThrows(IllegalArgumentException::class.java) {
-            store.save(GeneratedImage(base64Data = Base64.getEncoder().encodeToString("not an image".toByteArray())),
-                prompt = "invalid", model = null)
+            store.save(
+                GeneratedImage(base64Data = Base64.getEncoder().encodeToString("not an image".toByteArray())),
+                prompt = "invalid",
+                model = null,
+            )
         }
         assertThrows(IllegalArgumentException::class.java) {
             store.save(GeneratedImage(base64Data = "not base64!"), prompt = "invalid", model = null)
@@ -84,11 +90,12 @@ class GeneratedImageStoreTest {
 
     @Test
     fun deleteRemovesImageAndMetadata() {
-        val saved = store.save(
-            GeneratedImage(base64Data = ONE_PIXEL_PNG_BASE64),
-            prompt = "temporary",
-            model = null,
-        )
+        val saved =
+            store.save(
+                GeneratedImage(base64Data = ONE_PIXEL_PNG_BASE64),
+                prompt = "temporary",
+                model = null,
+            )
 
         assertTrue(store.delete(saved.id))
         assertTrue(store.list().isEmpty())

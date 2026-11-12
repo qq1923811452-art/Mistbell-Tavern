@@ -18,7 +18,9 @@ object EmbeddingGemma2TextPolicy {
         var end = MAX_EMBED_CHARS
         if (end > 0 && Character.isHighSurrogate(text[end - 1]) &&
             end < text.length && Character.isLowSurrogate(text[end])
-        ) end--
+        ) {
+            end--
+        }
         return text.substring(0, end)
     }
 
@@ -34,7 +36,10 @@ object EmbeddingGemma2TextPolicy {
         return "task: search query | text: ${query.trim()}"
     }
 
-    fun formatDocument(text: String, title: String? = null): String {
+    fun formatDocument(
+        text: String,
+        title: String? = null,
+    ): String {
         require(text.isNotBlank()) { "Document text must not be blank." }
         val safeTitle = title?.trim()?.takeIf(String::isNotEmpty) ?: "none"
         require('\n' !in safeTitle && '\r' !in safeTitle) {
@@ -47,7 +52,10 @@ object EmbeddingGemma2TextPolicy {
      * Truncates a native vector to a supported Matryoshka dimension and L2-normalizes it.
      * Truncation without normalization changes cosine-similarity ranking.
      */
-    fun truncateAndNormalize(vector: List<Float>, dimensions: Int): List<Float> {
+    fun truncateAndNormalize(
+        vector: List<Float>,
+        dimensions: Int,
+    ): List<Float> {
         require(dimensions in supportedDimensions) {
             "Unsupported embedding output dimension for EmbeddingGemma 2: $dimensions. " +
                 "Choose 128, 256, 512, or 768."

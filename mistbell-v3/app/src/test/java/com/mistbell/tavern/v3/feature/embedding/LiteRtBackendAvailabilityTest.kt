@@ -1,24 +1,25 @@
 package com.mistbell.tavern.v3.feature.embedding
 
 import com.mistbell.tavern.v3.core.inference.InferenceBackend
-import java.io.File
-import java.util.zip.ZipEntry
-import java.util.zip.ZipOutputStream
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 
 class LiteRtBackendAvailabilityTest {
     @Test
-    fun cpuIsAlwaysAvailableButMissingPluginsDisableGpuAndNpu(): Unit {
+    fun cpuIsAlwaysAvailableButMissingPluginsDisableGpuAndNpu() {
         val directory = kotlin.io.path.createTempDirectory(prefix = "litert-native-libs").toFile()
         try {
-            val result = LiteRtBackendAvailability.detect(
-                nativeLibraryDir = directory,
-                isArm64 = true,
-                npuModelCompatible = true,
-                npuRuntimeValidated = false,
-            )
+            val result =
+                LiteRtBackendAvailability.detect(
+                    nativeLibraryDir = directory,
+                    isArm64 = true,
+                    npuModelCompatible = true,
+                    npuRuntimeValidated = false,
+                )
 
             assertTrue(result.isAvailable(InferenceBackend.CPU))
             assertFalse(result.isAvailable(InferenceBackend.GPU))
@@ -31,7 +32,7 @@ class LiteRtBackendAvailabilityTest {
     }
 
     @Test
-    fun gpuPluginsPackagedInsideApkCountWhenNotExtractedToNativeLibraryDir(): Unit {
+    fun gpuPluginsPackagedInsideApkCountWhenNotExtractedToNativeLibraryDir() {
         val directory = kotlin.io.path.createTempDirectory(prefix = "litert-native-libs").toFile()
         val apk = kotlin.io.path.createTempFile(prefix = "litert-test", suffix = ".apk").toFile()
         try {
@@ -43,13 +44,14 @@ class LiteRtBackendAvailabilityTest {
                 }
             }
 
-            val result = LiteRtBackendAvailability.detect(
-                nativeLibraryDir = directory,
-                isArm64 = true,
-                npuModelCompatible = false,
-                npuRuntimeValidated = false,
-                apkFiles = listOf(apk),
-            )
+            val result =
+                LiteRtBackendAvailability.detect(
+                    nativeLibraryDir = directory,
+                    isArm64 = true,
+                    npuModelCompatible = false,
+                    npuRuntimeValidated = false,
+                    apkFiles = listOf(apk),
+                )
 
             assertTrue(result.isAvailable(InferenceBackend.GPU))
             assertFalse(result.isAvailable(InferenceBackend.NPU))
@@ -61,24 +63,26 @@ class LiteRtBackendAvailabilityTest {
     }
 
     @Test
-    fun npuRequiresTargetModelRuntimeManifestAndAllRequiredLibraries(): Unit {
+    fun npuRequiresTargetModelRuntimeManifestAndAllRequiredLibraries() {
         val directory = kotlin.io.path.createTempDirectory(prefix = "litert-native-libs").toFile()
         try {
             LiteRtBackendAvailability.SM8650_NPU_REQUIRED_LIBRARIES.forEach { File(directory, it).writeBytes(byteArrayOf(1)) }
-            val missingManifest = LiteRtBackendAvailability.detect(
-                nativeLibraryDir = directory,
-                isArm64 = true,
-                npuModelCompatible = true,
-                npuRuntimeValidated = false,
-            )
+            val missingManifest =
+                LiteRtBackendAvailability.detect(
+                    nativeLibraryDir = directory,
+                    isArm64 = true,
+                    npuModelCompatible = true,
+                    npuRuntimeValidated = false,
+                )
             assertFalse(missingManifest.isAvailable(InferenceBackend.NPU))
 
-            val verifiedPackage = LiteRtBackendAvailability.detect(
-                nativeLibraryDir = directory,
-                isArm64 = true,
-                npuModelCompatible = true,
-                npuRuntimeValidated = true,
-            )
+            val verifiedPackage =
+                LiteRtBackendAvailability.detect(
+                    nativeLibraryDir = directory,
+                    isArm64 = true,
+                    npuModelCompatible = true,
+                    npuRuntimeValidated = true,
+                )
             assertTrue(verifiedPackage.isAvailable(InferenceBackend.NPU))
         } finally {
             directory.deleteRecursively()
@@ -86,16 +90,17 @@ class LiteRtBackendAvailabilityTest {
     }
 
     @Test
-    fun npuRejectsPortableOrImportedModelEvenWhenLibrariesArePresent(): Unit {
+    fun npuRejectsPortableOrImportedModelEvenWhenLibrariesArePresent() {
         val directory = kotlin.io.path.createTempDirectory(prefix = "litert-native-libs").toFile()
         try {
             LiteRtBackendAvailability.SM8650_NPU_REQUIRED_LIBRARIES.forEach { File(directory, it).writeBytes(byteArrayOf(1)) }
-            val result = LiteRtBackendAvailability.detect(
-                nativeLibraryDir = directory,
-                isArm64 = true,
-                npuModelCompatible = false,
-                npuRuntimeValidated = true,
-            )
+            val result =
+                LiteRtBackendAvailability.detect(
+                    nativeLibraryDir = directory,
+                    isArm64 = true,
+                    npuModelCompatible = false,
+                    npuRuntimeValidated = true,
+                )
             assertFalse(result.isAvailable(InferenceBackend.NPU))
             assertTrue(result.npuReason.orEmpty().contains("SHA-256"))
         } finally {
@@ -104,40 +109,43 @@ class LiteRtBackendAvailabilityTest {
     }
 
     @Test
-    fun diagnosticNpuProbeBypassesOnlyManifestGateAndStillRequiresModelAndLibraries(): Unit {
+    fun diagnosticNpuProbeBypassesOnlyManifestGateAndStillRequiresModelAndLibraries() {
         val directory = kotlin.io.path.createTempDirectory(prefix = "litert-native-libs").toFile()
         try {
             LiteRtBackendAvailability.SM8650_NPU_REQUIRED_LIBRARIES.forEach {
                 File(directory, it).writeBytes(byteArrayOf(1))
             }
-            val probe = LiteRtBackendAvailability.detect(
-                nativeLibraryDir = directory,
-                isArm64 = true,
-                npuModelCompatible = true,
-                npuRuntimeValidated = false,
-                allowDiagnosticNpuProbe = true,
-                androidApiLevel = 35,
-            )
+            val probe =
+                LiteRtBackendAvailability.detect(
+                    nativeLibraryDir = directory,
+                    isArm64 = true,
+                    npuModelCompatible = true,
+                    npuRuntimeValidated = false,
+                    allowDiagnosticNpuProbe = true,
+                    androidApiLevel = 35,
+                )
             assertTrue(probe.isAvailable(InferenceBackend.NPU))
 
-            val wrongModel = LiteRtBackendAvailability.detect(
-                nativeLibraryDir = directory,
-                isArm64 = true,
-                npuModelCompatible = false,
-                npuRuntimeValidated = false,
-                allowDiagnosticNpuProbe = true,
-                androidApiLevel = 35,
-            )
+            val wrongModel =
+                LiteRtBackendAvailability.detect(
+                    nativeLibraryDir = directory,
+                    isArm64 = true,
+                    npuModelCompatible = false,
+                    npuRuntimeValidated = false,
+                    allowDiagnosticNpuProbe = true,
+                    androidApiLevel = 35,
+                )
             assertFalse(wrongModel.isAvailable(InferenceBackend.NPU))
 
-            val oldAndroid = LiteRtBackendAvailability.detect(
-                nativeLibraryDir = directory,
-                isArm64 = true,
-                npuModelCompatible = true,
-                npuRuntimeValidated = false,
-                allowDiagnosticNpuProbe = true,
-                androidApiLevel = 30,
-            )
+            val oldAndroid =
+                LiteRtBackendAvailability.detect(
+                    nativeLibraryDir = directory,
+                    isArm64 = true,
+                    npuModelCompatible = true,
+                    npuRuntimeValidated = false,
+                    allowDiagnosticNpuProbe = true,
+                    androidApiLevel = 30,
+                )
             assertFalse(oldAndroid.isAvailable(InferenceBackend.NPU))
         } finally {
             directory.deleteRecursively()
@@ -145,7 +153,7 @@ class LiteRtBackendAvailabilityTest {
     }
 
     @Test
-    fun npuIsRejectedBelowAndroidApi31WhileCpuAndGpuRemainIndependent(): Unit {
+    fun npuIsRejectedBelowAndroidApi31WhileCpuAndGpuRemainIndependent() {
         val directory = kotlin.io.path.createTempDirectory(prefix = "litert-native-libs").toFile()
         try {
             LiteRtBackendAvailability.SM8650_NPU_REQUIRED_LIBRARIES.forEach {
@@ -155,13 +163,14 @@ class LiteRtBackendAvailabilityTest {
                 File(directory, it).writeBytes(byteArrayOf(1))
             }
 
-            val result = LiteRtBackendAvailability.detect(
-                nativeLibraryDir = directory,
-                isArm64 = true,
-                npuModelCompatible = true,
-                npuRuntimeValidated = true,
-                androidApiLevel = 30,
-            )
+            val result =
+                LiteRtBackendAvailability.detect(
+                    nativeLibraryDir = directory,
+                    isArm64 = true,
+                    npuModelCompatible = true,
+                    npuRuntimeValidated = true,
+                    androidApiLevel = 30,
+                )
 
             assertTrue(result.isAvailable(InferenceBackend.CPU))
             assertTrue(result.isAvailable(InferenceBackend.GPU))

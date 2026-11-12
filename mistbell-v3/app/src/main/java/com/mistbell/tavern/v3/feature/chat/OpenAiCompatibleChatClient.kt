@@ -69,18 +69,27 @@ enum class ChatFinishReason { STOP, LENGTH, OTHER, EOF }
 
 interface ChatStreamObserver {
     fun onDelta(text: String)
+
     fun onComplete()
+
     fun onFailure(failure: ChatStreamFailure)
+
     fun onUsage(usage: ChatTokenUsage) = Unit
+
     /** Reports the provider's finish reason before [onComplete]. */
     fun onFinish(reason: ChatFinishReason) = Unit
+
     /**
      * Reports hidden reasoning text for providers that stream it separately. It is never shown as
      * reply content; callers may only use it for diagnostics or to explain token usage.
      */
     fun onReasoningDelta(text: String) = Unit
+
     /** Sanitized lifecycle diagnostics: stage plus key=value fields, never prompt or secret text. */
-    fun onDiagnostic(stage: String, detail: String) = Unit
+    fun onDiagnostic(
+        stage: String,
+        detail: String,
+    ) = Unit
 }
 
 class ChatClientConfigurationException(message: String) : IllegalStateException(message)
@@ -98,12 +107,13 @@ class OpenAiCompatibleChatClient(
     private val credentials: CredentialResolver,
     client: OkHttpClient = OkHttpClient(),
 ) {
-    private val httpClient = client.newBuilder()
-        .followRedirects(false)
-        .followSslRedirects(false)
-        // Some providers spend longer than OkHttp's default read timeout thinking before a token.
-        .readTimeout(READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-        .build()
+    private val httpClient =
+        client.newBuilder()
+            .followRedirects(false)
+            .followSslRedirects(false)
+            // Some providers spend longer than OkHttp's default read timeout thinking before a token.
+            .readTimeout(READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .build()
 
     fun stream(
         messages: List<PromptMessage>,
@@ -112,75 +122,83 @@ class OpenAiCompatibleChatClient(
     ): Call {
         val startedAtNanos = System.nanoTime()
         require(messages.isNotEmpty()) { "At least one prompt message is required." }
-        val profile = providers.profileFor(ProviderKind.CHAT)
-            ?: throw ChatClientConfigurationException("No enabled chat provider is explicitly selected.")
+        val profile =
+            providers.profileFor(ProviderKind.CHAT)
+                ?: throw ChatClientConfigurationException("No enabled chat provider is explicitly selected.")
         val validation = EndpointPolicy.validateBaseUrl(profile.baseUrl)
-        val baseUrl = validation.normalizedBaseUrl
-            ?: throw ChatClientConfigurationException(
-                validation.reason ?: "Chat provider base URL is invalid.",
-            )
+        val baseUrl =
+            validation.normalizedBaseUrl
+                ?: throw ChatClientConfigurationException(
+                    validation.reason ?: "Chat provider base URL is invalid.",
+                )
         if (profile.modelId.isBlank()) {
             throw ChatClientConfigurationException("Chat model ID is required.")
         }
 
-        val uri = try {
-            URI(baseUrl)
-        } catch (_: Exception) {
-            throw ChatClientConfigurationException("Chat provider base URL is invalid.")
-        }
+        val uri =
+            try {
+                URI(baseUrl)
+            } catch (_: Exception) {
+                throw ChatClientConfigurationException("Chat provider base URL is invalid.")
+            }
         val host = uri.host?.trim('[', ']')?.lowercase(Locale.ROOT)
-        val localHttp = uri.scheme.equals("http", ignoreCase = true) &&
-            host != null && host in LOOPBACK_HOSTS
+        val localHttp =
+            uri.scheme.equals("http", ignoreCase = true) &&
+                host != null && host in LOOPBACK_HOSTS
 
         val credentialHandle = profile.credentialHandle?.takeIf(String::isNotBlank)
-        val apiKey = if (credentialHandle != null) {
-            credentials.resolve(credentialHandle)?.trim()?.takeIf(String::isNotEmpty)
-                ?: throw ChatClientConfigurationException("The selected chat credential is unavailable.")
-        } else {
-            null
-        }
+        val apiKey =
+            if (credentialHandle != null) {
+                credentials.resolve(credentialHandle)?.trim()?.takeIf(String::isNotEmpty)
+                    ?: throw ChatClientConfigurationException("The selected chat credential is unavailable.")
+            } else {
+                null
+            }
         if (apiKey == null && !localHttp) {
             throw ChatClientConfigurationException("A credential is required for a remote chat provider.")
         }
 
         val messagesJson = JSONArray()
         messages.forEach { message ->
-            val role = when (message.role) {
-                PromptRole.SYSTEM -> "system"
-                PromptRole.USER -> "user"
-                PromptRole.ASSISTANT -> "assistant"
-            }
+            val role =
+                when (message.role) {
+                    PromptRole.SYSTEM -> "system"
+                    PromptRole.USER -> "user"
+                    PromptRole.ASSISTANT -> "assistant"
+                }
             messagesJson.put(
                 JSONObject()
                     .put("role", role)
                     .put("content", message.content),
             )
         }
-        val body = JSONObject()
-            .put("model", profile.modelId)
-            .put("stream", options.stream)
-            .put("temperature", options.temperature)
-            .put("max_tokens", options.maxTokens)
-            .put("messages", messagesJson)
-            .also { payload ->
-                if (options.includeUsage && options.stream) {
-                    payload.put("stream_options", JSONObject().put("include_usage", true))
-                }
-                val thinkingTemplate = if (options.thinkingEnabled) {
-                    profile.thinkingBodyTemplate
-                } else {
-                    profile.thinkingDisabledBody
-                }
-                thinkingTemplate?.let { template ->
-                    runCatching { JSONObject(template) }.getOrNull()?.let { extra ->
-                        extra.keys().forEach { key ->
-                            if (key !in CONTROLLED_REQUEST_KEYS) payload.put(key, extra.opt(key))
+        val body =
+            JSONObject()
+                .put("model", profile.modelId)
+                .put("stream", options.stream)
+                .put("temperature", options.temperature)
+                .put("max_tokens", options.maxTokens)
+                .put("messages", messagesJson)
+                .also { payload ->
+                    if (options.includeUsage && options.stream) {
+                        payload.put("stream_options", JSONObject().put("include_usage", true))
+                    }
+                    val thinkingTemplate =
+                        if (options.thinkingEnabled) {
+                            profile.thinkingBodyTemplate
+                        } else {
+                            profile.thinkingDisabledBody
+                        }
+                    thinkingTemplate?.let { template ->
+                        runCatching { JSONObject(template) }.getOrNull()?.let { extra ->
+                            extra.keys().forEach { key ->
+                                if (key !in CONTROLLED_REQUEST_KEYS) payload.put(key, extra.opt(key))
+                            }
                         }
                     }
                 }
-            }
-            .toString()
-            .toRequestBody(JSON_MEDIA_TYPE)
+                .toString()
+                .toRequestBody(JSON_MEDIA_TYPE)
 
         val endpoint = ChatCompletionParser.endpointLabel(baseUrl)
         observer.onDiagnostic(
@@ -188,17 +206,73 @@ class OpenAiCompatibleChatClient(
             "endpoint=$endpoint; stream=${options.stream}; maxTokens=${options.maxTokens}; " +
                 PromptCacheDiagnostics.describe(messages, 0),
         )
-        val requestBuilder = Request.Builder()
-            .url("$baseUrl/chat/completions")
-            .header("Accept", if (options.stream) "text/event-stream" else "application/json")
-            .header("Content-Type", "application/json")
-            .post(body)
+        val requestBuilder =
+            Request.Builder()
+                .url("$baseUrl/chat/completions")
+                .header("Accept", if (options.stream) "text/event-stream" else "application/json")
+                .header("Content-Type", "application/json")
+                .post(body)
         if (apiKey != null) requestBuilder.header("Authorization", "Bearer $apiKey")
 
         val call = httpClient.newCall(requestBuilder.build())
         if (!options.stream) {
-            call.enqueue(object : Callback {
-                override fun onFailure(call: Call, e: IOException) {
+            call.enqueue(
+                object : Callback {
+                    override fun onFailure(
+                        call: Call,
+                        e: IOException,
+                    ) {
+                        observer.onFailure(
+                            if (call.isCanceled()) {
+                                ChatStreamFailure(ChatFailureKind.CANCELLED, safeMessage = "Generation was cancelled.")
+                            } else {
+                                ChatStreamFailure(ChatFailureKind.NETWORK, safeMessage = "Chat provider request failed.")
+                            },
+                        )
+                    }
+
+                    override fun onResponse(
+                        call: Call,
+                        response: Response,
+                    ) {
+                        response.use { opened ->
+                            observer.onDiagnostic(
+                                "response",
+                                "status=${opened.code}; " +
+                                    "type=${ChatCompletionParser.contentTypeLabel(opened.header("Content-Type"))}; " +
+                                    "elapsedMs=${(System.nanoTime() - startedAtNanos) / NANOS_PER_MILLI}",
+                            )
+                            if (!opened.isSuccessful) {
+                                observer.onFailure(
+                                    ChatStreamFailure(
+                                        kind = ChatFailureKind.HTTP_STATUS,
+                                        httpStatus = opened.code,
+                                        safeMessage = "Chat provider returned HTTP ${opened.code}.",
+                                    ),
+                                )
+                                return
+                            }
+                            val payload =
+                                runCatching {
+                                    val body = opened.body ?: return@runCatching null
+                                    require(body.contentLength() <= MAX_RESPONSE_BYTES || body.contentLength() == -1L) {
+                                        "Chat response exceeds the size limit."
+                                    }
+                                    readLimitedUtf8(body.source(), MAX_RESPONSE_BYTES)
+                                }.getOrNull()
+                            parseCompletionPayload(payload, opened.header("Content-Type"), opened.code, observer)
+                        }
+                    }
+                },
+            )
+            return call
+        }
+        call.enqueue(
+            object : Callback {
+                override fun onFailure(
+                    call: Call,
+                    e: IOException,
+                ) {
                     observer.onFailure(
                         if (call.isCanceled()) {
                             ChatStreamFailure(ChatFailureKind.CANCELLED, safeMessage = "Generation was cancelled.")
@@ -208,7 +282,10 @@ class OpenAiCompatibleChatClient(
                     )
                 }
 
-                override fun onResponse(call: Call, response: Response) {
+                override fun onResponse(
+                    call: Call,
+                    response: Response,
+                ) {
                     response.use { opened ->
                         observer.onDiagnostic(
                             "response",
@@ -226,182 +303,146 @@ class OpenAiCompatibleChatClient(
                             )
                             return
                         }
-                        val payload = runCatching {
-                            val body = opened.body ?: return@runCatching null
-                            require(body.contentLength() <= MAX_RESPONSE_BYTES || body.contentLength() == -1L) {
-                                "Chat response exceeds the size limit."
-                            }
-                            readLimitedUtf8(body.source(), MAX_RESPONSE_BYTES)
-                        }.getOrNull()
-                        parseCompletionPayload(payload, opened.header("Content-Type"), opened.code, observer)
-                    }
-                }
-            })
-            return call
-        }
-        call.enqueue(object : Callback {
-            override fun onFailure(call: Call, e: IOException) {
-                observer.onFailure(
-                    if (call.isCanceled()) {
-                        ChatStreamFailure(ChatFailureKind.CANCELLED, safeMessage = "Generation was cancelled.")
-                    } else {
-                        ChatStreamFailure(ChatFailureKind.NETWORK, safeMessage = "Chat provider request failed.")
-                    },
-                )
-            }
-
-            override fun onResponse(call: Call, response: Response) {
-                response.use { opened ->
-                    observer.onDiagnostic(
-                        "response",
-                        "status=${opened.code}; " +
-                            "type=${ChatCompletionParser.contentTypeLabel(opened.header("Content-Type"))}; " +
-                            "elapsedMs=${(System.nanoTime() - startedAtNanos) / NANOS_PER_MILLI}",
-                    )
-                    if (!opened.isSuccessful) {
-                        observer.onFailure(
-                            ChatStreamFailure(
-                                kind = ChatFailureKind.HTTP_STATUS,
-                                httpStatus = opened.code,
-                                safeMessage = "Chat provider returned HTTP ${opened.code}.",
-                            ),
-                        )
-                        return
-                    }
-                    val responseBody = opened.body
-                    if (responseBody == null) {
-                        observer.onFailure(
-                            ChatStreamFailure(
-                                ChatFailureKind.INVALID_STREAM,
-                                safeMessage = "Chat provider returned an empty response.",
-                            ),
-                        )
-                        return
-                    }
-                    try {
-                        val source = responseBody.source()
-                        var sawDone = false
-                        var sawSseEvent = false
-                        val nonSseBody = StringBuilder()
-                        var finishReason: String? = null
-                        var completionChars = 0L
-                        while (!source.exhausted()) {
-                            val line = source.readUtf8Line() ?: break
-                            require(line.length <= MAX_SSE_LINE_CHARS) {
-                                "Streaming event exceeds the line limit."
-                            }
-                            if (line.isBlank() || line.startsWith(":") || !line.startsWith("data:")) {
-                                if (line.trimStart().startsWith("{")) nonSseBody.appendLine(line)
-                                continue
-                            }
-                            sawSseEvent = true
-                            val eventData = line.removePrefix("data:").trimStart()
-                            if (eventData == "[DONE]") {
-                                sawDone = true
-                                break
-                            }
-                            val event = try {
-                                JSONObject(eventData)
-                            } catch (_: JSONException) {
-                                observer.onFailure(
-                                    ChatStreamFailure(
-                                        ChatFailureKind.INVALID_STREAM,
-                                        safeMessage = "Chat provider returned malformed streaming data.",
-                                    ),
-                                )
-                                return
-                            }
-                            if (options.includeUsage) {
-                                event.optJSONObject("usage")?.let { usage ->
-                                    val promptTokens = usage.optInt("prompt_tokens", usage.optInt("input_tokens", 0))
-                                    val completionTokens = usage.optInt("completion_tokens", usage.optInt("output_tokens", 0))
-                                    val totalTokens = usage.optInt("total_tokens", promptTokens + completionTokens)
-                                    val details = usage.optJSONObject("prompt_tokens_details")
-                                    val cachedTokens = details?.let {
-                                        when {
-                                            it.has("cached_tokens") -> it.optInt("cached_tokens")
-                                            it.has("cache_read_input_tokens") -> it.optInt("cache_read_input_tokens")
-                                            else -> null
-                                        }
-                                    } ?: when {
-                                        usage.has("prompt_cache_hit_tokens") ->
-                                            usage.optInt("prompt_cache_hit_tokens")
-                                        usage.has("total_cached_tokens") ->
-                                            usage.optInt("total_cached_tokens")
-                                        else -> null
-                                    }
-                                    val reasoning = usage.optJSONObject("completion_tokens_details")
-                                        ?.takeIf { it.has("reasoning_tokens") }
-                                        ?.optInt("reasoning_tokens", 0)
-                                        ?.coerceAtLeast(0)
-                                    observer.onUsage(
-                                        ChatTokenUsage(
-                                            promptTokens = promptTokens.coerceAtLeast(0),
-                                            completionTokens = completionTokens.coerceAtLeast(0),
-                                            totalTokens = totalTokens.coerceAtLeast(0),
-                                            cachedPromptTokens = cachedTokens?.coerceAtLeast(0),
-                                            reasoningTokens = reasoning,
-                                        ),
-                                    )
-                                }
-                            }
-                            ChatCompletionParser.providerErrorMessage(event)?.let { message ->
-                                observer.onFailure(
-                                    ChatStreamFailure(ChatFailureKind.INVALID_STREAM, safeMessage = message),
-                                )
-                                return
-                            }
-                            val choices = event.optJSONArray("choices") ?: continue
-                            val choice = choices.optJSONObject(0) ?: continue
-                            choice.optString("finish_reason")
-                                .takeIf { it.isNotBlank() && it != "null" }
-                                ?.let { finishReason = it }
-                            val delta = choice.optJSONObject("delta") ?: continue
-                            ChatCompletionParser.textOf(delta.opt("content"))
-                                ?.takeIf(String::isNotEmpty)
-                                ?.let { text ->
-                                    completionChars += text.length
-                                    observer.onDelta(text)
-                                }
-                            ChatCompletionParser.textOf(delta.opt("reasoning_content"))
-                                ?.takeIf(String::isNotEmpty)
-                                ?.let(observer::onReasoningDelta)
-                        }
-                        if (!sawSseEvent && nonSseBody.isNotEmpty()) {
-                            parseCompletionPayload(
-                                nonSseBody.toString(),
-                                opened.header("Content-Type"),
-                                opened.code,
-                                observer,
+                        val responseBody = opened.body
+                        if (responseBody == null) {
+                            observer.onFailure(
+                                ChatStreamFailure(
+                                    ChatFailureKind.INVALID_STREAM,
+                                    safeMessage = "Chat provider returned an empty response.",
+                                ),
                             )
                             return
                         }
-                        val reason = when {
-                            finishReason.equals("length", ignoreCase = true) -> ChatFinishReason.LENGTH
-                            finishReason.equals("stop", ignoreCase = true) ||
-                                finishReason.equals("end_turn", ignoreCase = true) -> ChatFinishReason.STOP
-                            finishReason != null -> ChatFinishReason.OTHER
-                            sawDone -> ChatFinishReason.STOP
-                            else -> ChatFinishReason.EOF
+                        try {
+                            val source = responseBody.source()
+                            var sawDone = false
+                            var sawSseEvent = false
+                            val nonSseBody = StringBuilder()
+                            var finishReason: String? = null
+                            var completionChars = 0L
+                            while (!source.exhausted()) {
+                                val line = source.readUtf8Line() ?: break
+                                require(line.length <= MAX_SSE_LINE_CHARS) {
+                                    "Streaming event exceeds the line limit."
+                                }
+                                if (line.isBlank() || line.startsWith(":") || !line.startsWith("data:")) {
+                                    if (line.trimStart().startsWith("{")) nonSseBody.appendLine(line)
+                                    continue
+                                }
+                                sawSseEvent = true
+                                val eventData = line.removePrefix("data:").trimStart()
+                                if (eventData == "[DONE]") {
+                                    sawDone = true
+                                    break
+                                }
+                                val event =
+                                    try {
+                                        JSONObject(eventData)
+                                    } catch (_: JSONException) {
+                                        observer.onFailure(
+                                            ChatStreamFailure(
+                                                ChatFailureKind.INVALID_STREAM,
+                                                safeMessage = "Chat provider returned malformed streaming data.",
+                                            ),
+                                        )
+                                        return
+                                    }
+                                if (options.includeUsage) {
+                                    event.optJSONObject("usage")?.let { usage ->
+                                        val promptTokens = usage.optInt("prompt_tokens", usage.optInt("input_tokens", 0))
+                                        val completionTokens = usage.optInt("completion_tokens", usage.optInt("output_tokens", 0))
+                                        val totalTokens = usage.optInt("total_tokens", promptTokens + completionTokens)
+                                        val details = usage.optJSONObject("prompt_tokens_details")
+                                        val cachedTokens =
+                                            details?.let {
+                                                when {
+                                                    it.has("cached_tokens") -> it.optInt("cached_tokens")
+                                                    it.has("cache_read_input_tokens") -> it.optInt("cache_read_input_tokens")
+                                                    else -> null
+                                                }
+                                            } ?: when {
+                                                usage.has("prompt_cache_hit_tokens") ->
+                                                    usage.optInt("prompt_cache_hit_tokens")
+                                                usage.has("total_cached_tokens") ->
+                                                    usage.optInt("total_cached_tokens")
+                                                else -> null
+                                            }
+                                        val reasoning =
+                                            usage.optJSONObject("completion_tokens_details")
+                                                ?.takeIf { it.has("reasoning_tokens") }
+                                                ?.optInt("reasoning_tokens", 0)
+                                                ?.coerceAtLeast(0)
+                                        observer.onUsage(
+                                            ChatTokenUsage(
+                                                promptTokens = promptTokens.coerceAtLeast(0),
+                                                completionTokens = completionTokens.coerceAtLeast(0),
+                                                totalTokens = totalTokens.coerceAtLeast(0),
+                                                cachedPromptTokens = cachedTokens?.coerceAtLeast(0),
+                                                reasoningTokens = reasoning,
+                                            ),
+                                        )
+                                    }
+                                }
+                                ChatCompletionParser.providerErrorMessage(event)?.let { message ->
+                                    observer.onFailure(
+                                        ChatStreamFailure(ChatFailureKind.INVALID_STREAM, safeMessage = message),
+                                    )
+                                    return
+                                }
+                                val choices = event.optJSONArray("choices") ?: continue
+                                val choice = choices.optJSONObject(0) ?: continue
+                                choice.optString("finish_reason")
+                                    .takeIf { it.isNotBlank() && it != "null" }
+                                    ?.let { finishReason = it }
+                                val delta = choice.optJSONObject("delta") ?: continue
+                                ChatCompletionParser.textOf(delta.opt("content"))
+                                    ?.takeIf(String::isNotEmpty)
+                                    ?.let { text ->
+                                        completionChars += text.length
+                                        observer.onDelta(text)
+                                    }
+                                ChatCompletionParser.textOf(delta.opt("reasoning_content"))
+                                    ?.takeIf(String::isNotEmpty)
+                                    ?.let(observer::onReasoningDelta)
+                            }
+                            if (!sawSseEvent && nonSseBody.isNotEmpty()) {
+                                parseCompletionPayload(
+                                    nonSseBody.toString(),
+                                    opened.header("Content-Type"),
+                                    opened.code,
+                                    observer,
+                                )
+                                return
+                            }
+                            val reason =
+                                when {
+                                    finishReason.equals("length", ignoreCase = true) -> ChatFinishReason.LENGTH
+                                    finishReason.equals("stop", ignoreCase = true) ||
+                                        finishReason.equals("end_turn", ignoreCase = true) -> ChatFinishReason.STOP
+                                    finishReason != null -> ChatFinishReason.OTHER
+                                    sawDone -> ChatFinishReason.STOP
+                                    else -> ChatFinishReason.EOF
+                                }
+                            observer.onDiagnostic("completion", completionDiagnostic(finishReason, completionChars))
+                            observer.onFinish(reason)
+                            observer.onComplete()
+                        } catch (_: IOException) {
+                            observer.onFailure(
+                                ChatStreamFailure(
+                                    kind = if (call.isCanceled()) ChatFailureKind.CANCELLED else ChatFailureKind.NETWORK,
+                                    safeMessage =
+                                        if (call.isCanceled()) {
+                                            "Generation was cancelled."
+                                        } else {
+                                            "Chat stream was interrupted."
+                                        },
+                                ),
+                            )
                         }
-                        observer.onDiagnostic("completion", completionDiagnostic(finishReason, completionChars))
-                        observer.onFinish(reason)
-                        observer.onComplete()
-                    } catch (_: IOException) {
-                        observer.onFailure(
-                            ChatStreamFailure(
-                                kind = if (call.isCanceled()) ChatFailureKind.CANCELLED else ChatFailureKind.NETWORK,
-                                safeMessage = if (call.isCanceled()) {
-                                    "Generation was cancelled."
-                                } else {
-                                    "Chat stream was interrupted."
-                                },
-                            ),
-                        )
                     }
                 }
-            }
-        })
+            },
+        )
         return call
     }
 
@@ -410,10 +451,17 @@ class OpenAiCompatibleChatClient(
         private val LOOPBACK_HOSTS = setOf("localhost", "127.0.0.1", "::1")
 
         /** Fields owned by the client; a provider template must never override them. */
-        private val CONTROLLED_REQUEST_KEYS = setOf(
-            "model", "messages", "stream", "stream_options",
-            "temperature", "max_tokens", "n", "stop",
-        )
+        private val CONTROLLED_REQUEST_KEYS =
+            setOf(
+                "model",
+                "messages",
+                "stream",
+                "stream_options",
+                "temperature",
+                "max_tokens",
+                "n",
+                "stop",
+            )
         const val READ_TIMEOUT_SECONDS = 180L
         const val MAX_RESPONSE_BYTES = 8L * 1024 * 1024
         const val MAX_SSE_LINE_CHARS = 1_000_000
@@ -421,7 +469,10 @@ class OpenAiCompatibleChatClient(
         private const val NANOS_PER_MILLI = 1_000_000L
     }
 
-    private fun readLimitedUtf8(source: BufferedSource, maxBytes: Long): String {
+    private fun readLimitedUtf8(
+        source: BufferedSource,
+        maxBytes: Long,
+    ): String {
         val output = java.io.ByteArrayOutputStream()
         val buffer = okio.Buffer()
         while (true) {
@@ -446,31 +497,35 @@ class OpenAiCompatibleChatClient(
         val root = runCatching { JSONObject(payload.orEmpty()) }.getOrNull()
         val providerError = ChatCompletionParser.providerErrorMessage(root)
         when {
-            providerError != null -> observer.onFailure(
-                ChatStreamFailure(ChatFailureKind.INVALID_STREAM, safeMessage = providerError),
-            )
-            ChatCompletionParser.isHtmlResponse(contentTypeHeader, payload) -> observer.onFailure(
-                ChatStreamFailure(
-                    ChatFailureKind.HTML_RESPONSE,
-                    safeMessage = ChatCompletionParser.htmlCompletionMessage(
-                        statusCode,
-                        contentTypeHeader,
-                        payload,
+            providerError != null ->
+                observer.onFailure(
+                    ChatStreamFailure(ChatFailureKind.INVALID_STREAM, safeMessage = providerError),
+                )
+            ChatCompletionParser.isHtmlResponse(contentTypeHeader, payload) ->
+                observer.onFailure(
+                    ChatStreamFailure(
+                        ChatFailureKind.HTML_RESPONSE,
+                        safeMessage =
+                            ChatCompletionParser.htmlCompletionMessage(
+                                statusCode,
+                                contentTypeHeader,
+                                payload,
+                            ),
                     ),
-                ),
-            )
+                )
             else -> {
                 val completion = root?.let(ChatCompletionParser::completionText)
                 if (root == null || completion == null) {
                     observer.onFailure(
                         ChatStreamFailure(
                             ChatFailureKind.INVALID_STREAM,
-                            safeMessage = ChatCompletionParser.malformedCompletionMessage(
-                                statusCode,
-                                contentTypeHeader,
-                                payload,
-                                root,
-                            ),
+                            safeMessage =
+                                ChatCompletionParser.malformedCompletionMessage(
+                                    statusCode,
+                                    contentTypeHeader,
+                                    payload,
+                                    root,
+                                ),
                         ),
                     )
                 } else {
@@ -481,7 +536,8 @@ class OpenAiCompatibleChatClient(
                     root.optJSONObject("usage")?.let { usage -> emitUsage(usage, observer) }
                     val providerFinish = completionFinishReason(root)
                     observer.onDiagnostic(
-                        "completion", completionDiagnostic(providerFinish, completion.length.toLong()),
+                        "completion",
+                        completionDiagnostic(providerFinish, completion.length.toLong()),
                     )
                     observer.onFinish(classifyCompletionFinishReason(providerFinish))
                     observer.onComplete()
@@ -490,22 +546,27 @@ class OpenAiCompatibleChatClient(
         }
     }
 
-    private fun emitUsage(usage: JSONObject, observer: ChatStreamObserver) {
+    private fun emitUsage(
+        usage: JSONObject,
+        observer: ChatStreamObserver,
+    ) {
         val promptTokens = usage.optInt("prompt_tokens", 0).coerceAtLeast(0)
         val completionTokens = usage.optInt("completion_tokens", 0).coerceAtLeast(0)
         val totalTokens = usage.optInt("total_tokens", 0).coerceAtLeast(promptTokens + completionTokens)
         val details = usage.optJSONObject("prompt_tokens_details")
-        val cached = when {
-            details?.has("cached_tokens") == true -> details.optInt("cached_tokens")
-            details?.has("cache_read_input_tokens") == true -> details.optInt("cache_read_input_tokens")
-            usage.has("prompt_cache_hit_tokens") -> usage.optInt("prompt_cache_hit_tokens")
-            usage.has("total_cached_tokens") -> usage.optInt("total_cached_tokens")
-            else -> null
-        }?.coerceAtLeast(0)
-        val reasoning = usage.optJSONObject("completion_tokens_details")
-            ?.takeIf { it.has("reasoning_tokens") }
-            ?.optInt("reasoning_tokens", 0)
-            ?.coerceAtLeast(0)
+        val cached =
+            when {
+                details?.has("cached_tokens") == true -> details.optInt("cached_tokens")
+                details?.has("cache_read_input_tokens") == true -> details.optInt("cache_read_input_tokens")
+                usage.has("prompt_cache_hit_tokens") -> usage.optInt("prompt_cache_hit_tokens")
+                usage.has("total_cached_tokens") -> usage.optInt("total_cached_tokens")
+                else -> null
+            }?.coerceAtLeast(0)
+        val reasoning =
+            usage.optJSONObject("completion_tokens_details")
+                ?.takeIf { it.has("reasoning_tokens") }
+                ?.optInt("reasoning_tokens", 0)
+                ?.coerceAtLeast(0)
         if (promptTokens > 0 || completionTokens > 0) {
             observer.onUsage(
                 ChatTokenUsage(
@@ -518,6 +579,4 @@ class OpenAiCompatibleChatClient(
             )
         }
     }
-
-
 }

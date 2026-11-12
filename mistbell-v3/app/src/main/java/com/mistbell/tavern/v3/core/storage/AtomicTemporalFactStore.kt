@@ -9,12 +9,15 @@ import java.io.IOException
 
 sealed interface TemporalFactLoadResult {
     data object Missing : TemporalFactLoadResult
+
     data class Loaded(val facts: List<TemporalMemoryFact>) : TemporalFactLoadResult
+
     data class Corrupt(val safeReason: String) : TemporalFactLoadResult
 }
 
 interface TemporalFactPersistence {
     fun save(facts: List<TemporalMemoryFact>)
+
     fun load(): TemporalFactLoadResult
 
     /**
@@ -22,11 +25,12 @@ interface TemporalFactPersistence {
      * should serialize across store instances, not only within one object.
      */
     fun update(transform: (List<TemporalMemoryFact>) -> List<TemporalMemoryFact>): List<TemporalMemoryFact> {
-        val current = when (val loaded = load()) {
-            TemporalFactLoadResult.Missing -> emptyList()
-            is TemporalFactLoadResult.Loaded -> loaded.facts
-            is TemporalFactLoadResult.Corrupt -> throw IllegalStateException(loaded.safeReason)
-        }
+        val current =
+            when (val loaded = load()) {
+                TemporalFactLoadResult.Missing -> emptyList()
+                is TemporalFactLoadResult.Loaded -> loaded.facts
+                is TemporalFactLoadResult.Corrupt -> throw IllegalStateException(loaded.safeReason)
+            }
         val updated = transform(current)
         if (updated != current) save(updated)
         return updated
@@ -48,48 +52,50 @@ class AtomicTemporalFactStore(
         atomicFile = AtomicFile(File(context.filesDir, fileName))
     }
 
-    override fun save(facts: List<TemporalMemoryFact>) = MemoryScopeStorageLock.withLock(atomicFile.baseFile) {
-        val bytes = TemporalFactCodec.encode(facts)
-        val stream = atomicFile.startWrite()
-        try {
-            stream.write(bytes)
-            atomicFile.finishWrite(stream)
-        } catch (failure: Throwable) {
-            atomicFile.failWrite(stream)
-            throw failure
+    override fun save(facts: List<TemporalMemoryFact>) =
+        MemoryScopeStorageLock.withLock(atomicFile.baseFile) {
+            val bytes = TemporalFactCodec.encode(facts)
+            val stream = atomicFile.startWrite()
+            try {
+                stream.write(bytes)
+                atomicFile.finishWrite(stream)
+            } catch (failure: Throwable) {
+                atomicFile.failWrite(stream)
+                throw failure
+            }
         }
-    }
 
-    override fun load(): TemporalFactLoadResult = MemoryScopeStorageLock.withLock(atomicFile.baseFile) {
-        val baseFile = atomicFile.baseFile
-        val backup = File(baseFile.path + ".bak")
-        if (!baseFile.exists() && !backup.exists()) return TemporalFactLoadResult.Missing
-        if (maxOf(baseFile.length(), backup.length()) > TemporalFactCodec.MAX_STORE_BYTES) {
-            return TemporalFactLoadResult.Corrupt("Temporal fact store exceeds the size limit.")
+    override fun load(): TemporalFactLoadResult =
+        MemoryScopeStorageLock.withLock(atomicFile.baseFile) {
+            val baseFile = atomicFile.baseFile
+            val backup = File(baseFile.path + ".bak")
+            if (!baseFile.exists() && !backup.exists()) return TemporalFactLoadResult.Missing
+            if (maxOf(baseFile.length(), backup.length()) > TemporalFactCodec.MAX_STORE_BYTES) {
+                return TemporalFactLoadResult.Corrupt("Temporal fact store exceeds the size limit.")
+            }
+            return try {
+                TemporalFactLoadResult.Loaded(
+                    atomicFile.openRead().use { input -> TemporalFactCodec.decode(input.readBytes()) },
+                )
+            } catch (_: IOException) {
+                TemporalFactLoadResult.Corrupt("Temporal fact store could not be read.")
+            } catch (_: IllegalArgumentException) {
+                TemporalFactLoadResult.Corrupt("Temporal fact store failed integrity or validation checks.")
+            }
         }
-        return try {
-            TemporalFactLoadResult.Loaded(
-                atomicFile.openRead().use { input -> TemporalFactCodec.decode(input.readBytes()) },
-            )
-        } catch (_: IOException) {
-            TemporalFactLoadResult.Corrupt("Temporal fact store could not be read.")
-        } catch (_: IllegalArgumentException) {
-            TemporalFactLoadResult.Corrupt("Temporal fact store failed integrity or validation checks.")
-        }
-    }
 
-    override fun update(
-        transform: (List<TemporalMemoryFact>) -> List<TemporalMemoryFact>,
-    ): List<TemporalMemoryFact> = MemoryScopeStorageLock.withLock(atomicFile.baseFile) {
-        val current = when (val loaded = loadUnlocked()) {
-            TemporalFactLoadResult.Missing -> emptyList()
-            is TemporalFactLoadResult.Loaded -> loaded.facts
-            is TemporalFactLoadResult.Corrupt -> throw IllegalStateException(loaded.safeReason)
+    override fun update(transform: (List<TemporalMemoryFact>) -> List<TemporalMemoryFact>): List<TemporalMemoryFact> =
+        MemoryScopeStorageLock.withLock(atomicFile.baseFile) {
+            val current =
+                when (val loaded = loadUnlocked()) {
+                    TemporalFactLoadResult.Missing -> emptyList()
+                    is TemporalFactLoadResult.Loaded -> loaded.facts
+                    is TemporalFactLoadResult.Corrupt -> throw IllegalStateException(loaded.safeReason)
+                }
+            val updated = transform(current)
+            if (updated != current) saveUnlocked(updated)
+            updated
         }
-        val updated = transform(current)
-        if (updated != current) saveUnlocked(updated)
-        updated
-    }
 
     private fun saveUnlocked(facts: List<TemporalMemoryFact>) {
         val bytes = TemporalFactCodec.encode(facts)
@@ -114,15 +120,16 @@ class AtomicTemporalFactStore(
         }
     }
 
-    private fun readUnlocked(): TemporalFactLoadResult = try {
-        TemporalFactLoadResult.Loaded(
-            atomicFile.openRead().use { input -> TemporalFactCodec.decode(input.readBytes()) },
-        )
-    } catch (_: IOException) {
-        TemporalFactLoadResult.Corrupt("Temporal fact store could not be read.")
-    } catch (_: IllegalArgumentException) {
-        TemporalFactLoadResult.Corrupt("Temporal fact store failed integrity or validation checks.")
-    }
+    private fun readUnlocked(): TemporalFactLoadResult =
+        try {
+            TemporalFactLoadResult.Loaded(
+                atomicFile.openRead().use { input -> TemporalFactCodec.decode(input.readBytes()) },
+            )
+        } catch (_: IOException) {
+            TemporalFactLoadResult.Corrupt("Temporal fact store could not be read.")
+        } catch (_: IllegalArgumentException) {
+            TemporalFactLoadResult.Corrupt("Temporal fact store failed integrity or validation checks.")
+        }
 
     companion object {
         const val DEFAULT_FILE_NAME = "mistbell-v3-temporal-facts.bin"

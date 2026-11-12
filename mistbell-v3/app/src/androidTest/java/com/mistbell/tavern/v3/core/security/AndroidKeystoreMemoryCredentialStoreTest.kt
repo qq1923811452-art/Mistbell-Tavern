@@ -23,10 +23,11 @@ class AndroidKeystoreMemoryCredentialStoreTest {
         try {
             assertTrue(store.contains(handle))
             assertEquals(secret, store.resolve(handle))
-            val persisted = context.getSharedPreferences(
-                "mistbell-v3-encrypted-provider-credentials",
-                Context.MODE_PRIVATE,
-            ).getString(handle, null)
+            val persisted =
+                context.getSharedPreferences(
+                    "mistbell-v3-encrypted-provider-credentials",
+                    Context.MODE_PRIVATE,
+                ).getString(handle, null)
             assertTrue("Encrypted credential must be persisted.", !persisted.isNullOrBlank())
             assertFalse("Raw credential must never be persisted.", persisted!!.contains(secret))
         } finally {
@@ -57,10 +58,11 @@ class AndroidKeystoreMemoryCredentialStoreTest {
     fun modifiedCiphertextFailsClosed() {
         val store = AndroidKeystoreMemoryCredentialStore(context)
         val handle = store.put("tamper-test-secret")
-        val preferences = context.getSharedPreferences(
-            "mistbell-v3-encrypted-provider-credentials",
-            Context.MODE_PRIVATE,
-        )
+        val preferences =
+            context.getSharedPreferences(
+                "mistbell-v3-encrypted-provider-credentials",
+                Context.MODE_PRIVATE,
+            )
         try {
             val encoded = requireNotNull(preferences.getString(handle, null))
             val first = if (encoded.first() == 'A') 'B' else 'A'

@@ -8,10 +8,12 @@ import org.junit.Test
 
 class WorldBookParserTest {
     @Test fun parsesUidMapAndHonorsEnabledAndInsertionOrder() {
-        val book = WorldBookParser.parse(
-            """{"name":"Lore","entries":{"1":{"comment":"rule","content":"night","key":"night","enabled":true,"insertion_order":2},"2":{"content":"hidden","disable":true,"order":8}}}""",
-            "fallback",
-        )
+        val book =
+            WorldBookParser.parse(
+                """{"name":"Lore","entries":{"1":{"comment":"rule","content":"night","key":"night","enabled":true""" +
+                    ""","insertion_order":2},"2":{"content":"hidden","disable":true,"order":8}}}""",
+                "fallback",
+            )
         assertNotNull(book)
         assertEquals("Lore", book!!.name)
         assertEquals(2, book.entries.size)
@@ -22,11 +24,12 @@ class WorldBookParserTest {
     }
 
     @Test fun acceptsSillyTavernCharacterBookKeysAlias() {
-        val book = WorldBookParser.parse(
-            """{"entries":[{"id":0,"keys":["行为规则","情绪规则"],"content":"rules",""" +
-                """"constant":true,"position":"before_char","insertion_order":10}]}""",
-            "card-book",
-        )
+        val book =
+            WorldBookParser.parse(
+                """{"entries":[{"id":0,"keys":["行为规则","情绪规则"],"content":"rules",""" +
+                    """"constant":true,"position":"before_char","insertion_order":10}]}""",
+                "card-book",
+            )
         assertNotNull(book)
         val entry = book!!.entries.single()
         assertEquals(listOf("行为规则", "情绪规则"), entry.keys)
@@ -34,10 +37,12 @@ class WorldBookParserTest {
     }
 
     @Test fun parsesArrayAndSillyTavernPlacementProbabilityAndRole() {
-        val book = WorldBookParser.parse(
-            """{"entries":[{"uid":5,"content":"at depth","key":["dragon"],"extensions":{"position":4,"depth":3,"probability":50,"role":2}}]}""",
-            "array-book",
-        )
+        val book =
+            WorldBookParser.parse(
+                """{"entries":[{"uid":5,"content":"at depth","key":["dragon"],"extensions":{"position":4,"depth":3""" +
+                    ""","probability":50,"role":2}}]}""",
+                "array-book",
+            )
         assertNotNull(book)
         val entry = book!!.entries.single()
         assertEquals("5", entry.id)
@@ -48,20 +53,23 @@ class WorldBookParserTest {
 
     @Test fun parsesStringProbabilityAndRejectsIdsContainingOnlyAUuidSubstring() {
         val uuid = "11111111-1111-1111-1111-111111111111"
-        val book = WorldBookParser.parse(
-            """{"id":"prefix-$uuid-suffix","entries":[{"content":"probability","probability":" 50 " }]}""",
-            "fallback",
-        )
+        val book =
+            WorldBookParser.parse(
+                """{"id":"prefix-$uuid-suffix","entries":[{"content":"probability","probability":" 50 " }]}""",
+                "fallback",
+            )
         assertNotNull(book)
         assertTrue(book!!.id != "prefix-$uuid-suffix")
         assertEquals(0.5, book.entries.single().probability, 0.00001)
     }
 
     @Test fun positionFourWithDepthZeroPreservesDepthPlacementAndBookId() {
-        val book = WorldBookParser.parse(
-            """{"id":"11111111-1111-1111-1111-111111111111","entries":[{"uid":"depth-zero","content":"at depth zero","position":4,"depth":0,"role":1}]}""",
-            "fallback",
-        )
+        val book =
+            WorldBookParser.parse(
+                """{"id":"11111111-1111-1111-1111-111111111111","entries":[{"uid":"depth-zero","content":"at depth""" +
+                    """ zero","position":4,"depth":0,"role":1}]}""",
+                "fallback",
+            )
         assertNotNull(book)
         assertEquals("11111111-1111-1111-1111-111111111111", book!!.id)
         val entry = book.entries.single()
@@ -71,10 +79,11 @@ class WorldBookParserTest {
     }
 
     @Test fun capsImportedDepthAtTenAndParsesStringProbability() {
-        val book = WorldBookParser.parse(
-            """{"entries":[{"uid":"bounded","position":4,"depth":1000,"probability":" 50 " }]}""",
-            "fallback",
-        )
+        val book =
+            WorldBookParser.parse(
+                """{"entries":[{"uid":"bounded","position":4,"depth":1000,"probability":" 50 " }]}""",
+                "fallback",
+            )
         assertNotNull(book)
         val entry = book!!.entries.single()
         assertEquals(10, entry.depth)

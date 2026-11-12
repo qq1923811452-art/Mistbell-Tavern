@@ -12,12 +12,12 @@ import com.mistbell.tavern.v3.core.diagnostics.DiagnosticLogStore
 import com.mistbell.tavern.v3.core.inference.InferenceBackend
 import com.mistbell.tavern.v3.core.inference.InferencePhase
 import com.mistbell.tavern.v3.core.inference.InferenceRuntimeStatus
-import java.io.File
-import java.util.concurrent.locks.ReentrantLock
-import kotlin.concurrent.withLock
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.File
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 
 /**
  * Real Android adapter for LiteRT-LM's EmbeddingEngine.
@@ -30,11 +30,12 @@ import kotlinx.coroutines.withContext
 class LiteRtLmEmbeddingGemma2Engine(
     context: Context,
     private val modelFile: File,
-    private val preferredBackends: List<InferenceBackend> = listOf(
-        InferenceBackend.NPU,
-        InferenceBackend.GPU,
-        InferenceBackend.CPU,
-    ),
+    private val preferredBackends: List<InferenceBackend> =
+        listOf(
+            InferenceBackend.NPU,
+            InferenceBackend.GPU,
+            InferenceBackend.CPU,
+        ),
     private val npuModelCompatible: Boolean = false,
     /** Explicit one-shot diagnostic only; never marks the runtime as verified. */
     private val allowDiagnosticNpuProbe: Boolean = false,
@@ -72,10 +73,11 @@ class LiteRtLmEmbeddingGemma2Engine(
             isArm64 = Build.SUPPORTED_ABIS.any { it == "arm64-v8a" },
             npuModelCompatible = npuModelCompatible,
             npuRuntimeValidated = npuRuntimeValidated,
-            apkFiles = buildList {
-                add(File(appContext.applicationInfo.sourceDir))
-                appContext.applicationInfo.splitSourceDirs.orEmpty().forEach { add(File(it)) }
-            },
+            apkFiles =
+                buildList {
+                    add(File(appContext.applicationInfo.sourceDir))
+                    appContext.applicationInfo.splitSourceDirs.orEmpty().forEach { add(File(it)) }
+                },
             androidApiLevel = Build.VERSION.SDK_INT,
             allowDiagnosticNpuProbe = allowDiagnosticNpuProbe,
         )
@@ -86,135 +88,101 @@ class LiteRtLmEmbeddingGemma2Engine(
             .filter { !npuModelCompatible || it == InferenceBackend.NPU || allowDiagnosticAlternateBackendProbe }
             .distinct()
 
-    private fun buildSkippedBackendReasons(availability: LiteRtBackendAvailability): List<String> = buildList {
-        if (InferenceBackend.NPU in preferredBackends && !availability.isAvailable(InferenceBackend.NPU)) {
-            add("NPU skipped: " + availability.npuReason)
+    private fun buildSkippedBackendReasons(availability: LiteRtBackendAvailability): List<String> =
+        buildList {
+            if (InferenceBackend.NPU in preferredBackends && !availability.isAvailable(InferenceBackend.NPU)) {
+                add("NPU skipped: " + availability.npuReason)
+            }
+            if (npuModelCompatible && !allowDiagnosticAlternateBackendProbe) {
+                add("Qualcomm SM8650 model is NPU-only in production; GPU/CPU fallback is disabled.")
+            } else if (npuModelCompatible && allowDiagnosticAlternateBackendProbe) {
+                add("Diagnostic-only alternate backend experiment enabled; this does not enable production fallback.")
+            } else if (InferenceBackend.GPU in preferredBackends && !availability.isAvailable(InferenceBackend.GPU)) {
+                add("GPU skipped: " + availability.gpuReason)
+            }
         }
-        if (npuModelCompatible && !allowDiagnosticAlternateBackendProbe) {
-            add("Qualcomm SM8650 model is NPU-only in production; GPU/CPU fallback is disabled.")
-        } else if (npuModelCompatible && allowDiagnosticAlternateBackendProbe) {
-            add("Diagnostic-only alternate backend experiment enabled; this does not enable production fallback.")
-        } else if (InferenceBackend.GPU in preferredBackends && !availability.isAvailable(InferenceBackend.GPU)) {
-            add("GPU skipped: " + availability.gpuReason)
-        }
-    }
 
-    suspend fun initialize() = withContext(Dispatchers.IO) {
-        lock.withLock {
-            check(engine == null) { "EmbeddingGemma 2 engine is already initialized." }
-            // Evidence validation hashes the installed APK and potentially a large model bundle.
-            // Keep it on Dispatchers.IO and defer it until initialization, never construction.
-            val evidenceVerified = npuModelCompatible && appContext.hasVerifiedNpuRuntimeManifest()
-            npuEvidenceVerified = evidenceVerified
-            backendAvailability = detectBackendAvailability(evidenceVerified)
-            backendOrder = selectBackendOrder(backendAvailability)
-            skippedBackendReasons = buildSkippedBackendReasons(backendAvailability)
-            require(backendOrder.isNotEmpty()) {
-                if (npuModelCompatible) {
-                    "The Qualcomm SM8650 model requires a verified NPU runtime. Install a compatible runtime or select the portable EmbeddingGemma model for CPU/GPU testing."
-                } else {
-                    "No requested embedding backend is available. Check the packaged GPU runtime; CPU fallback is available only for the portable model."
+    suspend fun initialize() =
+        withContext(Dispatchers.IO) {
+            lock.withLock {
+                check(engine == null) { "EmbeddingGemma 2 engine is already initialized." }
+                // Evidence validation hashes the installed APK and potentially a large model bundle.
+                // Keep it on Dispatchers.IO and defer it until initialization, never construction.
+                val evidenceVerified = npuModelCompatible && appContext.hasVerifiedNpuRuntimeManifest()
+                npuEvidenceVerified = evidenceVerified
+                backendAvailability = detectBackendAvailability(evidenceVerified)
+                backendOrder = selectBackendOrder(backendAvailability)
+                skippedBackendReasons = buildSkippedBackendReasons(backendAvailability)
+                require(backendOrder.isNotEmpty()) {
+                    if (npuModelCompatible) {
+                        "The Qualcomm SM8650 model requires a verified NPU runtime. Install a compatible runtime or" +
+                            " select the portable EmbeddingGemma model for CPU/GPU testing."
+                    } else {
+                        "No requested embedding backend is available. Check the packaged GPU runtime; CPU fallback is" +
+                            " available only for the portable model."
+                    }
                 }
-            }
-            skippedBackendReasons.forEach { logWarn("embedding.backend.skipped.preflight", it) }
-            if (allowDiagnosticNpuProbe && npuModelCompatible) {
-                logWarn("embedding.npu.diagnostic_probe.enabled", "manifestVerified=$npuEvidenceVerified; productionBackendVerification=unchanged")
-            }
-            try {
-                check(modelFile.isFile && modelFile.canRead()) {
-                    "EmbeddingGemma 2 model bundle is missing or unreadable."
-                }
-                check(cacheDirectory.isDirectory || cacheDirectory.mkdirs()) {
-                    "LiteRT-LM cache directory could not be created."
-                }
-            } catch (error: Exception) {
-                lastError = "${error::class.java.simpleName}: ${error.message ?: "runtime initialization failed"}"
-                    .take(InferenceRuntimeStatus.MAX_DETAIL_LENGTH)
-                logError("embedding.initialize.preflight.failed", lastError.orEmpty())
-                throw error
-            }
-
-            // Preflight skips are diagnostic context, not proof that runtime fallback occurred.
-            // Only actual backend initialization/inference failures may set runtimeFallbackApplied.
-            val failures = mutableListOf<String>()
-            lastError = null
-            logInfo(
-                "embedding.initialize.started",
-                "backendOrder=${backendOrder.joinToString(",")}; nativeLibraryDir=${appContext.applicationInfo.nativeLibraryDir}; runtimeFallbackApplied=false",
-            )
-            for (backend in backendOrder) {
-                logInfo("embedding.backend.initialize.started", "backend=${backend.name}")
-                var candidate: EmbeddingEngine? = null
-                try {
-                    // Keep construction inside the guarded block too: JNI/native loading can fail
-                    // before initialize() is reached, and that failure must still be diagnosed
-                    // and allow the next configured backend to be tried.
-                    val created = EmbeddingEngine(
-                        EmbeddingEngineConfig(
-                            modelPath = modelFile.absolutePath,
-                            backend = backend.toLiteRtBackend(),
-                            cacheDir = cacheDirectory.absolutePath,
-                        ),
+                skippedBackendReasons.forEach { logWarn("embedding.backend.skipped.preflight", it) }
+                if (allowDiagnosticNpuProbe && npuModelCompatible) {
+                    logWarn(
+                        "embedding.npu.diagnostic_probe.enabled",
+                        "manifestVerified=$npuEvidenceVerified; productionBackendVerification=unchanged",
                     )
-                    candidate = created
-                    created.initialize()
-                    engine = created
-                    selectedBackend = backend
-                    hasSuccessfulInference = false
-                    fallbackReason = failures.takeIf { it.isNotEmpty() }
-                        ?.joinToString("; ")
-                        ?.take(InferenceRuntimeStatus.MAX_DETAIL_LENGTH)
-                    logInfo("embedding.initialize.succeeded", "backend=${backend.name}; runtimeFallbackApplied=${fallbackReason != null}")
-                    return@withLock
-                } catch (cancelled: CancellationException) {
-                    candidate?.let { runCatching { it.close() } }
-                    throw cancelled
-                } catch (error: Exception) {
-                    candidate?.let { runCatching { it.close() } }
-                    val reason = failureDetail(backend, error)
-                    failures += reason
-                    logWarn("embedding.backend.initialize.failed", reason)
-                } catch (error: LinkageError) {
-                    candidate?.let { runCatching { it.close() } }
-                    val reason = failureDetail(backend, error, fallbackMessage = "native runtime unavailable")
-                    failures += reason
-                    logWarn("embedding.backend.initialize.failed", reason)
                 }
-            }
-            selectedBackend = InferenceBackend.UNKNOWN
-            lastError = "No configured backend initialized successfully: ${failures.joinToString("; ")}"
-                .take(InferenceRuntimeStatus.MAX_DETAIL_LENGTH)
-            logError("embedding.initialize.failed", lastError.orEmpty())
-            throw IllegalStateException(lastError)
-        }
-    }
+                try {
+                    check(modelFile.isFile && modelFile.canRead()) {
+                        "EmbeddingGemma 2 model bundle is missing or unreadable."
+                    }
+                    check(cacheDirectory.isDirectory || cacheDirectory.mkdirs()) {
+                        "LiteRT-LM cache directory could not be created."
+                    }
+                } catch (error: Exception) {
+                    lastError =
+                        "${error::class.java.simpleName}: ${error.message ?: "runtime initialization failed"}"
+                            .take(InferenceRuntimeStatus.MAX_DETAIL_LENGTH)
+                    logError("embedding.initialize.preflight.failed", lastError.orEmpty())
+                    throw error
+                }
 
-    override suspend fun infer(formattedInputs: List<String>): EmbeddingBatch = withContext(Dispatchers.IO) {
-        require(formattedInputs.isNotEmpty()) { "Embedding input batch must not be empty." }
-        require(formattedInputs.all(String::isNotBlank)) { "Embedding inputs must not be blank." }
-        lock.withLock {
-            check(engine != null) { "LiteRT-LM embedding engine is not initialized." }
-            val startIndex = backendOrder.indexOf(selectedBackend).coerceAtLeast(0)
-            val failures = mutableListOf<String>()
-            fallbackReason?.let(failures::add)
-            for (index in startIndex until backendOrder.size) {
-                val backend = backendOrder[index]
-                var candidate = engine.takeIf { selectedBackend == backend }
-                if (candidate == null) {
-                    runCatching { engine?.close() }.onFailure { logWarn("embedding.engine.close.failed", it::class.java.simpleName) }
-                    engine = null
+                // Preflight skips are diagnostic context, not proof that runtime fallback occurred.
+                // Only actual backend initialization/inference failures may set runtimeFallbackApplied.
+                val failures = mutableListOf<String>()
+                lastError = null
+                logInfo(
+                    "embedding.initialize.started",
+                    "backendOrder=${backendOrder.joinToString(
+                        ",",
+                    )}; nativeLibraryDir=${appContext.applicationInfo.nativeLibraryDir}; runtimeFallbackApplied=false",
+                )
+                for (backend in backendOrder) {
+                    logInfo("embedding.backend.initialize.started", "backend=${backend.name}")
+                    var candidate: EmbeddingEngine? = null
                     try {
-                        candidate = EmbeddingEngine(
-                            EmbeddingEngineConfig(
-                                modelPath = modelFile.absolutePath,
-                                backend = backend.toLiteRtBackend(),
-                                cacheDir = cacheDirectory.absolutePath,
-                            ),
-                        )
-                        candidate.initialize()
-                        engine = candidate
+                        // Keep construction inside the guarded block too: JNI/native loading can fail
+                        // before initialize() is reached, and that failure must still be diagnosed
+                        // and allow the next configured backend to be tried.
+                        val created =
+                            EmbeddingEngine(
+                                EmbeddingEngineConfig(
+                                    modelPath = modelFile.absolutePath,
+                                    backend = backend.toLiteRtBackend(),
+                                    cacheDir = cacheDirectory.absolutePath,
+                                ),
+                            )
+                        candidate = created
+                        created.initialize()
+                        engine = created
                         selectedBackend = backend
-                        logInfo("embedding.backend.fallback.initialized", "backend=${backend.name}")
+                        hasSuccessfulInference = false
+                        fallbackReason =
+                            failures.takeIf { it.isNotEmpty() }
+                                ?.joinToString("; ")
+                                ?.take(InferenceRuntimeStatus.MAX_DETAIL_LENGTH)
+                        logInfo(
+                            "embedding.initialize.succeeded",
+                            "backend=${backend.name}; runtimeFallbackApplied=${fallbackReason != null}",
+                        )
+                        return@withLock
                     } catch (cancelled: CancellationException) {
                         candidate?.let { runCatching { it.close() } }
                         throw cancelled
@@ -222,101 +190,159 @@ class LiteRtLmEmbeddingGemma2Engine(
                         candidate?.let { runCatching { it.close() } }
                         val reason = failureDetail(backend, error)
                         failures += reason
-                        logWarn("embedding.backend.fallback.initialize.failed", reason)
-                        candidate = null
-                        continue
+                        logWarn("embedding.backend.initialize.failed", reason)
                     } catch (error: LinkageError) {
                         candidate?.let { runCatching { it.close() } }
-                        val reason = "${backend.name}: native runtime unavailable (${error::class.java.simpleName})"
+                        val reason = failureDetail(backend, error, fallbackMessage = "native runtime unavailable")
                         failures += reason
-                        logWarn("embedding.backend.fallback.initialize.failed", reason)
-                        candidate = null
-                        continue
+                        logWarn("embedding.backend.initialize.failed", reason)
                     }
                 }
-                val active = candidate ?: continue
-                val startedAt = System.nanoTime()
-                val inputCharLengths = formattedInputs.joinToString(",") { it.length.toString() }
-                val inputBatchShape = formattedInputs.joinToString(",") { "1" }
-                val options = EmbeddingOptions(
-                    normalize = true,
-                    outputSize = EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS,
-                )
-                logInfo(
-                    "embedding.inference.started",
-                    "inputCount=${formattedInputs.size}; backend=${backend.name}; " +
-                        "inputBatchShape=${inputBatchShape}; inputCharLengths=${inputCharLengths}; " +
-                        "tokenLengths=unavailable; normalize=true; outputSize=${EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS}",
-                )
-                if (backend == InferenceBackend.NPU) {
-                    val resourceEvidence = runtimeMemoryEvidence().removePrefix("; ")
-                    logInfo("embedding.npu.resource_snapshot.before", "backend=NPU; $resourceEvidence")
-                }
-                try {
-                    val responses = active.computeEmbeddingBatch(
-                        formattedInputs.map { listOf(InputData.Text(it)) },
-                        options,
-                    )
-                    val elapsedMillis = ((System.nanoTime() - startedAt) / 1_000_000L).coerceAtLeast(0L)
-                    selectedBackend = backend
-                    engine = active
-                    hasSuccessfulInference = true
-                    fallbackReason = failures.takeIf { it.isNotEmpty() }?.joinToString("; ")
-                        ?.take(InferenceRuntimeStatus.MAX_DETAIL_LENGTH)
-                    lastError = null
-                    // LiteRT-LM exposes the configured delegate, not proof that the NPU executed
-                    // this operation; the policy keeps that claim and the manifest evidence apart.
-                    val reported = EmbeddingRuntimeStatusPolicy.report(
-                        selected = selectedBackend,
-                        runtimeEvidenceVerified = npuEvidenceVerified,
-                        activeInProcess = true,
-                    )
-                    logInfo(
-                        "embedding.inference.succeeded",
-                        "outputCount=${responses.size}; dimensions=${responses.firstOrNull()?.embedding?.size ?: 0}; " +
-                            "elapsedMs=$elapsedMillis; backend=${backend.name}; runtimeFallbackApplied=${fallbackReason != null}; " +
-                            "inputCount=${formattedInputs.size}; inputBatchShape=${inputBatchShape}; " +
-                            "inputCharLengths=${inputCharLengths}; tokenLengths=unavailable; " +
-                            "backendEvidence=${reported.evidence}; hardwareExecutionVerified=false",
-                    )
-                    return@withLock EmbeddingBatch(
-                        vectors = responses.map { response -> response.embedding.asList() },
-                        status = InferenceRuntimeStatus(
-                            phase = if (fallbackReason == null) InferencePhase.READY else InferencePhase.FALLBACK,
-                            modelId = EmbeddingGemma2TextPolicy.MODEL_ID,
-                            backend = reported.backend,
-                            runtimeId = runtimeId,
-                            backendEvidence = reported.evidence,
-                            acceleratorName = selectedBackend.name,
-                            fallbackReason = fallbackReason,
-                            lastExecutionMillis = elapsedMillis,
-                        ),
-                    )
-                } catch (cancelled: CancellationException) {
-                    logWarn("embedding.inference.cancelled", "backend=${backend.name}")
-                    throw cancelled
-                } catch (error: Exception) {
-                    val reason = failureDetail(backend, error, fallbackMessage = "inference failed")
-                    failures += reason
-                    logError("embedding.inference.failed", reason)
-                    runCatching { active.close() }
-                    engine = null
-                    selectedBackend = InferenceBackend.UNKNOWN
-                } catch (error: LinkageError) {
-                    val reason = "${backend.name}: native runtime unavailable (${error::class.java.simpleName})"
-                    failures += reason
-                    logError("embedding.inference.failed", reason)
-                    runCatching { active.close() }
-                    engine = null
-                    selectedBackend = InferenceBackend.UNKNOWN
-                }
+                selectedBackend = InferenceBackend.UNKNOWN
+                lastError =
+                    "No configured backend initialized successfully: ${failures.joinToString("; ")}"
+                        .take(InferenceRuntimeStatus.MAX_DETAIL_LENGTH)
+                logError("embedding.initialize.failed", lastError.orEmpty())
+                throw IllegalStateException(lastError)
             }
-            lastError = "EmbeddingGemma 2 inference failed on all configured backends: ${failures.joinToString("; ")}"
-                .take(InferenceRuntimeStatus.MAX_DETAIL_LENGTH)
-            logError("embedding.inference.all_backends_failed", lastError.orEmpty())
-            throw IllegalStateException(lastError)
         }
-    }
+
+    override suspend fun infer(formattedInputs: List<String>): EmbeddingBatch =
+        withContext(Dispatchers.IO) {
+            require(formattedInputs.isNotEmpty()) { "Embedding input batch must not be empty." }
+            require(formattedInputs.all(String::isNotBlank)) { "Embedding inputs must not be blank." }
+            lock.withLock {
+                check(engine != null) { "LiteRT-LM embedding engine is not initialized." }
+                val startIndex = backendOrder.indexOf(selectedBackend).coerceAtLeast(0)
+                val failures = mutableListOf<String>()
+                fallbackReason?.let(failures::add)
+                for (index in startIndex until backendOrder.size) {
+                    val backend = backendOrder[index]
+                    var candidate = engine.takeIf { selectedBackend == backend }
+                    if (candidate == null) {
+                        runCatching { engine?.close() }.onFailure { logWarn("embedding.engine.close.failed", it::class.java.simpleName) }
+                        engine = null
+                        try {
+                            candidate =
+                                EmbeddingEngine(
+                                    EmbeddingEngineConfig(
+                                        modelPath = modelFile.absolutePath,
+                                        backend = backend.toLiteRtBackend(),
+                                        cacheDir = cacheDirectory.absolutePath,
+                                    ),
+                                )
+                            candidate.initialize()
+                            engine = candidate
+                            selectedBackend = backend
+                            logInfo("embedding.backend.fallback.initialized", "backend=${backend.name}")
+                        } catch (cancelled: CancellationException) {
+                            candidate?.let { runCatching { it.close() } }
+                            throw cancelled
+                        } catch (error: Exception) {
+                            candidate?.let { runCatching { it.close() } }
+                            val reason = failureDetail(backend, error)
+                            failures += reason
+                            logWarn("embedding.backend.fallback.initialize.failed", reason)
+                            candidate = null
+                            continue
+                        } catch (error: LinkageError) {
+                            candidate?.let { runCatching { it.close() } }
+                            val reason = "${backend.name}: native runtime unavailable (${error::class.java.simpleName})"
+                            failures += reason
+                            logWarn("embedding.backend.fallback.initialize.failed", reason)
+                            candidate = null
+                            continue
+                        }
+                    }
+                    val active = candidate ?: continue
+                    val startedAt = System.nanoTime()
+                    val inputCharLengths = formattedInputs.joinToString(",") { it.length.toString() }
+                    val inputBatchShape = formattedInputs.joinToString(",") { "1" }
+                    val options =
+                        EmbeddingOptions(
+                            normalize = true,
+                            outputSize = EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS,
+                        )
+                    logInfo(
+                        "embedding.inference.started",
+                        "inputCount=${formattedInputs.size}; backend=${backend.name}; " +
+                            "inputBatchShape=$inputBatchShape; inputCharLengths=$inputCharLengths; " +
+                            "tokenLengths=unavailable; normalize=true; outputSize=${EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS}",
+                    )
+                    if (backend == InferenceBackend.NPU) {
+                        val resourceEvidence = runtimeMemoryEvidence().removePrefix("; ")
+                        logInfo("embedding.npu.resource_snapshot.before", "backend=NPU; $resourceEvidence")
+                    }
+                    try {
+                        val responses =
+                            active.computeEmbeddingBatch(
+                                formattedInputs.map { listOf(InputData.Text(it)) },
+                                options,
+                            )
+                        val elapsedMillis = ((System.nanoTime() - startedAt) / 1_000_000L).coerceAtLeast(0L)
+                        selectedBackend = backend
+                        engine = active
+                        hasSuccessfulInference = true
+                        fallbackReason =
+                            failures.takeIf { it.isNotEmpty() }?.joinToString("; ")
+                                ?.take(InferenceRuntimeStatus.MAX_DETAIL_LENGTH)
+                        lastError = null
+                        // LiteRT-LM exposes the configured delegate, not proof that the NPU executed
+                        // this operation; the policy keeps that claim and the manifest evidence apart.
+                        val reported =
+                            EmbeddingRuntimeStatusPolicy.report(
+                                selected = selectedBackend,
+                                runtimeEvidenceVerified = npuEvidenceVerified,
+                                activeInProcess = true,
+                            )
+                        logInfo(
+                            "embedding.inference.succeeded",
+                            "outputCount=${responses.size}; dimensions=${responses.firstOrNull()?.embedding?.size ?: 0}; " +
+                                "elapsedMs=$elapsedMillis; backend=${backend.name}; runtimeFallbackApplied=${fallbackReason != null}; " +
+                                "inputCount=${formattedInputs.size}; inputBatchShape=$inputBatchShape; " +
+                                "inputCharLengths=$inputCharLengths; tokenLengths=unavailable; " +
+                                "backendEvidence=${reported.evidence}; hardwareExecutionVerified=false",
+                        )
+                        return@withLock EmbeddingBatch(
+                            vectors = responses.map { response -> response.embedding.asList() },
+                            status =
+                                InferenceRuntimeStatus(
+                                    phase = if (fallbackReason == null) InferencePhase.READY else InferencePhase.FALLBACK,
+                                    modelId = EmbeddingGemma2TextPolicy.MODEL_ID,
+                                    backend = reported.backend,
+                                    runtimeId = runtimeId,
+                                    backendEvidence = reported.evidence,
+                                    acceleratorName = selectedBackend.name,
+                                    fallbackReason = fallbackReason,
+                                    lastExecutionMillis = elapsedMillis,
+                                ),
+                        )
+                    } catch (cancelled: CancellationException) {
+                        logWarn("embedding.inference.cancelled", "backend=${backend.name}")
+                        throw cancelled
+                    } catch (error: Exception) {
+                        val reason = failureDetail(backend, error, fallbackMessage = "inference failed")
+                        failures += reason
+                        logError("embedding.inference.failed", reason)
+                        runCatching { active.close() }
+                        engine = null
+                        selectedBackend = InferenceBackend.UNKNOWN
+                    } catch (error: LinkageError) {
+                        val reason = "${backend.name}: native runtime unavailable (${error::class.java.simpleName})"
+                        failures += reason
+                        logError("embedding.inference.failed", reason)
+                        runCatching { active.close() }
+                        engine = null
+                        selectedBackend = InferenceBackend.UNKNOWN
+                    }
+                }
+                lastError =
+                    "EmbeddingGemma 2 inference failed on all configured backends: ${failures.joinToString("; ")}"
+                        .take(InferenceRuntimeStatus.MAX_DETAIL_LENGTH)
+                logError("embedding.inference.all_backends_failed", lastError.orEmpty())
+                throw IllegalStateException(lastError)
+            }
+        }
 
     /**
      * One-shot, diagnostic-only input-length matrix for Qualcomm model failures.
@@ -340,41 +366,45 @@ class LiteRtLmEmbeddingGemma2Engine(
         DiagnosticLogStore.beginNpuMatrix()
         try {
             for (length in lengths) {
-            val input = EmbeddingGemma2TextPolicy.formatSearchQuery("x".repeat(length))
-            try {
-                initialize()
-                val result = infer(listOf(input))
-                // Capture runtime mappings before close() tears down this fresh engine.
-                NpuEvidenceStore.captureMappedLibraries().forEach { (name, mapped) ->
-                    if (mapped) mappedLibrariesObserved[name] = true
+                val input = EmbeddingGemma2TextPolicy.formatSearchQuery("x".repeat(length))
+                try {
+                    initialize()
+                    val result = infer(listOf(input))
+                    // Capture runtime mappings before close() tears down this fresh engine.
+                    NpuEvidenceStore.captureMappedLibraries().forEach { (name, mapped) ->
+                        if (mapped) mappedLibrariesObserved[name] = true
+                    }
+                    val dimensions = result.vectors.firstOrNull()?.size ?: 0
+                    val outcome =
+                        "chars=$length; result=success; dimensions=$dimensions;" +
+                            " elapsedMs=${result.status.lastExecutionMillis ?: -1}"
+                    outcomes += outcome
+                    logInfo("embedding.npu.input_length_matrix.case", outcome)
+                } catch (cancelled: CancellationException) {
+                    logWarn("embedding.npu.input_length_matrix.cancelled", "chars=$length")
+                    throw cancelled
+                } catch (error: Exception) {
+                    val detail = "${error::class.java.simpleName}: ${(error.message ?: "inference failed").take(180)}"
+                    val outcome = "chars=$length; result=failed; error=$detail"
+                    outcomes += outcome
+                    logWarn("embedding.npu.input_length_matrix.case", outcome)
+                } finally {
+                    close()
                 }
-                val dimensions = result.vectors.firstOrNull()?.size ?: 0
-                val outcome = "chars=$length; result=success; dimensions=$dimensions; elapsedMs=${result.status.lastExecutionMillis ?: -1}"
-                outcomes += outcome
-                logInfo("embedding.npu.input_length_matrix.case", outcome)
-            } catch (cancelled: CancellationException) {
-                logWarn("embedding.npu.input_length_matrix.cancelled", "chars=$length")
-                throw cancelled
-            } catch (error: Exception) {
-                val detail = "${error::class.java.simpleName}: ${(error.message ?: "inference failed").take(180)}"
-                val outcome = "chars=$length; result=failed; error=$detail"
-                outcomes += outcome
-                logWarn("embedding.npu.input_length_matrix.case", outcome)
-            } finally {
-                close()
-            }
             }
         } finally {
             DiagnosticLogStore.endNpuMatrix()
         }
         // Evidence creation hashes the APK and model bundle; never perform it on the UI thread.
-        val evidence = withContext(Dispatchers.IO) {
-            NpuEvidenceStore.write(appContext, modelFile, outcomes, mappedLibrariesObserved)
-        }
+        val evidence =
+            withContext(Dispatchers.IO) {
+                NpuEvidenceStore.write(appContext, modelFile, outcomes, mappedLibrariesObserved)
+            }
         lastNpuEvidenceResult = evidence
         logWarn(
             "embedding.npu.input_length_matrix.completed",
-            "cases=${outcomes.size}; successes=${evidence.successes}; failures=${outcomes.size - evidence.successes}; status=${evidence.status}; evidence=${evidence.file.name}; apkSha256MatchesCurrent=${evidence.apkSha256MatchesCurrent}",
+            "cases=${outcomes.size}; successes=${evidence.successes}; failures=${outcomes.size - evidence.successes};" +
+                " status=${evidence.status}; evidence=${evidence.file.name}; apkSha256MatchesCurrent=${evidence.apkSha256MatchesCurrent}",
         )
         return outcomes
     }
@@ -410,14 +440,21 @@ class LiteRtLmEmbeddingGemma2Engine(
                 val sorted = samples.sorted()
                 val p50 = sorted[((kotlin.math.ceil(sorted.size * 0.50).toInt() - 1).coerceAtLeast(0))]
                 val p90 = sorted[((kotlin.math.ceil(sorted.size * 0.90).toInt() - 1).coerceAtLeast(0))]
-                val outcome = "backend=${backend.name}; payloadChars=$length; formattedChars=${input.length}; warmup=1; repeats=5; p50Ms=$p50; p90Ms=$p90; result=success; dimensions=${EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS}"
+                val outcome =
+                    "backend=${backend.name}; payloadChars=$length; " +
+                        "formattedChars=${input.length}; warmup=1; repeats=5; " +
+                        "p50Ms=$p50; p90Ms=$p90; result=success; " +
+                        "dimensions=${EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS}"
                 outcomes += outcome
                 logInfo("embedding.benchmark.case", outcome)
             } catch (cancelled: CancellationException) {
                 logWarn("embedding.benchmark.cancelled", "backend=${backend.name}; payloadChars=$length")
                 throw cancelled
             } catch (error: Exception) {
-                val outcome = "backend=${backend.name}; payloadChars=$length; warmup=1; repeats=5; result=failed; error=${error::class.java.simpleName}: ${(error.message ?: "benchmark failed").take(180)}"
+                val reason = "${error::class.java.simpleName}: ${(error.message ?: "benchmark failed").take(180)}"
+                val outcome =
+                    "backend=${backend.name}; payloadChars=$length; warmup=1; repeats=5; " +
+                        "result=failed; error=$reason"
                 outcomes += outcome
                 logWarn("embedding.benchmark.case", outcome)
             } finally {
@@ -425,45 +462,55 @@ class LiteRtLmEmbeddingGemma2Engine(
             }
         }
         val successes = outcomes.count { "; result=success;" in it }
-        logInfo("embedding.benchmark.completed", "backend=${backend.name}; cases=${outcomes.size}; successes=$successes; failures=${outcomes.size - successes}")
+        logInfo(
+            "embedding.benchmark.completed",
+            "backend=${backend.name}; cases=${outcomes.size}; successes=$successes; failures=${outcomes.size - successes}",
+        )
         return outcomes
     }
 
-    fun currentStatus(): InferenceRuntimeStatus = lock.withLock {
-        if (engine == null) {
-            return@withLock if (lastError == null) InferenceRuntimeStatus.idle() else InferenceRuntimeStatus(
-                phase = InferencePhase.FAILED,
+    fun currentStatus(): InferenceRuntimeStatus =
+        lock.withLock {
+            if (engine == null) {
+                return@withLock if (lastError == null) {
+                    InferenceRuntimeStatus.idle()
+                } else {
+                    InferenceRuntimeStatus(
+                        phase = InferencePhase.FAILED,
+                        modelId = EmbeddingGemma2TextPolicy.MODEL_ID,
+                        backend = InferenceBackend.UNKNOWN,
+                        runtimeId = runtimeId,
+                        lastError = lastError,
+                    )
+                }
+            }
+            val phase =
+                when {
+                    lastError != null -> InferencePhase.FAILED
+                    !hasSuccessfulInference -> InferencePhase.INITIALIZED
+                    fallbackReason == null -> InferencePhase.READY
+                    else -> InferencePhase.FALLBACK
+                }
+            // Initialization alone is not execution evidence for Qualcomm NPU, so the backend label
+            // stays UNKNOWN until this process actually ran an inference. The persisted manifest
+            // verdict is still reported, otherwise a restart would show a verified runtime as unverified.
+            val reported =
+                EmbeddingRuntimeStatusPolicy.report(
+                    selected = selectedBackend,
+                    runtimeEvidenceVerified = npuEvidenceVerified,
+                    activeInProcess = phase == InferencePhase.READY || phase == InferencePhase.FALLBACK,
+                )
+            InferenceRuntimeStatus(
+                phase = phase,
                 modelId = EmbeddingGemma2TextPolicy.MODEL_ID,
-                backend = InferenceBackend.UNKNOWN,
+                backend = reported.backend,
                 runtimeId = runtimeId,
+                backendEvidence = reported.evidence,
+                acceleratorName = selectedBackend.name,
+                fallbackReason = fallbackReason,
                 lastError = lastError,
             )
         }
-        val phase = when {
-            lastError != null -> InferencePhase.FAILED
-            !hasSuccessfulInference -> InferencePhase.INITIALIZED
-            fallbackReason == null -> InferencePhase.READY
-            else -> InferencePhase.FALLBACK
-        }
-        // Initialization alone is not execution evidence for Qualcomm NPU, so the backend label
-        // stays UNKNOWN until this process actually ran an inference. The persisted manifest
-        // verdict is still reported, otherwise a restart would show a verified runtime as unverified.
-        val reported = EmbeddingRuntimeStatusPolicy.report(
-            selected = selectedBackend,
-            runtimeEvidenceVerified = npuEvidenceVerified,
-            activeInProcess = phase == InferencePhase.READY || phase == InferencePhase.FALLBACK,
-        )
-        InferenceRuntimeStatus(
-            phase = phase,
-            modelId = EmbeddingGemma2TextPolicy.MODEL_ID,
-            backend = reported.backend,
-            runtimeId = runtimeId,
-            backendEvidence = reported.evidence,
-            acceleratorName = selectedBackend.name,
-            fallbackReason = fallbackReason,
-            lastError = lastError,
-        )
-    }
 
     override fun close() {
         lock.withLock {
@@ -483,15 +530,17 @@ class LiteRtLmEmbeddingGemma2Engine(
         fallbackMessage: String = "runtime failure",
     ): String {
         val message = error.message?.takeIf(String::isNotBlank) ?: fallbackMessage
-        val causes = generateSequence(error.cause) { it.cause }
-            .take(3)
-            .joinToString(" <- ") { "${it::class.java.simpleName}: ${it.message ?: "no message"}" }
-            .takeIf(String::isNotBlank)
-            ?.let { "; causes=$it" }
-            .orEmpty()
-        val frame = error.stackTrace.firstOrNull()?.let {
-            "; at ${it.className}.${it.methodName}(${it.fileName}:${it.lineNumber})"
-        }.orEmpty()
+        val causes =
+            generateSequence(error.cause) { it.cause }
+                .take(3)
+                .joinToString(" <- ") { "${it::class.java.simpleName}: ${it.message ?: "no message"}" }
+                .takeIf(String::isNotBlank)
+                ?.let { "; causes=$it" }
+                .orEmpty()
+        val frame =
+            error.stackTrace.firstOrNull()?.let {
+                "; at ${it.className}.${it.methodName}(${it.fileName}:${it.lineNumber})"
+            }.orEmpty()
         // Keep resource telemetry in its own bounded event. Appending it after a long
         // JNI message and then truncating the combined string silently discarded the very
         // memory evidence needed to diagnose native tensor-allocation failures.
@@ -529,34 +578,52 @@ class LiteRtLmEmbeddingGemma2Engine(
      * Snapshot resource indicators when native tensor allocation or inference fails.
      * These are diagnostic clues only; they do not prove that low memory caused the failure.
      */
-    private fun runtimeMemoryEvidence(): String = runCatching {
-        val activityManager = appContext.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
-        val memoryInfo = ActivityManager.MemoryInfo()
-        activityManager?.getMemoryInfo(memoryInfo)
-        val runtime = Runtime.getRuntime()
-        val mib = 1024L * 1024L
-        val deviceAvailable = memoryInfo.availMem / mib
-        val heapUsed = (runtime.totalMemory() - runtime.freeMemory()) / mib
-        val heapMax = runtime.maxMemory() / mib
-        val modelBytes = modelFile.length().coerceAtLeast(0L)
-        val cacheFreeBytes = cacheDirectory.usableSpace.coerceAtLeast(0L)
-        "; resources{deviceAvailMiB=$deviceAvailable,lowMemory=${memoryInfo.lowMemory}," +
-            "appHeapUsedMiB=$heapUsed,appHeapMaxMiB=$heapMax,modelBytes=$modelBytes,cacheFreeBytes=$cacheFreeBytes}"
-    }.getOrDefault("")
+    private fun runtimeMemoryEvidence(): String =
+        runCatching {
+            val activityManager = appContext.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+            val memoryInfo = ActivityManager.MemoryInfo()
+            activityManager?.getMemoryInfo(memoryInfo)
+            val runtime = Runtime.getRuntime()
+            val mib = 1024L * 1024L
+            val deviceAvailable = memoryInfo.availMem / mib
+            val heapUsed = (runtime.totalMemory() - runtime.freeMemory()) / mib
+            val heapMax = runtime.maxMemory() / mib
+            val modelBytes = modelFile.length().coerceAtLeast(0L)
+            val cacheFreeBytes = cacheDirectory.usableSpace.coerceAtLeast(0L)
+            "; resources{deviceAvailMiB=$deviceAvailable,lowMemory=${memoryInfo.lowMemory}," +
+                "appHeapUsedMiB=$heapUsed,appHeapMaxMiB=$heapMax,modelBytes=$modelBytes,cacheFreeBytes=$cacheFreeBytes}"
+        }.getOrDefault("")
 
-    private fun logInfo(event: String, detail: String = "") { runCatching { diagnostics.info(event, detail) } }
-    private fun logWarn(event: String, detail: String = "") { runCatching { diagnostics.warn(event, detail) } }
-    private fun logError(event: String, detail: String = "") { runCatching { diagnostics.error(event, detail) } }
-
-    private fun Context.hasVerifiedNpuRuntimeManifest(): Boolean =
-        NpuEvidenceStore.hasValidEvidence(this, modelFile)
-
-    private fun InferenceBackend.toLiteRtBackend(): Backend = when (this) {
-        InferenceBackend.NPU -> Backend.NPU(nativeLibraryDir = appContext.applicationInfo.nativeLibraryDir)
-        InferenceBackend.GPU -> Backend.GPU()
-        InferenceBackend.CPU -> Backend.CPU()
-        InferenceBackend.UNKNOWN -> error("UNKNOWN is not a runnable LiteRT-LM backend.")
+    private fun logInfo(
+        event: String,
+        detail: String = "",
+    ) {
+        runCatching { diagnostics.info(event, detail) }
     }
+
+    private fun logWarn(
+        event: String,
+        detail: String = "",
+    ) {
+        runCatching { diagnostics.warn(event, detail) }
+    }
+
+    private fun logError(
+        event: String,
+        detail: String = "",
+    ) {
+        runCatching { diagnostics.error(event, detail) }
+    }
+
+    private fun Context.hasVerifiedNpuRuntimeManifest(): Boolean = NpuEvidenceStore.hasValidEvidence(this, modelFile)
+
+    private fun InferenceBackend.toLiteRtBackend(): Backend =
+        when (this) {
+            InferenceBackend.NPU -> Backend.NPU(nativeLibraryDir = appContext.applicationInfo.nativeLibraryDir)
+            InferenceBackend.GPU -> Backend.GPU()
+            InferenceBackend.CPU -> Backend.CPU()
+            InferenceBackend.UNKNOWN -> error("UNKNOWN is not a runnable LiteRT-LM backend.")
+        }
 
     companion object {
         const val RUNTIME_ID = "litert-lm-embeddinggemma2-android"

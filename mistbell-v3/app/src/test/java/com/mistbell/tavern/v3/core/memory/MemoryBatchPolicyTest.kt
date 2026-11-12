@@ -1,8 +1,8 @@
 package com.mistbell.tavern.v3.core.memory
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -33,11 +33,12 @@ class MemoryBatchPolicyTest {
 
     @Test
     fun skipsTurnsAlreadyClaimedByPendingOrCompletedWork() {
-        val plan = MemoryBatchPolicy.nextBatch(
-            conversationId = "chat-1",
-            orderedTurns = turns(6),
-            claimedTurnIds = setOf("turn-1", "turn-2", "turn-3"),
-        )
+        val plan =
+            MemoryBatchPolicy.nextBatch(
+                conversationId = "chat-1",
+                orderedTurns = turns(6),
+                claimedTurnIds = setOf("turn-1", "turn-2", "turn-3"),
+            )
 
         requireNotNull(plan)
         assertEquals(listOf("turn-4", "turn-5", "turn-6"), plan.turns.map { it.id })
@@ -58,12 +59,13 @@ class MemoryBatchPolicyTest {
 
     @Test
     fun manualFlushCanSchedulePartialBatch() {
-        val plan = MemoryBatchPolicy.nextBatch(
-            conversationId = "chat-1",
-            orderedTurns = turns(2),
-            claimedTurnIds = emptySet(),
-            flushPartialBatch = true,
-        )
+        val plan =
+            MemoryBatchPolicy.nextBatch(
+                conversationId = "chat-1",
+                orderedTurns = turns(2),
+                claimedTurnIds = emptySet(),
+                flushPartialBatch = true,
+            )
 
         requireNotNull(plan)
         assertEquals(2, plan.turns.size)
@@ -73,15 +75,17 @@ class MemoryBatchPolicyTest {
     fun rejectsDuplicateTurnIds() {
         MemoryBatchPolicy.nextBatch(
             conversationId = "chat-1",
-            orderedTurns = listOf(
-                EligibleConversationTurn("duplicate", 1),
-                EligibleConversationTurn("duplicate", 2),
-            ),
+            orderedTurns =
+                listOf(
+                    EligibleConversationTurn("duplicate", 1),
+                    EligibleConversationTurn("duplicate", 2),
+                ),
             claimedTurnIds = emptySet(),
         )
     }
 
-    private fun turns(count: Int) = (1L..count.toLong()).map {
-        EligibleConversationTurn(id = "turn-$it", ordinal = it)
-    }
+    private fun turns(count: Int) =
+        (1L..count.toLong()).map {
+            EligibleConversationTurn(id = "turn-$it", ordinal = it)
+        }
 }

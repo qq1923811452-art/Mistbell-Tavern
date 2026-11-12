@@ -43,42 +43,45 @@ internal object MemoryTextMemoryCache {
 
     private val pathLocks = ConcurrentHashMap<String, Any>()
     private val generations = ConcurrentHashMap<String, AtomicLong>()
-    private val entries = object : LinkedHashMap<Key, List<MemoryTextRecord>>(MAX_ENTRIES, LOAD_FACTOR, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Key, List<MemoryTextRecord>>): Boolean =
-            size > MAX_ENTRIES
-    }
+    private val entries =
+        object : LinkedHashMap<Key, List<MemoryTextRecord>>(MAX_ENTRIES, LOAD_FACTOR, true) {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Key, List<MemoryTextRecord>>): Boolean = size > MAX_ENTRIES
+        }
 
     /** One monitor per canonical path, shared by every store instance that touches the file. */
     fun lockFor(file: File): Any = pathLocks.computeIfAbsent(canonicalPath(file)) { Any() }
 
     /** Never substitute length/mtime for an unavailable stable file identity. */
-    fun key(file: File): Key? = try {
-        val attributes = Files.readAttributes(file.toPath(), BasicFileAttributes::class.java)
-        val fileKey = attributes.fileKey()
-        if (!attributes.isRegularFile || fileKey == null) {
+    fun key(file: File): Key? =
+        try {
+            val attributes = Files.readAttributes(file.toPath(), BasicFileAttributes::class.java)
+            val fileKey = attributes.fileKey()
+            if (!attributes.isRegularFile || fileKey == null) {
+                null
+            } else {
+                val path = canonicalPath(file)
+                Key(
+                    path = path,
+                    generation = generations.computeIfAbsent(path) { AtomicLong() }.get(),
+                    fileKey = fileKey,
+                    length = attributes.size(),
+                    lastModified = attributes.lastModifiedTime(),
+                    created = attributes.creationTime(),
+                )
+            }
+        } catch (_: IOException) {
             null
-        } else {
-            val path = canonicalPath(file)
-            Key(
-                path = path,
-                generation = generations.computeIfAbsent(path) { AtomicLong() }.get(),
-                fileKey = fileKey,
-                length = attributes.size(),
-                lastModified = attributes.lastModifiedTime(),
-                created = attributes.creationTime(),
-            )
+        } catch (_: UnsupportedOperationException) {
+            null
+        } catch (_: SecurityException) {
+            null
         }
-    } catch (_: IOException) {
-        null
-    } catch (_: UnsupportedOperationException) {
-        null
-    } catch (_: SecurityException) {
-        null
-    }
 
     @Synchronized
-    fun find(file: File, key: Key): List<MemoryTextRecord>? =
-        if (key(file) == key) entries[key] else null
+    fun find(
+        file: File,
+        key: Key,
+    ): List<MemoryTextRecord>? = if (key(file) == key) entries[key] else null
 
     /**
      * Caches [records] and returns the stored read-only view, so the load that populated the cache
@@ -86,7 +89,11 @@ internal object MemoryTextMemoryCache {
      * difference between a cache miss and a cache hit.
      */
     @Synchronized
-    fun store(file: File, key: Key?, records: List<MemoryTextRecord>): List<MemoryTextRecord> {
+    fun store(
+        file: File,
+        key: Key?,
+        records: List<MemoryTextRecord>,
+    ): List<MemoryTextRecord> {
         val snapshot = java.util.Collections.unmodifiableList(ArrayList(records))
         if (key != null && key(file) == key) {
             entries.keys.removeAll { it.path == key.path }

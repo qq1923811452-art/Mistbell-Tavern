@@ -335,7 +335,12 @@ class MemoryExtractionJobRepositoryTest {
         org.junit.Assert.assertFalse(repository.commitIfCurrent(oldClaim) { writes++ })
         org.junit.Assert.assertFalse(repository.complete(oldClaim))
         org.junit.Assert.assertFalse(repository.fail(oldClaim, 200L, "network"))
-        assertTrue(repository.commitIfCurrent(newClaim) { writes++; repository.complete(newClaim) })
+        assertTrue(
+            repository.commitIfCurrent(newClaim) {
+                writes++
+                repository.complete(newClaim)
+            },
+        )
         assertEquals(1, writes)
         assertEquals(MemoryExtractionJob.State.COMPLETED, repository.list().single().state)
     }
@@ -359,18 +364,26 @@ class MemoryExtractionJobRepositoryTest {
     @Test fun failedFinalQueueSaveLeavesPersistentFenceAndPreservesRetryBudget() {
         val backing = CodecBackedJobStore()
         var failSave = false
-        val store = object : MemoryExtractionJobPersistence {
-            override fun load() = backing.load()
-            override fun save(jobs: List<MemoryExtractionJob>) {
-                if (failSave) { failSave = false; error("simulated queue save failure") }
-                backing.save(jobs)
+        val store =
+            object : MemoryExtractionJobPersistence {
+                override fun load() = backing.load()
+
+                override fun save(jobs: List<MemoryExtractionJob>) {
+                    if (failSave) {
+                        failSave = false
+                        error("simulated queue save failure")
+                    }
+                    backing.save(jobs)
+                }
             }
-        }
         val repository = MemoryExtractionJobRepository(store)
         repository.enqueue(job("last-attempt", 100L, attemptCount = 4))
         val stale = repository.claimDue(100L)!!
         org.junit.Assert.assertThrows(IllegalStateException::class.java) {
-            repository.migrateScope("conversation-1", "role", "history") { failSave = true; true }
+            repository.migrateScope("conversation-1", "role", "history") {
+                failSave = true
+                true
+            }
         }
         val restarted = MemoryExtractionJobRepository(backing)
         restarted.recoverInterrupted(100L)
@@ -398,21 +411,23 @@ class MemoryExtractionJobRepositoryTest {
         val migrationStarted = CountDownLatch(1)
         val pool = Executors.newFixedThreadPool(2)
         try {
-            val commit = pool.submit {
-                repository.commitIfCurrent(claim) {
-                    entered.countDown()
-                    assertTrue(release.await(5, TimeUnit.SECONDS))
-                    repository.complete(claim)
+            val commit =
+                pool.submit {
+                    repository.commitIfCurrent(claim) {
+                        entered.countDown()
+                        assertTrue(release.await(5, TimeUnit.SECONDS))
+                        repository.complete(claim)
+                    }
                 }
-            }
             assertTrue(entered.await(5, TimeUnit.SECONDS))
-            val migration = pool.submit {
-                migrationStarted.countDown()
-                repository.migrateScope("conversation-1", "role", "history") {
-                    assertEquals(MemoryExtractionJob.State.COMPLETED, repository.list().single().state)
-                    true
+            val migration =
+                pool.submit {
+                    migrationStarted.countDown()
+                    repository.migrateScope("conversation-1", "role", "history") {
+                        assertEquals(MemoryExtractionJob.State.COMPLETED, repository.list().single().state)
+                        true
+                    }
                 }
-            }
             assertTrue(migrationStarted.await(5, TimeUnit.SECONDS))
             release.countDown()
             commit.get(5, TimeUnit.SECONDS)

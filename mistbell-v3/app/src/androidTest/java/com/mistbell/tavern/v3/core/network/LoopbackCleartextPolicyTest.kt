@@ -2,10 +2,6 @@ package com.mistbell.tavern.v3.core.network
 
 import android.security.NetworkSecurityPolicy
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import java.net.InetAddress
-import java.net.ServerSocket
-import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.junit.Assert.assertEquals
@@ -13,6 +9,10 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.net.InetAddress
+import java.net.ServerSocket
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 /** Guards both the platform policy and actual HTTP transport for local relays. */
 @RunWith(AndroidJUnit4::class)
@@ -40,27 +40,31 @@ class LoopbackCleartextPolicyTest {
         assertLoopbackRequest("[::1]", "::1")
     }
 
-    private fun assertLoopbackRequest(urlHost: String, bindHost: String) {
+    private fun assertLoopbackRequest(
+        urlHost: String,
+        bindHost: String,
+    ) {
         val executor = Executors.newSingleThreadExecutor()
         val client = OkHttpClient.Builder().callTimeout(10, TimeUnit.SECONDS).build()
         try {
             ServerSocket(0, 1, InetAddress.getByName(bindHost)).use { server ->
                 server.soTimeout = 10_000
-                val served = executor.submit<String> {
-                    server.accept().use { socket ->
-                        socket.soTimeout = 10_000
-                        val reader = socket.getInputStream().bufferedReader(Charsets.US_ASCII)
-                        val requestLine = reader.readLine()
-                        while (!reader.readLine().isNullOrEmpty()) {
-                            // Consume HTTP headers before sending the response.
+                val served =
+                    executor.submit<String> {
+                        server.accept().use { socket ->
+                            socket.soTimeout = 10_000
+                            val reader = socket.getInputStream().bufferedReader(Charsets.US_ASCII)
+                            val requestLine = reader.readLine()
+                            while (!reader.readLine().isNullOrEmpty()) {
+                                // Consume HTTP headers before sending the response.
+                            }
+                            socket.getOutputStream().write(
+                                "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nOK"
+                                    .toByteArray(Charsets.US_ASCII),
+                            )
+                            requestLine
                         }
-                        socket.getOutputStream().write(
-                            "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nOK"
-                                .toByteArray(Charsets.US_ASCII),
-                        )
-                        requestLine
                     }
-                }
                 val validation = EndpointPolicy.validateBaseUrl("http://$urlHost:${server.localPort}/v1")
                 assertTrue(validation.reason, validation.isAllowed)
                 val request = Request.Builder().url(requireNotNull(validation.normalizedBaseUrl)).build()

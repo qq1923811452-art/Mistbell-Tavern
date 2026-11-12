@@ -1,9 +1,9 @@
 package com.mistbell.tavern.v3.feature.memory
 
+import com.mistbell.tavern.v3.core.memory.EligibleConversationTurn
 import com.mistbell.tavern.v3.core.model.ProviderKind
 import com.mistbell.tavern.v3.core.model.ProviderProfileSet
 import com.mistbell.tavern.v3.core.network.EndpointPolicy
-import com.mistbell.tavern.v3.core.memory.EligibleConversationTurn
 import okhttp3.Call
 import okhttp3.Callback
 import okhttp3.MediaType.Companion.toMediaType
@@ -30,11 +30,15 @@ fun interface MemoryCredentialResolver {
  * Formats a completed chat pair without allowing a very long user message to erase the
  * assistant boundary. The total is bounded while both sides retain as much text as possible.
  */
-fun formatMemoryExtractionTurn(userText: String, assistantText: String): String {
+fun formatMemoryExtractionTurn(
+    userText: String,
+    assistantText: String,
+): String {
     val userPrefix = "User: "
     val assistantPrefix = "\nAssistant: "
-    val contentBudget = MemoryExtractionInput.MAX_TURN_TEXT_CHARS -
-        userPrefix.length - assistantPrefix.length
+    val contentBudget =
+        MemoryExtractionInput.MAX_TURN_TEXT_CHARS -
+            userPrefix.length - assistantPrefix.length
     require(contentBudget >= 0) { "Turn text limit is too small for role boundaries." }
 
     var userBudget = minOf(userText.length, contentBudget / 2)
@@ -59,8 +63,10 @@ data class MemoryExtractionInput(
             "Turn IDs must be unique."
         }
         require(turns.all { it.id in textByTurnId }) { "Every turn must have source text." }
-        require(turnObservedAtEpochMillis.keys.all { id -> turns.any { it.id == id } } &&
-            turnObservedAtEpochMillis.values.all { it >= 0L }) {
+        require(
+            turnObservedAtEpochMillis.keys.all { id -> turns.any { it.id == id } } &&
+                turnObservedAtEpochMillis.values.all { it >= 0L },
+        ) {
             "Observation times must be nonnegative and belong to source turns."
         }
         require(textByTurnId.values.all { it.isNotBlank() && it.length <= MAX_TURN_TEXT_CHARS }) {
@@ -85,6 +91,7 @@ data class MemoryExtractionResult(val facts: List<ExtractedFactDraft>)
 
 sealed interface MemoryExtractionOutcome {
     data class Success(val result: MemoryExtractionResult) : MemoryExtractionOutcome
+
     data class Failure(val safeMessage: String, val httpStatus: Int? = null) : MemoryExtractionOutcome
 }
 
@@ -109,46 +116,56 @@ class MemoryExtractionClient(
 
     // A non-streamed completion sends no bytes until the whole answer is generated, so the socket
     // read timeout — not the call timeout — decides whether a slow but healthy provider succeeds.
-    private val httpClient = client.newBuilder()
-        .followRedirects(false)
-        .followSslRedirects(false)
-        .connectTimeout(CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-        .readTimeout(socketReadTimeoutMillis, TimeUnit.MILLISECONDS)
-        .writeTimeout(WRITE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-        .callTimeout(MemoryExtractionTimeouts.CALL_MILLIS, TimeUnit.MILLISECONDS)
-        .build()
+    private val httpClient =
+        client.newBuilder()
+            .followRedirects(false)
+            .followSslRedirects(false)
+            .connectTimeout(CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .readTimeout(socketReadTimeoutMillis, TimeUnit.MILLISECONDS)
+            .writeTimeout(WRITE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .callTimeout(MemoryExtractionTimeouts.CALL_MILLIS, TimeUnit.MILLISECONDS)
+            .build()
 
-    override fun extract(input: MemoryExtractionInput, observer: MemoryExtractionObserver): Call {
-        val profile = providers.profileFor(ProviderKind.MEMORY_EXTRACTION)
-            ?: error("No enabled memory-extraction provider is explicitly selected.")
+    override fun extract(
+        input: MemoryExtractionInput,
+        observer: MemoryExtractionObserver,
+    ): Call {
+        val profile =
+            providers.profileFor(ProviderKind.MEMORY_EXTRACTION)
+                ?: error("No enabled memory-extraction provider is explicitly selected.")
         val validation = EndpointPolicy.validateBaseUrl(profile.baseUrl)
-        val baseUrl = validation.normalizedBaseUrl
-            ?: error(validation.reason ?: "Memory provider base URL is invalid.")
+        val baseUrl =
+            validation.normalizedBaseUrl
+                ?: error(validation.reason ?: "Memory provider base URL is invalid.")
         require(profile.modelId.isNotBlank()) { "Memory-extraction model ID is required." }
 
         val uri = URI(baseUrl)
         val host = uri.host?.trim('[', ']')?.lowercase(Locale.ROOT)
-        val localHttp = uri.scheme.equals("http", ignoreCase = true) &&
-            host != null && host in LOOPBACK_HOSTS
-        val key = profile.credentialHandle?.takeIf(String::isNotBlank)?.let { handle ->
-            credentials.resolve(handle)?.trim()?.takeIf(String::isNotEmpty)
-                ?: error("The selected memory-extraction credential is unavailable.")
-        }
+        val localHttp =
+            uri.scheme.equals("http", ignoreCase = true) &&
+                host != null && host in LOOPBACK_HOSTS
+        val key =
+            profile.credentialHandle?.takeIf(String::isNotBlank)?.let { handle ->
+                credentials.resolve(handle)?.trim()?.takeIf(String::isNotEmpty)
+                    ?: error("The selected memory-extraction credential is unavailable.")
+            }
         if (key == null && !localHttp) {
             error("A credential is required for a remote memory-extraction provider.")
         }
 
         val messages = buildMessages(input)
-        val requestBody = JSONObject()
-            .put("model", profile.modelId)
-            .put("stream", false)
-            .put("messages", messages)
-            .toString()
-            .toRequestBody(JSON_MEDIA_TYPE)
-        val builder = Request.Builder()
-            .url("$baseUrl/chat/completions")
-            .header("Content-Type", "application/json")
-            .post(requestBody)
+        val requestBody =
+            JSONObject()
+                .put("model", profile.modelId)
+                .put("stream", false)
+                .put("messages", messages)
+                .toString()
+                .toRequestBody(JSON_MEDIA_TYPE)
+        val builder =
+            Request.Builder()
+                .url("$baseUrl/chat/completions")
+                .header("Content-Type", "application/json")
+                .post(requestBody)
         if (key != null) builder.header("Authorization", "Bearer $key")
         report(
             "memory.extraction.request.started",
@@ -158,34 +175,45 @@ class MemoryExtractionClient(
         val startedAtNanos = System.nanoTime()
         val call = httpClient.newCall(builder.build())
         val finished = AtomicBoolean(false)
+
         fun finish(outcome: MemoryExtractionOutcome) {
             if (finished.compareAndSet(false, true)) observer.onFinished(outcome)
         }
-        call.enqueue(object : Callback {
-            override fun onFailure(call: Call, e: IOException) {
-                finish(requestFailure(call, e, startedAtNanos))
-            }
+        call.enqueue(
+            object : Callback {
+                override fun onFailure(
+                    call: Call,
+                    e: IOException,
+                ) {
+                    finish(requestFailure(call, e, startedAtNanos))
+                }
 
-            override fun onResponse(call: Call, response: Response) {
-                // OkHttp does not call onFailure if reading inside onResponse throws.
-                // Close the response before notifying consumers, and never mistake a consumer
-                // exception for a transport failure (or deliver a second completion).
-                val httpFailure = response.takeUnless { it.isSuccessful }?.let {
-                    MemoryExtractionOutcome.Failure(
-                        safeMessage = "Memory-extraction provider returned HTTP ${it.code}.",
-                        httpStatus = it.code,
-                    )
+                override fun onResponse(
+                    call: Call,
+                    response: Response,
+                ) {
+                    // OkHttp does not call onFailure if reading inside onResponse throws.
+                    // Close the response before notifying consumers, and never mistake a consumer
+                    // exception for a transport failure (or deliver a second completion).
+                    val httpFailure =
+                        response.takeUnless { it.isSuccessful }?.let {
+                            MemoryExtractionOutcome.Failure(
+                                safeMessage = "Memory-extraction provider returned HTTP ${it.code}.",
+                                httpStatus = it.code,
+                            )
+                        }
+                    val outcome =
+                        try {
+                            response.use { opened -> readOutcome(opened, input) }
+                        } catch (failure: IOException) {
+                            httpFailure ?: requestFailure(call, failure, startedAtNanos)
+                        } catch (_: Exception) {
+                            httpFailure ?: MemoryExtractionOutcome.Failure("Memory-extraction response could not be processed.")
+                        }
+                    finish(outcome)
                 }
-                val outcome = try {
-                    response.use { opened -> readOutcome(opened, input) }
-                } catch (failure: IOException) {
-                    httpFailure ?: requestFailure(call, failure, startedAtNanos)
-                } catch (_: Exception) {
-                    httpFailure ?: MemoryExtractionOutcome.Failure("Memory-extraction response could not be processed.")
-                }
-                finish(outcome)
-            }
-        })
+            },
+        )
         return call
     }
 
@@ -198,7 +226,8 @@ class MemoryExtractionClient(
                     .put("text", input.textByTurnId.getValue(turn.id)),
             )
         }
-        val systemPrompt = """
+        val systemPrompt =
+            """
             Extract only durable, explicit facts useful for future conversations.
             Return exactly one JSON object with a "facts" array. Each fact must have string fields
             "subject", "predicate", "value", and "source_turn_id". source_turn_id must be one of the
@@ -209,7 +238,7 @@ class MemoryExtractionClient(
             into predicate or value. Skip transient states and assistant suggestions.
             Return the JSON object directly as the message content, without Markdown code
             fences, prefixes, or commentary.
-        """.trimIndent()
+            """.trimIndent()
         return JSONArray()
             .put(JSONObject().put("role", "system").put("content", systemPrompt))
             .put(
@@ -230,8 +259,9 @@ class MemoryExtractionClient(
         error: IOException,
         startedAtNanos: Long,
     ): MemoryExtractionOutcome.Failure {
-        val timedOut = error is SocketTimeoutException ||
-            (error is InterruptedIOException && error.message == "timeout")
+        val timedOut =
+            error is SocketTimeoutException ||
+                (error is InterruptedIOException && error.message == "timeout")
         report(
             "memory.extraction.request_failed",
             "kind=${error::class.java.simpleName}; timedOut=$timedOut; " +
@@ -247,7 +277,10 @@ class MemoryExtractionClient(
     }
 
     /** Diagnostics are best-effort: a full disk must not turn a valid response into a failure. */
-    private fun report(event: String, detail: String) {
+    private fun report(
+        event: String,
+        detail: String,
+    ) {
         runCatching { onDiagnostic(event, detail) }
     }
 
@@ -291,7 +324,10 @@ class MemoryExtractionClient(
     }
 
     @Suppress("TooGenericExceptionCaught")
-    private fun readOutcome(response: Response, input: MemoryExtractionInput): MemoryExtractionOutcome {
+    private fun readOutcome(
+        response: Response,
+        input: MemoryExtractionInput,
+    ): MemoryExtractionOutcome {
         if (!response.isSuccessful) {
             val code = safeProviderErrorCode(response)
             report("memory.extraction.http_error", "status=${response.code}; code=${code ?: "none"}")
@@ -307,15 +343,18 @@ class MemoryExtractionClient(
         } else {
             try {
                 val envelope = JSONObject(responseText)
-                val choices = envelope.optJSONArray("choices")
-                    ?: throw JSONException("Missing choices")
-                val content = choices.optJSONObject(0)?.optJSONObject("message")
-                    ?.optString("content")?.takeIf(String::isNotBlank)
-                    ?: throw JSONException("Missing message content")
-                val parsed = parseFacts(
-                    normalizeJsonContent(content),
-                    input.turns.map(EligibleConversationTurn::id).toSet(),
-                )
+                val choices =
+                    envelope.optJSONArray("choices")
+                        ?: throw JSONException("Missing choices")
+                val content =
+                    choices.optJSONObject(0)?.optJSONObject("message")
+                        ?.optString("content")?.takeIf(String::isNotBlank)
+                        ?: throw JSONException("Missing message content")
+                val parsed =
+                    parseFacts(
+                        normalizeJsonContent(content),
+                        input.turns.map(EligibleConversationTurn::id).toSet(),
+                    )
                 report("memory.extraction.response_parsed", "facts=${parsed.facts.size}")
                 MemoryExtractionOutcome.Success(parsed)
             } catch (error: Exception) {
@@ -333,13 +372,14 @@ class MemoryExtractionClient(
      */
     private fun normalizeJsonContent(content: String): String {
         val trimmed = content.trim()
-        val unfenced = if (trimmed.startsWith("```")) {
-            trimmed.replaceFirst(Regex("^```[A-Za-z0-9_-]*\\s*"), "")
-                .substringBeforeLast("```")
-                .trim()
-        } else {
-            trimmed
-        }
+        val unfenced =
+            if (trimmed.startsWith("```")) {
+                trimmed.replaceFirst(Regex("^```[A-Za-z0-9_-]*\\s*"), "")
+                    .substringBeforeLast("```")
+                    .trim()
+            } else {
+                trimmed
+            }
         val start = unfenced.indexOf('{')
         val end = unfenced.lastIndexOf('}')
         return if (start >= 0 && end > start) unfenced.substring(start, end + 1) else unfenced
@@ -357,24 +397,29 @@ class MemoryExtractionClient(
         return if (buffer.size > MAX_RESPONSE_BYTES) null else buffer.readUtf8().takeIf(String::isNotBlank)
     }
 
-    private fun parseFacts(content: String, allowedTurnIds: Set<String>): MemoryExtractionResult {
+    private fun parseFacts(
+        content: String,
+        allowedTurnIds: Set<String>,
+    ): MemoryExtractionResult {
         require(content.length <= MAX_RESPONSE_BYTES) { "Memory response is too large." }
-        val factsJson = JSONObject(content).optJSONArray("facts")
-            ?: throw JSONException("Missing facts array")
+        val factsJson =
+            JSONObject(content).optJSONArray("facts")
+                ?: throw JSONException("Missing facts array")
         require(factsJson.length() <= MAX_FACTS) { "Too many extracted facts." }
-        val facts = (0 until factsJson.length()).mapNotNull { index ->
-            val fact = factsJson.optJSONObject(index) ?: return@mapNotNull null
-            val subject = fact.optString("subject").trim()
-            val predicate = fact.optString("predicate").trim()
-            val value = fact.optString("value").trim()
-            val sourceTurnId = fact.optString("source_turn_id").trim()
-            // A single hallucinated source turn must not discard every valid fact in the batch.
-            if (subject.isBlank() || subject.length > MAX_FIELD_CHARS) return@mapNotNull null
-            if (predicate.isBlank() || predicate.length > MAX_FIELD_CHARS) return@mapNotNull null
-            if (value.isBlank() || value.length > MAX_FIELD_CHARS) return@mapNotNull null
-            if (sourceTurnId !in allowedTurnIds) return@mapNotNull null
-            ExtractedFactDraft(subject, predicate, value, sourceTurnId)
-        }
+        val facts =
+            (0 until factsJson.length()).mapNotNull { index ->
+                val fact = factsJson.optJSONObject(index) ?: return@mapNotNull null
+                val subject = fact.optString("subject").trim()
+                val predicate = fact.optString("predicate").trim()
+                val value = fact.optString("value").trim()
+                val sourceTurnId = fact.optString("source_turn_id").trim()
+                // A single hallucinated source turn must not discard every valid fact in the batch.
+                if (subject.isBlank() || subject.length > MAX_FIELD_CHARS) return@mapNotNull null
+                if (predicate.isBlank() || predicate.length > MAX_FIELD_CHARS) return@mapNotNull null
+                if (value.isBlank() || value.length > MAX_FIELD_CHARS) return@mapNotNull null
+                if (sourceTurnId !in allowedTurnIds) return@mapNotNull null
+                ExtractedFactDraft(subject, predicate, value, sourceTurnId)
+            }
         require(facts.isNotEmpty() || factsJson.length() == 0) { "No valid facts in the response." }
         return MemoryExtractionResult(facts)
     }
@@ -388,12 +433,13 @@ class MemoryExtractionClient(
         private const val MAX_FIELD_CHARS = 2_000
         private const val MAX_ERROR_BODY_BYTES = 8_192L
         private const val ERROR_BODY_TIMEOUT_MILLIS = 1_000L
-        private val SAFE_ERROR_CODES = setOf(
-            "context_length_exceeded", "invalid_request_error", "authentication_error",
-            "invalid_api_key", "permission_error", "permission_denied", "not_found_error",
-            "model_not_found", "rate_limit_exceeded", "rate_limit_error", "insufficient_quota",
-            "server_error", "api_error", "overloaded_error", "content_filter", "content_policy_violation",
-        )
+        private val SAFE_ERROR_CODES =
+            setOf(
+                "context_length_exceeded", "invalid_request_error", "authentication_error",
+                "invalid_api_key", "permission_error", "permission_denied", "not_found_error",
+                "model_not_found", "rate_limit_exceeded", "rate_limit_error", "insufficient_quota",
+                "server_error", "api_error", "overloaded_error", "content_filter", "content_policy_violation",
+            )
         private const val NANOS_PER_MILLI = 1_000_000L
         private const val CONNECT_TIMEOUT_SECONDS = 30L
         private const val WRITE_TIMEOUT_SECONDS = 60L

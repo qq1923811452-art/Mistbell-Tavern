@@ -1,23 +1,25 @@
 package com.mistbell.tavern.v3.core.memory
 
-import kotlin.math.sqrt
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import kotlin.math.sqrt
 
 class VectorSimilaritySearchNormTest {
     @Test
     fun precomputedNormsProduceTheSameScoresAsADirectCosine() {
-        val records = listOf(
-            StoredVector("a", HASH, 0L, listOf(1f, 0f, 0f)),
-            StoredVector("b", HASH, 0L, listOf(1f, 1f, 0f)),
-            StoredVector("c", HASH, 0L, listOf(0f, 0f, 2f)),
-        )
+        val records =
+            listOf(
+                StoredVector("a", HASH, 0L, listOf(1f, 0f, 0f)),
+                StoredVector("b", HASH, 0L, listOf(1f, 1f, 0f)),
+                StoredVector("c", HASH, 0L, listOf(0f, 0f, 2f)),
+            )
         val snapshot = VectorSnapshot("model", 3, records)
         val query = listOf(1f, 1f, 0f)
         val hits = VectorSimilaritySearch.search(snapshot, query, limit = 3, minimumScore = 0.0)
-        val expected = records.associate { record ->
-            record.id to cosine(query, record.values)
-        }
+        val expected =
+            records.associate { record ->
+                record.id to cosine(query, record.values)
+            }
         hits.forEach { hit ->
             assertEquals(expected.getValue(hit.id), hit.score, 1e-9)
         }
@@ -26,17 +28,21 @@ class VectorSimilaritySearchNormTest {
 
     @Test
     fun zeroVectorIsSkippedAndLimitIsRespected() {
-        val records = listOf(
-            StoredVector("zero", HASH, 0L, listOf(0f, 0f, 0f)),
-            StoredVector("a", HASH, 0L, listOf(1f, 0f, 0f)),
-            StoredVector("b", HASH, 0L, listOf(0.5f, 0f, 0f)),
-        )
+        val records =
+            listOf(
+                StoredVector("zero", HASH, 0L, listOf(0f, 0f, 0f)),
+                StoredVector("a", HASH, 0L, listOf(1f, 0f, 0f)),
+                StoredVector("b", HASH, 0L, listOf(0.5f, 0f, 0f)),
+            )
         val hits = VectorSimilaritySearch.search(VectorSnapshot("m", 3, records), listOf(1f, 0f, 0f), limit = 1)
         assertEquals(1, hits.size)
         assertEquals("a", hits.single().id)
     }
 
-    private fun cosine(a: List<Float>, b: List<Float>): Double {
+    private fun cosine(
+        a: List<Float>,
+        b: List<Float>,
+    ): Double {
         var dot = 0.0
         var left = 0.0
         var right = 0.0

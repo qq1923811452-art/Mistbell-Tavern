@@ -115,16 +115,18 @@ class RetryPolicyTest {
         const val SECOND_MAX_DELAY_MILLIS = SECOND_BASE_DELAY_MILLIS + MAX_JITTER_MILLIS
         const val JITTER_SAMPLE_COUNT = 1_000
 
-        val RETRYABLE_FAILURES = listOf(
-            FailureKind.NETWORK,
-            FailureKind.TIMEOUT,
-            FailureKind.RATE_LIMIT,
-            FailureKind.SERVER_ERROR,
-        )
-        val TERMINAL_FAILURES = listOf(
-            FailureKind.CLIENT_ERROR,
-            FailureKind.CONFIGURATION,
-            FailureKind.CANCELLED,
-        )
+        val RETRYABLE_FAILURES =
+            listOf(
+                FailureKind.NETWORK,
+                FailureKind.TIMEOUT,
+                FailureKind.RATE_LIMIT,
+                FailureKind.SERVER_ERROR,
+            )
+        val TERMINAL_FAILURES =
+            listOf(
+                FailureKind.CLIENT_ERROR,
+                FailureKind.CONFIGURATION,
+                FailureKind.CANCELLED,
+            )
     }
 }

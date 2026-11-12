@@ -29,6 +29,8 @@ class TemporalFactIdentityTest {
         )
     }
 
-    private fun id(scope: String, turn: String) =
-        TemporalFactIdentity.forObservation(scope, turn, "Mira", "location", "harbour")
+    private fun id(
+        scope: String,
+        turn: String,
+    ) = TemporalFactIdentity.forObservation(scope, turn, "Mira", "location", "harbour")
 }

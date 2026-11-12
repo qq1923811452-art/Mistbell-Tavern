@@ -141,7 +141,11 @@ class ConversationScrollTest {
         compose.waitForIdle()
     }
 
-    private fun line(id: String, content: String, role: String = "assistant") = ChatLine(
+    private fun line(
+        id: String,
+        content: String,
+        role: String = "assistant",
+    ) = ChatLine(
         id = id,
         role = role,
         content = content,

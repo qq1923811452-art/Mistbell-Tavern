@@ -5,8 +5,11 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class RegeneratePlannerTest {
-
-    private fun line(id: String, role: String, content: String) = ChatLine(
+    private fun line(
+        id: String,
+        role: String,
+        content: String,
+    ) = ChatLine(
         id = id,
         role = role,
         content = content,
@@ -16,12 +19,13 @@ class RegeneratePlannerTest {
 
     @Test
     fun plansTheLastAssistantReply() {
-        val history = listOf(
-            line("u1", "user", "hello"),
-            line("a1", "assistant", "hi"),
-            line("u2", "user", "tell me more"),
-            line("a2", "assistant", "more"),
-        )
+        val history =
+            listOf(
+                line("u1", "user", "hello"),
+                line("a1", "assistant", "hi"),
+                line("u2", "user", "tell me more"),
+                line("a2", "assistant", "more"),
+            )
         val plan = RegeneratePlanner.plan(history, "a2")!!
         assertEquals("tell me more", plan.userText)
         assertEquals(3, plan.targetIndex)

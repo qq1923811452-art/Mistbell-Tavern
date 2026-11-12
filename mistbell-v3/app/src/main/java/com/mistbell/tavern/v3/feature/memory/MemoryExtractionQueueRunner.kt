@@ -17,10 +17,12 @@ class MemoryExtractionQueueRunner(
 ) {
     sealed interface Result {
         data object Idle : Result
+
         data class Finished(
             val jobId: String,
             val state: MemoryExtractionJob.State,
         ) : Result
+
         data class Started(val jobId: String) : Result
 
         /** Queue-state persistence failed; the caller must stop this worker attempt and retry later. */
@@ -32,6 +34,7 @@ class MemoryExtractionQueueRunner(
 
     sealed interface ExecutionResult {
         data object Success : ExecutionResult
+
         data class Failure(
             val safeCategory: String = "unknown",
             val permanent: Boolean = false,
@@ -58,40 +61,44 @@ class MemoryExtractionQueueRunner(
         fun finish(result: ExecutionResult) {
             if (!finished.compareAndSet(false, true)) return
             val currentTime = runCatching(::now).getOrElse { job.createdAtEpochMillis }
-            val terminal: Result = try {
-                when (result) {
-                    ExecutionResult.Success -> repository.complete(job)
-                    is ExecutionResult.Failure -> repository.fail(
-                        claim = job,
-                        now = currentTime,
-                        safeError = result.safeCategory,
-                        permanent = result.permanent,
-                    )
+            val terminal: Result =
+                try {
+                    when (result) {
+                        ExecutionResult.Success -> repository.complete(job)
+                        is ExecutionResult.Failure ->
+                            repository.fail(
+                                claim = job,
+                                now = currentTime,
+                                safeError = result.safeCategory,
+                                permanent = result.permanent,
+                            )
+                    }
+                    val state =
+                        repository.list().firstOrNull { it.id == job.id }?.state
+                            ?: MemoryExtractionJob.State.PERMANENT_FAILURE
+                    Result.Finished(job.id, state)
+                } catch (_: Exception) {
+                    // Do not claim success when the durable state transition failed. The job may
+                    // remain RUNNING; the next worker invocation recovers it to RETRY_WAIT.
+                    Result.PersistenceFailure(job.id)
                 }
-                val state = repository.list().firstOrNull { it.id == job.id }?.state
-                    ?: MemoryExtractionJob.State.PERMANENT_FAILURE
-                Result.Finished(job.id, state)
-            } catch (_: Exception) {
-                // Do not claim success when the durable state transition failed. The job may
-                // remain RUNNING; the next worker invocation recovers it to RETRY_WAIT.
-                Result.PersistenceFailure(job.id)
-            }
             synchronousResult.set(terminal)
             safeObserver(terminal)
         }
 
-        val input = try {
-            buildInput(job)
-        } catch (cancelled: CancellationException) {
-            finish(ExecutionResult.Failure(safeCategory = "cancelled"))
-            throw cancelled
-        } catch (retryable: RetryableInputException) {
-            finish(ExecutionResult.Failure(safeCategory = "source_unavailable", permanent = false))
-            return synchronousResult.get() ?: Result.Started(job.id)
-        } catch (_: Exception) {
-            finish(ExecutionResult.Failure(permanent = true))
-            return synchronousResult.get() ?: Result.Started(job.id)
-        }
+        val input =
+            try {
+                buildInput(job)
+            } catch (cancelled: CancellationException) {
+                finish(ExecutionResult.Failure(safeCategory = "cancelled"))
+                throw cancelled
+            } catch (retryable: RetryableInputException) {
+                finish(ExecutionResult.Failure(safeCategory = "source_unavailable", permanent = false))
+                return synchronousResult.get() ?: Result.Started(job.id)
+            } catch (_: Exception) {
+                finish(ExecutionResult.Failure(permanent = true))
+                return synchronousResult.get() ?: Result.Started(job.id)
+            }
 
         try {
             execute(job, input, ::finish)
@@ -106,6 +113,7 @@ class MemoryExtractionQueueRunner(
 
     private fun now(): Long = clockMillis().also { require(it >= 0L) }
 }
+
 /** Classifies provider failures without exposing response bodies or credentials to durable queue state. */
 internal object MemoryExtractionFailurePolicy {
     private val retryableClientStatuses = setOf(408, 409, 425, 429)
@@ -114,20 +122,22 @@ internal object MemoryExtractionFailurePolicy {
         safeMessage: String,
         httpStatus: Int?,
     ): MemoryExtractionQueueRunner.ExecutionResult.Failure {
-        val category = when {
-            httpStatus == 429 -> "rate_limit"
-            httpStatus != null && httpStatus in 500..599 -> "server"
-            httpStatus != null && httpStatus in 400..499 -> "client"
-            safeMessage.contains("timed out", ignoreCase = true) -> "timeout"
-            safeMessage == "Memory extraction was cancelled." -> "cancelled"
-            safeMessage.contains("failed validation", ignoreCase = true) ||
-                safeMessage.contains("empty or too large", ignoreCase = true) ||
-                safeMessage.contains("could not be processed", ignoreCase = true) -> "response"
-            else -> "network"
-        }
-        val permanent = httpStatus != null &&
-            httpStatus in 400..499 &&
-            httpStatus !in retryableClientStatuses
+        val category =
+            when {
+                httpStatus == 429 -> "rate_limit"
+                httpStatus != null && httpStatus in 500..599 -> "server"
+                httpStatus != null && httpStatus in 400..499 -> "client"
+                safeMessage.contains("timed out", ignoreCase = true) -> "timeout"
+                safeMessage == "Memory extraction was cancelled." -> "cancelled"
+                safeMessage.contains("failed validation", ignoreCase = true) ||
+                    safeMessage.contains("empty or too large", ignoreCase = true) ||
+                    safeMessage.contains("could not be processed", ignoreCase = true) -> "response"
+                else -> "network"
+            }
+        val permanent =
+            httpStatus != null &&
+                httpStatus in 400..499 &&
+                httpStatus !in retryableClientStatuses
         return MemoryExtractionQueueRunner.ExecutionResult.Failure(
             safeCategory = category,
             permanent = permanent,

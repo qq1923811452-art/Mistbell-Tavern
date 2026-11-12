@@ -2,6 +2,7 @@ package com.mistbell.tavern.v3.feature.chat
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -9,7 +10,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.layout.fillMaxWidth
 
 @Composable
 internal fun ChatEmbeddingDimensionsSettingsSection(
@@ -33,8 +33,11 @@ internal fun ChatEmbeddingDimensionsSettingsSection(
                 DropdownMenuItem(
                     text = {
                         Text(
-                            if (dimensions <= 768) "$dimensions 维"
-                            else "$dimensions 维（当前模型不支持）",
+                            if (dimensions <= 768) {
+                                "$dimensions 维"
+                            } else {
+                                "$dimensions 维（当前模型不支持）"
+                            },
                         )
                     },
                     onClick = { onDimensionsSelected(dimensions) },

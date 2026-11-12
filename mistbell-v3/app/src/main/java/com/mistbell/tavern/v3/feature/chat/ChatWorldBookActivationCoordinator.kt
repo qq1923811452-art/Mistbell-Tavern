@@ -26,16 +26,18 @@ internal class ChatWorldBookActivationCoordinator(
         stateKey: String,
         onBudgetExceeded: (Int) -> Unit,
     ): WorldBookActivationReport {
-        val effectiveBudget = settings
-            .getIntCompat("worldbook_max_chars", LocalWorldBookService.DEFAULT_MAX_BUDGET)
-            .coerceIn(LocalWorldBookService.MIN_MAX_BUDGET, LocalWorldBookService.MAX_MAX_BUDGET)
-        val report = LocalWorldBookService().activateEntriesWithReport(
-            entries = localEntries + embeddedEntries(selectedCard),
-            scanText = scanText,
-            recentTexts = recentTexts,
-            maxBudget = effectiveBudget,
-            state = state,
-        )
+        val effectiveBudget =
+            settings
+                .getIntCompat("worldbook_max_chars", LocalWorldBookService.DEFAULT_MAX_BUDGET)
+                .coerceIn(LocalWorldBookService.MIN_MAX_BUDGET, LocalWorldBookService.MAX_MAX_BUDGET)
+        val report =
+            LocalWorldBookService().activateEntriesWithReport(
+                entries = localEntries + embeddedEntries(selectedCard),
+                scanText = scanText,
+                recentTexts = recentTexts,
+                maxBudget = effectiveBudget,
+                state = state,
+            )
         diagnosticStore.info(
             "worldbook.activated",
             "count=${report.activatedEntries.size}; " +
@@ -50,11 +52,12 @@ internal class ChatWorldBookActivationCoordinator(
             onBudgetExceeded(report.droppedByBudget)
         }
         runCatching {
-            val stateJson = org.json.JSONObject()
-                .put("turn", state.turn)
-                .put("lastActivatedTurn", org.json.JSONObject(state.lastActivatedTurn.mapValues { it.value as Any }))
-                .put("stickyUntilTurn", org.json.JSONObject(state.stickyUntilTurn.mapValues { it.value as Any }))
-                .put("delayedUntilTurn", org.json.JSONObject(state.delayedUntilTurn.mapValues { it.value as Any }))
+            val stateJson =
+                org.json.JSONObject()
+                    .put("turn", state.turn)
+                    .put("lastActivatedTurn", org.json.JSONObject(state.lastActivatedTurn.mapValues { it.value as Any }))
+                    .put("stickyUntilTurn", org.json.JSONObject(state.stickyUntilTurn.mapValues { it.value as Any }))
+                    .put("delayedUntilTurn", org.json.JSONObject(state.delayedUntilTurn.mapValues { it.value as Any }))
             settings.edit().putString(stateKey, stateJson.toString()).apply()
         }.onFailure { error ->
             diagnosticStore.warn(
@@ -79,16 +82,17 @@ private object CharacterBookEntryCache {
     fun entries(card: CharacterCard): List<WorldBookEntry> {
         val raw = card.characterBookJson
         if (cachedName == card.name && cachedRaw == raw) return cachedEntries
-        val parsed = raw?.let { json ->
-            runCatching {
-                WorldBookParser.parse(json, "角色卡：${card.name}")?.entries.orEmpty().map { entry ->
-                    entry.copy(
-                        id = "character-book:${card.name}:${entry.id}",
-                        bookId = "character-book:${card.name}:${entry.bookId}",
-                    )
-                }
-            }.getOrDefault(emptyList())
-        }.orEmpty()
+        val parsed =
+            raw?.let { json ->
+                runCatching {
+                    WorldBookParser.parse(json, "角色卡：${card.name}")?.entries.orEmpty().map { entry ->
+                        entry.copy(
+                            id = "character-book:${card.name}:${entry.id}",
+                            bookId = "character-book:${card.name}:${entry.bookId}",
+                        )
+                    }
+                }.getOrDefault(emptyList())
+            }.orEmpty()
         cachedName = card.name
         cachedRaw = raw
         cachedEntries = parsed

@@ -45,45 +45,51 @@ object WorldbookJsonCodec {
         val root = JSONObject(rawJson)
         val version = root.optInt("version", FORMAT_VERSION)
         require(version == FORMAT_VERSION) { "Unsupported worldbook format version: $version" }
-        val array = root.optJSONArray("entries")
-            ?: throw IllegalArgumentException("Worldbook JSON is missing 'entries'.")
-        val entries = buildList(array.length()) {
-            for (index in 0 until array.length()) {
-                val node = array.optJSONObject(index) ?: continue
-                add(decodeEntry(node))
+        val array =
+            root.optJSONArray("entries")
+                ?: throw IllegalArgumentException("Worldbook JSON is missing 'entries'.")
+        val entries =
+            buildList(array.length()) {
+                for (index in 0 until array.length()) {
+                    val node = array.optJSONObject(index) ?: continue
+                    add(decodeEntry(node))
+                }
             }
-        }
         return WorldbookDocument(name = root.optString("name", ""), entries = entries)
     }
 
     private fun decodeEntry(node: JSONObject): WorldbookEntry {
         val position = node.optString("position", WorldbookPositions.BEFORE_PROMPT)
         return WorldbookEntry(
-            id = node.optString("id", "").trim().also {
-                require(it.isNotEmpty()) { "Worldbook entry is missing 'id'." }
-            },
+            id =
+                node.optString("id", "").trim().also {
+                    require(it.isNotEmpty()) { "Worldbook entry is missing 'id'." }
+                },
             comment = node.optString("comment", ""),
             keys = node.optJSONArray("keys").toStringList(),
             secondaryKeys = node.optJSONArray("secondary_keys").toStringList(),
             requireSecondaryMatch = node.optBoolean("require_secondary_match", false),
             recursive = node.optBoolean("recursive", false),
-            content = node.optString("content", "").also {
-                require(it.isNotBlank()) { "Worldbook entry '$it' has empty content." }
-            },
+            content =
+                node.optString("content", "").also {
+                    require(it.isNotBlank()) { "Worldbook entry '$it' has empty content." }
+                },
             constant = node.optBoolean("constant", false),
             disabled = node.optBoolean("disabled", false),
             order = node.optInt("order", 0),
-            insertPosition = position.takeIf { it in WorldbookPositions.supportedPositions }
-                ?: WorldbookPositions.BEFORE_PROMPT,
+            insertPosition =
+                position.takeIf { it in WorldbookPositions.supportedPositions }
+                    ?: WorldbookPositions.BEFORE_PROMPT,
             depth = node.optInt("depth", 0).coerceIn(0, WorldbookPlanner.MAX_DEPTH),
             probability = node.optDouble("probability", 1.0).coerceIn(0.0, 1.0),
-            depthRole = node.optString("role", WorldbookPositions.ROLE_SYSTEM).let { role ->
-                if (role == WorldbookPositions.ROLE_USER || role == WorldbookPositions.ROLE_ASSISTANT) {
-                    role
-                } else {
-                    WorldbookPositions.ROLE_SYSTEM
-                }
-            },
+            depthRole =
+                node.optString("role", WorldbookPositions.ROLE_SYSTEM).let { role ->
+                    if (role == WorldbookPositions.ROLE_USER || role == WorldbookPositions.ROLE_ASSISTANT) {
+                        role
+                    } else {
+                        WorldbookPositions.ROLE_SYSTEM
+                    }
+                },
             sticky = node.optBoolean("sticky", false),
             cooldown = node.optInt("cooldown", 0).coerceAtLeast(0),
             delay = node.optInt("delay", 0).coerceAtLeast(0),

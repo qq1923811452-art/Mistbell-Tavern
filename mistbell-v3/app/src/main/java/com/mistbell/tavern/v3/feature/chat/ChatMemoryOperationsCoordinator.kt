@@ -1,15 +1,15 @@
 package com.mistbell.tavern.v3.feature.chat
 
 import android.content.Context
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.sync.Mutex
 import com.mistbell.tavern.v3.core.diagnostics.DiagnosticLogStore
-import com.mistbell.tavern.v3.core.security.AndroidKeystoreMemoryCredentialStore
 import com.mistbell.tavern.v3.core.memory.MemoryTextRecord
 import com.mistbell.tavern.v3.core.memory.PassageEmbeddingRuntime
+import com.mistbell.tavern.v3.core.model.ProviderProfileSet
+import com.mistbell.tavern.v3.core.security.AndroidKeystoreMemoryCredentialStore
 import com.mistbell.tavern.v3.core.storage.AtomicMemoryTextStore
 import com.mistbell.tavern.v3.core.storage.AtomicVectorSnapshotStore
-import com.mistbell.tavern.v3.core.model.ProviderProfileSet
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.sync.Mutex
 
 /**
  * Keeps chat-screen memory scheduling in one cohesive coordinator.
@@ -53,7 +53,10 @@ internal class ChatMemoryOperationsCoordinator(
         createIndexRebuildCoordinator().schedule(records, runtime, memoryTextStore, vectorSnapshotStore, reason)
     }
 
-    fun scheduleExtractionIfDue(providers: ProviderProfileSet, history: List<ChatLine>) {
+    fun scheduleExtractionIfDue(
+        providers: ProviderProfileSet,
+        history: List<ChatLine>,
+    ) {
         ChatMemoryExtractionSchedulingCoordinator(
             context = context,
             memoryCredentialStore = memoryCredentialStore,

@@ -1,9 +1,9 @@
 package com.mistbell.tavern.v3.feature.chat
 
+import com.mistbell.tavern.v3.core.diagnostics.DiagnosticLogStore
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
-import com.mistbell.tavern.v3.core.diagnostics.DiagnosticLogStore
 
 /** Runs memory-aware streaming and preserves the existing ordinary-chat fallback behavior. */
 @Suppress("LongParameterList")
@@ -48,10 +48,11 @@ internal class ChatSendStreamFallbackCoordinator(
                     setStatus(failureStatus)
                     val last = history.lastOrNull()
                     if (last?.role == "assistant") {
-                        history[history.lastIndex] = last.copy(
-                            content = last.content.ifBlank { failureStatus },
-                            deliveryState = PersistedChatMessage.DeliveryState.FAILED,
-                        )
+                        history[history.lastIndex] =
+                            last.copy(
+                                content = last.content.ifBlank { failureStatus },
+                                deliveryState = PersistedChatMessage.DeliveryState.FAILED,
+                            )
                     }
                     persistHistory()
                 }

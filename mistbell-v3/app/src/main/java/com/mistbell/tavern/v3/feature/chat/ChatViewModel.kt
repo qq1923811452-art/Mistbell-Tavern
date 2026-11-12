@@ -15,10 +15,10 @@ import kotlinx.coroutines.flow.update
 class ChatViewModel(
     private val savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
-
-    private val _uiState = MutableStateFlow(
-        ChatUiState(draft = savedStateHandle[KEY_DRAFT] ?: ""),
-    )
+    private val _uiState =
+        MutableStateFlow(
+            ChatUiState(draft = savedStateHandle[KEY_DRAFT] ?: ""),
+        )
     val uiState: StateFlow<ChatUiState> = _uiState.asStateFlow()
 
     fun updateDraft(value: String) {

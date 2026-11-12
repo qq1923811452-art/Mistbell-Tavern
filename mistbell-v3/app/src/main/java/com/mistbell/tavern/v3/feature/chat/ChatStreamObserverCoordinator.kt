@@ -45,7 +45,10 @@ internal class ChatStreamObserverCoordinator(
                 reasoningChars.addAndGet(text.length)
             }
 
-            override fun onDiagnostic(stage: String, detail: String) {
+            override fun onDiagnostic(
+                stage: String,
+                detail: String,
+            ) {
                 diagnosticStore.info("chat.request.diagnostic", "stage=$stage; $detail")
             }
 
@@ -76,22 +79,26 @@ internal class ChatStreamObserverCoordinator(
                 mainHandler.post {
                     if (!isCurrentRequest()) return@post
                     setBusy(false)
-                    val base = when (lastFinishReason) {
-                        ChatFinishReason.LENGTH -> "回复达到输出上限，已被截断。"
-                        ChatFinishReason.EOF -> "回复提前结束：未收到完成标记。"
-                        ChatFinishReason.OTHER -> "回复已结束：服务商返回了未知结束原因。"
-                        else -> "回复完成。"
-                    }
-                    setStatus(if (memoryStatusNotice().isBlank()) {
-                        base
-                    } else {
-                        "$base${memoryStatusNotice()}"
-                    })
+                    val base =
+                        when (lastFinishReason) {
+                            ChatFinishReason.LENGTH -> "回复达到输出上限，已被截断。"
+                            ChatFinishReason.EOF -> "回复提前结束：未收到完成标记。"
+                            ChatFinishReason.OTHER -> "回复已结束：服务商返回了未知结束原因。"
+                            else -> "回复完成。"
+                        }
+                    setStatus(
+                        if (memoryStatusNotice().isBlank()) {
+                            base
+                        } else {
+                            "$base${memoryStatusNotice()}"
+                        },
+                    )
                     val index = history.indexOfFirst { it.id == assistantMessageId }
                     if (index >= 0) {
-                        history[index] = history[index].copy(
-                            deliveryState = PersistedChatMessage.DeliveryState.COMPLETE,
-                        )
+                        history[index] =
+                            history[index].copy(
+                                deliveryState = PersistedChatMessage.DeliveryState.COMPLETE,
+                            )
                     }
                     persistHistory()
                     scheduleMemoryExtraction(providersForRequest)
@@ -105,10 +112,11 @@ internal class ChatStreamObserverCoordinator(
                     setStatus(failure.safeMessage)
                     val index = history.indexOfFirst { it.id == assistantMessageId }
                     if (index >= 0) {
-                        history[index] = history[index].copy(
-                            content = history[index].content.ifBlank { failure.safeMessage },
-                            deliveryState = PersistedChatMessage.DeliveryState.FAILED,
-                        )
+                        history[index] =
+                            history[index].copy(
+                                content = history[index].content.ifBlank { failure.safeMessage },
+                                deliveryState = PersistedChatMessage.DeliveryState.FAILED,
+                            )
                     }
                     persistHistory()
                 }

@@ -21,10 +21,15 @@ class BackupValidatorTest {
 
     @Test
     fun rejectsManifestWithoutRequiredSettingsPayload() {
-        val manifest = BackupManifest(
-            1, "now", "test", 1, 0,
-            listOf(BackupEntry("data/memory/mistbell-v3-vectors.bin", 0, "0".repeat(64))),
-        )
+        val manifest =
+            BackupManifest(
+                1,
+                "now",
+                "test",
+                1,
+                0,
+                listOf(BackupEntry("data/memory/mistbell-v3-vectors.bin", 0, "0".repeat(64))),
+            )
         assertThrows(IllegalArgumentException::class.java) {
             BackupValidator.validateManifest(manifest)
         }
@@ -33,10 +38,11 @@ class BackupValidatorTest {
     @Test
     fun rejectsMemoryPathsThatCouldEscapeTheSupportedMemoryStore() {
         val hash = "0".repeat(64)
-        val entries = listOf(
-            BackupEntry("data/settings.json", 0, hash),
-            BackupEntry("data/memory/worldbooks/role.json", 0, hash),
-        )
+        val entries =
+            listOf(
+                BackupEntry("data/settings.json", 0, hash),
+                BackupEntry("data/memory/worldbooks/role.json", 0, hash),
+            )
         assertThrows(IllegalArgumentException::class.java) {
             BackupValidator.validateManifest(BackupManifest(1, "now", "test", 2, 0, entries))
         }
@@ -46,18 +52,23 @@ class BackupValidatorTest {
     fun rejectsPerEntryTotalAndEntryCountLimits() {
         val hash = "0".repeat(64)
         val settings = BackupEntry("data/settings.json", 0, hash)
-        val memoryNames = listOf(
-            "mistbell-v3-memory-texts.bin",
-            "mistbell-v3-memory-facts.bin",
-            "mistbell-v3-memory-jobs.bin",
-            "mistbell-v3-temporal-facts.bin",
-            "mistbell-v3-vectors.bin",
-        )
+        val memoryNames =
+            listOf(
+                "mistbell-v3-memory-texts.bin",
+                "mistbell-v3-memory-facts.bin",
+                "mistbell-v3-memory-jobs.bin",
+                "mistbell-v3-temporal-facts.bin",
+                "mistbell-v3-vectors.bin",
+            )
 
         assertThrows(IllegalArgumentException::class.java) {
             BackupValidator.validateManifest(
                 BackupManifest(
-                    1, "now", "test", 2, BackupValidator.MAX_ENTRY_BYTES + 1,
+                    1,
+                    "now",
+                    "test",
+                    2,
+                    BackupValidator.MAX_ENTRY_BYTES + 1,
                     listOf(
                         settings,
                         BackupEntry("data/memory/mistbell-v3-vectors.bin", BackupValidator.MAX_ENTRY_BYTES + 1, hash),
@@ -66,22 +77,29 @@ class BackupValidatorTest {
             )
         }
 
-        val oversizedTotalEntries = listOf(settings) + memoryNames.map { name ->
-            BackupEntry("data/memory/$name", BackupValidator.MAX_ENTRY_BYTES, hash)
-        }
+        val oversizedTotalEntries =
+            listOf(settings) +
+                memoryNames.map { name ->
+                    BackupEntry("data/memory/$name", BackupValidator.MAX_ENTRY_BYTES, hash)
+                }
         assertThrows(IllegalArgumentException::class.java) {
             BackupValidator.validateManifest(
                 BackupManifest(
-                    1, "now", "test", oversizedTotalEntries.size,
+                    1,
+                    "now",
+                    "test",
+                    oversizedTotalEntries.size,
                     oversizedTotalEntries.sumOf(BackupEntry::size),
                     oversizedTotalEntries,
                 ),
             )
         }
 
-        val tooManyEntries = listOf(settings) + (0 until BackupValidator.MAX_ENTRIES).map { index ->
-            BackupEntry("data/worldbooks/$index.json", 0, hash)
-        }
+        val tooManyEntries =
+            listOf(settings) +
+                (0 until BackupValidator.MAX_ENTRIES).map { index ->
+                    BackupEntry("data/worldbooks/$index.json", 0, hash)
+                }
         assertThrows(IllegalArgumentException::class.java) {
             BackupValidator.validateManifest(
                 BackupManifest(1, "now", "test", tooManyEntries.size, 0, tooManyEntries),
@@ -110,8 +128,9 @@ class BackupValidatorTest {
     @Test
     fun acceptsPathsAtTheMaximumLengthAndSegmentBoundary() {
         BackupValidator.validatePath("data/" + "a".repeat(BackupValidator.MAX_SEGMENT_CHARS))
-        val maximumLength = "data/" + "a".repeat(255) + "/" + "b".repeat(255) + "/" +
-            "c".repeat(255) + "/" + "d".repeat(251)
+        val maximumLength =
+            "data/" + "a".repeat(255) + "/" + "b".repeat(255) + "/" +
+                "c".repeat(255) + "/" + "d".repeat(251)
         assertEquals(BackupValidator.MAX_PATH_CHARS, maximumLength.length)
         BackupValidator.validatePath(maximumLength)
         assertThrows(IllegalArgumentException::class.java) {
@@ -121,21 +140,22 @@ class BackupValidatorTest {
 
     @Test
     fun acceptsEverySupportedUserDataPath() {
-        val entries = listOf(
-            BackupEntry("data/settings.json", 1, hash),
-            BackupEntry("data/mistbell-v3-chat.db", 2, hash),
-            BackupEntry("data/mistbell-v3-sessions.db", 3, hash),
-            BackupEntry("data/memory/mistbell-v3-vectors.bin", 4, hash),
-            BackupEntry(
-                "data/memory/mistbell-v3-memory-texts-0123456789abcdef01234567.bin",
-                5,
-                hash,
-            ),
-            BackupEntry("data/worldbooks/role.json", 6, hash),
-            BackupEntry("data/worldbooks/nested/role.json", 7, hash),
-            BackupEntry("data/characters/hero.json", 8, hash),
-            BackupEntry("data/generated-images/generated/hero.png", 9, hash),
-        )
+        val entries =
+            listOf(
+                BackupEntry("data/settings.json", 1, hash),
+                BackupEntry("data/mistbell-v3-chat.db", 2, hash),
+                BackupEntry("data/mistbell-v3-sessions.db", 3, hash),
+                BackupEntry("data/memory/mistbell-v3-vectors.bin", 4, hash),
+                BackupEntry(
+                    "data/memory/mistbell-v3-memory-texts-0123456789abcdef01234567.bin",
+                    5,
+                    hash,
+                ),
+                BackupEntry("data/worldbooks/role.json", 6, hash),
+                BackupEntry("data/worldbooks/nested/role.json", 7, hash),
+                BackupEntry("data/characters/hero.json", 8, hash),
+                BackupEntry("data/generated-images/generated/hero.png", 9, hash),
+            )
         BackupValidator.validateManifest(manifest(entries))
     }
 
@@ -219,17 +239,19 @@ class BackupValidatorTest {
 
     @Test
     fun rejectsSummedSizesAboveTotalLimitWhenManifestTotalLooksAllowed() {
-        val memoryNames = listOf(
-            "mistbell-v3-memory-texts.bin",
-            "mistbell-v3-memory-facts.bin",
-            "mistbell-v3-memory-jobs.bin",
-            "mistbell-v3-temporal-facts.bin",
-            "mistbell-v3-vectors.bin",
-        )
-        val entries = listOf(BackupEntry("data/settings.json", 0, hash)) +
-            memoryNames.map { name ->
-                BackupEntry("data/memory/$name", BackupValidator.MAX_ENTRY_BYTES, hash)
-            }
+        val memoryNames =
+            listOf(
+                "mistbell-v3-memory-texts.bin",
+                "mistbell-v3-memory-facts.bin",
+                "mistbell-v3-memory-jobs.bin",
+                "mistbell-v3-temporal-facts.bin",
+                "mistbell-v3-vectors.bin",
+            )
+        val entries =
+            listOf(BackupEntry("data/settings.json", 0, hash)) +
+                memoryNames.map { name ->
+                    BackupEntry("data/memory/$name", BackupValidator.MAX_ENTRY_BYTES, hash)
+                }
         assertThrows(IllegalArgumentException::class.java) {
             BackupValidator.validateManifest(
                 manifest(entries, totalBytes = BackupValidator.MAX_TOTAL_UNCOMPRESSED_BYTES),
@@ -241,14 +263,15 @@ class BackupValidatorTest {
         entries: List<BackupEntry>,
         entryCount: Int = entries.size,
         totalBytes: Long = entries.sumOf(BackupEntry::size),
-    ): BackupManifest = BackupManifest(
-        version = BackupManifest.CURRENT_VERSION,
-        createdAt = "2026-10-22T00:00:00Z",
-        appVersion = "3.0.0-dev",
-        entryCount = entryCount,
-        totalBytes = totalBytes,
-        entries = entries,
-    )
+    ): BackupManifest =
+        BackupManifest(
+            version = BackupManifest.CURRENT_VERSION,
+            createdAt = "2026-10-22T00:00:00Z",
+            appVersion = "3.0.0-dev",
+            entryCount = entryCount,
+            totalBytes = totalBytes,
+            entries = entries,
+        )
 
     private companion object {
         private val hash = "0".repeat(64)

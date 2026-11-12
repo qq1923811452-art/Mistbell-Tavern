@@ -1,11 +1,11 @@
 package com.mistbell.tavern.v3.feature.embedding
 
-import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
+import java.io.File
 
 class NpuEvidenceRetentionTest {
     @get:Rule
@@ -24,9 +24,10 @@ class NpuEvidenceRetentionTest {
 
         NpuEvidenceRetention.prune(directory)
 
-        val evidenceFiles = directory.listFiles { file ->
-            file.name.startsWith("npu-evidence-") && file.name.endsWith(".json")
-        }.orEmpty()
+        val evidenceFiles =
+            directory.listFiles { file ->
+                file.name.startsWith("npu-evidence-") && file.name.endsWith(".json")
+            }.orEmpty()
         assertEquals(5, evidenceFiles.size)
         assertTrue(evidenceFiles.any { it.name == "npu-evidence-7.json" })
         assertTrue(evidenceFiles.none { it.name == "npu-evidence-0.json" })

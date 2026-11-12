@@ -21,8 +21,10 @@ data class EmbeddingModelSpec(
 
 data class EmbeddingBatch(val vectors: List<List<Float>>, val status: InferenceRuntimeStatus) {
     init {
-        require(status.phase == InferencePhase.READY || status.phase == InferencePhase.RUNNING ||
-            status.phase == InferencePhase.FALLBACK) {
+        require(
+            status.phase == InferencePhase.READY || status.phase == InferencePhase.RUNNING ||
+                status.phase == InferencePhase.FALLBACK,
+        ) {
             "Embedding result must include an active runtime status."
         }
         require(vectors.isNotEmpty()) { "Embedding result must not be empty." }
@@ -33,6 +35,7 @@ data class EmbeddingBatch(val vectors: List<List<Float>>, val status: InferenceR
 interface LocalEmbeddingRuntime {
     val model: EmbeddingModelSpec
     val runtimeId: String
+
     suspend fun embed(texts: List<String>): EmbeddingBatch
 }
 

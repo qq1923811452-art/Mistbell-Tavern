@@ -5,8 +5,11 @@ import kotlinx.coroutines.CancellationException
 /** Storage adapter result for loading a validated vector snapshot. */
 sealed interface VectorSnapshotReadResult {
     data object Missing : VectorSnapshotReadResult
+
     data class Loaded(val snapshot: VectorSnapshot) : VectorSnapshotReadResult
+
     data class Incompatible(val reason: String) : VectorSnapshotReadResult
+
     data class Corrupt(val reason: String) : VectorSnapshotReadResult
 }
 
@@ -33,7 +36,9 @@ fun interface VectorSnapshotProvider {
 
 sealed interface VectorMemoryContextResult {
     data class Ready(val memories: List<RetrievedMemory>) : VectorMemoryContextResult
+
     data class Unavailable(val reason: Reason) : VectorMemoryContextResult
+
     data object NoRelevantMemories : VectorMemoryContextResult
 
     enum class Reason {
@@ -73,42 +78,48 @@ class VectorMemoryContextService(
     }
 
     suspend fun retrieveForQuery(query: String): VectorMemoryContextResult {
-        if (query.isBlank()) return VectorMemoryContextResult.Unavailable(
-            VectorMemoryContextResult.Reason.INVALID_QUERY_VECTOR,
-        )
-
-        val snapshot = when (val loaded = snapshots.loadSnapshot()) {
-            VectorSnapshotReadResult.Missing -> return VectorMemoryContextResult.Unavailable(
-                VectorMemoryContextResult.Reason.SNAPSHOT_MISSING,
+        if (query.isBlank()) {
+            return VectorMemoryContextResult.Unavailable(
+                VectorMemoryContextResult.Reason.INVALID_QUERY_VECTOR,
             )
-            is VectorSnapshotReadResult.Corrupt -> return VectorMemoryContextResult.Unavailable(
-                VectorMemoryContextResult.Reason.SNAPSHOT_CORRUPT,
-            )
-            is VectorSnapshotReadResult.Incompatible -> return VectorMemoryContextResult.Unavailable(
-                VectorMemoryContextResult.Reason.SNAPSHOT_INCOMPATIBLE,
-            )
-            is VectorSnapshotReadResult.Loaded -> loaded.snapshot
         }
+
+        val snapshot =
+            when (val loaded = snapshots.loadSnapshot()) {
+                VectorSnapshotReadResult.Missing -> return VectorMemoryContextResult.Unavailable(
+                    VectorMemoryContextResult.Reason.SNAPSHOT_MISSING,
+                )
+                is VectorSnapshotReadResult.Corrupt -> return VectorMemoryContextResult.Unavailable(
+                    VectorMemoryContextResult.Reason.SNAPSHOT_CORRUPT,
+                )
+                is VectorSnapshotReadResult.Incompatible -> return VectorMemoryContextResult.Unavailable(
+                    VectorMemoryContextResult.Reason.SNAPSHOT_INCOMPATIBLE,
+                )
+                is VectorSnapshotReadResult.Loaded -> loaded.snapshot
+            }
 
         val identifiedRuntime = embeddings as? IdentifiedQueryEmbeddingProvider
         if (identifiedRuntime != null &&
-            (identifiedRuntime.modelId != snapshot.modelId ||
-                identifiedRuntime.dimensions != snapshot.dimensions)
+            (
+                identifiedRuntime.modelId != snapshot.modelId ||
+                    identifiedRuntime.dimensions != snapshot.dimensions
+            )
         ) {
             return VectorMemoryContextResult.Unavailable(
                 VectorMemoryContextResult.Reason.SNAPSHOT_INCOMPATIBLE,
             )
         }
 
-        val queryVector = try {
-            embeddings.embed(query)
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (_: Exception) {
-            return VectorMemoryContextResult.Unavailable(
-                VectorMemoryContextResult.Reason.EMBEDDING_FAILED,
-            )
-        }
+        val queryVector =
+            try {
+                embeddings.embed(query)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                return VectorMemoryContextResult.Unavailable(
+                    VectorMemoryContextResult.Reason.EMBEDDING_FAILED,
+                )
+            }
         if (queryVector.size != snapshot.dimensions ||
             queryVector.isEmpty() ||
             queryVector.any { !it.isFinite() } ||
@@ -119,32 +130,34 @@ class VectorMemoryContextService(
             )
         }
 
-        val texts = try {
-            textProvider.loadMemoryTexts()
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (_: Exception) {
-            return VectorMemoryContextResult.Unavailable(
-                VectorMemoryContextResult.Reason.SOURCE_TEXT_UNAVAILABLE,
-            )
-        }
-        val retrieved = try {
-            VectorMemoryRetriever.retrieve(
-                snapshot = snapshot,
-                queryVector = queryVector,
-                texts = texts,
-                limit = resultLimit,
-                minimumScore = minimumScore,
-                maxCharacters = maxCharacters,
-                queryText = query,
-                vectorWeight = vectorRrfWeight,
-                keywordWeight = keywordRrfWeight,
-            )
-        } catch (_: IllegalArgumentException) {
-            return VectorMemoryContextResult.Unavailable(
-                VectorMemoryContextResult.Reason.SOURCE_TEXT_UNAVAILABLE,
-            )
-        }
+        val texts =
+            try {
+                textProvider.loadMemoryTexts()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                return VectorMemoryContextResult.Unavailable(
+                    VectorMemoryContextResult.Reason.SOURCE_TEXT_UNAVAILABLE,
+                )
+            }
+        val retrieved =
+            try {
+                VectorMemoryRetriever.retrieve(
+                    snapshot = snapshot,
+                    queryVector = queryVector,
+                    texts = texts,
+                    limit = resultLimit,
+                    minimumScore = minimumScore,
+                    maxCharacters = maxCharacters,
+                    queryText = query,
+                    vectorWeight = vectorRrfWeight,
+                    keywordWeight = keywordRrfWeight,
+                )
+            } catch (_: IllegalArgumentException) {
+                return VectorMemoryContextResult.Unavailable(
+                    VectorMemoryContextResult.Reason.SOURCE_TEXT_UNAVAILABLE,
+                )
+            }
         return if (retrieved.isEmpty()) {
             VectorMemoryContextResult.NoRelevantMemories
         } else {

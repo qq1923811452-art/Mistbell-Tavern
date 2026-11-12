@@ -5,10 +5,10 @@ import android.content.Context
 import android.content.res.Configuration
 import com.mistbell.tavern.v3.core.diagnostics.DiagnosticLogStore
 import com.mistbell.tavern.v3.core.inference.InferenceRuntimeStatus
-import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withContext
+import java.io.File
 
 /** Owns one initialized native engine for the process, independent of Activity lifecycle. */
 object EmbeddingEngineProcessHolder : ComponentCallbacks2 {
@@ -18,14 +18,17 @@ object EmbeddingEngineProcessHolder : ComponentCallbacks2 {
         val lastModified: Long,
         val npuModelCompatible: Boolean,
     )
+
     private data class Entry(val key: EngineKey, val engine: LiteRtLmEmbeddingGemma2Engine)
 
     enum class CloseReason { MODEL_CHANGED, MEMORY_PRESSURE, EXPLICIT }
 
     private val mutex = Mutex()
     private val stateLock = Any()
+
     @Volatile private var current: Entry? = null
     private var lastRequestedKey: EngineKey? = null
+
     @Volatile private var registeredContext: Context? = null
     private var memoryGeneration = 0L
 
@@ -41,35 +44,39 @@ object EmbeddingEngineProcessHolder : ComponentCallbacks2 {
         val key = EngineKey(modelFile.canonicalPath, modelFile.length(), modelFile.lastModified(), npuModelCompatible)
         mutex.lock()
         try {
-            val modelChanged = synchronized(stateLock) {
-                current?.takeIf { it.key == key }?.let { return it.engine }
-                val changed = lastRequestedKey != null && lastRequestedKey != key
-                lastRequestedKey = key
-                changed
-            }
+            val modelChanged =
+                synchronized(stateLock) {
+                    current?.takeIf { it.key == key }?.let { return it.engine }
+                    val changed = lastRequestedKey != null && lastRequestedKey != key
+                    lastRequestedKey = key
+                    changed
+                }
             closeCurrent(clearCache = modelChanged)
             val generationAtStart = synchronized(stateLock) { memoryGeneration }
-            val engine = withContext(Dispatchers.IO) {
-                LiteRtLmEmbeddingGemma2Engine(
-                    context = appContext,
-                    modelFile = modelFile,
-                    npuModelCompatible = npuModelCompatible,
-                    diagnostics = diagnostics,
-                )
-            }
+            val engine =
+                withContext(Dispatchers.IO) {
+                    LiteRtLmEmbeddingGemma2Engine(
+                        context = appContext,
+                        modelFile = modelFile,
+                        npuModelCompatible = npuModelCompatible,
+                        diagnostics = diagnostics,
+                    )
+                }
             try {
                 engine.initialize()
             } catch (failure: Throwable) {
                 runCatching { engine.close() }
                 throw failure
             }
-            val retained = synchronized(stateLock) {
-                if (generationAtStart != memoryGeneration) false
-                else {
-                    current = Entry(key, engine)
-                    true
+            val retained =
+                synchronized(stateLock) {
+                    if (generationAtStart != memoryGeneration) {
+                        false
+                    } else {
+                        current = Entry(key, engine)
+                        true
+                    }
                 }
-            }
             if (!retained) {
                 runCatching { engine.close() }
                 error("Embedding engine was released during initialization; retry after memory pressure.")
@@ -129,6 +136,8 @@ object EmbeddingEngineProcessHolder : ComponentCallbacks2 {
         // RUNNING_LOW and UI_HIDDEN can occur during ordinary background transitions.
         if (level == ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL) close(CloseReason.MEMORY_PRESSURE)
     }
+
     override fun onLowMemory() = close(CloseReason.MEMORY_PRESSURE)
+
     override fun onConfigurationChanged(newConfig: Configuration) = Unit
 }

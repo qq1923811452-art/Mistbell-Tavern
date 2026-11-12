@@ -11,7 +11,8 @@ import java.io.File
 internal class ChatCharacterCardLibraryLoader(
     private val context: Context,
 ) {
-    fun load(): List<StoredCharacterCard> = runCatching {
-        CharacterCardLibraryStore(File(context.filesDir, "characters")).list()
-    }.getOrDefault(emptyList())
+    fun load(): List<StoredCharacterCard> =
+        runCatching {
+            CharacterCardLibraryStore(File(context.filesDir, "characters")).list()
+        }.getOrDefault(emptyList())
 }

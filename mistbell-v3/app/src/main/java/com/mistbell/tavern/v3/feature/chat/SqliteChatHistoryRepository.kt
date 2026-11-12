@@ -31,21 +31,23 @@ class SqliteChatHistoryRepository(
 
     @Synchronized
     @Suppress("TooGenericExceptionCaught") // Storage failures must leave the UI able to retry.
-    fun load(): ChatHistoryLoadResult = try {
-        loadSnapshot()
-    } catch (error: Exception) {
-        diagnostic("chat.history.load_failed", describeFailure(error))
-        ChatHistoryLoadResult.Unavailable
-    }
+    fun load(): ChatHistoryLoadResult =
+        try {
+            loadSnapshot()
+        } catch (error: Exception) {
+            diagnostic("chat.history.load_failed", describeFailure(error))
+            ChatHistoryLoadResult.Unavailable
+        }
 
     @Suppress("ReturnCount", "TooGenericExceptionCaught") // Preserve source files on every migration failure.
     private fun loadSnapshot(): ChatHistoryLoadResult {
         migrateLegacyScopeIfNeeded()
-        val existingCount = runCatching { store.count(scopeId) }
-            .getOrElse {
-                diagnostic("chat.history.load_failed", describeFailure(it))
-                return ChatHistoryLoadResult.Unavailable
-            }
+        val existingCount =
+            runCatching { store.count(scopeId) }
+                .getOrElse {
+                    diagnostic("chat.history.load_failed", describeFailure(it))
+                    return ChatHistoryLoadResult.Unavailable
+                }
 
         if (existingCount == 0L && store.isLegacyImported(scopeId)) {
             cachedById = emptyMap()
@@ -58,10 +60,11 @@ class SqliteChatHistoryRepository(
             return loaded
         }
 
-        val fallback = when (val older = legacyFileStore?.load()) {
-            null, ChatHistoryLoadResult.Missing -> legacyStore.load()
-            else -> older
-        }
+        val fallback =
+            when (val older = legacyFileStore?.load()) {
+                null, ChatHistoryLoadResult.Missing -> legacyStore.load()
+                else -> older
+            }
         return when (val legacy = fallback) {
             ChatHistoryLoadResult.Missing -> {
                 cachedById = emptyMap()
@@ -105,10 +108,6 @@ class SqliteChatHistoryRepository(
         }
     }
 
-    /**
-     * Persist only rows that changed since the last successful load/save. A single transaction
-     * ensures a process interruption cannot leave a half-written batch.
-     */
     /** Deletes every stored message for this conversation scope. */
     @Synchronized
     fun deleteAll() {
@@ -116,6 +115,10 @@ class SqliteChatHistoryRepository(
         cachedById = emptyMap()
     }
 
+    /**
+     * Persist only rows that changed since the last successful load/save. A single transaction
+     * ensures a process interruption cannot leave a half-written batch.
+     */
     @Synchronized
     fun save(messages: List<PersistedChatMessage>) {
         require(messages.size <= MAX_SNAPSHOT_MESSAGES) {
@@ -125,11 +128,12 @@ class SqliteChatHistoryRepository(
             "Chat message IDs must be unique."
         }
 
-        val previous = cachedById ?: when (val loaded = load()) {
-            is ChatHistoryLoadResult.Loaded -> loaded.messages.associateBy(PersistedChatMessage::id)
-            ChatHistoryLoadResult.Missing -> emptyMap()
-            else -> error("Chat history is unavailable; refusing to save over it.")
-        }
+        val previous =
+            cachedById ?: when (val loaded = load()) {
+                is ChatHistoryLoadResult.Loaded -> loaded.messages.associateBy(PersistedChatMessage::id)
+                ChatHistoryLoadResult.Missing -> emptyMap()
+                else -> error("Chat history is unavailable; refusing to save over it.")
+            }
         val currentById = messages.associateBy(PersistedChatMessage::id)
         val changed = messages.filter { previous[it.id] != it }
         val removed = previous.keys - currentById.keys
@@ -170,13 +174,14 @@ class SqliteChatHistoryRepository(
             val newestFirst = mutableListOf<PersistedChatMessage>()
             var cursor: ChatMessageCursor? = null
             while (true) {
-                val page = store.loadPage(scopeId, PAGE_SIZE, cursor) { error ->
-                    skippedRows++
-                    // Bounded logging: one broken batch must not flood the diagnostic file.
-                    if (skippedRows <= MAX_LOGGED_REJECTIONS) {
-                        diagnostic("chat.history.row_rejected", describeFailure(error))
+                val page =
+                    store.loadPage(scopeId, PAGE_SIZE, cursor) { error ->
+                        skippedRows++
+                        // Bounded logging: one broken batch must not flood the diagnostic file.
+                        if (skippedRows <= MAX_LOGGED_REJECTIONS) {
+                            diagnostic("chat.history.row_rejected", describeFailure(error))
+                        }
                     }
-                }
                 newestFirst += page.messages
                 cursor = page.nextCursor
                 if (page.rowsRead < PAGE_SIZE) break
@@ -195,7 +200,10 @@ class SqliteChatHistoryRepository(
         }
     }
 
-    private fun diagnostic(event: String, detail: String) {
+    private fun diagnostic(
+        event: String,
+        detail: String,
+    ) {
         // Diagnostic storage can fail too (for example, a full disk). It must not break recovery.
         runCatching { onDiagnostic(event, detail) }
     }

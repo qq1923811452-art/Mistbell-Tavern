@@ -51,23 +51,26 @@ class TemporalFactLedgerTest {
 
     @Test
     fun factsFromDifferentConversationsDoNotCloseEachOthersHistory() {
-        val firstConversation = observation(
-            turn = "turn-1",
-            conversation = "conversation-1",
-            value = "tea",
-            at = 100L,
-        )
-        val secondConversation = observation(
-            turn = "turn-2",
-            conversation = "conversation-2",
-            value = "coffee",
-            at = 200L,
-        )
+        val firstConversation =
+            observation(
+                turn = "turn-1",
+                conversation = "conversation-1",
+                value = "tea",
+                at = 100L,
+            )
+        val secondConversation =
+            observation(
+                turn = "turn-2",
+                conversation = "conversation-2",
+                value = "coffee",
+                at = 200L,
+            )
 
-        val facts = TemporalFactLedger.apply(
-            TemporalFactLedger.apply(emptyList(), listOf(firstConversation)),
-            listOf(secondConversation),
-        )
+        val facts =
+            TemporalFactLedger.apply(
+                TemporalFactLedger.apply(emptyList(), listOf(firstConversation)),
+                listOf(secondConversation),
+            )
 
         assertEquals(2, facts.size)
         assertTrue(facts.all { it.isCurrent })
@@ -102,33 +105,36 @@ class TemporalFactLedgerTest {
 
     @Test
     fun stableIdentityIsUnambiguousWhenIdentifiersContainNul() {
-        val first = observation(
-            turn = "turn",
-            conversation = "conversation\u0000part",
-            value = "tea",
-            at = 100L,
-        )
-        val second = observation(
-            turn = "part\u0000turn",
-            conversation = "conversation",
-            value = "tea",
-            at = 100L,
-        )
+        val first =
+            observation(
+                turn = "turn",
+                conversation = "conversation\u0000part",
+                value = "tea",
+                at = 100L,
+            )
+        val second =
+            observation(
+                turn = "part\u0000turn",
+                conversation = "conversation",
+                value = "tea",
+                at = 100L,
+            )
 
         assertNotEquals(TemporalFactLedger.stableId(first), TemporalFactLedger.stableId(second))
     }
 
     @Test
     fun indexedReductionPreservesIndependentPredicatesAcrossLargeBatch() {
-        val observations = (1..1_000).map { index ->
-            observation(
-                turn = "turn-$index",
-                subject = if (index % 2 == 0) "user" else "assistant",
-                predicate = if (index % 3 == 0) "likes" else "prefers",
-                value = "value-$index",
-                at = index.toLong(),
-            )
-        }
+        val observations =
+            (1..1_000).map { index ->
+                observation(
+                    turn = "turn-$index",
+                    subject = if (index % 2 == 0) "user" else "assistant",
+                    predicate = if (index % 3 == 0) "likes" else "prefers",
+                    value = "value-$index",
+                    at = index.toLong(),
+                )
+            }
 
         val facts = TemporalFactLedger.apply(emptyList(), observations)
 

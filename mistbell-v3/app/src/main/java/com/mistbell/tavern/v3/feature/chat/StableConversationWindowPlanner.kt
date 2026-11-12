@@ -42,8 +42,11 @@ internal data class HistoryWindowDecision(
             "budget=soft-UTF16-not-token-hard-limit"
 }
 
-/** Keeps an opening prefix fixed while rolling a bounded, whole-turn recent tail. */
-// Keep validation, persistence and boundary transitions together in this small state machine.
+/**
+ * Keeps an opening prefix fixed while rolling a bounded, whole-turn recent tail.
+ *
+ * Validation, persistence and boundary transitions stay together in this small state machine.
+ */
 @Suppress("TooManyFunctions")
 internal class StableConversationWindowPlanner {
     private var previous: WindowSnapshot? = null
@@ -62,39 +65,47 @@ internal class StableConversationWindowPlanner {
         val source = history.take(state.sourceCount)
         val messages = source.filter { it.content.isNotBlank() }
         val pinned = messages.take(state.pinnedMessageCount)
-        val window = ConversationContextWindow(
-            state.summary,
-            messages.drop(state.archivedMessageCount).map(WindowHistoryMessage::toPromptMessage),
-            config.maxHistoryChars,
-            state.archivedMessageCount,
-            pinned.map(WindowHistoryMessage::toPromptMessage),
-        )
+        val window =
+            ConversationContextWindow(
+                state.summary,
+                messages.drop(state.archivedMessageCount).map(WindowHistoryMessage::toPromptMessage),
+                config.maxHistoryChars,
+                state.archivedMessageCount,
+                pinned.map(WindowHistoryMessage::toPromptMessage),
+            )
         val pinLimit = minOf(config.recentTurns / PIN_BUDGET_DIVISOR, MAX_PIN_TURNS)
-        val pinFrozen = state.archivedMessageCount > 0 ||
-            messages.count { it.role == PromptRole.USER } > pinLimit ||
-            messages.sumOf { it.content.length.toLong() } > config.maxHistoryChars.toLong() / PIN_BUDGET_DIVISOR
-        previous = WindowSnapshot(
-            scopeId, config, source, decision(messages, window, "restored", false),
-            state.pinnedMessageCount, pinFrozen,
-        )
+        val pinFrozen =
+            state.archivedMessageCount > 0 ||
+                messages.count { it.role == PromptRole.USER } > pinLimit ||
+                messages.sumOf { it.content.length.toLong() } > config.maxHistoryChars.toLong() / PIN_BUDGET_DIVISOR
+        previous =
+            WindowSnapshot(
+                scopeId,
+                config,
+                source,
+                decision(messages, window, "restored", false),
+                state.pinnedMessageCount,
+                pinFrozen,
+            )
         return true
     }
 
     @Synchronized
-    fun exportState(): ConversationWindowState? = previous?.let { snapshot ->
-        ConversationWindowState(
-            version = ConversationWindowState.VERSION,
-            scopeId = snapshot.scopeId,
-            config = snapshot.config,
-            sourceCount = snapshot.history.size,
-            sourceFingerprint = WindowSourceFingerprint.hash(snapshot.history),
-            startId = snapshot.decision.startId,
-            summaryThroughId = snapshot.decision.summaryThroughId,
-            archivedMessageCount = snapshot.decision.window.archivedMessageCount,
-            pinnedMessageCount = snapshot.pinnedMessageCount,
-            summary = snapshot.decision.window.earlierSummary,
-        )
-    }
+    fun exportState(): ConversationWindowState? =
+        previous?.let { snapshot ->
+            ConversationWindowState(
+                version = ConversationWindowState.VERSION,
+                scopeId = snapshot.scopeId,
+                config = snapshot.config,
+                sourceCount = snapshot.history.size,
+                sourceFingerprint = WindowSourceFingerprint.hash(snapshot.history),
+                startId = snapshot.decision.startId,
+                summaryThroughId = snapshot.decision.summaryThroughId,
+                archivedMessageCount = snapshot.decision.window.archivedMessageCount,
+                pinnedMessageCount = snapshot.pinnedMessageCount,
+                summary = snapshot.decision.window.earlierSummary,
+            )
+        }
 
     @Synchronized
     fun plan(
@@ -107,19 +118,24 @@ internal class StableConversationWindowPlanner {
         val resetReason = resetReason(old, scopeId, history, config, invalidate)
         val messages = history.filter { it.content.isNotBlank() }
         val promptHistory = messages.map(WindowHistoryMessage::toPromptMessage)
-        val next = if (resetReason != null) {
-            initialize(messages, promptHistory, config, resetReason)
-        } else {
-            advance(messages, promptHistory, config, checkNotNull(old))
-        }
-        previous = WindowSnapshot(
-            scopeId, config, history.map { it.copy(variants = it.variants.toList()) }, next,
-            next.window.pinnedPrefixMessages.size,
-            (resetReason == null && old?.pinFrozen == true) || next.window.archivedMessageCount > 0 ||
-                messages.count { it.role == PromptRole.USER } >
-                minOf(config.recentTurns / PIN_BUDGET_DIVISOR, MAX_PIN_TURNS) ||
-                messages.sumOf { it.content.length.toLong() } > config.maxHistoryChars.toLong() / PIN_BUDGET_DIVISOR,
-        )
+        val next =
+            if (resetReason != null) {
+                initialize(messages, promptHistory, config, resetReason)
+            } else {
+                advance(messages, promptHistory, config, checkNotNull(old))
+            }
+        previous =
+            WindowSnapshot(
+                scopeId,
+                config,
+                history.map { it.copy(variants = it.variants.toList()) },
+                next,
+                next.window.pinnedPrefixMessages.size,
+                (resetReason == null && old?.pinFrozen == true) || next.window.archivedMessageCount > 0 ||
+                    messages.count { it.role == PromptRole.USER } >
+                    minOf(config.recentTurns / PIN_BUDGET_DIVISOR, MAX_PIN_TURNS) ||
+                    messages.sumOf { it.content.length.toLong() } > config.maxHistoryChars.toLong() / PIN_BUDGET_DIVISOR,
+            )
         return next
     }
 
@@ -131,9 +147,11 @@ internal class StableConversationWindowPlanner {
     ): HistoryWindowDecision {
         val disabled = config.recentTurns == 0 || config.maxHistoryChars == 0
         if (disabled) {
-            val summary = ConversationContextWindowBuilder.summarizeOlder(
-                promptHistory, config.summaryMaxChars,
-            )
+            val summary =
+                ConversationContextWindowBuilder.summarizeOlder(
+                    promptHistory,
+                    config.summaryMaxChars,
+                )
             val empty = ConversationContextWindow(summary, emptyList(), config.maxHistoryChars, messages.size)
             return decision(messages, empty, reason, true)
         }
@@ -142,24 +160,35 @@ internal class StableConversationWindowPlanner {
         val pinTurnLimit = minOf(config.recentTurns / PIN_BUDGET_DIVISOR, MAX_PIN_TURNS)
         val totalChars = messages.sumOf { it.content.length.toLong() }
         val growable = starts.size <= pinTurnLimit && totalChars <= pinBudget
-        val pinEnd = if (growable) 0 else selectPrefixBoundary(
-            messages, starts, pinBudget, pinTurnLimit,
-        )
+        val pinEnd =
+            if (growable) {
+                0
+            } else {
+                selectPrefixBoundary(
+                    messages,
+                    starts,
+                    pinBudget,
+                    pinTurnLimit,
+                )
+            }
         val pinChars = messages.take(pinEnd).sumOf { it.content.length.toLong() }
         val pinTurns = messages.take(pinEnd).count { it.role == PromptRole.USER }
         val tailBudget = (config.maxHistoryChars.toLong() - pinChars).coerceAtLeast(0)
         val tailStart = selectTailBoundary(messages, starts, config.recentTurns - pinTurns, tailBudget)
         val split = maxOf(pinEnd, tailStart)
-        val summary = ConversationContextWindowBuilder.summarizeOlder(
-            promptHistory.subList(pinEnd, split), config.summaryMaxChars,
-        )
-        val window = ConversationContextWindow(
-            summary,
-            promptHistory.drop(split),
-            config.maxHistoryChars,
-            split,
-            promptHistory.take(pinEnd),
-        )
+        val summary =
+            ConversationContextWindowBuilder.summarizeOlder(
+                promptHistory.subList(pinEnd, split),
+                config.summaryMaxChars,
+            )
+        val window =
+            ConversationContextWindow(
+                summary,
+                promptHistory.drop(split),
+                config.maxHistoryChars,
+                split,
+                promptHistory.take(pinEnd),
+            )
         return decision(messages, window, reason, true)
     }
 
@@ -169,15 +198,16 @@ internal class StableConversationWindowPlanner {
         history: List<WindowHistoryMessage>,
         config: HistoryWindowConfig,
         invalidate: Boolean,
-    ): String? = when {
-        invalidate -> "explicit-invalidation"
-        old == null -> "initial"
-        old.scopeId != scopeId -> "scope-changed"
-        old.config != config -> "config-changed"
-        history.size < old.history.size -> "source-changed"
-        old.history.indices.any { old.history[it] != history[it] } -> "source-changed"
-        else -> null
-    }
+    ): String? =
+        when {
+            invalidate -> "explicit-invalidation"
+            old == null -> "initial"
+            old.scopeId != scopeId -> "scope-changed"
+            old.config != config -> "config-changed"
+            history.size < old.history.size -> "source-changed"
+            old.history.indices.any { old.history[it] != history[it] } -> "source-changed"
+            else -> null
+        }
 
     private fun advance(
         messages: List<WindowHistoryMessage>,
@@ -193,52 +223,65 @@ internal class StableConversationWindowPlanner {
         val pinMessages = messages.take(pinCount)
         val pinTurnCount = pinMessages.count { it.role == PromptRole.USER }
         val pinChars = pinMessages.sumOf { it.content.length.toLong() }
-        val tailConfig = config.copy(
-            recentTurns = (config.recentTurns - pinTurnCount).coerceAtLeast(0),
-            maxHistoryChars = (config.maxHistoryChars -
-                pinChars.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()).coerceAtLeast(0),
-        )
-        var tail = if (disabled) {
-            messages.size
-        } else {
-            oldSplit + evictionBoundary(suffix, starts, tailConfig)
-        }
+        val tailConfig =
+            config.copy(
+                recentTurns = (config.recentTurns - pinTurnCount).coerceAtLeast(0),
+                maxHistoryChars =
+                    (
+                        config.maxHistoryChars -
+                            pinChars.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+                    ).coerceAtLeast(0),
+            )
+        var tail =
+            if (disabled) {
+                messages.size
+            } else {
+                oldSplit + evictionBoundary(suffix, starts, tailConfig)
+            }
         val sourceChars = messages.sumOf { it.content.length.toLong() }
-        val canGrowPin = !old.pinFrozen && oldSplit == 0 && (
-            messages.count { it.role == PromptRole.USER } >
-                minOf(config.recentTurns / PIN_BUDGET_DIVISOR, MAX_PIN_TURNS) ||
-                sourceChars > config.maxHistoryChars.toLong() / PIN_BUDGET_DIVISOR
+        val canGrowPin =
+            !old.pinFrozen && oldSplit == 0 && (
+                messages.count { it.role == PromptRole.USER } >
+                    minOf(config.recentTurns / PIN_BUDGET_DIVISOR, MAX_PIN_TURNS) ||
+                    sourceChars > config.maxHistoryChars.toLong() / PIN_BUDGET_DIVISOR
             )
         if (!disabled && canGrowPin) {
-            pinCount = selectPrefixBoundary(
-                messages, turnStarts(messages), config.maxHistoryChars.toLong() / PIN_BUDGET_DIVISOR,
-                minOf(config.recentTurns / PIN_BUDGET_DIVISOR, MAX_PIN_TURNS),
-            )
+            pinCount =
+                selectPrefixBoundary(
+                    messages,
+                    turnStarts(messages),
+                    config.maxHistoryChars.toLong() / PIN_BUDGET_DIVISOR,
+                    minOf(config.recentTurns / PIN_BUDGET_DIVISOR, MAX_PIN_TURNS),
+                )
             tail = maxOf(tail, pinCount)
         }
         val effectiveSplit = maxOf(oldSplit, tail, pinCount)
         val newPinCount = pinCount
         val rebuilt = effectiveSplit != oldSplit
-        val summary = if (rebuilt) {
-            ConversationContextWindowBuilder.summarizeOlder(
-                promptHistory.subList(newPinCount, effectiveSplit), config.summaryMaxChars,
+        val summary =
+            if (rebuilt) {
+                ConversationContextWindowBuilder.summarizeOlder(
+                    promptHistory.subList(newPinCount, effectiveSplit),
+                    config.summaryMaxChars,
+                )
+            } else {
+                old.decision.window.earlierSummary
+            }
+        val reason =
+            when {
+                disabled -> "history-disabled"
+                effectiveSplit > oldSplit -> "rolling-tail"
+                newPinCount > old.pinnedMessageCount -> "pin-grown"
+                else -> "anchor-retained"
+            }
+        val window =
+            ConversationContextWindow(
+                summary,
+                promptHistory.drop(effectiveSplit),
+                config.maxHistoryChars,
+                effectiveSplit,
+                promptHistory.take(newPinCount),
             )
-        } else {
-            old.decision.window.earlierSummary
-        }
-        val reason = when {
-            disabled -> "history-disabled"
-            effectiveSplit > oldSplit -> "rolling-tail"
-            newPinCount > old.pinnedMessageCount -> "pin-grown"
-            else -> "anchor-retained"
-        }
-        val window = ConversationContextWindow(
-            summary,
-            promptHistory.drop(effectiveSplit),
-            config.maxHistoryChars,
-            effectiveSplit,
-            promptHistory.take(newPinCount),
-        )
         return decision(messages, window, reason, rebuilt)
     }
 
@@ -277,8 +320,9 @@ internal class StableConversationWindowPlanner {
         for (index in starts.indices.take(turnLimit)) {
             val turnEnd = starts.getOrNull(index + 1) ?: messages.size
             val turnStart = if (index == 0) 0 else starts[index]
-            val chars = messages.subList(turnStart, turnEnd)
-                .sumOf { it.content.length.toLong() }
+            val chars =
+                messages.subList(turnStart, turnEnd)
+                    .sumOf { it.content.length.toLong() }
             if (used + chars > budget) break
             used += chars
             end = turnEnd
@@ -326,8 +370,9 @@ internal class StableConversationWindowPlanner {
             reason = reason,
             startId = history.getOrNull(split)?.id,
             summaryThroughId = history.getOrNull(split - 1)?.id,
-            archivedTurnCount = history.subList(pinCount.coerceAtMost(split), split)
-                .count { it.role == PromptRole.USER },
+            archivedTurnCount =
+                history.subList(pinCount.coerceAtMost(split), split)
+                    .count { it.role == PromptRole.USER },
             summaryRebuilt = summaryRebuilt,
         )
     }

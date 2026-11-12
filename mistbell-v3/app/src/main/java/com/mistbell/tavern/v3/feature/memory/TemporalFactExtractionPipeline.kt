@@ -74,7 +74,8 @@ class TemporalFactExtractionPipeline(
                                             ?.currentFacts ?: 0,
                                     indexingWarning =
                                         if (textUpdate is TemporalFactTextSyncResult.Skipped) {
-                                            "Facts were saved, but vector source text could not be updated; local index refresh is required."
+                                            "Facts were saved, but vector source text could not be updated; local" +
+                                                " index refresh is required."
                                         } else {
                                             null
                                         },

@@ -10,11 +10,13 @@ import org.junit.Test
 
 class EmbeddingOutputValidatorTest {
     private val model = EmbeddingModelSpec("embeddinggemma-2-candidate", dimensions = 3, maxBatchSize = 4)
-    private val runtime: LocalEmbeddingRuntime = object : LocalEmbeddingRuntime {
-        override val model = this@EmbeddingOutputValidatorTest.model
-        override val runtimeId = "test-runtime"
-        override suspend fun embed(texts: List<String>): EmbeddingBatch = result(texts.size)
-    }
+    private val runtime: LocalEmbeddingRuntime =
+        object : LocalEmbeddingRuntime {
+            override val model = this@EmbeddingOutputValidatorTest.model
+            override val runtimeId = "test-runtime"
+
+            override suspend fun embed(texts: List<String>): EmbeddingBatch = result(texts.size)
+        }
 
     private fun result(
         count: Int,
@@ -23,13 +25,14 @@ class EmbeddingOutputValidatorTest {
         vectorValue: Float = 0.25f,
     ) = EmbeddingBatch(
         vectors = List(count) { List(dimensions) { vectorValue } },
-        status = InferenceRuntimeStatus(
-            phase = InferencePhase.READY,
-            modelId = model.modelId,
-            backend = backend,
-            runtimeId = "test-runtime",
-            backendEvidence = BackendEvidence.RUNTIME_REPORTED,
-        ),
+        status =
+            InferenceRuntimeStatus(
+                phase = InferencePhase.READY,
+                modelId = model.modelId,
+                backend = backend,
+                runtimeId = "test-runtime",
+                backendEvidence = BackendEvidence.RUNTIME_REPORTED,
+            ),
     )
 
     @Test
@@ -63,13 +66,15 @@ class EmbeddingOutputValidatorTest {
 
     @Test
     fun rejectsBackendWithoutEvidence() {
-        val output = result(1).copy(
-            status = result(1).status.copy(backendEvidence = BackendEvidence.NOT_AVAILABLE),
-        )
+        val output =
+            result(1).copy(
+                status = result(1).status.copy(backendEvidence = BackendEvidence.NOT_AVAILABLE),
+            )
         assertThrows(EmbeddingOutputException::class.java) {
             EmbeddingOutputValidator.validate(runtime, listOf("hello"), output)
         }
     }
+
     @Test
     fun rejectsZeroVector() {
         assertThrows(EmbeddingOutputException::class.java) {

@@ -14,8 +14,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import com.mistbell.tavern.v3.core.network.ChatConnectionTester
-import kotlinx.coroutines.launch
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -26,6 +24,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import com.mistbell.tavern.v3.core.network.ChatConnectionTester
+import kotlinx.coroutines.launch
 
 private const val DIALOG_MAX_HEIGHT_DP = 520
 private const val CONTENT_SPACING_DP = 12
@@ -195,11 +195,12 @@ private fun ApiConfigTestAction(state: ApiConfigFormState) {
             onClick = {
                 state.testStatus = "测试中…"
                 scope.launch {
-                    val result = ChatConnectionTester().test(
-                        baseUrl = state.baseUrl,
-                        modelId = state.modelId,
-                        apiKey = state.apiKey,
-                    )
+                    val result =
+                        ChatConnectionTester().test(
+                            baseUrl = state.baseUrl,
+                            modelId = state.modelId,
+                            apiKey = state.apiKey,
+                        )
                     state.testStatus = result.message
                 }
             },

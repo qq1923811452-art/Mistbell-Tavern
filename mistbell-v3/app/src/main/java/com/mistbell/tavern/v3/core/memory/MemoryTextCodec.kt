@@ -67,16 +67,17 @@ object MemoryTextCodec {
         require(input.readInt() == VERSION) { "Memory text store version is unsupported." }
         val count = input.readInt()
         require(count in 0..MAX_RECORDS) { "Memory text record count is invalid." }
-        val records = List(count) {
-            val id = readString(input, MAX_ID_BYTES)
-            val text = readString(input, MAX_TEXT_BYTES)
-            val expectedHash = ByteArray(32).also(input::readFully).toHex()
-            val record = MemoryTextRecord(id, text)
-            require(record.sourceTextSha256 == expectedHash) {
-                "Memory text content hash does not match."
+        val records =
+            List(count) {
+                val id = readString(input, MAX_ID_BYTES)
+                val text = readString(input, MAX_TEXT_BYTES)
+                val expectedHash = ByteArray(32).also(input::readFully).toHex()
+                val record = MemoryTextRecord(id, text)
+                require(record.sourceTextSha256 == expectedHash) {
+                    "Memory text content hash does not match."
+                }
+                record
             }
-            record
-        }
         require(input.available() == 0) { "Memory text payload contains trailing data." }
         require(records.map(MemoryTextRecord::id).distinct().size == records.size) {
             "Memory text IDs must be unique."
@@ -84,7 +85,11 @@ object MemoryTextCodec {
         return records
     }
 
-    private fun writeString(out: DataOutputStream, value: String, maximumBytes: Int) {
+    private fun writeString(
+        out: DataOutputStream,
+        value: String,
+        maximumBytes: Int,
+    ) {
         val bytes = value.toByteArray(Charsets.UTF_8)
         require(bytes.isNotEmpty() && bytes.size <= maximumBytes) {
             "Memory text field is empty or exceeds the size limit."
@@ -93,7 +98,10 @@ object MemoryTextCodec {
         out.write(bytes)
     }
 
-    private fun readString(input: DataInputStream, maximumBytes: Int): String {
+    private fun readString(
+        input: DataInputStream,
+        maximumBytes: Int,
+    ): String {
         val length = input.readInt()
         require(length in 1..maximumBytes) { "Memory text field length is invalid." }
         val bytes = ByteArray(length)
@@ -106,6 +114,5 @@ object MemoryTextCodec {
         return chunked(2).map { it.toInt(16).toByte() }.toByteArray()
     }
 
-    private fun ByteArray.toHex(): String =
-        joinToString("") { byte -> "%02x".format(byte) }
+    private fun ByteArray.toHex(): String = joinToString("") { byte -> "%02x".format(byte) }
 }

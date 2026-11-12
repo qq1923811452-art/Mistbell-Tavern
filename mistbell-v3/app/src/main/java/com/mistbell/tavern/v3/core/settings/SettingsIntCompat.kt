@@ -7,11 +7,15 @@ import android.content.SharedPreferences
  *
  * A String value is parsed and rewritten as an Int so the bad entry does not crash later reads.
  */
-fun SharedPreferences.getIntCompat(key: String, defaultValue: Int): Int {
-    val value = runCatching { getInt(key, defaultValue) }.getOrElse {
-        val raw = runCatching { getString(key, null) }.getOrNull()
-        raw?.trim()?.toIntOrNull() ?: defaultValue
-    }
+fun SharedPreferences.getIntCompat(
+    key: String,
+    defaultValue: Int,
+): Int {
+    val value =
+        runCatching { getInt(key, defaultValue) }.getOrElse {
+            val raw = runCatching { getString(key, null) }.getOrNull()
+            raw?.trim()?.toIntOrNull() ?: defaultValue
+        }
     if (runCatching { getInt(key, Int.MIN_VALUE) }.getOrNull() == Int.MIN_VALUE) {
         edit().putInt(key, value).apply()
     }

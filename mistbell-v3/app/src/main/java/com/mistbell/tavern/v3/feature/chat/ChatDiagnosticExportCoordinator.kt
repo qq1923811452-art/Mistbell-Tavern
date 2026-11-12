@@ -16,12 +16,13 @@ internal class ChatDiagnosticExportCoordinator(
 ) {
     fun export(uri: Uri) {
         coroutineScope.launch {
-            val result = runCatching {
-                withContext(Dispatchers.IO) {
-                    context.contentResolver.openOutputStream(uri)?.use(diagnosticStore::exportTo)
-                        ?: error("无法创建日志文件。")
+            val result =
+                runCatching {
+                    withContext(Dispatchers.IO) {
+                        context.contentResolver.openOutputStream(uri)?.use(diagnosticStore::exportTo)
+                            ?: error("无法创建日志文件。")
+                    }
                 }
-            }
             setStatus(
                 if (result.isSuccess) {
                     "诊断日志已导出。日志不主动包含聊天正文或 API 密钥。"

@@ -7,10 +7,11 @@ import org.junit.Test
 class MemoryTextCodecTest {
     @Test
     fun roundTripsTextAndKeepsDeterministicEncoding() {
-        val records = listOf(
-            MemoryTextRecord("memory-b", "A fact with Unicode: 世界"),
-            MemoryTextRecord("memory-a", "A stable preference."),
-        )
+        val records =
+            listOf(
+                MemoryTextRecord("memory-b", "A fact with Unicode: 世界"),
+                MemoryTextRecord("memory-a", "A stable preference."),
+            )
 
         val encoded = MemoryTextCodec.encode(records)
 
@@ -20,9 +21,10 @@ class MemoryTextCodecTest {
 
     @Test
     fun rejectsChecksumMismatch() {
-        val encoded = MemoryTextCodec.encode(
-            listOf(MemoryTextRecord("memory-1", "A remembered fact.")),
-        )
+        val encoded =
+            MemoryTextCodec.encode(
+                listOf(MemoryTextRecord("memory-1", "A remembered fact.")),
+            )
         encoded[encoded.lastIndex - 1] = (encoded[encoded.lastIndex - 1].toInt() xor 0x01).toByte()
 
         assertThrows(IllegalArgumentException::class.java) {
@@ -44,9 +46,10 @@ class MemoryTextCodecTest {
 
     @Test
     fun rejectsTamperedTextEvenWhenEnvelopeChecksumIsRecomputedNotProvided() {
-        val encoded = MemoryTextCodec.encode(
-            listOf(MemoryTextRecord("memory-1", "A remembered fact.")),
-        )
+        val encoded =
+            MemoryTextCodec.encode(
+                listOf(MemoryTextRecord("memory-1", "A remembered fact.")),
+            )
         encoded[encoded.size / 2] = (encoded[encoded.size / 2].toInt() xor 0x01).toByte()
 
         assertThrows(IllegalArgumentException::class.java) {

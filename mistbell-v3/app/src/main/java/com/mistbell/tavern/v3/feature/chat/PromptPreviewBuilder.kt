@@ -25,30 +25,40 @@ object PromptPreviewBuilder {
      * Returns one [Section] per message without ever throwing: a non-positive [previewChars] is
      * treated as zero, and an empty [messages] list yields an empty [Preview].
      */
-    fun build(messages: List<PromptMessage>, previewChars: Int = DEFAULT_PREVIEW_CHARS): Preview {
+    fun build(
+        messages: List<PromptMessage>,
+        previewChars: Int = DEFAULT_PREVIEW_CHARS,
+    ): Preview {
         val limit = previewChars.coerceAtLeast(0)
-        val sections = messages.mapIndexed { index, message ->
-            val content = message.content
-            Section(
-                label = "#${index + 1} ${message.role.name}",
-                role = message.role.name,
-                chars = content.length,
-                preview = previewOf(content, limit),
-            )
-        }
+        val sections =
+            messages.mapIndexed { index, message ->
+                val content = message.content
+                Section(
+                    label = "#${index + 1} ${message.role.name}",
+                    role = message.role.name,
+                    chars = content.length,
+                    preview = previewOf(content, limit),
+                )
+            }
         return Preview(sections = sections, totalChars = messages.sumOf { it.content.length })
     }
 
-    private fun previewOf(content: String, limit: Int): String = when {
-        limit <= 0 -> ""
-        content.length <= limit -> content
-        else -> content.substring(0, truncationEnd(content, limit)) + TRUNCATION_MARKER
-    }
+    private fun previewOf(
+        content: String,
+        limit: Int,
+    ): String =
+        when {
+            limit <= 0 -> ""
+            content.length <= limit -> content
+            else -> content.substring(0, truncationEnd(content, limit)) + TRUNCATION_MARKER
+        }
 
     /**
      * End index for a truncated preview. A split high/low surrogate pair is dropped instead of
      * being emitted as a lone code unit.
      */
-    private fun truncationEnd(content: String, limit: Int): Int =
-        if (content[limit - 1].isHighSurrogate() && content[limit].isLowSurrogate()) limit - 1 else limit
+    private fun truncationEnd(
+        content: String,
+        limit: Int,
+    ): Int = if (content[limit - 1].isHighSurrogate() && content[limit].isLowSurrogate()) limit - 1 else limit
 }

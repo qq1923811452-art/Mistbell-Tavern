@@ -20,8 +20,9 @@ import javax.crypto.spec.GCMParameterSpec
  * backups and exports never contain the raw key.
  */
 class ChatCredentialStore(context: Context) : CredentialResolver {
-    private val preferences = context.applicationContext
-        .getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
+    private val preferences =
+        context.applicationContext
+            .getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
 
     @Synchronized
     fun save(apiKey: String): String {

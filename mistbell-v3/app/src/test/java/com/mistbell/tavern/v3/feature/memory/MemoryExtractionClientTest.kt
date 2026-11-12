@@ -6,18 +6,18 @@ import com.mistbell.tavern.v3.core.model.ProviderProfile
 import com.mistbell.tavern.v3.core.model.ProviderProfileSet
 import okhttp3.OkHttpClient
 import okhttp3.ResponseBody
+import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
 import okio.Buffer
 import okio.ForwardingSource
 import okio.buffer
-import java.io.IOException
-import java.util.concurrent.atomic.AtomicInteger
-import okhttp3.mockwebserver.MockResponse
-import okhttp3.mockwebserver.MockWebServer
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.IOException
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 
 class MemoryExtractionClientTest {
@@ -43,40 +43,49 @@ class MemoryExtractionClientTest {
         val server = MockWebServer()
         server.enqueue(
             MockResponse().setResponseCode(200).setBody(
-                """{"choices":[{"message":{"content":"{\"facts\":[{\"subject\":\"user\",\"predicate\":\"likes\",\"value\":\"tea\",\"source_turn_id\":\"turn-1\"}]}"}}]}""",
+                """{"choices":[{"message":{"content":"{\"facts\":[{\"subject\":\"user\",\"predicate\":\"likes\"""" +
+                    """,\"value\":\"tea\",\"source_turn_id\":\"turn-1\"}]}"}}]}""",
             ),
         )
         server.start()
         try {
-            val profiles = ProviderProfileSet(
-                profiles = listOf(
-                    ProviderProfile(
-                        id = "chat",
-                        kind = ProviderKind.CHAT,
-                        baseUrl = server.url("/chat-v1").toString(),
-                        modelId = "chat-model",
-                        credentialHandle = "chat-key",
-                    ),
-                    ProviderProfile(
-                        id = "memory",
-                        kind = ProviderKind.MEMORY_EXTRACTION,
-                        baseUrl = server.url("/v1").toString(),
-                        modelId = "memory-model",
-                        credentialHandle = "memory-key",
-                    ),
-                ),
-                selectedProfileIds = mapOf(
-                    ProviderKind.CHAT to "chat",
-                    ProviderKind.MEMORY_EXTRACTION to "memory",
-                ),
-            )
-            val client = MemoryExtractionClient(profiles, credentials = MemoryCredentialResolver { handle ->
-                when (handle) {
-                    "chat-key" -> "chat-secret"
-                    "memory-key" -> "memory-secret"
-                    else -> null
-                }
-            })
+            val profiles =
+                ProviderProfileSet(
+                    profiles =
+                        listOf(
+                            ProviderProfile(
+                                id = "chat",
+                                kind = ProviderKind.CHAT,
+                                baseUrl = server.url("/chat-v1").toString(),
+                                modelId = "chat-model",
+                                credentialHandle = "chat-key",
+                            ),
+                            ProviderProfile(
+                                id = "memory",
+                                kind = ProviderKind.MEMORY_EXTRACTION,
+                                baseUrl = server.url("/v1").toString(),
+                                modelId = "memory-model",
+                                credentialHandle = "memory-key",
+                            ),
+                        ),
+                    selectedProfileIds =
+                        mapOf(
+                            ProviderKind.CHAT to "chat",
+                            ProviderKind.MEMORY_EXTRACTION to "memory",
+                        ),
+                )
+            val client =
+                MemoryExtractionClient(
+                    profiles,
+                    credentials =
+                        MemoryCredentialResolver { handle ->
+                            when (handle) {
+                                "chat-key" -> "chat-secret"
+                                "memory-key" -> "memory-secret"
+                                else -> null
+                            }
+                        },
+                )
             val outcome = execute(client)
             assertTrue(outcome is MemoryExtractionOutcome.Success)
             val success = outcome as MemoryExtractionOutcome.Success
@@ -96,19 +105,21 @@ class MemoryExtractionClientTest {
     @Test
     fun acceptsFactsWrappedInMarkdownFenceOrPreamble() {
         val server = MockWebServer()
-        val fenced = "```json\n" +
-            """{"facts":[{"subject":"user","predicate":"likes","value":"tea","source_turn_id":"turn-1"}]}""" +
-            "\n```"
-        val envelope = org.json.JSONObject()
-            .put(
-                "choices",
-                org.json.JSONArray().put(
-                    org.json.JSONObject().put(
-                        "message",
-                        org.json.JSONObject().put("content", "Here is the result:\n$fenced"),
+        val fenced =
+            "```json\n" +
+                """{"facts":[{"subject":"user","predicate":"likes","value":"tea","source_turn_id":"turn-1"}]}""" +
+                "\n```"
+        val envelope =
+            org.json.JSONObject()
+                .put(
+                    "choices",
+                    org.json.JSONArray().put(
+                        org.json.JSONObject().put(
+                            "message",
+                            org.json.JSONObject().put("content", "Here is the result:\n$fenced"),
+                        ),
                     ),
-                ),
-            )
+                )
         server.enqueue(MockResponse().setResponseCode(200).setBody(envelope.toString()))
         server.start()
         try {
@@ -123,29 +134,31 @@ class MemoryExtractionClientTest {
     @Test
     fun keepsValidFactsWhenAnotherFactReferencesAnUnknownTurn() {
         val server = MockWebServer()
-        val facts = org.json.JSONArray()
-            .put(
-                org.json.JSONObject()
-                    .put("subject", "user")
-                    .put("predicate", "likes")
-                    .put("value", "tea")
-                    .put("source_turn_id", "turn-1"),
-            )
-            .put(
-                org.json.JSONObject()
-                    .put("subject", "user")
-                    .put("predicate", "likes")
-                    .put("value", "coffee")
-                    .put("source_turn_id", "invented-turn"),
-            )
+        val facts =
+            org.json.JSONArray()
+                .put(
+                    org.json.JSONObject()
+                        .put("subject", "user")
+                        .put("predicate", "likes")
+                        .put("value", "tea")
+                        .put("source_turn_id", "turn-1"),
+                )
+                .put(
+                    org.json.JSONObject()
+                        .put("subject", "user")
+                        .put("predicate", "likes")
+                        .put("value", "coffee")
+                        .put("source_turn_id", "invented-turn"),
+                )
         val content = org.json.JSONObject().put("facts", facts).toString()
-        val envelope = org.json.JSONObject()
-            .put(
-                "choices",
-                org.json.JSONArray().put(
-                    org.json.JSONObject().put("message", org.json.JSONObject().put("content", content)),
-                ),
-            )
+        val envelope =
+            org.json.JSONObject()
+                .put(
+                    "choices",
+                    org.json.JSONArray().put(
+                        org.json.JSONObject().put("message", org.json.JSONObject().put("content", content)),
+                    ),
+                )
         server.enqueue(MockResponse().setResponseCode(200).setBody(envelope.toString()))
         server.start()
         try {
@@ -164,26 +177,30 @@ class MemoryExtractionClientTest {
         val server = MockWebServer()
         server.enqueue(
             MockResponse().setResponseCode(200).setBody(
-                """{"choices":[{"message":{"content":"{\"facts\":[{\"subject\":\"user\",\"predicate\":\"likes\",\"value\":\"tea\",\"source_turn_id\":\"not-a-real-turn\"}]}"}}]}""",
+                """{"choices":[{"message":{"content":"{\"facts\":[{\"subject\":\"user\",\"predicate\":\"likes\"""" +
+                    """,\"value\":\"tea\",\"source_turn_id\":\"not-a-real-turn\"}]}"}}]}""",
             ),
         )
         server.start()
         try {
-            val profiles = ProviderProfileSet(
-                profiles = listOf(
-                    ProviderProfile(
-                        id = "memory",
-                        kind = ProviderKind.MEMORY_EXTRACTION,
-                        baseUrl = server.url("/v1").toString(),
-                        modelId = "memory-model",
-                        credentialHandle = "memory-key",
-                    ),
-                ),
-                selectedProfileIds = mapOf(ProviderKind.MEMORY_EXTRACTION to "memory"),
-            )
-            val outcome = execute(
-                MemoryExtractionClient(profiles, credentials = MemoryCredentialResolver { "memory-secret" }),
-            )
+            val profiles =
+                ProviderProfileSet(
+                    profiles =
+                        listOf(
+                            ProviderProfile(
+                                id = "memory",
+                                kind = ProviderKind.MEMORY_EXTRACTION,
+                                baseUrl = server.url("/v1").toString(),
+                                modelId = "memory-model",
+                                credentialHandle = "memory-key",
+                            ),
+                        ),
+                    selectedProfileIds = mapOf(ProviderKind.MEMORY_EXTRACTION to "memory"),
+                )
+            val outcome =
+                execute(
+                    MemoryExtractionClient(profiles, credentials = MemoryCredentialResolver { "memory-secret" }),
+                )
             assertTrue(outcome is MemoryExtractionOutcome.Failure)
             assertEquals(
                 "Memory-extraction response failed validation.",
@@ -201,27 +218,38 @@ class MemoryExtractionClientTest {
         server.start()
         val closes = AtomicInteger()
         val callbacks = AtomicInteger()
-        val http = OkHttpClient.Builder().addInterceptor { chain ->
-            val response = chain.proceed(chain.request())
-            val body = requireNotNull(response.body)
-            val brokenSource = object : ForwardingSource(body.source()) {
-                private var firstRead = true
-                override fun read(sink: Buffer, byteCount: Long): Long {
-                    if (!firstRead) throw IOException("private response text must not escape")
-                    firstRead = false
-                    return super.read(sink, minOf(1L, byteCount))
-                }
-                override fun close() {
-                    closes.incrementAndGet()
-                    super.close()
-                }
-            }.buffer()
-            response.newBuilder().body(object : ResponseBody() {
-                override fun contentType() = body.contentType()
-                override fun contentLength() = -1L
-                override fun source() = brokenSource
-            }).build()
-        }.build()
+        val http =
+            OkHttpClient.Builder().addInterceptor { chain ->
+                val response = chain.proceed(chain.request())
+                val body = requireNotNull(response.body)
+                val brokenSource =
+                    object : ForwardingSource(body.source()) {
+                        private var firstRead = true
+
+                        override fun read(
+                            sink: Buffer,
+                            byteCount: Long,
+                        ): Long {
+                            if (!firstRead) throw IOException("private response text must not escape")
+                            firstRead = false
+                            return super.read(sink, minOf(1L, byteCount))
+                        }
+
+                        override fun close() {
+                            closes.incrementAndGet()
+                            super.close()
+                        }
+                    }.buffer()
+                response.newBuilder().body(
+                    object : ResponseBody() {
+                        override fun contentType() = body.contentType()
+
+                        override fun contentLength() = -1L
+
+                        override fun source() = brokenSource
+                    },
+                ).build()
+            }.build()
         try {
             val outcome = execute(clientFor(server, http), callbacks)
             assertEquals(MemoryExtractionOutcome.Failure("Memory-extraction request failed."), outcome)
@@ -243,11 +271,15 @@ class MemoryExtractionClientTest {
         val result = AtomicReference<MemoryExtractionOutcome>()
         val finished = CountDownLatch(1)
         try {
-            val call = clientFor(server).extract(input(), MemoryExtractionObserver {
-                callbacks.incrementAndGet()
-                result.set(it)
-                finished.countDown()
-            })
+            val call =
+                clientFor(server).extract(
+                    input(),
+                    MemoryExtractionObserver {
+                        callbacks.incrementAndGet()
+                        result.set(it)
+                        finished.countDown()
+                    },
+                )
             requireNotNull(server.takeRequest(2, TimeUnit.SECONDS))
             call.cancel()
             assertTrue(finished.await(3, TimeUnit.SECONDS))
@@ -286,18 +318,20 @@ class MemoryExtractionClientTest {
         val server = MockWebServer()
         server.enqueue(MockResponse().setBody("""{"choices":[]}""").setBodyDelay(2, TimeUnit.SECONDS))
         server.start()
-        val profile = ProviderProfile(
-            id = "memory",
-            kind = ProviderKind.MEMORY_EXTRACTION,
-            baseUrl = server.url("/v1").toString(),
-            modelId = "memory-model",
-        )
-        try {
-            val client = MemoryExtractionClient(
-                ProviderProfileSet(listOf(profile), mapOf(ProviderKind.MEMORY_EXTRACTION to profile.id)),
-                MemoryCredentialResolver { null },
-                readTimeoutMillis = 200L,
+        val profile =
+            ProviderProfile(
+                id = "memory",
+                kind = ProviderKind.MEMORY_EXTRACTION,
+                baseUrl = server.url("/v1").toString(),
+                modelId = "memory-model",
             )
+        try {
+            val client =
+                MemoryExtractionClient(
+                    ProviderProfileSet(listOf(profile), mapOf(ProviderKind.MEMORY_EXTRACTION to profile.id)),
+                    MemoryCredentialResolver { null },
+                    readTimeoutMillis = 200L,
+                )
             val outcome = execute(client)
             assertEquals(MemoryExtractionOutcome.Failure("Memory-extraction request timed out."), outcome)
             val failure = requireNotNull(outcome as? MemoryExtractionOutcome.Failure)
@@ -320,18 +354,20 @@ class MemoryExtractionClientTest {
         )
         server.start()
         val diagnostics = mutableListOf<String>()
-        val profile = ProviderProfile(
-            id = "memory",
-            kind = ProviderKind.MEMORY_EXTRACTION,
-            baseUrl = server.url("/v1").toString(),
-            modelId = "memory-model",
-        )
-        try {
-            val client = MemoryExtractionClient(
-                ProviderProfileSet(listOf(profile), mapOf(ProviderKind.MEMORY_EXTRACTION to profile.id)),
-                MemoryCredentialResolver { null },
-                onDiagnostic = { event, detail -> diagnostics += "$event|$detail" },
+        val profile =
+            ProviderProfile(
+                id = "memory",
+                kind = ProviderKind.MEMORY_EXTRACTION,
+                baseUrl = server.url("/v1").toString(),
+                modelId = "memory-model",
             )
+        try {
+            val client =
+                MemoryExtractionClient(
+                    ProviderProfileSet(listOf(profile), mapOf(ProviderKind.MEMORY_EXTRACTION to profile.id)),
+                    MemoryCredentialResolver { null },
+                    onDiagnostic = { event, detail -> diagnostics += "$event|$detail" },
+                )
             assertEquals(
                 MemoryExtractionOutcome.Failure("Memory-extraction provider returned HTTP 400.", 400),
                 execute(client),
@@ -346,13 +382,17 @@ class MemoryExtractionClientTest {
         }
     }
 
-    private fun clientFor(server: MockWebServer, http: OkHttpClient = OkHttpClient()): MemoryExtractionClient {
-        val profile = ProviderProfile(
-            id = "memory",
-            kind = ProviderKind.MEMORY_EXTRACTION,
-            baseUrl = server.url("/v1").toString(),
-            modelId = "memory-model",
-        )
+    private fun clientFor(
+        server: MockWebServer,
+        http: OkHttpClient = OkHttpClient(),
+    ): MemoryExtractionClient {
+        val profile =
+            ProviderProfile(
+                id = "memory",
+                kind = ProviderKind.MEMORY_EXTRACTION,
+                baseUrl = server.url("/v1").toString(),
+                modelId = "memory-model",
+            )
         return MemoryExtractionClient(
             ProviderProfileSet(listOf(profile), mapOf(ProviderKind.MEMORY_EXTRACTION to profile.id)),
             MemoryCredentialResolver { null },
@@ -360,11 +400,12 @@ class MemoryExtractionClientTest {
         )
     }
 
-    private fun input() = MemoryExtractionInput(
-        conversationId = "conversation-1",
-        turns = listOf(EligibleConversationTurn("turn-1", 1)),
-        textByTurnId = mapOf("turn-1" to "The user likes tea."),
-    )
+    private fun input() =
+        MemoryExtractionInput(
+            conversationId = "conversation-1",
+            turns = listOf(EligibleConversationTurn("turn-1", 1)),
+            textByTurnId = mapOf("turn-1" to "The user likes tea."),
+        )
 
     private fun execute(
         client: MemoryExtractionClient,

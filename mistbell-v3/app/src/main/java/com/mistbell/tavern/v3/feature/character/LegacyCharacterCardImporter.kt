@@ -24,10 +24,11 @@ object LegacyCharacterCardImporter {
             exampleDialogue = data.optString("mes_example", data.optString("example_dialogue", data.optString("exampleDialogue", ""))),
             creatorNotes = data.optString("creator_notes", data.optString("creatorcomment", "")),
             systemPrompt = data.optString("system_prompt", data.optString("systemPrompt", "")),
-            postHistoryInstructions = data.optString(
-                "post_history_instructions",
-                data.optString("postHistoryInstructions", ""),
-            ),
+            postHistoryInstructions =
+                data.optString(
+                    "post_history_instructions",
+                    data.optString("postHistoryInstructions", ""),
+                ),
             alternateGreetings = data.optJSONArray("alternate_greetings").toStringList(),
             tags = data.optJSONArray("tags").toStringList(),
             creator = data.optString("creator", ""),

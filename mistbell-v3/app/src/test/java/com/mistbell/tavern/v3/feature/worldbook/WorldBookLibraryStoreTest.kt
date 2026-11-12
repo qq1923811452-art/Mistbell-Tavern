@@ -1,21 +1,23 @@
 package com.mistbell.tavern.v3.feature.worldbook
 
-import java.io.File
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Test
+import java.io.File
 
 class WorldBookLibraryStoreTest {
     @Test
     fun libraryFilenameOverridesMismatchedEmbeddedId() {
-        val parsed = WorldBook(
-            id = "embedded-id",
-            name = "Legacy book",
-            entries = listOf(
-                WorldBookEntry(id = "entry", bookId = "embedded-id", content = "lore"),
-            ),
-        )
+        val parsed =
+            WorldBook(
+                id = "embedded-id",
+                name = "Legacy book",
+                entries =
+                    listOf(
+                        WorldBookEntry(id = "entry", bookId = "embedded-id", content = "lore"),
+                    ),
+            )
 
         val normalized = parsed.withLibraryFileId("stable-file-id")
 
@@ -25,19 +27,21 @@ class WorldBookLibraryStoreTest {
 
     @Test
     fun ordinaryBeforePromptAtDepthZeroRemainsPositionZero() {
-        val book = WorldBook(
-            id = "11111111-1111-1111-1111-111111111111",
-            name = "Ordinary book",
-            entries = listOf(
-                WorldBookEntry(
-                    id = "ordinary",
-                    bookId = "11111111-1111-1111-1111-111111111111",
-                    content = "before prompt",
-                    insertPosition = WorldBookPlacement.POSITION_BEFORE_PROMPT,
-                    depth = 0,
-                ),
-            ),
-        )
+        val book =
+            WorldBook(
+                id = "11111111-1111-1111-1111-111111111111",
+                name = "Ordinary book",
+                entries =
+                    listOf(
+                        WorldBookEntry(
+                            id = "ordinary",
+                            bookId = "11111111-1111-1111-1111-111111111111",
+                            content = "before prompt",
+                            insertPosition = WorldBookPlacement.POSITION_BEFORE_PROMPT,
+                            depth = 0,
+                        ),
+                    ),
+            )
 
         val exported = WorldBookLibraryStore(File("unused")).export(book)
         val entryJson = JSONObject(exported).getJSONObject("entries").getJSONObject("ordinary")
@@ -49,20 +53,22 @@ class WorldBookLibraryStoreTest {
 
     @Test
     fun depthZeroExportRoundTripsWithSillyTavernPositionFour() {
-        val book = WorldBook(
-            id = "11111111-1111-1111-1111-111111111111",
-            name = "Depth book",
-            entries = listOf(
-                WorldBookEntry(
-                    id = "depth-zero",
-                    bookId = "11111111-1111-1111-1111-111111111111",
-                    content = "insert at depth zero",
-                    insertPosition = WorldBookPlacement.POSITION_DEPTH,
-                    depth = 0,
-                    depthRole = WorldBookPlacement.DEPTH_ROLE_ASSISTANT,
-                ),
-            ),
-        )
+        val book =
+            WorldBook(
+                id = "11111111-1111-1111-1111-111111111111",
+                name = "Depth book",
+                entries =
+                    listOf(
+                        WorldBookEntry(
+                            id = "depth-zero",
+                            bookId = "11111111-1111-1111-1111-111111111111",
+                            content = "insert at depth zero",
+                            insertPosition = WorldBookPlacement.POSITION_DEPTH,
+                            depth = 0,
+                            depthRole = WorldBookPlacement.DEPTH_ROLE_ASSISTANT,
+                        ),
+                    ),
+            )
 
         val exported = WorldBookLibraryStore(File("unused")).export(book)
         val json = JSONObject(exported)

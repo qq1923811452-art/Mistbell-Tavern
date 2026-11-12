@@ -1,10 +1,10 @@
 package com.mistbell.tavern.v3.core.backup
 
-import java.io.File
-import java.nio.file.Files
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Test
+import java.io.File
+import java.nio.file.Files
 
 class RestoreTransactionTest {
     @Test
@@ -78,14 +78,15 @@ class RestoreTransactionTest {
             val live = File(root, "live.txt").apply { writeText("old") }
             val staged = File(root, "staged.txt").apply { writeText("new") }
 
-            val failure = assertThrows(IllegalStateException::class.java) {
-                RestoreTransaction().replaceFiles(
-                    stagedToDestination = mapOf(staged to live),
-                    beforeCommit = { error("simulated reopen failure") },
-                    beforeRollback = { error("simulated database close failure") },
-                    afterRollback = { error("simulated database reopen failure") },
-                )
-            }
+            val failure =
+                assertThrows(IllegalStateException::class.java) {
+                    RestoreTransaction().replaceFiles(
+                        stagedToDestination = mapOf(staged to live),
+                        beforeCommit = { error("simulated reopen failure") },
+                        beforeRollback = { error("simulated database close failure") },
+                        afterRollback = { error("simulated database reopen failure") },
+                    )
+                }
 
             assertEquals("simulated reopen failure", failure.message)
             assertEquals(2, failure.suppressed.size)

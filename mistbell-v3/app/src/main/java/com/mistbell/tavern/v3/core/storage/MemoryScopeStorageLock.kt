@@ -8,13 +8,21 @@ internal object MemoryScopeStorageLock {
     @PublishedApi
     internal val lock = Any()
 
-    inline fun <T> withLock(file: File, action: () -> T): T = synchronized(lock) {
-        recover(file.parentFile!!)
-        action()
-    }
+    inline fun <T> withLock(
+        file: File,
+        action: () -> T,
+    ): T =
+        synchronized(lock) {
+            recover(file.parentFile!!)
+            action()
+        }
 
     /** Publish a complete, durable snapshot; readers finish an interrupted publication first. */
-    fun publish(directory: File, files: Map<String, ByteArray>, afterTargetWrite: () -> Unit = {}) {
+    fun publish(
+        directory: File,
+        files: Map<String, ByteArray>,
+        afterTargetWrite: () -> Unit = {},
+    ) {
         val staging = File(directory, TRANSACTION_DIRECTORY)
         check(staging.mkdirs() || staging.isDirectory)
         files.forEach { (name, bytes) -> writeAtomic(File(staging, name), bytes) }
@@ -23,7 +31,10 @@ internal object MemoryScopeStorageLock {
     }
 
     @PublishedApi
-    internal fun recover(directory: File, afterTargetWrite: () -> Unit = {}) {
+    internal fun recover(
+        directory: File,
+        afterTargetWrite: () -> Unit = {},
+    ) {
         val staging = File(directory, TRANSACTION_DIRECTORY)
         val manifest = AtomicFile(File(staging, MANIFEST))
         if (!manifest.baseFile.exists() && !File(manifest.baseFile.path + ".bak").exists()) return

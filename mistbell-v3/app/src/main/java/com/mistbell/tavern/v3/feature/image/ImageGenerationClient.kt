@@ -70,11 +70,12 @@ class ImageGenerationClient(
     httpClient: OkHttpClient = OkHttpClient(),
 ) {
     private val endpoint: String
-    private val client: OkHttpClient = httpClient.newBuilder()
-        .followRedirects(false)
-        .followSslRedirects(false)
-        .callTimeout(IMAGE_CALL_TIMEOUT_SECONDS.toLong(), TimeUnit.SECONDS)
-        .build()
+    private val client: OkHttpClient =
+        httpClient.newBuilder()
+            .followRedirects(false)
+            .followSslRedirects(false)
+            .callTimeout(IMAGE_CALL_TIMEOUT_SECONDS.toLong(), TimeUnit.SECONDS)
+            .build()
 
     init {
         val validation = EndpointPolicy.validateBaseUrl(baseUrl)
@@ -87,23 +88,26 @@ class ImageGenerationClient(
         val apiKey = apiKeyProvider().trim()
         if (apiKey.isEmpty()) throw ImageGenerationException(message = "Image API credential is not configured.")
 
-        val payload = JSONObject()
-            .put("model", request.model)
-            .put("prompt", request.prompt)
-            .put("n", request.count)
-            .put("size", request.size)
-        val httpRequest = Request.Builder()
-            .url(endpoint)
-            .header("Authorization", "Bearer $apiKey")
-            .header("Accept", "application/json")
-            .post(payload.toString().toRequestBody(JSON_MEDIA_TYPE))
-            .build()
+        val payload =
+            JSONObject()
+                .put("model", request.model)
+                .put("prompt", request.prompt)
+                .put("n", request.count)
+                .put("size", request.size)
+        val httpRequest =
+            Request.Builder()
+                .url(endpoint)
+                .header("Authorization", "Bearer $apiKey")
+                .header("Accept", "application/json")
+                .post(payload.toString().toRequestBody(JSON_MEDIA_TYPE))
+                .build()
 
-        val response = try {
-            client.newCall(httpRequest).execute()
-        } catch (error: IOException) {
-            throw ImageGenerationException(message = "Image API request failed.", cause = error)
-        }
+        val response =
+            try {
+                client.newCall(httpRequest).execute()
+            } catch (error: IOException) {
+                throw ImageGenerationException(message = "Image API request failed.", cause = error)
+            }
 
         response.use { result ->
             if (result.code in REDIRECT_CODES) {
@@ -118,59 +122,68 @@ class ImageGenerationClient(
                     message = "Image API returned HTTP ${result.code}.",
                 )
             }
-            val body = result.body ?: throw ImageGenerationException(
-                httpStatus = result.code,
-                message = "Image API returned an empty response body.",
-            )
-            val text = try {
-                readBounded(body, request.count)
-            } catch (error: ImageGenerationException) {
-                throw error
-            } catch (error: IOException) {
-                throw ImageGenerationException(message = "Image API response could not be read.", cause = error)
-            }
+            val body =
+                result.body ?: throw ImageGenerationException(
+                    httpStatus = result.code,
+                    message = "Image API returned an empty response body.",
+                )
+            val text =
+                try {
+                    readBounded(body, request.count)
+                } catch (error: ImageGenerationException) {
+                    throw error
+                } catch (error: IOException) {
+                    throw ImageGenerationException(message = "Image API response could not be read.", cause = error)
+                }
             return parseResponse(text, request.count)
         }
     }
 
-    private fun parseResponse(json: String, requestedCount: Int): ImageGenerationResult {
-        val root = try {
-            JSONObject(json)
-        } catch (error: Exception) {
-            throw ImageGenerationException(message = "Image API returned invalid JSON.", cause = error)
-        }
-        val data = root.optJSONArray("data")
-            ?: throw ImageGenerationException(message = "Image API response is missing the data array.")
+    private fun parseResponse(
+        json: String,
+        requestedCount: Int,
+    ): ImageGenerationResult {
+        val root =
+            try {
+                JSONObject(json)
+            } catch (error: Exception) {
+                throw ImageGenerationException(message = "Image API returned invalid JSON.", cause = error)
+            }
+        val data =
+            root.optJSONArray("data")
+                ?: throw ImageGenerationException(message = "Image API response is missing the data array.")
         if (data.length() != requestedCount) {
             throw ImageGenerationException(message = "Image API returned an unexpected number of images.")
         }
-        val images = buildList {
-            for (index in 0 until data.length()) {
-                val item = data.optJSONObject(index)
-                    ?: throw ImageGenerationException(message = "Image API returned an invalid image item.")
-                val base64 = item.optString("b64_json", "").takeIf(String::isNotBlank)
-                if (base64 != null && base64.length > MAX_ENCODED_IMAGE_CHARS) {
-                    throw ImageGenerationException(
-                        message = "Image API returned image data exceeding the configured per-image size limit.",
+        val images =
+            buildList {
+                for (index in 0 until data.length()) {
+                    val item =
+                        data.optJSONObject(index)
+                            ?: throw ImageGenerationException(message = "Image API returned an invalid image item.")
+                    val base64 = item.optString("b64_json", "").takeIf(String::isNotBlank)
+                    if (base64 != null && base64.length > MAX_ENCODED_IMAGE_CHARS) {
+                        throw ImageGenerationException(
+                            message = "Image API returned image data exceeding the configured per-image size limit.",
+                        )
+                    }
+                    val rawUrl = item.optString("url", "").takeIf(String::isNotBlank)
+                    val safeUrl = rawUrl?.let(::validateRemoteImageUrl)
+                    if (base64 == null && safeUrl == null) {
+                        throw ImageGenerationException(message = "Image API item has no usable image payload.")
+                    }
+                    if (base64 != null && safeUrl != null) {
+                        throw ImageGenerationException(message = "Image API item contains conflicting image payloads.")
+                    }
+                    add(
+                        GeneratedImage(
+                            base64Data = base64,
+                            remoteUrl = safeUrl,
+                            revisedPrompt = item.optString("revised_prompt", "").takeIf(String::isNotBlank),
+                        ),
                     )
                 }
-                val rawUrl = item.optString("url", "").takeIf(String::isNotBlank)
-                val safeUrl = rawUrl?.let(::validateRemoteImageUrl)
-                if (base64 == null && safeUrl == null) {
-                    throw ImageGenerationException(message = "Image API item has no usable image payload.")
-                }
-                if (base64 != null && safeUrl != null) {
-                    throw ImageGenerationException(message = "Image API item contains conflicting image payloads.")
-                }
-                add(
-                    GeneratedImage(
-                        base64Data = base64,
-                        remoteUrl = safeUrl,
-                        revisedPrompt = item.optString("revised_prompt", "").takeIf(String::isNotBlank),
-                    ),
-                )
             }
-        }
         return ImageGenerationResult(
             model = root.optString("model", "").takeIf(String::isNotBlank),
             images = images,
@@ -178,11 +191,12 @@ class ImageGenerationClient(
     }
 
     private fun validateRemoteImageUrl(rawUrl: String): String {
-        val uri = try {
-            URI(rawUrl)
-        } catch (error: Exception) {
-            throw ImageGenerationException(message = "Image API returned an invalid image URL.", cause = error)
-        }
+        val uri =
+            try {
+                URI(rawUrl)
+            } catch (error: Exception) {
+                throw ImageGenerationException(message = "Image API returned an invalid image URL.", cause = error)
+            }
         if (!uri.scheme.equals("https", ignoreCase = true) ||
             uri.host.isNullOrBlank() ||
             uri.rawUserInfo != null
@@ -192,7 +206,10 @@ class ImageGenerationClient(
         return uri.toASCIIString()
     }
 
-    private fun readBounded(body: okhttp3.ResponseBody, requestedCount: Int): String {
+    private fun readBounded(
+        body: okhttp3.ResponseBody,
+        requestedCount: Int,
+    ): String {
         val maxResponseBytes = requestedCount * MAX_ENCODED_IMAGE_CHARS + MAX_RESPONSE_OVERHEAD_BYTES
         val source = body.source()
         val buffer = Buffer()

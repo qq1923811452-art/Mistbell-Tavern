@@ -38,22 +38,24 @@ internal class ChatSendMessageCoordinator(
         invalidateHistoryWindow: Boolean = false,
     ): ChatSendMessagePreparation {
         val completedLines = if (historyIsComplete) history else history.dropLast(2)
-        val completeHistory = completedLines.mapNotNull { line ->
-            if (line.content.isBlank()) {
-                null
-            } else {
-                PromptMessage(
-                    if (line.role == "user") PromptRole.USER else PromptRole.ASSISTANT,
-                    line.content,
-                )
+        val completeHistory =
+            completedLines.mapNotNull { line ->
+                if (line.content.isBlank()) {
+                    null
+                } else {
+                    PromptMessage(
+                        if (line.role == "user") PromptRole.USER else PromptRole.ASSISTANT,
+                        line.content,
+                    )
+                }
             }
-        }
         val historyStarted = System.nanoTime()
-        val decision = ChatPromptHistoryCoordinator(settings, historyPlanner, historyWindowCache).build(
-            scopeId = historyScopeId,
-            history = completedLines,
-            invalidate = invalidateHistoryWindow,
-        )
+        val decision =
+            ChatPromptHistoryCoordinator(settings, historyPlanner, historyWindowCache).build(
+                scopeId = historyScopeId,
+                history = completedLines,
+                invalidate = invalidateHistoryWindow,
+            )
         val contextWindow = decision.window
         diagnosticStore.info("chat.window.decision", decision.diagnosticText())
         val historyMs = (System.nanoTime() - historyStarted) / NANOS_PER_MILLI
@@ -61,28 +63,30 @@ internal class ChatSendMessageCoordinator(
         // Activate entries from the asynchronously loaded local library against
         // the current turn plus a bounded tail of recent conversation.
         val activationStarted = System.nanoTime()
-        val activationReport = ChatWorldBookActivationCoordinator(
-            settings = settings,
-            diagnosticStore = diagnosticStore,
-        ).activate(
-            localEntries = localEntries,
-            selectedCard = selectedCard,
-            scanText = userText,
-            recentTexts = completeHistory.takeLast(6).map { it.content },
-            state = worldbookState,
-            stateKey = worldbookStateKey,
-            onBudgetExceeded = onBudgetExceeded,
-        )
+        val activationReport =
+            ChatWorldBookActivationCoordinator(
+                settings = settings,
+                diagnosticStore = diagnosticStore,
+            ).activate(
+                localEntries = localEntries,
+                selectedCard = selectedCard,
+                scanText = userText,
+                recentTexts = completeHistory.takeLast(6).map { it.content },
+                state = worldbookState,
+                stateKey = worldbookStateKey,
+                onBudgetExceeded = onBudgetExceeded,
+            )
         val activationMs = (System.nanoTime() - activationStarted) / NANOS_PER_MILLI
         val assemblyStarted = System.nanoTime()
-        val messages = ChatPromptAssemblyCoordinator().assemble(
-            characterDefinition = characterDefinition,
-            contextWindow = contextWindow,
-            activatedWorldbook = activationReport.activatedEntries.map { it.entry },
-            latestUserMessage = userText,
-            postHistoryInstructions = postHistoryInstructions,
-            cardSystemInstructions = selectedCard?.systemPrompt,
-        )
+        val messages =
+            ChatPromptAssemblyCoordinator().assemble(
+                characterDefinition = characterDefinition,
+                contextWindow = contextWindow,
+                activatedWorldbook = activationReport.activatedEntries.map { it.entry },
+                latestUserMessage = userText,
+                postHistoryInstructions = postHistoryInstructions,
+                cardSystemInstructions = selectedCard?.systemPrompt,
+            )
         val assemblyMs = (System.nanoTime() - assemblyStarted) / NANOS_PER_MILLI
         diagnosticStore.info(
             "chat.prompt.stages",

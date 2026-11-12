@@ -62,9 +62,10 @@ object WorldBookPlacement {
         )
     }
 
-    private fun normalizeDepthRole(role: String): String = when (role) {
-        DEPTH_ROLE_USER -> DEPTH_ROLE_USER
-        DEPTH_ROLE_ASSISTANT -> DEPTH_ROLE_ASSISTANT
-        else -> DEPTH_ROLE_SYSTEM
-    }
+    private fun normalizeDepthRole(role: String): String =
+        when (role) {
+            DEPTH_ROLE_USER -> DEPTH_ROLE_USER
+            DEPTH_ROLE_ASSISTANT -> DEPTH_ROLE_ASSISTANT
+            else -> DEPTH_ROLE_SYSTEM
+        }
 }

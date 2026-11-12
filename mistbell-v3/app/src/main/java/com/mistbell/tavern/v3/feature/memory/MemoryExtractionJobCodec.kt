@@ -14,29 +14,30 @@ object MemoryExtractionJobCodec {
     fun encode(jobs: List<MemoryExtractionJob>): ByteArray {
         require(jobs.size <= MAX_JOBS)
         require(jobs.map { it.id }.distinct().size == jobs.size)
-        val root = JSONObject().put("version", VERSION).put(
-            "jobs",
-            JSONArray().also { array ->
-                jobs.sortedBy { it.id }.forEach { job ->
-                    array.put(
-                        JSONObject()
-                            .put("id", job.id)
-                            .put("conversation", job.conversationId)
-                            .put("history_scope", job.historyScopeId)
-                            .put("legacy_history_scope", job.legacyHistoryScopeId)
-                            .put("migration_role_scope", job.migrationRoleScopeId)
-                            .put("turns", JSONArray(job.turnIds))
-                            .put("provider", job.providerProfileId)
-                            .put("credential_handle", job.credentialHandle)
-                            .put("created", job.createdAtEpochMillis)
-                            .put("attempts", job.attemptCount)
-                            .put("next_attempt", job.nextAttemptAtEpochMillis)
-                            .put("state", job.state.name)
-                            .put("error", job.lastSafeError),
-                    )
-                }
-            },
-        )
+        val root =
+            JSONObject().put("version", VERSION).put(
+                "jobs",
+                JSONArray().also { array ->
+                    jobs.sortedBy { it.id }.forEach { job ->
+                        array.put(
+                            JSONObject()
+                                .put("id", job.id)
+                                .put("conversation", job.conversationId)
+                                .put("history_scope", job.historyScopeId)
+                                .put("legacy_history_scope", job.legacyHistoryScopeId)
+                                .put("migration_role_scope", job.migrationRoleScopeId)
+                                .put("turns", JSONArray(job.turnIds))
+                                .put("provider", job.providerProfileId)
+                                .put("credential_handle", job.credentialHandle)
+                                .put("created", job.createdAtEpochMillis)
+                                .put("attempts", job.attemptCount)
+                                .put("next_attempt", job.nextAttemptAtEpochMillis)
+                                .put("state", job.state.name)
+                                .put("error", job.lastSafeError),
+                        )
+                    }
+                },
+            )
         val payload = root.toString().toByteArray(Charsets.UTF_8)
         val encoded = payload + MessageDigest.getInstance("SHA-256").digest(payload)
         require(encoded.size <= MAX_BYTES)
@@ -55,27 +56,29 @@ object MemoryExtractionJobCodec {
         require(root.getInt("version") == VERSION) { "Queue format version is unsupported." }
         val array = root.getJSONArray("jobs")
         require(array.length() <= MAX_JOBS)
-        val jobs = (0 until array.length()).map { index ->
-            val item = array.getJSONObject(index)
-            val turns = item.getJSONArray("turns")
-            require(turns.length() in 1..20)
-            MemoryExtractionJob(
-                id = item.getString("id"),
-                conversationId = item.getString("conversation"),
-                historyScopeId = item.optionalNonBlankString("history_scope")
-                    ?: item.getString("conversation"),
-                turnIds = (0 until turns.length()).map(turns::getString),
-                providerProfileId = item.getString("provider"),
-                credentialHandle = item.optionalNonBlankString("credential_handle"),
-                createdAtEpochMillis = item.getLong("created"),
-                attemptCount = item.getInt("attempts"),
-                nextAttemptAtEpochMillis = item.getLong("next_attempt"),
-                state = MemoryExtractionJob.State.valueOf(item.getString("state")),
-                lastSafeError = item.optionalNonBlankString("error"),
-                legacyHistoryScopeId = item.optionalNonBlankString("legacy_history_scope"),
-                migrationRoleScopeId = item.optionalNonBlankString("migration_role_scope"),
-            )
-        }
+        val jobs =
+            (0 until array.length()).map { index ->
+                val item = array.getJSONObject(index)
+                val turns = item.getJSONArray("turns")
+                require(turns.length() in 1..20)
+                MemoryExtractionJob(
+                    id = item.getString("id"),
+                    conversationId = item.getString("conversation"),
+                    historyScopeId =
+                        item.optionalNonBlankString("history_scope")
+                            ?: item.getString("conversation"),
+                    turnIds = (0 until turns.length()).map(turns::getString),
+                    providerProfileId = item.getString("provider"),
+                    credentialHandle = item.optionalNonBlankString("credential_handle"),
+                    createdAtEpochMillis = item.getLong("created"),
+                    attemptCount = item.getInt("attempts"),
+                    nextAttemptAtEpochMillis = item.getLong("next_attempt"),
+                    state = MemoryExtractionJob.State.valueOf(item.getString("state")),
+                    lastSafeError = item.optionalNonBlankString("error"),
+                    legacyHistoryScopeId = item.optionalNonBlankString("legacy_history_scope"),
+                    migrationRoleScopeId = item.optionalNonBlankString("migration_role_scope"),
+                )
+            }
         require(jobs.map { it.id }.distinct().size == jobs.size)
         return jobs
     }

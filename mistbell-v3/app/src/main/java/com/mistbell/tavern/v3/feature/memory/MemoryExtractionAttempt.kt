@@ -1,10 +1,10 @@
 package com.mistbell.tavern.v3.feature.memory
 
-import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.Call
+import java.io.IOException
 
 /** Owns the request and bounded wait for one queue dispatch, not the worker's lifetime. */
 internal class MemoryExtractionAttempt {

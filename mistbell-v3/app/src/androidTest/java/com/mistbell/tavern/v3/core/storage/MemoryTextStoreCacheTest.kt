@@ -4,14 +4,14 @@ import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.mistbell.tavern.v3.core.memory.MemoryTextRecord
-import java.io.File
-import java.util.UUID
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.io.File
+import java.util.UUID
 
 /**
  * A retrieval turn reads the source-text store twice (staleness check, then injection). These
@@ -178,18 +178,20 @@ class MemoryTextStoreCacheTest {
         val executor = java.util.concurrent.Executors.newFixedThreadPool(2)
         try {
             store.save(expected)
-            val commit = executor.submit {
-                store.commitIndexIfCurrent(expected) {
-                    entered.countDown()
-                    check(release.await(5, java.util.concurrent.TimeUnit.SECONDS))
+            val commit =
+                executor.submit {
+                    store.commitIndexIfCurrent(expected) {
+                        entered.countDown()
+                        check(release.await(5, java.util.concurrent.TimeUnit.SECONDS))
+                    }
                 }
-            }
             assertTrue(entered.await(5, java.util.concurrent.TimeUnit.SECONDS))
-            val update = executor.submit {
-                attempted.countDown()
-                store.update { it + record("b", "beta") }
-                finished.countDown()
-            }
+            val update =
+                executor.submit {
+                    attempted.countDown()
+                    store.update { it + record("b", "beta") }
+                    finished.countDown()
+                }
             assertTrue(attempted.await(5, java.util.concurrent.TimeUnit.SECONDS))
             assertTrue(!finished.await(100, java.util.concurrent.TimeUnit.MILLISECONDS))
             release.countDown()
@@ -220,7 +222,10 @@ class MemoryTextStoreCacheTest {
         }
     }
 
-    private fun record(id: String, text: String) = MemoryTextRecord(id = id, text = text)
+    private fun record(
+        id: String,
+        text: String,
+    ) = MemoryTextRecord(id = id, text = text)
 
     private fun deleteFiles() {
         val base = File(context.filesDir, fileName)

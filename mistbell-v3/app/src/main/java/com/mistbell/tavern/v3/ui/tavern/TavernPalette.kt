@@ -35,25 +35,26 @@ object TavernPalette {
 }
 
 /** Material scheme fed to every screen so Material widgets inherit the night tavern look. */
-internal val TavernColorScheme = darkColorScheme(
-    primary = TavernPalette.Purple,
-    onPrimary = Color.White,
-    primaryContainer = TavernPalette.PurpleDeep,
-    onPrimaryContainer = TavernPalette.TextPrimary,
-    secondary = TavernPalette.PurpleSoft,
-    onSecondary = TavernPalette.Night,
-    tertiary = TavernPalette.Gold,
-    onTertiary = TavernPalette.Night,
-    background = TavernPalette.Night,
-    onBackground = TavernPalette.TextPrimary,
-    surface = TavernPalette.Surface,
-    onSurface = TavernPalette.TextPrimary,
-    surfaceVariant = TavernPalette.SurfaceRaised,
-    onSurfaceVariant = TavernPalette.TextSecondary,
-    surfaceContainer = TavernPalette.Surface,
-    surfaceContainerHigh = TavernPalette.SurfaceRaised,
-    outline = TavernPalette.Border,
-    outlineVariant = TavernPalette.BorderStrong,
-    error = TavernPalette.Danger,
-    onError = Color.White,
-)
+internal val TavernColorScheme =
+    darkColorScheme(
+        primary = TavernPalette.Purple,
+        onPrimary = Color.White,
+        primaryContainer = TavernPalette.PurpleDeep,
+        onPrimaryContainer = TavernPalette.TextPrimary,
+        secondary = TavernPalette.PurpleSoft,
+        onSecondary = TavernPalette.Night,
+        tertiary = TavernPalette.Gold,
+        onTertiary = TavernPalette.Night,
+        background = TavernPalette.Night,
+        onBackground = TavernPalette.TextPrimary,
+        surface = TavernPalette.Surface,
+        onSurface = TavernPalette.TextPrimary,
+        surfaceVariant = TavernPalette.SurfaceRaised,
+        onSurfaceVariant = TavernPalette.TextSecondary,
+        surfaceContainer = TavernPalette.Surface,
+        surfaceContainerHigh = TavernPalette.SurfaceRaised,
+        outline = TavernPalette.Border,
+        outlineVariant = TavernPalette.BorderStrong,
+        error = TavernPalette.Danger,
+        onError = Color.White,
+    )

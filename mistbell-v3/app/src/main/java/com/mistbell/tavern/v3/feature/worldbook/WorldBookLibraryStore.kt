@@ -24,10 +24,11 @@ class WorldBookLibraryStore(private val directory: File) {
                     require(file.length() <= MAX_WORLDBOOK_FILE_BYTES) {
                         "Worldbook file exceeds the size limit."
                     }
-                    val parsed = WorldBookParser.parse(
-                        AtomicFile(file).openRead().use { it.readBytes().toString(Charsets.UTF_8) },
-                        file.nameWithoutExtension,
-                    ) ?: error("Invalid worldbook JSON")
+                    val parsed =
+                        WorldBookParser.parse(
+                            AtomicFile(file).openRead().use { it.readBytes().toString(Charsets.UTF_8) },
+                            file.nameWithoutExtension,
+                        ) ?: error("Invalid worldbook JSON")
                     // The library filename is the stable storage identity. This also repairs
                     // older files whose embedded id is absent or disagrees with the filename.
                     val fileId = file.nameWithoutExtension
@@ -45,10 +46,11 @@ class WorldBookLibraryStore(private val directory: File) {
         if (!directory.exists() && !directory.mkdirs()) {
             throw IllegalStateException("Unable to create the worldbook directory.")
         }
-        val normalized = book.copy(
-            id = id,
-            entries = book.entries.map { it.copy(bookId = id) },
-        )
+        val normalized =
+            book.copy(
+                id = id,
+                entries = book.entries.map { it.copy(bookId = id) },
+            )
         val target = AtomicFile(File(directory, "$id.json"))
         val bytes = export(normalized).toByteArray(Charsets.UTF_8)
         var stream: FileOutputStream? = null
@@ -76,39 +78,44 @@ class WorldBookLibraryStore(private val directory: File) {
     fun export(book: WorldBook): String {
         val entries = JSONObject()
         book.entries.forEach { entry ->
-            val position = when (entry.insertPosition) {
-                WorldBookPlacement.POSITION_AFTER_PROMPT -> 1
-                WorldBookPlacement.POSITION_AN_BEFORE -> 2
-                WorldBookPlacement.POSITION_AN_AFTER -> 3
-                WorldBookPlacement.POSITION_DEPTH -> 4
-                WorldBookPlacement.POSITION_BEFORE_PROMPT -> if (entry.depth > 0) 4 else 0
-                WorldBookPlacement.POSITION_EM_BEFORE -> 5
-                WorldBookPlacement.POSITION_EM_AFTER -> 6
-                else -> 0
-            }
-            val value = JSONObject()
-                .put("uid", entry.id)
-                .put("comment", entry.comment)
-                .put("key", JSONArray(entry.keys))
-                .put("keysecondary", JSONArray(entry.secondaryKeys))
-                .put("content", entry.content)
-                .put("constant", entry.constant)
-                .put("enabled", !entry.disable)
-                .put("disable", entry.disable)
-                .put("insertion_order", entry.order)
-                .put("position", position)
-                .put("depth", entry.depth)
-                .put("probability", (entry.probability * 100).toInt().coerceIn(0, 100))
-                .put("useProbability", true)
-                .put("role", when (entry.depthRole) {
-                    WorldBookPlacement.DEPTH_ROLE_USER -> 1
-                    WorldBookPlacement.DEPTH_ROLE_ASSISTANT -> 2
+            val position =
+                when (entry.insertPosition) {
+                    WorldBookPlacement.POSITION_AFTER_PROMPT -> 1
+                    WorldBookPlacement.POSITION_AN_BEFORE -> 2
+                    WorldBookPlacement.POSITION_AN_AFTER -> 3
+                    WorldBookPlacement.POSITION_DEPTH -> 4
+                    WorldBookPlacement.POSITION_BEFORE_PROMPT -> if (entry.depth > 0) 4 else 0
+                    WorldBookPlacement.POSITION_EM_BEFORE -> 5
+                    WorldBookPlacement.POSITION_EM_AFTER -> 6
                     else -> 0
-                })
-                .put("sticky", entry.sticky)
-                .put("cooldown", entry.cooldown)
-                .put("delay", entry.delay)
-                .put("group", entry.groupName)
+                }
+            val value =
+                JSONObject()
+                    .put("uid", entry.id)
+                    .put("comment", entry.comment)
+                    .put("key", JSONArray(entry.keys))
+                    .put("keysecondary", JSONArray(entry.secondaryKeys))
+                    .put("content", entry.content)
+                    .put("constant", entry.constant)
+                    .put("enabled", !entry.disable)
+                    .put("disable", entry.disable)
+                    .put("insertion_order", entry.order)
+                    .put("position", position)
+                    .put("depth", entry.depth)
+                    .put("probability", (entry.probability * 100).toInt().coerceIn(0, 100))
+                    .put("useProbability", true)
+                    .put(
+                        "role",
+                        when (entry.depthRole) {
+                            WorldBookPlacement.DEPTH_ROLE_USER -> 1
+                            WorldBookPlacement.DEPTH_ROLE_ASSISTANT -> 2
+                            else -> 0
+                        },
+                    )
+                    .put("sticky", entry.sticky)
+                    .put("cooldown", entry.cooldown)
+                    .put("delay", entry.delay)
+                    .put("group", entry.groupName)
             entries.put(entry.id, value)
         }
         return JSONObject()
@@ -117,11 +124,10 @@ class WorldBookLibraryStore(private val directory: File) {
             .put("entries", entries)
             .toString(2)
     }
-
 }
 
-
-internal fun WorldBook.withLibraryFileId(fileId: String): WorldBook = copy(
-    id = fileId,
-    entries = entries.map { it.copy(bookId = fileId) },
-)
+internal fun WorldBook.withLibraryFileId(fileId: String): WorldBook =
+    copy(
+        id = fileId,
+        entries = entries.map { it.copy(bookId = fileId) },
+    )
