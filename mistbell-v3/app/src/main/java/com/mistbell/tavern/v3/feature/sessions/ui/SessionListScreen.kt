@@ -3,7 +3,6 @@
 package com.mistbell.tavern.v3.feature.sessions.ui
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -29,14 +28,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.mistbell.tavern.v3.R
 import com.mistbell.tavern.v3.feature.sessions.ChatSession
+import com.mistbell.tavern.v3.ui.TavernBackground
 
 private val LIST_HORIZONTAL_PADDING = 16.dp
-private val LIST_TOP_PADDING = 8.dp
-private val LIST_BOTTOM_PADDING = 112.dp
+private val LIST_TOP_PADDING = 4.dp
+private val LIST_BOTTOM_PADDING = 24.dp
 private val LIST_ITEM_SPACING = 10.dp
-private val FAB_END_PADDING = 20.dp
-private val FAB_BOTTOM_PADDING = 22.dp
 private val GROUP_DIALOG_MAX_HEIGHT = 320.dp
 private val GROUP_ITEM_SPACING = 4.dp
 private val GROUP_ITEM_VERTICAL_PADDING = 2.dp
@@ -61,19 +60,24 @@ fun SessionListScreen(
     var deleteTarget by remember { mutableStateOf<ChatSession?>(null) }
     var showGroupDialog by remember { mutableStateOf(false) }
 
-
     MaterialTheme(colorScheme = TAVERN_DARK_COLOR_SCHEME) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            SessionListBackdrop()
+        // The painted backdrop replaces the flat gradient: the scrim is lighter here than on the
+        // chat screen because the list is mostly cards, which already carry their own contrast.
+        TavernBackground(
+            drawable = R.drawable.bg_sessions,
+            topAlpha = 0.30f,
+            middleAlpha = 0.26f,
+            bottomAlpha = 0.72f,
+        ) {
             Scaffold(
                 containerColor = Color.Transparent,
                 // The tab bar is drawn by the host below this surface and already reserves the
-                // system navigation inset. Reserving it again leaves a dead black band that clips
-                // the last rows and pushes the FAB upwards.
+                // system navigation inset. Reserving it again leaves a dead band under the list.
                 contentWindowInsets = WindowInsets(0, 0, 0, 0),
                 topBar = {
                     SessionListHeader(
                         showGroupAction = characters.isNotEmpty(),
+                        onCreateSession = onCreateSession,
                         onOpenGroupDialog = { showGroupDialog = true },
                     )
                 },
@@ -90,12 +94,6 @@ fun SessionListScreen(
                     onTogglePin = onTogglePin,
                 )
             }
-            NewSessionFab(
-                onClick = onCreateSession,
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(end = FAB_END_PADDING, bottom = FAB_BOTTOM_PADDING),
-            )
         }
         SessionMutationDialogs(
             renameTarget = renameTarget,
@@ -135,28 +133,32 @@ private fun SessionListContent(
     onTogglePin: (id: String, pinned: Boolean) -> Unit,
 ) {
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(contentPadding),
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .padding(contentPadding),
     ) {
         if (sessions.isEmpty()) {
             SessionEmptyState(
                 onCreateSession = onCreateSession,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
             )
         } else {
             LazyColumn(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                contentPadding = PaddingValues(
-                    start = LIST_HORIZONTAL_PADDING,
-                    end = LIST_HORIZONTAL_PADDING,
-                    top = LIST_TOP_PADDING,
-                    bottom = LIST_BOTTOM_PADDING,
-                ),
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                contentPadding =
+                    PaddingValues(
+                        start = LIST_HORIZONTAL_PADDING,
+                        end = LIST_HORIZONTAL_PADDING,
+                        top = LIST_TOP_PADDING,
+                        bottom = LIST_BOTTOM_PADDING,
+                    ),
                 verticalArrangement = Arrangement.spacedBy(LIST_ITEM_SPACING),
             ) {
                 items(sessions, key = { it.id }) { session ->
@@ -246,26 +248,29 @@ private fun GroupCreateDialog(
         title = { Text("新建群聊") },
         text = {
             LazyColumn(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = GROUP_DIALOG_MAX_HEIGHT),
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = GROUP_DIALOG_MAX_HEIGHT),
                 verticalArrangement = Arrangement.spacedBy(GROUP_ITEM_SPACING),
             ) {
                 items(characters, key = { it.id }) { candidate ->
                     Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = GROUP_ITEM_VERTICAL_PADDING),
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = GROUP_ITEM_VERTICAL_PADDING),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Checkbox(
                             checked = candidate.id in selected,
                             onCheckedChange = { checked ->
-                                selected = if (checked) {
-                                    (selected + candidate.id).take(MAX_GROUP_MEMBERS).toSet()
-                                } else {
-                                    selected - candidate.id
-                                }
+                                selected =
+                                    if (checked) {
+                                        (selected + candidate.id).take(MAX_GROUP_MEMBERS).toSet()
+                                    } else {
+                                        selected - candidate.id
+                                    }
                             },
                         )
                         Text(candidate.name)

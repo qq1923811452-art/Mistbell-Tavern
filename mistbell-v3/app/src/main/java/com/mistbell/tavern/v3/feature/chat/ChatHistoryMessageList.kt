@@ -38,6 +38,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.mistbell.tavern.v3.ui.CharacterAvatar
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -48,7 +49,7 @@ import java.util.Locale
  * User turns align right with a compact avatar; assistant turns align left with a circular initial
  * avatar, the speaker name, a timestamp and the same variant/regenerate actions as before.
  */
-@Suppress("FunctionNaming")
+@Suppress("FunctionNaming", "LongParameterList")
 @Composable
 internal fun ColumnScope.ChatHistoryMessageList(
     history: List<ChatLine>,
@@ -56,6 +57,7 @@ internal fun ColumnScope.ChatHistoryMessageList(
     listState: LazyListState,
     onSelectVariant: (messageId: String, index: Int) -> Unit = { _, _ -> },
     onRegenerate: (messageId: String) -> Unit = {},
+    assistantAvatarFileName: String? = null,
 ) {
     val lastAssistantId = history.lastOrNull { it.role == ROLE_ASSISTANT }?.id
     LazyColumn(
@@ -63,19 +65,20 @@ internal fun ColumnScope.ChatHistoryMessageList(
         state = listState,
         verticalArrangement = Arrangement.spacedBy(MESSAGE_SPACING),
     ) {
-        itemsIndexed(history) { _, line ->
+        itemsIndexed(history, key = { _, line -> line.id }) { _, line ->
             ChatMessageRow(
                 line = line,
                 busy = busy,
                 showRegenerate = !busy && line.role == ROLE_ASSISTANT && line.id == lastAssistantId,
                 onSelectVariant = onSelectVariant,
                 onRegenerate = onRegenerate,
+                assistantAvatarFileName = assistantAvatarFileName,
             )
         }
     }
 }
 
-@Suppress("FunctionNaming")
+@Suppress("FunctionNaming", "LongParameterList")
 @Composable
 private fun ChatMessageRow(
     line: ChatLine,
@@ -83,6 +86,7 @@ private fun ChatMessageRow(
     showRegenerate: Boolean,
     onSelectVariant: (messageId: String, index: Int) -> Unit,
     onRegenerate: (messageId: String) -> Unit,
+    assistantAvatarFileName: String?,
 ) {
     val isUser = line.role == ROLE_USER
     BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
@@ -93,7 +97,11 @@ private fun ChatMessageRow(
             verticalAlignment = Alignment.Top,
         ) {
             if (!isUser) {
-                MessageAvatar(name = speakerLabel(line), isUser = false)
+                MessageAvatar(
+                    name = speakerLabel(line),
+                    avatarFileName = assistantAvatarFileName,
+                    isUser = false,
+                )
                 Spacer(Modifier.width(AVATAR_SPACING))
             }
             Column(
@@ -112,7 +120,7 @@ private fun ChatMessageRow(
             }
             if (isUser) {
                 Spacer(Modifier.width(AVATAR_SPACING))
-                MessageAvatar(name = USER_DISPLAY_NAME, isUser = true)
+                MessageAvatar(name = USER_DISPLAY_NAME, avatarFileName = null, isUser = true)
             }
         }
     }
@@ -120,7 +128,10 @@ private fun ChatMessageRow(
 
 @Suppress("FunctionNaming")
 @Composable
-private fun MessageHeader(line: ChatLine, isUser: Boolean) {
+private fun MessageHeader(
+    line: ChatLine,
+    isUser: Boolean,
+) {
     val time = rememberMessageTime(line.createdAtEpochMillis)
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -158,19 +169,20 @@ private fun ChatBubble(
     val isUser = line.role == ROLE_USER
     val shape = bubbleShape(isUser)
     Column(
-        modifier = Modifier
-            .clip(shape)
-            .background(if (isUser) USER_BUBBLE_COLOR else ASSISTANT_BUBBLE_COLOR)
-            .border(
-                width = BUBBLE_BORDER_WIDTH,
-                color = if (isUser) USER_BORDER_COLOR else ASSISTANT_BORDER_COLOR,
-                shape = shape,
-            )
-            .padding(BUBBLE_PADDING),
+        modifier =
+            Modifier
+                .clip(shape)
+                .background(if (isUser) USER_BUBBLE_COLOR else ASSISTANT_BUBBLE_COLOR)
+                .border(
+                    width = BUBBLE_BORDER_WIDTH,
+                    color = if (isUser) USER_BORDER_COLOR else ASSISTANT_BORDER_COLOR,
+                    shape = shape,
+                )
+                .padding(BUBBLE_PADDING),
     ) {
         Text(
             text = messageText(line = line, busy = busy),
-            style = MaterialTheme.typography.bodyMedium.copy(fontSize = 15.sp),
+            style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp, lineHeight = 23.sp),
             color = BUBBLE_TEXT_COLOR,
         )
         MessageActions(
@@ -205,23 +217,33 @@ private fun MessageActions(
             total = line.variants.size,
             onPrevious = { onSelectVariant(line.id, line.activeVariant - 1) },
             onNext = { onSelectVariant(line.id, line.activeVariant + 1) },
-            modifier = Modifier
-                .padding(top = VARIANT_TOP_SPACING)
-                .clip(RoundedCornerShape(VARIANT_RADIUS))
-                .background(VARIANT_SURFACE_COLOR)
-                .padding(horizontal = VARIANT_HORIZONTAL_PADDING),
+            modifier =
+                Modifier
+                    .padding(top = VARIANT_TOP_SPACING)
+                    .clip(RoundedCornerShape(VARIANT_RADIUS))
+                    .background(VARIANT_SURFACE_COLOR)
+                    .padding(horizontal = VARIANT_HORIZONTAL_PADDING),
         )
     }
 }
 
 @Suppress("FunctionNaming")
 @Composable
-private fun MessageAvatar(name: String, isUser: Boolean) {
+private fun MessageAvatar(
+    name: String,
+    avatarFileName: String?,
+    isUser: Boolean,
+) {
+    if (!isUser && avatarFileName != null) {
+        CharacterAvatar(name = name, avatarFileName = avatarFileName, size = ASSISTANT_AVATAR_SIZE)
+        return
+    }
     Box(
-        modifier = Modifier
-            .size(if (isUser) USER_AVATAR_SIZE else ASSISTANT_AVATAR_SIZE)
-            .clip(CircleShape)
-            .background(if (isUser) USER_AVATAR_COLOR else ASSISTANT_AVATAR_COLOR),
+        modifier =
+            Modifier
+                .size(if (isUser) USER_AVATAR_SIZE else ASSISTANT_AVATAR_SIZE)
+                .clip(CircleShape)
+                .background(if (isUser) USER_AVATAR_COLOR else ASSISTANT_AVATAR_COLOR),
         contentAlignment = Alignment.Center,
     ) {
         Text(
@@ -234,13 +256,14 @@ private fun MessageAvatar(name: String, isUser: Boolean) {
 }
 
 @Composable
-private fun rememberMessageTime(epochMillis: Long): String = remember(epochMillis) {
-    if (epochMillis <= 0L) {
-        ""
-    } else {
-        SimpleDateFormat(TIME_PATTERN, Locale.getDefault()).format(Date(epochMillis))
+private fun rememberMessageTime(epochMillis: Long): String =
+    remember(epochMillis) {
+        if (epochMillis <= 0L) {
+            ""
+        } else {
+            SimpleDateFormat(TIME_PATTERN, Locale.getDefault()).format(Date(epochMillis))
+        }
     }
-}
 
 private fun speakerLabel(line: ChatLine): String {
     if (line.role == ROLE_USER) {
@@ -249,7 +272,10 @@ private fun speakerLabel(line: ChatLine): String {
     return line.speakerName?.trim()?.takeIf { it.isNotEmpty() } ?: DEFAULT_SPEAKER_NAME
 }
 
-private fun messageText(line: ChatLine, busy: Boolean): String =
+private fun messageText(
+    line: ChatLine,
+    busy: Boolean,
+): String =
     line.activeContent.ifBlank {
         when {
             busy && line.role == ROLE_ASSISTANT -> "正在生成……"

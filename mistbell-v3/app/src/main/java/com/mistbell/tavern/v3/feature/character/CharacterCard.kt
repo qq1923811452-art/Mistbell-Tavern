@@ -22,6 +22,8 @@ data class CharacterCard(
     val characterBookJson: String? = null,
     /** File name under the avatar directory; null when the card has no picture. */
     val avatarFileName: String? = null,
+    /** File name of the standing portrait (立绘); null renders the gradient placeholder. */
+    val portraitFileName: String? = null,
 ) {
     init {
         require(name.isNotBlank()) { "Character name is required." }
@@ -33,7 +35,11 @@ data class CharacterCard(
      */
     fun stableDefinition(): String {
         val blocks = mutableListOf<String>()
-        fun append(label: String, value: String) {
+
+        fun append(
+            label: String,
+            value: String,
+        ) {
             val trimmed = value.trim()
             if (trimmed.isNotEmpty()) blocks += "$label: $trimmed"
         }
