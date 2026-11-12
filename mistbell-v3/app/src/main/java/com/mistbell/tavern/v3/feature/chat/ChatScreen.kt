@@ -2,20 +2,40 @@
 
 package com.mistbell.tavern.v3.feature.chat
 
+import android.content.Context
 import android.os.Handler
 import android.os.Looper
-import android.content.Context
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.activity.compose.BackHandler
-import androidx.compose.runtime.rememberCoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import com.mistbell.tavern.v3.core.diagnostics.DiagnosticLogStore
 import com.mistbell.tavern.v3.core.security.AndroidKeystoreMemoryCredentialStore
 import com.mistbell.tavern.v3.core.security.ChatCredentialStore
@@ -23,6 +43,8 @@ import com.mistbell.tavern.v3.core.storage.AtomicMemoryOverrideStore
 import com.mistbell.tavern.v3.core.storage.AtomicMemoryTextStore
 import com.mistbell.tavern.v3.core.storage.AtomicTemporalFactStore
 import com.mistbell.tavern.v3.core.storage.MemoryScopeFileNames
+import com.mistbell.tavern.v3.core.storage.MemoryScopeId
+import com.mistbell.tavern.v3.core.storage.MemoryScopeMigration
 import com.mistbell.tavern.v3.feature.memory.MemoryEditDraft
 import com.mistbell.tavern.v3.feature.memory.MemoryExtractionJobRepository
 import com.mistbell.tavern.v3.feature.memory.MemoryExtractionJobStore
@@ -32,54 +54,24 @@ import com.mistbell.tavern.v3.feature.memory.MemoryStatusSnapshot
 import com.mistbell.tavern.v3.feature.memory.SessionMemoryLoadResult
 import com.mistbell.tavern.v3.feature.memory.SessionMemoryRepository
 import com.mistbell.tavern.v3.feature.memory.SessionMemorySaveResult
-import java.io.File
-import java.util.UUID
-import org.json.JSONArray
-import org.json.JSONObject
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.material3.Button
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.unit.dp
-import com.mistbell.tavern.v3.core.storage.MemoryScopeId
-import com.mistbell.tavern.v3.core.storage.MemoryScopeMigration
-import com.mistbell.tavern.v3.feature.sessions.ChatSession
-import com.mistbell.tavern.v3.feature.sessions.SessionStore
 import com.mistbell.tavern.v3.feature.sessions.SessionKind
 import com.mistbell.tavern.v3.feature.sessions.SessionParticipant
+import com.mistbell.tavern.v3.feature.sessions.SessionStore
 import com.mistbell.tavern.v3.feature.sessions.ui.GroupCandidate
 import com.mistbell.tavern.v3.feature.sessions.ui.SessionListScreen
 import com.mistbell.tavern.v3.feature.worldbook.WorldBookLibraryStore
-
-
+import com.mistbell.tavern.v3.ui.tavern.SendButtonState
+import com.mistbell.tavern.v3.ui.tavern.TavernSendButton
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import org.json.JSONArray
+import org.json.JSONObject
+import java.io.File
+import java.util.UUID
 
 internal val CHAT_EMBEDDING_DIMENSION_OPTIONS = listOf(128, 256, 512, 768, 1024, 1536, 2048)
 
@@ -95,20 +87,23 @@ fun ChatScreen(
     onSessionListVisibilityChange: (Boolean) -> Unit = {},
 ) {
     val context = LocalContext.current
+    val clipboard = LocalClipboardManager.current
     val chatViewModel: ChatViewModel = viewModel()
     val chatUiState by chatViewModel.uiState.collectAsStateWithLifecycle()
-    val settings = remember(context) {
-        context.getSharedPreferences("mistbell-v3-settings", Context.MODE_PRIVATE)
-    }
+    val settings =
+        remember(context) {
+            context.getSharedPreferences("mistbell-v3-settings", Context.MODE_PRIVATE)
+        }
     var baseUrl by remember(settings) {
         mutableStateOf(settings.getString("chat_api_base_url", "https://api.odys.work/v1") ?: "https://api.odys.work/v1")
     }
     var modelId by remember(settings) {
         mutableStateOf(settings.getString("chat_model_id", "") ?: "")
     }
-    val chatGenerationPreferences = remember(context) {
-        ChatGenerationPreferences(context.getSharedPreferences("mistbell-v3-settings", Context.MODE_PRIVATE))
-    }
+    val chatGenerationPreferences =
+        remember(context) {
+            ChatGenerationPreferences(context.getSharedPreferences("mistbell-v3-settings", Context.MODE_PRIVATE))
+        }
     val chatCredentialStore = remember(context) { ChatCredentialStore(context) }
     var apiKey by remember {
         mutableStateOf(
@@ -165,12 +160,14 @@ fun ChatScreen(
     val isGroupMemoryScope = sessions.firstOrNull { it.id == memoryConversationId }?.kind == SessionKind.GROUP
     // Only one-to-one conversations share character memory. A group's other participants must
     // not write facts into the host character's private conversations.
-    val conversationMemoryScopeId = remember(activeMemoryRoleId, memoryConversationId) {
-        MemoryScopeId.forRoleAndConversation(activeMemoryRoleId, memoryConversationId)
-    }
-    val memoryScopeId = remember(activeMemoryRoleId, conversationMemoryScopeId, isGroupMemoryScope) {
-        if (isGroupMemoryScope) conversationMemoryScopeId else MemoryScopeId.forRole(activeMemoryRoleId)
-    }
+    val conversationMemoryScopeId =
+        remember(activeMemoryRoleId, memoryConversationId) {
+            MemoryScopeId.forRoleAndConversation(activeMemoryRoleId, memoryConversationId)
+        }
+    val memoryScopeId =
+        remember(activeMemoryRoleId, conversationMemoryScopeId, isGroupMemoryScope) {
+            if (isGroupMemoryScope) conversationMemoryScopeId else MemoryScopeId.forRole(activeMemoryRoleId)
+        }
     var showSessionList by remember { mutableStateOf(true) }
     LaunchedEffect(showSessionList) { onSessionListVisibilityChange(showSessionList) }
     var lastGroupSpeakerId by remember { mutableStateOf<String?>(null) }
@@ -179,6 +176,9 @@ fun ChatScreen(
         mutableStateOf(settings.getBoolean("memory_extraction_enabled", true))
     }
     var showPromptPreview by remember { mutableStateOf(false) }
+    var showCharacterPicker by remember { mutableStateOf(false) }
+    var messageActionTarget by remember { mutableStateOf<ChatMessageActionTarget?>(null) }
+    var messageEditTarget by remember { mutableStateOf<ChatMessageActionTarget?>(null) }
     var showCreateSession by remember { mutableStateOf(false) }
     var showSessionSettings by remember { mutableStateOf(false) }
     LaunchedEffect(sessionStore) {
@@ -203,22 +203,26 @@ fun ChatScreen(
     val historyWindowPlanner = remember(conversationHistoryScope) { StableConversationWindowPlanner() }
 
     // Manual memory edits live in their own scope-partitioned store; the ledger stays untouched.
-    val sessionMemoryRepository = remember(context, memoryScopeId) {
-        SessionMemoryRepository(
-            factStore = AtomicTemporalFactStore(
-                context.applicationContext,
-                MemoryScopeFileNames.forScope(AtomicTemporalFactStore.DEFAULT_FILE_NAME, memoryScopeId),
-            ),
-            memoryTextStore = AtomicMemoryTextStore(
-                context.applicationContext,
-                MemoryScopeFileNames.forScope(AtomicMemoryTextStore.DEFAULT_FILE_NAME, memoryScopeId),
-            ),
-            overrideStore = AtomicMemoryOverrideStore(
-                context.applicationContext,
-                MemoryScopeFileNames.forScope(AtomicMemoryOverrideStore.DEFAULT_FILE_NAME, memoryScopeId),
-            ),
-        )
-    }
+    val sessionMemoryRepository =
+        remember(context, memoryScopeId) {
+            SessionMemoryRepository(
+                factStore =
+                    AtomicTemporalFactStore(
+                        context.applicationContext,
+                        MemoryScopeFileNames.forScope(AtomicTemporalFactStore.DEFAULT_FILE_NAME, memoryScopeId),
+                    ),
+                memoryTextStore =
+                    AtomicMemoryTextStore(
+                        context.applicationContext,
+                        MemoryScopeFileNames.forScope(AtomicMemoryTextStore.DEFAULT_FILE_NAME, memoryScopeId),
+                    ),
+                overrideStore =
+                    AtomicMemoryOverrideStore(
+                        context.applicationContext,
+                        MemoryScopeFileNames.forScope(AtomicMemoryOverrideStore.DEFAULT_FILE_NAME, memoryScopeId),
+                    ),
+            )
+        }
     var memorySummary by remember(memoryScopeId) { mutableStateOf<String?>(null) }
     var showMemoryScreen by remember(memoryScopeId) { mutableStateOf(false) }
     var memoryScreenState by remember(memoryScopeId) {
@@ -226,58 +230,66 @@ fun ChatScreen(
     }
     var memoryStatus by remember(memoryScopeId) { mutableStateOf<MemoryStatusSnapshot?>(null) }
     val diagnosticStore = remember(context) { DiagnosticLogStore(context.applicationContext.filesDir) }
-    val historyStore = remember(context, conversationHistoryScope) {
-        val legacyStore = ChatHistoryStore(
-            context.applicationContext,
-            MemoryScopeFileNames.forScope(ChatHistoryStore.DEFAULT_FILE_NAME, conversationHistoryScope),
-        )
-        SqliteChatHistoryRepository(
-            context.applicationContext,
-            conversationHistoryScope,
-            legacyStore,
-            legacyScopeId = conversationMemoryScopeId
-                .takeIf { it.isNotBlank() && it != conversationHistoryScope },
-            legacyFileStore = conversationMemoryScopeId
-                .takeIf { it.isNotBlank() && it != conversationHistoryScope }
-                ?.let { scope ->
-                    ChatHistoryStore(
-                        context.applicationContext,
-                        MemoryScopeFileNames.forScope(ChatHistoryStore.DEFAULT_FILE_NAME, scope),
-                    )
-                },
-            onDiagnostic = { event, detail -> diagnosticStore.warn(event, detail) },
-        )
-    }
+    val historyStore =
+        remember(context, conversationHistoryScope) {
+            val legacyStore =
+                ChatHistoryStore(
+                    context.applicationContext,
+                    MemoryScopeFileNames.forScope(ChatHistoryStore.DEFAULT_FILE_NAME, conversationHistoryScope),
+                )
+            SqliteChatHistoryRepository(
+                context.applicationContext,
+                conversationHistoryScope,
+                legacyStore,
+                legacyScopeId =
+                    conversationMemoryScopeId
+                        .takeIf { it.isNotBlank() && it != conversationHistoryScope },
+                legacyFileStore =
+                    conversationMemoryScopeId
+                        .takeIf { it.isNotBlank() && it != conversationHistoryScope }
+                        ?.let { scope ->
+                            ChatHistoryStore(
+                                context.applicationContext,
+                                MemoryScopeFileNames.forScope(ChatHistoryStore.DEFAULT_FILE_NAME, scope),
+                            )
+                        },
+                onDiagnostic = { event, detail -> diagnosticStore.warn(event, detail) },
+            )
+        }
     DisposableEffect(historyStore) {
         onDispose { historyStore.close() }
     }
     val memoryCredentialStore = remember(context) { AndroidKeystoreMemoryCredentialStore(context.applicationContext) }
     val coroutineScope = rememberCoroutineScope()
 
-    suspend fun loadSessionMemory(): SessionMemoryUiState = withContext(Dispatchers.IO) {
-        when (val loaded = sessionMemoryRepository.load(memoryScopeId)) {
-            SessionMemoryLoadResult.Missing -> SessionMemoryUiState.Ready(emptyList(), 0L)
-            is SessionMemoryLoadResult.Unavailable -> SessionMemoryUiState.Failed(loaded.safeReason)
-            is SessionMemoryLoadResult.Loaded -> SessionMemoryUiState.Ready(
-                entries = loaded.entries,
-                revision = loaded.revision,
-                issue = loaded.overrideIssue,
-            )
+    suspend fun loadSessionMemory(): SessionMemoryUiState =
+        withContext(Dispatchers.IO) {
+            when (val loaded = sessionMemoryRepository.load(memoryScopeId)) {
+                SessionMemoryLoadResult.Missing -> SessionMemoryUiState.Ready(emptyList(), 0L)
+                is SessionMemoryLoadResult.Unavailable -> SessionMemoryUiState.Failed(loaded.safeReason)
+                is SessionMemoryLoadResult.Loaded ->
+                    SessionMemoryUiState.Ready(
+                        entries = loaded.entries,
+                        revision = loaded.revision,
+                        issue = loaded.overrideIssue,
+                    )
+            }
         }
-    }
 
     fun refreshSessionMemory(notice: String? = null) {
         memoryScreenState = SessionMemoryUiState.Loading
         coroutineScope.launch {
-            memoryStatus = withContext(Dispatchers.IO) {
-                MemoryStatusReader.read(context.applicationContext, memoryScopeId)
-            }
+            memoryStatus =
+                withContext(Dispatchers.IO) {
+                    MemoryStatusReader.read(context.applicationContext, memoryScopeId)
+                }
             val loaded = loadSessionMemory()
-            memoryScreenState = if (loaded is SessionMemoryUiState.Ready) {
-                loaded.copy(notice = notice ?: loaded.notice)
-            } else {
-                loaded
-            }
+            memoryScreenState =
+                if (loaded is SessionMemoryUiState.Ready) {
+                    loaded.copy(notice = notice ?: loaded.notice)
+                } else {
+                    loaded
+                }
         }
     }
     val historySaveMutex = remember { Mutex() }
@@ -294,54 +306,63 @@ fun ChatScreen(
             memoryScopeReady = true
             return@LaunchedEffect
         }
-        val migrated = withContext(Dispatchers.IO) {
-            runCatching {
-                MemoryExtractionJobRepository(MemoryExtractionJobStore(context.applicationContext)).migrateScope(
-                    legacyMemoryScopeId = conversationMemoryScopeId,
-                    roleMemoryScopeId = memoryScopeId,
-                    historyScopeId = conversationHistoryScope,
-                ) {
-                    !MemoryScopeMigration.copyConversationScopeToRole(
-                        context.applicationContext, memoryScopeId, conversationMemoryScopeId,
-                    ).failed
-                }
-            }.isSuccess
-        }
+        val migrated =
+            withContext(Dispatchers.IO) {
+                runCatching {
+                    MemoryExtractionJobRepository(MemoryExtractionJobStore(context.applicationContext)).migrateScope(
+                        legacyMemoryScopeId = conversationMemoryScopeId,
+                        roleMemoryScopeId = memoryScopeId,
+                        historyScopeId = conversationHistoryScope,
+                    ) {
+                        !MemoryScopeMigration.copyConversationScopeToRole(
+                            context.applicationContext,
+                            memoryScopeId,
+                            conversationMemoryScopeId,
+                        ).failed
+                    }
+                }.isSuccess
+            }
         if (migrated) MemoryExtractionQueueWorker.enqueue(context.applicationContext)
         memoryScopeReady = migrated
         memoryScopeFailed = !migrated
         diagnosticStore.info(
-            "memory.scope.migration_checked", "ready=$migrated; scope=${memoryScopeId.take(8)}",
+            "memory.scope.migration_checked",
+            "ready=$migrated; scope=${memoryScopeId.take(8)}",
         )
     }
-    val activeWorldbookId = remember(settings) {
-        settings.getString("active_worldbook_id", "") ?: ""
-    }
-    val worldbookLibrary = remember(context) {
-        WorldBookLibraryStore(File(context.filesDir, "worldbooks")).list()
-    }
-    val sessionWorldbookId = sessions.firstOrNull { it.id == memoryConversationId }
-        ?.worldbookId.orEmpty()
+    val activeWorldbookId =
+        remember(settings) {
+            settings.getString("active_worldbook_id", "") ?: ""
+        }
+    val worldbookLibrary =
+        remember(context) {
+            WorldBookLibraryStore(File(context.filesDir, "worldbooks")).list()
+        }
+    val sessionWorldbookId =
+        sessions.firstOrNull { it.id == memoryConversationId }
+            ?.worldbookId.orEmpty()
     val sessionWorldbookExists = worldbookLibrary.any { it.id == sessionWorldbookId }
-    val effectiveWorldbookId = when {
-        sessionWorldbookId.isNotBlank() && sessionWorldbookExists -> sessionWorldbookId
-        else -> activeWorldbookId
-    }
-    val worldbookSession = rememberChatWorldBookSessionState(
-        context = context,
-        settings = settings,
-        diagnosticStore = diagnosticStore,
-        roleId = activeMemoryRoleId,
-        conversationId = memoryConversationId,
-        worldbookId = effectiveWorldbookId,
-    )
+    val effectiveWorldbookId =
+        when {
+            sessionWorldbookId.isNotBlank() && sessionWorldbookExists -> sessionWorldbookId
+            else -> activeWorldbookId
+        }
+    val worldbookSession =
+        rememberChatWorldBookSessionState(
+            context = context,
+            settings = settings,
+            diagnosticStore = diagnosticStore,
+            roleId = activeMemoryRoleId,
+            conversationId = memoryConversationId,
+            worldbookId = effectiveWorldbookId,
+        )
     var characterCards by remember(context) { mutableStateOf(emptyList<com.mistbell.tavern.v3.feature.character.StoredCharacterCard>()) }
-    var characterMenuExpanded by remember { mutableStateOf(false) }
     val selectedCharacter = characterCards.firstOrNull { it.id == selectedCharacterId }
 
-    val libraryLoadingCoordinator = remember(context, diagnosticStore) {
-        ChatLibraryLoadingCoordinator(context.applicationContext, diagnosticStore)
-    }
+    val libraryLoadingCoordinator =
+        remember(context, diagnosticStore) {
+            ChatLibraryLoadingCoordinator(context.applicationContext, diagnosticStore)
+        }
 
     ChatLibraryLoadingLifecycle(
         context = context,
@@ -349,48 +370,56 @@ fun ChatScreen(
         selectedCharacterId = selectedCharacterId,
         setSelectedCharacterId = { selectedCharacterId = it },
         setCharacterCards = { characterCards = it },
+        revision = com.mistbell.tavern.v3.feature.character.CharacterLibraryRevision.value,
     )
     val memoryExtractionInFlight = remember { mutableSetOf<String>() }
 
-    val historySaveCoordinator = remember(
-        historyStore,
-        coroutineScope,
-        historySaveMutex,
-        historySaveRevision,
-        diagnosticStore,
-    ) {
-        ChatHistorySaveCoordinator(
-            historyStore = historyStore,
-            coroutineScope = coroutineScope,
-            saveMutex = historySaveMutex,
-            saveRevision = historySaveRevision,
-            diagnosticStore = diagnosticStore,
-        )
-    }
+    val historySaveCoordinator =
+        remember(
+            historyStore,
+            coroutineScope,
+            historySaveMutex,
+            historySaveRevision,
+            diagnosticStore,
+        ) {
+            ChatHistorySaveCoordinator(
+                historyStore = historyStore,
+                coroutineScope = coroutineScope,
+                saveMutex = historySaveMutex,
+                saveRevision = historySaveRevision,
+                diagnosticStore = diagnosticStore,
+            )
+        }
 
-    fun savePromptSnapshot(conversationId: String, messages: List<PromptMessage>) {
+    fun savePromptSnapshot(
+        conversationId: String,
+        messages: List<PromptMessage>,
+    ) {
         if (conversationId.isBlank()) return
-        val encoded = JSONArray().apply {
-            messages.forEach { message ->
-                put(JSONObject().put("role", message.role.name).put("content", message.content))
-            }
-        }.toString()
+        val encoded =
+            JSONArray().apply {
+                messages.forEach { message ->
+                    put(JSONObject().put("role", message.role.name).put("content", message.content))
+                }
+            }.toString()
         settings.edit().putString("chat_last_prompt_$conversationId", encoded).apply()
     }
 
     fun loadPromptSnapshot(conversationId: String): List<PromptMessage> {
-        val raw = if (conversationId.isBlank()) {
-            null
-        } else {
-            settings.getString("chat_last_prompt_$conversationId", null)
-        }
+        val raw =
+            if (conversationId.isBlank()) {
+                null
+            } else {
+                settings.getString("chat_last_prompt_$conversationId", null)
+            }
         return raw?.let { encoded ->
             runCatching {
                 val array = JSONArray(encoded)
                 (0 until array.length()).mapNotNull { index ->
                     val item = array.optJSONObject(index) ?: return@mapNotNull null
-                    val role = runCatching { PromptRole.valueOf(item.optString("role")) }.getOrNull()
-                        ?: return@mapNotNull null
+                    val role =
+                        runCatching { PromptRole.valueOf(item.optString("role")) }.getOrNull()
+                            ?: return@mapNotNull null
                     PromptMessage(role, item.optString("content"))
                 }
             }.getOrDefault(emptyList())
@@ -404,7 +433,10 @@ fun ChatScreen(
         lastPromptMessages = emptyList()
     }
 
-    fun saveUsageSummary(conversationId: String, summary: String) {
+    fun saveUsageSummary(
+        conversationId: String,
+        summary: String,
+    ) {
         if (conversationId.isNotBlank()) {
             settings.edit().putString("chat_usage_$conversationId", summary).apply()
         }
@@ -422,12 +454,13 @@ fun ChatScreen(
         val startedNanos = System.nanoTime()
         val snapshot = ChatHistorySnapshotFactory.create(history)
         historySaveCoordinator.save(snapshot)
-        val preview = snapshot.lastOrNull { it.content.isNotBlank() }
-            ?.content
-            ?.trim()
-            ?.replace('\n', ' ')
-            ?.take(80)
-            .orEmpty()
+        val preview =
+            snapshot.lastOrNull { it.content.isNotBlank() }
+                ?.content
+                ?.trim()
+                ?.replace('\n', ' ')
+                ?.take(80)
+                .orEmpty()
         if (memoryConversationId.isNotBlank() && preview.isNotEmpty()) {
             if (sessionStore.touch(memoryConversationId, preview, snapshot.size)) {
                 sessions = sessionStore.list()
@@ -440,31 +473,32 @@ fun ChatScreen(
         )
     }
 
-    val memoryOperationsCoordinator = remember(
-        context,
-        memoryCredentialStore,
-        historyStore,
-        historySaveMutex,
-        coroutineScope,
-        diagnosticStore,
-        memoryScopeId,
-        conversationHistoryScope,
-    ) {
-        ChatMemoryOperationsCoordinator(
-            context = context,
-            memoryCredentialStore = memoryCredentialStore,
-            historyStore = historyStore,
-            historySaveMutex = historySaveMutex,
-            coroutineScope = coroutineScope,
-            diagnosticStore = diagnosticStore,
-            memoryScopeId = memoryScopeId,
-            historyScopeId = conversationHistoryScope,
-            isIndexRebuildInFlight = { memoryIndexRebuildInFlight },
-            setIndexRebuildInFlight = { memoryIndexRebuildInFlight = it },
-            isChatBusy = { busy },
-            setStatus = { status = it },
-        )
-    }
+    val memoryOperationsCoordinator =
+        remember(
+            context,
+            memoryCredentialStore,
+            historyStore,
+            historySaveMutex,
+            coroutineScope,
+            diagnosticStore,
+            memoryScopeId,
+            conversationHistoryScope,
+        ) {
+            ChatMemoryOperationsCoordinator(
+                context = context,
+                memoryCredentialStore = memoryCredentialStore,
+                historyStore = historyStore,
+                historySaveMutex = historySaveMutex,
+                coroutineScope = coroutineScope,
+                diagnosticStore = diagnosticStore,
+                memoryScopeId = memoryScopeId,
+                historyScopeId = conversationHistoryScope,
+                isIndexRebuildInFlight = { memoryIndexRebuildInFlight },
+                setIndexRebuildInFlight = { memoryIndexRebuildInFlight = it },
+                isChatBusy = { busy },
+                setStatus = { status = it },
+            )
+        }
 
     @Suppress("LongMethod", "TooGenericExceptionCaught")
     fun regenerateReply(targetMessageId: String) {
@@ -478,6 +512,7 @@ fun ChatScreen(
             return
         }
         val requestToken = requestGeneration.incrementAndGet()
+
         fun ownsRequest(): Boolean = requestGeneration.get() == requestToken
         val requestConversationId = memoryConversationId
         val requestMemoryScopeId = memoryScopeId
@@ -489,44 +524,46 @@ fun ChatScreen(
         status = "正在准备重新生成…"
         coroutineScope.launch {
             try {
-                val configuration = ChatRequestClientCoordinator(
-                    memoryCredentialStore = memoryCredentialStore,
-                    settings = settings,
-                    setStatus = { status = it },
-                ).create(
-                    baseUrl = baseUrl,
-                    modelId = modelId,
-                    apiKey = apiKey,
-                    memoryBaseUrl = "",
-                    memoryModelId = "",
-                    memoryApiKey = "",
-                )
+                val configuration =
+                    ChatRequestClientCoordinator(
+                        memoryCredentialStore = memoryCredentialStore,
+                        settings = settings,
+                        setStatus = { status = it },
+                    ).create(
+                        baseUrl = baseUrl,
+                        modelId = modelId,
+                        apiKey = apiKey,
+                        memoryBaseUrl = "",
+                        memoryModelId = "",
+                        memoryApiKey = "",
+                    )
                 if (configuration == null) {
                     busy = false
                     status = "重新生成失败：API 配置不完整。"
                     return@launch
                 }
-                val messages = withContext(Dispatchers.IO) {
-                    ChatTurnPromptPreparationCoordinator(
-                        settings = settings,
-                        diagnosticStore = diagnosticStore,
-                        mainHandler = mainHandler,
-                        setStatus = { status = it },
-                        historyPlanner = historyWindowPlanner,
-                        historyWindowCache = historyStore.windowStateCache,
-                    ).prepare(
-                        historyScopeId = requestConversationId.ifBlank { requestMemoryScopeId },
-                        history = plan.prefixHistory,
-                        userText = plan.userText,
-                        characterCards = characterCards,
-                        selectedCharacterId = requestCharacterId,
-                        localWorldbookEntries = requestWorldbookEntries,
-                        worldbookState = requestWorldbookState,
-                        worldbookStateKey = requestWorldbookStateKey,
-                        historyIsComplete = true,
-                        invalidateHistoryWindow = true,
-                    )
-                }
+                val messages =
+                    withContext(Dispatchers.IO) {
+                        ChatTurnPromptPreparationCoordinator(
+                            settings = settings,
+                            diagnosticStore = diagnosticStore,
+                            mainHandler = mainHandler,
+                            setStatus = { status = it },
+                            historyPlanner = historyWindowPlanner,
+                            historyWindowCache = historyStore.windowStateCache,
+                        ).prepare(
+                            historyScopeId = requestConversationId.ifBlank { requestMemoryScopeId },
+                            history = plan.prefixHistory,
+                            userText = plan.userText,
+                            characterCards = characterCards,
+                            selectedCharacterId = requestCharacterId,
+                            localWorldbookEntries = requestWorldbookEntries,
+                            worldbookState = requestWorldbookState,
+                            worldbookStateKey = requestWorldbookStateKey,
+                            historyIsComplete = true,
+                            invalidateHistoryWindow = true,
+                        )
+                    }
                 if (memoryConversationId != requestConversationId || !ownsRequest()) {
                     if (ownsRequest()) {
                         busy = false
@@ -539,69 +576,73 @@ fun ChatScreen(
                 status = "正在重新生成…"
                 val generated = StringBuilder()
                 var regenerateFinishReason: ChatFinishReason? = null
-                val observer = object : ChatStreamObserver {
-                    override fun onDelta(text: String) {
-                        generated.append(text)
-                    }
-
-                    override fun onFinish(reason: ChatFinishReason) {
-                        regenerateFinishReason = reason
-                        diagnosticStore.info("chat.stream.finished", "reason=${reason.name}; regenerate=true")
-                    }
-
-                    override fun onUsage(usage: ChatTokenUsage) {
-                        mainHandler.post {
-                            if (!ownsRequest() || memoryConversationId != requestConversationId) return@post
-                            val summary = formatUsageSummary(usage)
-                            usageSummary = summary
-                            saveUsageSummary(requestConversationId, summary)
+                val observer =
+                    object : ChatStreamObserver {
+                        override fun onDelta(text: String) {
+                            generated.append(text)
                         }
-                    }
 
-                    override fun onComplete() {
-                        mainHandler.post {
-                            if (!ownsRequest() || memoryConversationId != requestConversationId) return@post
-                            val index = history.indexOfFirst { it.id == targetMessageId }
-                            val replacement = if (index >= 0) {
-                                val line = history[index]
-                                val base = line.variants.ifEmpty { listOf(line.content) }
-                                val variants = MessageVariants.append(base, generated.toString())
-                                if (variants !== base) {
-                                    history[index] = line.copy(
-                                        content = variants.last(),
-                                        activeVariant = variants.lastIndex,
-                                        variants = variants,
-                                    )
-                                    persistHistory()
-                                    diagnosticStore.info(
-                                        "chat.regenerate.completed",
-                                        "variants=${variants.size}",
-                                    )
-                                }
-                                true
-                            } else {
-                                false
-                            }
-                            busy = false
-                            status = when {
-                                !replacement -> "生成完成，但目标消息已不存在。"
-                                regenerateFinishReason == ChatFinishReason.LENGTH ->
-                                    "已生成新版本，但达到输出上限。"
-                                regenerateFinishReason == ChatFinishReason.EOF ->
-                                    "已生成新版本，但响应提前结束。"
-                                else -> "已生成新版本。"
+                        override fun onFinish(reason: ChatFinishReason) {
+                            regenerateFinishReason = reason
+                            diagnosticStore.info("chat.stream.finished", "reason=${reason.name}; regenerate=true")
+                        }
+
+                        override fun onUsage(usage: ChatTokenUsage) {
+                            mainHandler.post {
+                                if (!ownsRequest() || memoryConversationId != requestConversationId) return@post
+                                val summary = formatUsageSummary(usage)
+                                usageSummary = summary
+                                saveUsageSummary(requestConversationId, summary)
                             }
                         }
-                    }
 
-                    override fun onFailure(failure: ChatStreamFailure) {
-                        mainHandler.post {
-                            if (!ownsRequest() || memoryConversationId != requestConversationId) return@post
-                            busy = false
-                            status = "重新生成失败：${failure.safeMessage}"
+                        override fun onComplete() {
+                            mainHandler.post {
+                                if (!ownsRequest() || memoryConversationId != requestConversationId) return@post
+                                val index = history.indexOfFirst { it.id == targetMessageId }
+                                val replacement =
+                                    if (index >= 0) {
+                                        val line = history[index]
+                                        val base = line.variants.ifEmpty { listOf(line.content) }
+                                        val variants = MessageVariants.append(base, generated.toString())
+                                        if (variants !== base) {
+                                            history[index] =
+                                                line.copy(
+                                                    content = variants.last(),
+                                                    activeVariant = variants.lastIndex,
+                                                    variants = variants,
+                                                )
+                                            persistHistory()
+                                            diagnosticStore.info(
+                                                "chat.regenerate.completed",
+                                                "variants=${variants.size}",
+                                            )
+                                        }
+                                        true
+                                    } else {
+                                        false
+                                    }
+                                busy = false
+                                status =
+                                    when {
+                                        !replacement -> "生成完成，但目标消息已不存在。"
+                                        regenerateFinishReason == ChatFinishReason.LENGTH ->
+                                            "已生成新版本，但达到输出上限。"
+                                        regenerateFinishReason == ChatFinishReason.EOF ->
+                                            "已生成新版本，但响应提前结束。"
+                                        else -> "已生成新版本。"
+                                    }
+                            }
+                        }
+
+                        override fun onFailure(failure: ChatStreamFailure) {
+                            mainHandler.post {
+                                if (!ownsRequest() || memoryConversationId != requestConversationId) return@post
+                                busy = false
+                                status = "重新生成失败：${failure.safeMessage}"
+                            }
                         }
                     }
-                }
                 ChatMemoryRuntimeCoordinator(
                     context = context,
                     mainHandler = mainHandler,
@@ -627,48 +668,55 @@ fun ChatScreen(
         }
     }
 
-    val sessionDocumentActions = rememberChatSessionDocumentActions(
-        context = context,
-        coroutineScope = coroutineScope,
-        historyStore = historyStore,
-        historySaveMutex = historySaveMutex,
-        historySaveRevision = historySaveRevision,
-        history = history,
-        conversationId = memoryConversationId,
-        setStatus = { status = it },
-        sessionTitle = sessions.firstOrNull { it.id == memoryConversationId }?.title
-            ?: "Mistbell Tavern session",
-        sessionKind = sessions.firstOrNull { it.id == memoryConversationId }?.kind
-            ?: SessionKind.SINGLE,
-        sessionParticipants = sessions.firstOrNull { it.id == memoryConversationId }?.participants
-            .orEmpty(),
-        onImported = { archive ->
-            val metadataUpdated = sessionStore.updateImportedMetadata(
-                id = memoryConversationId,
-                title = archive.title,
-                kind = archive.kind,
-                participants = archive.participants,
-            )
-            if (!metadataUpdated) {
-                status = "会话已导入，但列表标题/类型未能同步，请重新打开应用检查。"
-            }
-            val preview = history.lastOrNull { it.content.isNotBlank() }
-                ?.content
-                ?.trim()
-                ?.replace('\n', ' ')
-                ?.take(80)
-                .orEmpty()
-            if (memoryConversationId.isNotBlank()) {
-                if (sessionStore.touch(memoryConversationId, preview, history.size)) {
-                    sessions = sessionStore.list()
+    val sessionDocumentActions =
+        rememberChatSessionDocumentActions(
+            context = context,
+            coroutineScope = coroutineScope,
+            historyStore = historyStore,
+            historySaveMutex = historySaveMutex,
+            historySaveRevision = historySaveRevision,
+            history = history,
+            conversationId = memoryConversationId,
+            setStatus = { status = it },
+            sessionTitle =
+                sessions.firstOrNull { it.id == memoryConversationId }?.title
+                    ?: "Mistbell Tavern session",
+            sessionKind =
+                sessions.firstOrNull { it.id == memoryConversationId }?.kind
+                    ?: SessionKind.SINGLE,
+            sessionParticipants =
+                sessions.firstOrNull { it.id == memoryConversationId }?.participants
+                    .orEmpty(),
+            onImported = { archive ->
+                val metadataUpdated =
+                    sessionStore.updateImportedMetadata(
+                        id = memoryConversationId,
+                        title = archive.title,
+                        kind = archive.kind,
+                        participants = archive.participants,
+                    )
+                if (!metadataUpdated) {
+                    status = "会话已导入，但列表标题/类型未能同步，请重新打开应用检查。"
                 }
-            }
-        },
-    )
+                val preview =
+                    history.lastOrNull { it.content.isNotBlank() }
+                        ?.content
+                        ?.trim()
+                        ?.replace('\n', ' ')
+                        ?.take(80)
+                        .orEmpty()
+                if (memoryConversationId.isNotBlank()) {
+                    if (sessionStore.touch(memoryConversationId, preview, history.size)) {
+                        sessions = sessionStore.list()
+                    }
+                }
+            },
+        )
 
-    val historyLoadCoordinator = remember(historyStore, diagnosticStore) {
-        ChatHistoryLoadCoordinator(historyStore, diagnosticStore)
-    }
+    val historyLoadCoordinator =
+        remember(historyStore, diagnosticStore) {
+            ChatHistoryLoadCoordinator(historyStore, diagnosticStore)
+        }
 
     ChatHistoryLoadLifecycle(
         context = context,
@@ -688,8 +736,9 @@ fun ChatScreen(
         if (!historyReady || historyLoadFailed || history.isNotEmpty()) return@LaunchedEffect
         val session = sessions.firstOrNull { it.id == memoryConversationId }
         if (session != null && session.kind != SessionKind.SINGLE) return@LaunchedEffect
-        val card = characterCards.firstOrNull { it.id == selectedCharacterId }?.card
-            ?: return@LaunchedEffect
+        val card =
+            characterCards.firstOrNull { it.id == selectedCharacterId }?.card
+                ?: return@LaunchedEffect
         val greeting = card.firstMessage.trim()
         if (greeting.isEmpty()) return@LaunchedEffect
         val content = greeting.replace("{{char}}", card.name).replace("{{user}}", "你")
@@ -713,7 +762,6 @@ fun ChatScreen(
         usageSummary = settings.getString("chat_usage_$memoryConversationId", null)
             ?: "Token 用量：本轮尚无服务端 usage 数据"
     }
-
 
     // Do not compose interactive memory/chat surfaces before migration and queue rebinding.
     // Loading the repository itself may materialize empty projections and block a later copy.
@@ -739,13 +787,14 @@ fun ChatScreen(
             initialRoleId = selectedCharacterId,
             onDismiss = { showCreateSession = false },
             onConfirm = { roleId, worldbookId ->
-                val created = runCatching {
-                    sessionStore.create(
-                        roleId = roleId.ifBlank { activeMemoryRoleId },
-                        title = "新对话",
-                        worldbookId = worldbookId,
-                    )
-                }.getOrNull()
+                val created =
+                    runCatching {
+                        sessionStore.create(
+                            roleId = roleId.ifBlank { activeMemoryRoleId },
+                            title = "新对话",
+                            worldbookId = worldbookId,
+                        )
+                    }.getOrNull()
                 if (created != null) {
                     selectedCharacterId = roleId.ifBlank { activeMemoryRoleId }
                     sessionStore.setRoleId(created.id, selectedCharacterId)
@@ -799,25 +848,27 @@ fun ChatScreen(
                     try {
                         val isCurrent = id == conversationHistoryScope
                         if (isCurrent) historySaveRevision.incrementAndGet()
-                        val historyDeleted = runCatching {
-                            if (isCurrent) {
-                                historySaveMutex.withLock {
-                                    withContext(Dispatchers.IO) { historyStore.deleteAll() }
+                        val historyDeleted =
+                            runCatching {
+                                if (isCurrent) {
+                                    historySaveMutex.withLock {
+                                        withContext(Dispatchers.IO) { historyStore.deleteAll() }
+                                    }
+                                } else {
+                                    val legacy =
+                                        ChatHistoryStore(
+                                            context.applicationContext,
+                                            MemoryScopeFileNames.forScope(ChatHistoryStore.DEFAULT_FILE_NAME, id),
+                                        )
+                                    SqliteChatHistoryRepository(context.applicationContext, id, legacy)
+                                        .use { repository -> repository.deleteAll() }
                                 }
-                            } else {
-                                val legacy = ChatHistoryStore(
-                                    context.applicationContext,
-                                    MemoryScopeFileNames.forScope(ChatHistoryStore.DEFAULT_FILE_NAME, id),
+                            }.onFailure { error ->
+                                diagnosticStore.warn(
+                                    "chat.session.history_delete_failed",
+                                    error::class.java.simpleName,
                                 )
-                                SqliteChatHistoryRepository(context.applicationContext, id, legacy)
-                                    .use { repository -> repository.deleteAll() }
-                            }
-                        }.onFailure { error ->
-                            diagnosticStore.warn(
-                                "chat.session.history_delete_failed",
-                                error::class.java.simpleName,
-                            )
-                        }.isSuccess
+                            }.isSuccess
                         if (!historyDeleted) {
                             status = "删除会话失败：聊天记录未能清除，请重试。"
                             return@launch
@@ -827,12 +878,13 @@ fun ChatScreen(
                         sessions = sessionStore.list()
                         diagnosticStore.info("chat.session.deleted", "remaining=${sessions.size}")
                         if (id == memoryConversationId) {
-                            val next = sessions.firstOrNull()
-                                ?: runCatching { sessionStore.create(activeMemoryRoleId, "新对话") }
-                                    .getOrNull()
-                                    ?.also {
-                                        sessions = sessionStore.list()
-                                    }
+                            val next =
+                                sessions.firstOrNull()
+                                    ?: runCatching { sessionStore.create(activeMemoryRoleId, "新对话") }
+                                        .getOrNull()
+                                        ?.also {
+                                            sessions = sessionStore.list()
+                                        }
                             if (next != null) {
                                 memoryConversationId = next.id
                                 settings.edit().putString("memory_extraction_conversation_id", next.id).apply()
@@ -850,24 +902,27 @@ fun ChatScreen(
                     diagnosticStore.info("chat.session.pinned", "pinned=$pinned")
                 }
             },
-            characters = characterCards.map { card ->
-                GroupCandidate(card.id, card.card.name)
-            },
+            characters =
+                characterCards.map { card ->
+                    GroupCandidate(card.id, card.card.name, card.card.avatarFileName)
+                },
             onCreateGroup = { ids ->
-                val participants = ids.mapNotNull { id ->
-                    characterCards.firstOrNull { it.id == id }?.let { card ->
-                        SessionParticipant(card.id, card.card.name)
+                val participants =
+                    ids.mapNotNull { id ->
+                        characterCards.firstOrNull { it.id == id }?.let { card ->
+                            SessionParticipant(card.id, card.card.name)
+                        }
                     }
-                }
                 if (participants.size >= 2) {
-                    val created = runCatching {
-                        sessionStore.create(
-                            roleId = activeMemoryRoleId,
-                            title = "群聊",
-                            kind = SessionKind.GROUP,
-                            participants = participants,
-                        )
-                    }.getOrNull()
+                    val created =
+                        runCatching {
+                            sessionStore.create(
+                                roleId = activeMemoryRoleId,
+                                title = "群聊",
+                                kind = SessionKind.GROUP,
+                                participants = participants,
+                            )
+                        }.getOrNull()
                     if (created != null) {
                         memoryConversationId = created.id
                         settings.edit().putString("memory_extraction_conversation_id", created.id).apply()
@@ -886,97 +941,104 @@ fun ChatScreen(
 
     LaunchedEffect(showSessionSettings, memoryScopeId) {
         if (showSessionSettings) {
-            memorySummary = withContext(Dispatchers.IO) {
-                when (val loaded = sessionMemoryRepository.load(memoryScopeId)) {
-                    SessionMemoryLoadResult.Missing -> "暂无已保存记忆"
-                    is SessionMemoryLoadResult.Unavailable -> "记忆暂时无法读取"
-                    is SessionMemoryLoadResult.Loaded -> {
-                        val current = loaded.entries.count { it.isCurrent }
-                        "有效 $current 条 · 历史 ${loaded.entries.size - current} 条"
+            memorySummary =
+                withContext(Dispatchers.IO) {
+                    when (val loaded = sessionMemoryRepository.load(memoryScopeId)) {
+                        SessionMemoryLoadResult.Missing -> "暂无已保存记忆"
+                        is SessionMemoryLoadResult.Unavailable -> "记忆暂时无法读取"
+                        is SessionMemoryLoadResult.Loaded -> {
+                            val current = loaded.entries.count { it.isCurrent }
+                            "有效 $current 条 · 历史 ${loaded.entries.size - current} 条"
+                        }
                     }
                 }
-            }
         }
     }
 
     if (showMemoryScreen) {
         BackHandler { showMemoryScreen = false }
         SessionMemoryScreen(
-            scopeTitle = if (isGroupMemoryScope) {
-                "当前群聊 · 独立记忆（作用域 ${memoryScopeId.take(8)}）"
-            } else {
-                "当前角色 · 跨会话共享（作用域 ${memoryScopeId.take(8)}）"
-            },
+            scopeTitle =
+                if (isGroupMemoryScope) {
+                    "当前群聊 · 独立记忆（作用域 ${memoryScopeId.take(8)}）"
+                } else {
+                    "当前角色 · 跨会话共享（作用域 ${memoryScopeId.take(8)}）"
+                },
             state = memoryScreenState,
             status = memoryStatus,
-            actions = SessionMemoryActions(
-            onBack = { showMemoryScreen = false },
-            onReload = { refreshSessionMemory() },
-            onSave = { factId, revision, subject, predicate, value ->
-                coroutineScope.launch {
-                    val result = withContext(Dispatchers.IO) {
-                        sessionMemoryRepository.saveEdit(
-                            memoryScopeId,
-                            factId,
-                            revision,
-                            MemoryEditDraft(subject, predicate, value),
-                        )
-                    }
-                    refreshSessionMemory(
-                        when (result) {
-                            is SessionMemorySaveResult.Saved ->
-                                result.projectionWarning ?: "已保存；索引刷新后检索会使用新内容。"
-                            is SessionMemorySaveResult.Conflict ->
-                                "这条记忆已被其他修改更新，已刷新为最新版本，请重新编辑。"
-                            is SessionMemorySaveResult.Invalid -> result.safeReason
-                            SessionMemorySaveResult.NotFound -> "这条记忆已不存在，已刷新。"
-                            is SessionMemorySaveResult.Failed -> "保存失败：${result.safeReason}"
-                        },
-                    )
-                }
-            },
-            onRevert = { factId, revision ->
-                coroutineScope.launch {
-                    val result = withContext(Dispatchers.IO) {
-                        sessionMemoryRepository.revert(factId, revision)
-                    }
-                    refreshSessionMemory(
-                        when (result) {
-                            is SessionMemorySaveResult.Saved -> result.projectionWarning ?: "已恢复自动抽取版本。"
-                            is SessionMemorySaveResult.Conflict -> "这条记忆已被其他修改更新，已刷新，请重试。"
-                            is SessionMemorySaveResult.Invalid -> result.safeReason
-                            SessionMemorySaveResult.NotFound -> "这条记忆已不存在，已刷新。"
-                            is SessionMemorySaveResult.Failed -> "恢复失败：${result.safeReason}"
-                        },
-                    )
-                }
-            },
-            onRetryFailed = {
-                coroutineScope.launch {
-                    val retried = withContext(Dispatchers.IO) {
-                        val handle = settings.getString("memory_api_credential_handle", null)
-                            ?.takeIf { it.isNotBlank() && memoryCredentialStore.contains(it) }
-                        if (handle == null) {
-                            null
-                        } else {
-                            MemoryExtractionJobRepository(
-                                MemoryExtractionJobStore(context.applicationContext),
-                            ).retryPermanentFailures(memoryScopeId, System.currentTimeMillis(), handle)
+            actions =
+                SessionMemoryActions(
+                    onBack = { showMemoryScreen = false },
+                    onReload = { refreshSessionMemory() },
+                    onSave = { factId, revision, subject, predicate, value ->
+                        coroutineScope.launch {
+                            val result =
+                                withContext(Dispatchers.IO) {
+                                    sessionMemoryRepository.saveEdit(
+                                        memoryScopeId,
+                                        factId,
+                                        revision,
+                                        MemoryEditDraft(subject, predicate, value),
+                                    )
+                                }
+                            refreshSessionMemory(
+                                when (result) {
+                                    is SessionMemorySaveResult.Saved ->
+                                        result.projectionWarning ?: "已保存；索引刷新后检索会使用新内容。"
+                                    is SessionMemorySaveResult.Conflict ->
+                                        "这条记忆已被其他修改更新，已刷新为最新版本，请重新编辑。"
+                                    is SessionMemorySaveResult.Invalid -> result.safeReason
+                                    SessionMemorySaveResult.NotFound -> "这条记忆已不存在，已刷新。"
+                                    is SessionMemorySaveResult.Failed -> "保存失败：${result.safeReason}"
+                                },
+                            )
                         }
-                    }
-                    if (retried == null) {
-                        refreshSessionMemory("请先在记忆 API 设置中保存有效的 API Key，再重试失败任务。")
-                        return@launch
-                    }
-                    if (retried > 0) {
-                        MemoryExtractionQueueWorker.enqueue(context.applicationContext)
-                        refreshSessionMemory("已重新排队 $retried 条失败任务；后台会重试。")
-                    } else {
-                        refreshSessionMemory("当前没有可重试的失败任务。")
-                    }
-                }
-            },
-            ),
+                    },
+                    onRevert = { factId, revision ->
+                        coroutineScope.launch {
+                            val result =
+                                withContext(Dispatchers.IO) {
+                                    sessionMemoryRepository.revert(factId, revision)
+                                }
+                            refreshSessionMemory(
+                                when (result) {
+                                    is SessionMemorySaveResult.Saved -> result.projectionWarning ?: "已恢复自动抽取版本。"
+                                    is SessionMemorySaveResult.Conflict -> "这条记忆已被其他修改更新，已刷新，请重试。"
+                                    is SessionMemorySaveResult.Invalid -> result.safeReason
+                                    SessionMemorySaveResult.NotFound -> "这条记忆已不存在，已刷新。"
+                                    is SessionMemorySaveResult.Failed -> "恢复失败：${result.safeReason}"
+                                },
+                            )
+                        }
+                    },
+                    onRetryFailed = {
+                        coroutineScope.launch {
+                            val retried =
+                                withContext(Dispatchers.IO) {
+                                    val handle =
+                                        settings.getString("memory_api_credential_handle", null)
+                                            ?.takeIf { it.isNotBlank() && memoryCredentialStore.contains(it) }
+                                    if (handle == null) {
+                                        null
+                                    } else {
+                                        MemoryExtractionJobRepository(
+                                            MemoryExtractionJobStore(context.applicationContext),
+                                        ).retryPermanentFailures(memoryScopeId, System.currentTimeMillis(), handle)
+                                    }
+                                }
+                            if (retried == null) {
+                                refreshSessionMemory("请先在记忆 API 设置中保存有效的 API Key，再重试失败任务。")
+                                return@launch
+                            }
+                            if (retried > 0) {
+                                MemoryExtractionQueueWorker.enqueue(context.applicationContext)
+                                refreshSessionMemory("已重新排队 $retried 条失败任务；后台会重试。")
+                            } else {
+                                refreshSessionMemory("当前没有可重试的失败任务。")
+                            }
+                        }
+                    },
+                ),
         )
         return
     }
@@ -1034,10 +1096,6 @@ fun ChatScreen(
                 showSessionSettings = false
                 sessionDocumentActions.onExportJsonl()
             },
-            onOpenGlobalSettings = {
-                showSessionSettings = false
-                onBack()
-            },
             onDismiss = { showSessionSettings = false },
         )
     }
@@ -1050,6 +1108,65 @@ fun ChatScreen(
         )
     }
 
+    messageActionTarget?.let { target ->
+        ChatMessageActionSheet(
+            target = target,
+            onCopy = {
+                messageActionTarget = null
+                clipboard.setText(AnnotatedString(target.content))
+            },
+            onEdit = {
+                messageActionTarget = null
+                messageEditTarget = target
+            },
+            onRegenerate = {
+                messageActionTarget = null
+                regenerateReply(target.messageId)
+            },
+            onDelete = {
+                messageActionTarget = null
+                if (!busy) {
+                    history.removeAll { line -> line.id == target.messageId }
+                    persistHistory()
+                }
+                diagnosticStore.info("chat.message.deleted", "role=${if (target.isUser) "user" else "assistant"}")
+            },
+            onDismiss = { messageActionTarget = null },
+        )
+    }
+
+    messageEditTarget?.let { target ->
+        ChatMessageEditDialog(
+            initial = target.content,
+            onDismiss = { messageEditTarget = null },
+            onConfirm = { updated ->
+                messageEditTarget = null
+                val index = history.indexOfFirst { line -> line.id == target.messageId }
+                if (!busy && index >= 0 && updated.isNotBlank()) {
+                    history[index] = history[index].withEditedContent(updated)
+                    persistHistory()
+                    diagnosticStore.info("chat.message.edited", "role=${if (target.isUser) "user" else "assistant"}")
+                }
+            },
+        )
+    }
+
+    if (showCharacterPicker) {
+        CharacterPickerSheet(
+            characters = characterCards,
+            selectedCharacterId = selectedCharacterId,
+            onSelect = { characterId ->
+                selectedCharacterId = characterId
+                ChatCharacterSelectionCoordinator(settings).select(characterId)
+                if (memoryConversationId.isNotBlank() && sessionStore.setRoleId(memoryConversationId, characterId)) {
+                    sessions = sessionStore.list()
+                }
+                clearPromptSnapshot()
+                showCharacterPicker = false
+            },
+            onDismiss = { showCharacterPicker = false },
+        )
+    }
 
     BackHandler(enabled = !showSessionList) {
         if (busy) {
@@ -1062,100 +1179,62 @@ fun ChatScreen(
     Scaffold(
         containerColor = Color.Transparent,
         topBar = {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.surface),
-            ) {
-            TopAppBar(
-                windowInsets = WindowInsets(0),
-                modifier = Modifier.statusBarsPadding(),
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
-                title = {
-                    Box {
-                        TextButton(onClick = { characterMenuExpanded = true }) {
-                            Text(
-                                (selectedCharacter?.card?.name ?: "聊天") + " ▾",
-                                style = MaterialTheme.typography.titleMedium,
-                            )
-                        }
-                        DropdownMenu(
-                            expanded = characterMenuExpanded,
-                            onDismissRequest = { characterMenuExpanded = false },
-                        ) {
-                            characterCards.forEach { character ->
-                                DropdownMenuItem(
-                                    text = {
-                                        Text(
-                                            character.card.name +
-                                                if (character.id == selectedCharacterId) " ✓" else "",
-                                        )
-                                    },
-                                    onClick = {
-                                        selectedCharacterId = character.id
-                                        ChatCharacterSelectionCoordinator(settings).select(character.id)
-                                        if (memoryConversationId.isNotBlank() &&
-                                            sessionStore.setRoleId(memoryConversationId, character.id)
-                                        ) {
-                                            sessions = sessionStore.list()
-                                        }
-                                        clearPromptSnapshot()
-                                        characterMenuExpanded = false
-                                    },
-                                )
-                            }
-                        }
+            ChatTopBar(
+                characterName = selectedCharacter?.card?.name ?: "聊天",
+                avatarFileName = selectedCharacter?.card?.avatarFileName,
+                showPrompt = lastPromptMessages.isNotEmpty(),
+                onOpenSessions = {
+                    if (busy) {
+                        status = "生成中，请先停止再切换会话。"
+                    } else {
+                        showSessionList = true
                     }
                 },
-                navigationIcon = {
-                    Button(onClick = onBack) { Text("返回首页") }
-                },
-                actions = {
-                    if (lastPromptMessages.isNotEmpty()) {
-                        TextButton(onClick = { showPromptPreview = true }) { Text("☰") }
-                    }
-                    TextButton(
-                        onClick = {
-                            if (busy) {
-                                status = "生成中，请先停止再切换会话。"
-                            } else {
-                                showSessionList = true
-                            }
-                        },
-                    ) { Text("会话") }
-                    TextButton(onClick = { showSessionSettings = true }) { Text("⚙") }
-                },
+                onOpenCharacterPicker = { showCharacterPicker = true },
+                onOpenPrompt = { showPromptPreview = true },
+                onOpenSettings = { showSessionSettings = true },
             )
-            }
         },
     ) { padding ->
         Column(
             modifier = Modifier.fillMaxSize().padding(padding).padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-
             chatConversationPane(
-                pane = ConversationPaneState(
-                    conversationId = conversationHistoryScope,
-                    historyReady = historyReady && !historyLoadFailed &&
-                        loadedHistoryScope == conversationHistoryScope,
-                    history = history,
-                    busy = busy,
-                ),
+                pane =
+                    ConversationPaneState(
+                        conversationId = conversationHistoryScope,
+                        historyReady =
+                            historyReady && !historyLoadFailed &&
+                                loadedHistoryScope == conversationHistoryScope,
+                        history = history,
+                        busy = busy,
+                    ),
+                assistantAvatarFileName = selectedCharacter?.card?.avatarFileName,
                 onSelectVariant = { messageId, requested ->
                     val index = history.indexOfFirst { it.id == messageId }
                     if (index >= 0) {
                         val line = history[index]
                         val target = MessageVariants.select(line.variants, requested)
-                        history[index] = line.copy(
-                            content = line.variants.getOrElse(target) { line.content },
-                            activeVariant = target,
-                        )
+                        history[index] =
+                            line.copy(
+                                content = line.variants.getOrElse(target) { line.content },
+                                activeVariant = target,
+                            )
                         persistHistory()
                         diagnosticStore.info("chat.swipe.selected", "variants=${line.variants.size}")
                     }
                 },
-                onRegenerate = ::regenerateReply,
+                onMessageLongPress = { line ->
+                    if (!busy) {
+                        messageActionTarget =
+                            ChatMessageActionTarget(
+                                messageId = line.id,
+                                isUser = line.role == "user",
+                                content = line.activeContent,
+                            )
+                    }
+                },
             )
             if (usageSummary.isNotBlank()) {
                 Text(
@@ -1169,14 +1248,29 @@ fun ChatScreen(
                     draft = chatUiState.draft,
                     enabled = !busy && !historyLoadFailed,
                     onDraftChange = chatViewModel::updateDraft,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(end = 56.dp),
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(end = 56.dp),
                 )
-                Button(
+                val sendButtonState =
+                    when {
+                        busy -> SendButtonState.Sending
+                        !historyReady || historyLoadFailed || !worldbookSession.ready -> SendButtonState.Disabled
+                        chatUiState.draft.isBlank() -> SendButtonState.Idle
+                        else -> SendButtonState.Ready
+                    }
+                TavernSendButton(
+                    state = sendButtonState,
+                    modifier = Modifier.align(Alignment.CenterEnd).padding(end = 2.dp),
                     onClick = {
+                        if (busy) {
+                            status = "生成中，请稍候。"
+                            return@TavernSendButton
+                        }
                         coroutineScope.launch {
                             val requestToken = requestGeneration.incrementAndGet()
+
                             fun ownsSendRequest(): Boolean = requestGeneration.get() == requestToken
                             val requestConversationId = memoryConversationId
                             val requestMemoryScopeId = memoryScopeId
@@ -1184,50 +1278,56 @@ fun ChatScreen(
                             val requestWorldbookEntries = worldbookSession.entries
                             val requestWorldbookState = worldbookSession.activation.activationState
                             val requestWorldbookStateKey = worldbookSession.activation.stateKey
-                            val preparedRequest = ChatSendRequestPreflightCoordinator(
-                                memoryCredentialStore = memoryCredentialStore,
-                                settings = settings,
-                                setStatus = { status = it },
-                            ).prepare(
-                                userText = chatViewModel.uiState.value.draft,
-                                busy = busy,
-                                worldbooksReady = worldbookSession.ready,
-                                baseUrl = baseUrl,
-                                modelId = modelId,
-                                apiKey = apiKey,
-                                memoryBaseUrl = memoryBaseUrl,
-                                memoryModelId = memoryModelId,
-                                memoryApiKey = memoryApiKey,
-                            ) ?: return@launch
+                            val preparedRequest =
+                                ChatSendRequestPreflightCoordinator(
+                                    memoryCredentialStore = memoryCredentialStore,
+                                    settings = settings,
+                                    setStatus = { status = it },
+                                ).prepare(
+                                    userText = chatViewModel.uiState.value.draft,
+                                    busy = busy,
+                                    worldbooksReady = worldbookSession.ready,
+                                    baseUrl = baseUrl,
+                                    modelId = modelId,
+                                    apiKey = apiKey,
+                                    memoryBaseUrl = memoryBaseUrl,
+                                    memoryModelId = memoryModelId,
+                                    memoryApiKey = memoryApiKey,
+                                ) ?: return@launch
                             val userText = preparedRequest.userText
                             val providersForRequest = preparedRequest.providers
                             val client = preparedRequest.client
-                            val openingMessage = characterCards.firstOrNull { it.id == selectedCharacterId }
-                                ?.card?.firstMessage?.trim().orEmpty()
+                            val openingMessage =
+                                characterCards.firstOrNull { it.id == selectedCharacterId }
+                                    ?.card?.firstMessage?.trim().orEmpty()
                             val historyBeforeTurn = history.toList()
                             val currentSession = sessions.firstOrNull { it.id == memoryConversationId }
-                            val groupMembers = currentSession?.participants
-                                ?.map { GroupPromptAssembler.Member(it.id, it.name, "") }
-                                .orEmpty()
-                            val isGroupTurn = currentSession?.kind == SessionKind.GROUP &&
-                                groupMembers.isNotEmpty()
-                            val groupPrepared = if (isGroupTurn) {
-                                val cardDefinition = characterCards
-                                    .firstOrNull { it.id == selectedCharacterId }
-                                    ?.card
-                                    ?.let(ChatCharacterPromptFormatter::format)
-                                    ?.takeIf(String::isNotBlank)
-                                    ?: "You are taking part in a multi-character roleplay."
-                                GroupChatSendPlanner.prepare(
-                                    stableSystemPrefix = cardDefinition,
-                                    members = groupMembers,
-                                    history = historyBeforeTurn,
-                                    draft = userText,
-                                    lastSpeakerId = lastGroupSpeakerId,
-                                )
-                            } else {
-                                null
-                            }
+                            val groupMembers =
+                                currentSession?.participants
+                                    ?.map { GroupPromptAssembler.Member(it.id, it.name, "") }
+                                    .orEmpty()
+                            val isGroupTurn =
+                                currentSession?.kind == SessionKind.GROUP &&
+                                    groupMembers.isNotEmpty()
+                            val groupPrepared =
+                                if (isGroupTurn) {
+                                    val cardDefinition =
+                                        characterCards
+                                            .firstOrNull { it.id == selectedCharacterId }
+                                            ?.card
+                                            ?.let(ChatCharacterPromptFormatter::format)
+                                            ?.takeIf(String::isNotBlank)
+                                            ?: "You are taking part in a multi-character roleplay."
+                                    GroupChatSendPlanner.prepare(
+                                        stableSystemPrefix = cardDefinition,
+                                        members = groupMembers,
+                                        history = historyBeforeTurn,
+                                        draft = userText,
+                                        lastSpeakerId = lastGroupSpeakerId,
+                                    )
+                                } else {
+                                    null
+                                }
                             ChatSendTurnStartCoordinator(
                                 history = history,
                                 persistHistory = ::persistHistory,
@@ -1249,41 +1349,43 @@ fun ChatScreen(
                             val assistantMessageId = history.lastOrNull { it.role == "assistant" }?.id.orEmpty()
                             val requestHistory = history.toList()
                             diagnosticStore.info("chat.send.prepare.begin", "history=${requestHistory.size}")
-                            val messages = try {
-                                withTimeoutOrNull(PROMPT_PREPARE_TIMEOUT_MS) {
-                                withContext(Dispatchers.IO) {
-                                    ChatTurnPromptPreparationCoordinator(
-                                        settings = settings,
-                                        diagnosticStore = diagnosticStore,
-                                        mainHandler = mainHandler,
-                                        setStatus = { status = it },
-                                        historyPlanner = historyWindowPlanner,
-                                        historyWindowCache = historyStore.windowStateCache,
-                                    ).prepare(
-                                        historyScopeId = requestConversationId.ifBlank { requestMemoryScopeId },
-                                        history = requestHistory,
-                                        userText = userText,
-                                        characterCards = characterCards,
-                                        selectedCharacterId = requestCharacterId,
-                                        localWorldbookEntries = requestWorldbookEntries,
-                                        worldbookState = requestWorldbookState,
-                                        worldbookStateKey = requestWorldbookStateKey,
-                                        groupContext = groupPrepared?.let { prepared ->
-                                            GroupChatPromptContext(
-                                                members = groupMembers,
-                                                speakerName = prepared.speakerName,
+                            val messages =
+                                try {
+                                    withTimeoutOrNull(PROMPT_PREPARE_TIMEOUT_MS) {
+                                        withContext(Dispatchers.IO) {
+                                            ChatTurnPromptPreparationCoordinator(
+                                                settings = settings,
+                                                diagnosticStore = diagnosticStore,
+                                                mainHandler = mainHandler,
+                                                setStatus = { status = it },
+                                                historyPlanner = historyWindowPlanner,
+                                                historyWindowCache = historyStore.windowStateCache,
+                                            ).prepare(
+                                                historyScopeId = requestConversationId.ifBlank { requestMemoryScopeId },
+                                                history = requestHistory,
+                                                userText = userText,
+                                                characterCards = characterCards,
+                                                selectedCharacterId = requestCharacterId,
+                                                localWorldbookEntries = requestWorldbookEntries,
+                                                worldbookState = requestWorldbookState,
+                                                worldbookStateKey = requestWorldbookStateKey,
+                                                groupContext =
+                                                    groupPrepared?.let { prepared ->
+                                                        GroupChatPromptContext(
+                                                            members = groupMembers,
+                                                            speakerName = prepared.speakerName,
+                                                        )
+                                                    },
                                             )
-                                        },
-                                    )
+                                        }
+                                    }
+                                } catch (error: Exception) {
+                                    if (ownsSendRequest()) {
+                                        busy = false
+                                        status = "提示词准备失败：${error.message ?: error.javaClass.simpleName}"
+                                    }
+                                    return@launch
                                 }
-                                }
-                            } catch (error: Exception) {
-                                if (ownsSendRequest()) {
-                                    busy = false
-                                    status = "提示词准备失败：${error.message ?: error.javaClass.simpleName}"
-                                }
-                                return@launch
-                            }
                             if (messages == null) {
                                 if (ownsSendRequest()) {
                                     busy = false
@@ -1301,70 +1403,73 @@ fun ChatScreen(
                             }
                             lastPromptMessages = messages
                             savePromptSnapshot(requestConversationId, messages)
-                            val baseObserver = ChatStreamObserverCoordinator(
-                                mainHandler = mainHandler,
-                                history = history,
-                                diagnosticStore = diagnosticStore,
-                                setBusy = { busy = it },
-                                setStatus = { status = it },
-                                memoryStatusNotice = { memoryStatusNotice },
-                                setUsageSummary = {
-                                    usageSummary = it
-                                    saveUsageSummary(requestConversationId, it)
-                                },
-                                persistHistory = ::persistHistory,
-                                scheduleMemoryExtraction = { providers ->
-                                    if (memoryExtractionEnabled) {
-                                        memoryOperationsCoordinator.scheduleExtractionIfDue(
-                                            providers,
-                                            history.toList(),
-                                        )
-                                    }
-                                },
-                            ).create(
-                            providersForRequest = providersForRequest,
-                            conversationId = requestConversationId,
-                            assistantMessageId = assistantMessageId,
-                            isCurrentRequest = {
-                                requestGeneration.get() == requestToken &&
-                                    memoryConversationId == requestConversationId
-                            },
-                        )
-                            val observer = if (groupPrepared != null) {
-                                object : ChatStreamObserver {
-                                    override fun onDelta(text: String) = baseObserver.onDelta(text)
-
-                                    override fun onUsage(usage: ChatTokenUsage) = baseObserver.onUsage(usage)
-
-                                    override fun onFinish(reason: ChatFinishReason) =
-                                        baseObserver.onFinish(reason)
-
-                                    override fun onFailure(failure: ChatStreamFailure) =
-                                        baseObserver.onFailure(failure)
-
-                                    override fun onComplete() {
-                                        mainHandler.post {
-                                            if (!ownsSendRequest() ||
-                                                memoryConversationId != requestConversationId
-                                            ) {
-                                                return@post
-                                            }
-                                            val index = history.indexOfFirst { it.id == assistantMessageId }
-                                            if (index >= 0) {
-                                                history[index] = history[index].copy(
-                                                    speakerId = groupPrepared.speakerId,
-                                                    speakerName = groupPrepared.speakerName,
-                                                )
-                                            }
-                                            lastGroupSpeakerId = groupPrepared.speakerId
-                                            persistHistory()
+                            val baseObserver =
+                                ChatStreamObserverCoordinator(
+                                    mainHandler = mainHandler,
+                                    history = history,
+                                    diagnosticStore = diagnosticStore,
+                                    setBusy = { busy = it },
+                                    setStatus = { status = it },
+                                    memoryStatusNotice = { memoryStatusNotice },
+                                    setUsageSummary = {
+                                        usageSummary = it
+                                        saveUsageSummary(requestConversationId, it)
+                                    },
+                                    persistHistory = ::persistHistory,
+                                    scheduleMemoryExtraction = { providers ->
+                                        if (memoryExtractionEnabled) {
+                                            memoryOperationsCoordinator.scheduleExtractionIfDue(
+                                                providers,
+                                                history.toList(),
+                                            )
                                         }
-                                        baseObserver.onComplete()
+                                    },
+                                ).create(
+                                    providersForRequest = providersForRequest,
+                                    conversationId = requestConversationId,
+                                    assistantMessageId = assistantMessageId,
+                                    isCurrentRequest = {
+                                        requestGeneration.get() == requestToken &&
+                                            memoryConversationId == requestConversationId
+                                    },
+                                )
+                            val observer =
+                                if (groupPrepared != null) {
+                                    object : ChatStreamObserver {
+                                        override fun onDelta(text: String) = baseObserver.onDelta(text)
+
+                                        override fun onUsage(usage: ChatTokenUsage) = baseObserver.onUsage(usage)
+
+                                        override fun onFinish(reason: ChatFinishReason) = baseObserver.onFinish(reason)
+
+                                        override fun onFailure(failure: ChatStreamFailure) {
+                                            baseObserver.onFailure(failure)
+                                        }
+
+                                        override fun onComplete() {
+                                            mainHandler.post {
+                                                if (!ownsSendRequest() ||
+                                                    memoryConversationId != requestConversationId
+                                                ) {
+                                                    return@post
+                                                }
+                                                val index = history.indexOfFirst { it.id == assistantMessageId }
+                                                if (index >= 0) {
+                                                    history[index] =
+                                                        history[index].copy(
+                                                            speakerId = groupPrepared.speakerId,
+                                                            speakerName = groupPrepared.speakerName,
+                                                        )
+                                                }
+                                                lastGroupSpeakerId = groupPrepared.speakerId
+                                                persistHistory()
+                                            }
+                                            baseObserver.onComplete()
+                                        }
                                     }
+                                } else {
+                                    baseObserver
                                 }
-                            } else {
-                                baseObserver
-                            }
                             ChatSendStreamFallbackCoordinator(
                                 coroutineScope = coroutineScope,
                                 diagnosticStore = diagnosticStore,
@@ -1409,17 +1514,7 @@ fun ChatScreen(
                             )
                         }
                     },
-                    enabled = !busy && historyReady && !historyLoadFailed &&
-                        worldbookSession.ready && chatUiState.draft.isNotBlank(),
-                    modifier = Modifier
-                        .align(Alignment.CenterEnd)
-                        .padding(end = 4.dp)
-                        .size(48.dp),
-                    shape = androidx.compose.foundation.shape.CircleShape,
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
-                ) {
-                    Text("➤", style = MaterialTheme.typography.titleMedium)
-                }
+                )
             }
         }
     }

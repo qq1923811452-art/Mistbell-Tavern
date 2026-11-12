@@ -2,14 +2,12 @@ package com.mistbell.tavern.v3.feature.image
 
 import android.content.Context
 import android.graphics.BitmapFactory
-import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -19,12 +17,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -36,6 +34,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import com.mistbell.tavern.v3.ui.tavern.rememberTavernListState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -58,12 +57,14 @@ private data class PendingRemoteImage(
 @Composable
 fun ImageGenerationScreen(onBack: () -> Unit) {
     val context = LocalContext.current
-    val settings = remember(context) {
-        context.getSharedPreferences("mistbell-v3-settings", Context.MODE_PRIVATE)
-    }
-    val store = remember(context) {
-        GeneratedImageStore(File(context.filesDir, "generated-images"))
-    }
+    val settings =
+        remember(context) {
+            context.getSharedPreferences("mistbell-v3-settings", Context.MODE_PRIVATE)
+        }
+    val store =
+        remember(context) {
+            GeneratedImageStore(File(context.filesDir, "generated-images"))
+        }
     val scope = rememberCoroutineScope()
     var baseUrl by remember(settings) {
         mutableStateOf(settings.getString("image_api_base_url", "https://api.odys.work/v1") ?: "https://api.odys.work/v1")
@@ -80,36 +81,44 @@ fun ImageGenerationScreen(onBack: () -> Unit) {
     var previewImage by remember { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
     var exportTarget by remember { mutableStateOf<StoredGeneratedImage?>(null) }
 
-    val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { uri ->
-        val target = exportTarget
-        exportTarget = null
-        if (uri == null || target == null) {
-            if (uri == null) status = "已取消图片导出。"
-        } else {
-            scope.launch {
-                runCatching {
-                    withContext(Dispatchers.IO) {
-                        val output = context.contentResolver.openOutputStream(uri)
-                            ?: throw IOException("导出目标无法打开。")
-                        output.use { store.export(target.id, it) }
+    val exportLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { uri ->
+            val target = exportTarget
+            exportTarget = null
+            if (uri == null || target == null) {
+                if (uri == null) status = "已取消图片导出。"
+            } else {
+                scope.launch {
+                    runCatching {
+                        withContext(Dispatchers.IO) {
+                            val output =
+                                context.contentResolver.openOutputStream(uri)
+                                    ?: throw IOException("导出目标无法打开。")
+                            output.use { store.export(target.id, it) }
+                        }
+                    }.onSuccess {
+                        status = "图片已导出：${target.fileName}"
+                    }.onFailure {
+                        status = "图片导出失败：${it.message ?: it::class.java.simpleName}"
                     }
-                }.onSuccess {
-                    status = "图片已导出：${target.fileName}"
-                }.onFailure {
-                    status = "图片导出失败：${it.message ?: it::class.java.simpleName}"
                 }
             }
         }
-    }
 
     fun refreshLibrary(previewId: String? = null) {
         scope.launch {
-            val result = withContext(Dispatchers.IO) {
-                val images = store.list()
-                val selected = images.firstOrNull { it.id == previewId } ?: images.firstOrNull()
-                val bitmap = selected?.let { BitmapFactory.decodeFile(File(context.filesDir, "generated-images/${it.fileName}").absolutePath)?.asImageBitmap() }
-                images to bitmap
-            }
+            val result =
+                withContext(Dispatchers.IO) {
+                    val images = store.list()
+                    val selected = images.firstOrNull { it.id == previewId } ?: images.firstOrNull()
+                    val bitmap =
+                        selected?.let {
+                            BitmapFactory.decodeFile(
+                                File(context.filesDir, "generated-images/${it.fileName}").absolutePath,
+                            )?.asImageBitmap()
+                        }
+                    images to bitmap
+                }
             savedImages = result.first
             previewImage = result.second
         }
@@ -124,6 +133,7 @@ fun ImageGenerationScreen(onBack: () -> Unit) {
         },
     ) { padding ->
         LazyColumn(
+            state = rememberTavernListState("image_gen"),
             modifier = Modifier.fillMaxSize().padding(padding).padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
@@ -187,16 +197,22 @@ fun ImageGenerationScreen(onBack: () -> Unit) {
                                     runCatching {
                                         withContext(Dispatchers.IO) {
                                             val client = ImageGenerationClient(baseForRequest, { keyForRequest })
-                                            val result = client.generate(
-                                                ImageGenerationRequest(prompt = promptForRequest, model = modelForRequest),
-                                            )
+                                            val result =
+                                                client.generate(
+                                                    ImageGenerationRequest(prompt = promptForRequest, model = modelForRequest),
+                                                )
                                             val stored = mutableListOf<StoredGeneratedImage>()
                                             val remote = mutableListOf<PendingRemoteImage>()
                                             result.images.forEach { image ->
                                                 if (image.base64Data != null) {
                                                     stored += store.save(image, promptForRequest, result.model ?: modelForRequest)
                                                 } else if (image.remoteUrl != null) {
-                                                    remote += PendingRemoteImage(image.remoteUrl, promptForRequest, result.model ?: modelForRequest)
+                                                    remote +=
+                                                        PendingRemoteImage(
+                                                            image.remoteUrl,
+                                                            promptForRequest,
+                                                            result.model ?: modelForRequest,
+                                                        )
                                                 }
                                             }
                                             Triple(stored, remote, store.list())
@@ -205,13 +221,14 @@ fun ImageGenerationScreen(onBack: () -> Unit) {
                                         savedImages = result.third
                                         pendingRemoteImages = result.second
                                         refreshLibrary(result.first.firstOrNull()?.id)
-                                        status = when {
-                                            result.first.isNotEmpty() && result.second.isEmpty() ->
-                                                "生成完成，已安全保存 ${result.first.size} 张图片。"
-                                            result.second.isNotEmpty() ->
-                                                "服务端返回了远程图片地址。为避免未经允许的网络访问，请点击对应按钮后再下载保存。"
-                                            else -> "图片 API 未返回可保存的图片。"
-                                        }
+                                        status =
+                                            when {
+                                                result.first.isNotEmpty() && result.second.isEmpty() ->
+                                                    "生成完成，已安全保存 ${result.first.size} 张图片。"
+                                                result.second.isNotEmpty() ->
+                                                    "服务端返回了远程图片地址。为避免未经允许的网络访问，请点击对应按钮后再下载保存。"
+                                                else -> "图片 API 未返回可保存的图片。"
+                                            }
                                     }.onFailure { error ->
                                         status = "图片生成失败：${error.message ?: error::class.java.simpleName}"
                                     }
@@ -285,7 +302,10 @@ fun ImageGenerationScreen(onBack: () -> Unit) {
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text(image.fileName, style = MaterialTheme.typography.bodyMedium)
-                        Text("${image.mimeType} · ${image.sizeBytes / 1024} KiB · ${image.prompt.take(120)}", style = MaterialTheme.typography.bodySmall)
+                        Text(
+                            "${image.mimeType} · ${image.sizeBytes / 1024} KiB · ${image.prompt.take(120)}",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Button(
                                 enabled = !busy,
@@ -313,19 +333,21 @@ fun ImageGenerationScreen(onBack: () -> Unit) {
 }
 
 private fun downloadExplicitlySelectedImage(url: String): ByteArray {
-    val uri = try {
-        URI(url)
-    } catch (error: Exception) {
-        throw IOException("图片 URL 无效。", error)
-    }
+    val uri =
+        try {
+            URI(url)
+        } catch (error: Exception) {
+            throw IOException("图片 URL 无效。", error)
+        }
     require(uri.scheme.equals("https", ignoreCase = true) && !uri.host.isNullOrBlank() && uri.rawUserInfo == null) {
         "只允许下载安全的 HTTPS 图片地址。"
     }
-    val client = OkHttpClient.Builder()
-        .followRedirects(false)
-        .followSslRedirects(false)
-        .callTimeout(30, TimeUnit.SECONDS)
-        .build()
+    val client =
+        OkHttpClient.Builder()
+            .followRedirects(false)
+            .followSslRedirects(false)
+            .callTimeout(30, TimeUnit.SECONDS)
+            .build()
     val request = Request.Builder().url(uri.toASCIIString()).get().build()
     client.newCall(request).execute().use { response ->
         if (response.code in 300..399) throw IOException("图片地址发生重定向，已拒绝下载。")
@@ -335,10 +357,11 @@ private fun downloadExplicitlySelectedImage(url: String): ByteArray {
         val buffer = Buffer()
         var total = 0L
         while (total <= GeneratedImageStore.MAX_IMAGE_BYTES) {
-            val count = source.read(
-                buffer,
-                minOf(8192L, GeneratedImageStore.MAX_IMAGE_BYTES + 1L - total),
-            )
+            val count =
+                source.read(
+                    buffer,
+                    minOf(8192L, GeneratedImageStore.MAX_IMAGE_BYTES + 1L - total),
+                )
             if (count == -1L) break
             total += count
             if (total > GeneratedImageStore.MAX_IMAGE_BYTES) {

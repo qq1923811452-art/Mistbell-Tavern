@@ -4,7 +4,6 @@ import android.content.Context
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
@@ -23,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import com.mistbell.tavern.v3.core.diagnostics.DiagnosticLogStore
 import com.mistbell.tavern.v3.core.security.AndroidKeystoreMemoryCredentialStore
 import com.mistbell.tavern.v3.feature.chat.ChatMemoryApiSettingsSection
+import com.mistbell.tavern.v3.ui.tavern.rememberTavernScrollState
 
 /** Memory extraction endpoint and credential, independent from the chat API. */
 @Suppress("FunctionNaming", "LongMethod")
@@ -30,9 +30,10 @@ import com.mistbell.tavern.v3.feature.chat.ChatMemoryApiSettingsSection
 @Composable
 fun MemorySettingsScreen(onBack: () -> Unit) {
     val context = LocalContext.current
-    val settings = remember(context) {
-        context.getSharedPreferences("mistbell-v3-settings", Context.MODE_PRIVATE)
-    }
+    val settings =
+        remember(context) {
+            context.getSharedPreferences("mistbell-v3-settings", Context.MODE_PRIVATE)
+        }
     val credentialStore = remember(context) { AndroidKeystoreMemoryCredentialStore(context) }
     val diagnosticStore = remember(context) { DiagnosticLogStore(context.filesDir) }
     var baseUrl by remember {
@@ -60,11 +61,12 @@ fun MemorySettingsScreen(onBack: () -> Unit) {
         },
     ) { padding ->
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp),
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .verticalScroll(rememberTavernScrollState("memory_settings"))
+                    .padding(16.dp),
         ) {
             ChatMemoryApiSettingsSection(
                 settings = settings,

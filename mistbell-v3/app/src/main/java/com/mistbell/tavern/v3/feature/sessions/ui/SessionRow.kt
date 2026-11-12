@@ -1,4 +1,4 @@
-@file:Suppress("FunctionNaming")
+@file:Suppress("FunctionNaming", "MagicNumber")
 
 package com.mistbell.tavern.v3.feature.sessions.ui
 
@@ -41,21 +41,33 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mistbell.tavern.v3.feature.sessions.ChatSession
 import com.mistbell.tavern.v3.feature.sessions.SessionKind
+import com.mistbell.tavern.v3.ui.CharacterAvatar
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
 private val SESSION_CARD_SHAPE = RoundedCornerShape(20.dp)
-private val SESSION_CARD_BRUSH = Brush.verticalGradient(
-    colors = listOf(TAVERN_CARD_TOP, TAVERN_CARD_BOTTOM),
-)
-private val SESSION_CARD_SELECTED_BRUSH = Brush.verticalGradient(
-    colors = listOf(TAVERN_CARD_SELECTED_TOP, TAVERN_CARD_SELECTED_BOTTOM),
-)
-private val SESSION_AVATAR_BRUSH = Brush.linearGradient(
-    colors = listOf(TAVERN_AVATAR_START, TAVERN_AVATAR_END),
-)
+private val SESSION_CARD_BRUSH =
+    Brush.verticalGradient(
+        colors = listOf(TAVERN_CARD_TOP, TAVERN_CARD_BOTTOM),
+    )
+private val SESSION_CARD_SELECTED_BRUSH =
+    Brush.verticalGradient(
+        colors = listOf(TAVERN_CARD_SELECTED_TOP, TAVERN_CARD_SELECTED_BOTTOM),
+    )
+private val SESSION_CARD_SHEEN =
+    Brush.verticalGradient(
+        colors = listOf(Color(0x33FFFFFF), Color(0x0AFFFFFF)),
+    )
+private val SESSION_CARD_EDGE_BRUSH =
+    Brush.verticalGradient(
+        colors = listOf(Color(0x4DFFFFFF), Color(0x0DFFFFFF)),
+    )
+private val SOLID_PURPLE_BRUSH =
+    Brush.verticalGradient(
+        colors = listOf(TAVERN_PURPLE, TAVERN_PURPLE),
+    )
 private val SESSION_CARD_PADDING = 14.dp
 private val SESSION_CARD_GAP = 12.dp
 private val SESSION_AVATAR_SIZE = 52.dp
@@ -70,8 +82,6 @@ private val CARD_TIME_SIZE = 11.sp
 private val PIN_BADGE_HORIZONTAL_PADDING = 6.dp
 private val PIN_BADGE_VERTICAL_PADDING = 2.dp
 private val PIN_BADGE_TEXT_SIZE = 9.sp
-private val AVATAR_INITIAL_SIZE = 20.sp
-private val AVATAR_BORDER_WIDTH = 1.dp
 private val MENU_TOUCH_SIZE = 40.dp
 private val MENU_GLYPH_SIZE = 22.sp
 
@@ -81,7 +91,6 @@ private const val DEFAULT_ROLE_ID = "default-character"
 private const val GROUP_ROLE_NAME = "群聊"
 private const val UNSELECTED_ROLE_NAME = "未选择角色"
 private const val UNKNOWN_ROLE_NAME = "未知角色"
-private const val AVATAR_FALLBACK_INITIAL = "·"
 private const val TODAY_TIME_PATTERN = "HH:mm"
 private const val DATE_PATTERN = "MM/dd"
 private const val MENU_CONTENT_DESCRIPTION = "更多操作"
@@ -91,6 +100,7 @@ private data class SessionRowUi(
     val roleName: String,
     val preview: String,
     val timeLabel: String,
+    val avatarFileName: String? = null,
 )
 
 private data class SessionRowActions(
@@ -112,22 +122,25 @@ fun SessionRow(
     characters: List<GroupCandidate> = emptyList(),
 ) {
     val timeLabel = remember(session.updatedAt) { formatSessionTimestamp(session.updatedAt) }
-    val ui = SessionRowUi(
-        title = session.title.ifBlank { DEFAULT_SESSION_TITLE },
-        roleName = session.roleDisplayName(characters),
-        preview = session.preview.ifBlank { EMPTY_PREVIEW },
-        timeLabel = timeLabel,
-    )
+    val ui =
+        SessionRowUi(
+            title = session.title.ifBlank { DEFAULT_SESSION_TITLE },
+            roleName = session.roleDisplayName(characters),
+            preview = session.preview.ifBlank { EMPTY_PREVIEW },
+            timeLabel = timeLabel,
+            avatarFileName = characters.firstOrNull { it.id == session.roleId }?.avatarFileName,
+        )
     SessionCard(
         session = session,
         ui = ui,
         selected = selected,
-        actions = SessionRowActions(
-            onClick = onClick,
-            onRename = onRename,
-            onDelete = onDelete,
-            onTogglePin = onTogglePin,
-        ),
+        actions =
+            SessionRowActions(
+                onClick = onClick,
+                onRename = onRename,
+                onDelete = onDelete,
+                onTogglePin = onTogglePin,
+            ),
     )
 }
 
@@ -141,30 +154,35 @@ private fun SessionCard(
 ) {
     var menuExpanded by remember(session.id) { mutableStateOf(false) }
     Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(SESSION_CARD_SHAPE)
-            .background(
-                brush = if (selected) SESSION_CARD_SELECTED_BRUSH else SESSION_CARD_BRUSH,
-                shape = SESSION_CARD_SHAPE,
-            )
-            .border(
-                width = if (selected) CARD_SELECTED_BORDER_WIDTH else CARD_BORDER_WIDTH,
-                color = if (selected) TAVERN_PURPLE else TAVERN_CARD_BORDER,
-                shape = SESSION_CARD_SHAPE,
-            )
-            .combinedClickable(
-                onClick = actions.onClick,
-                onLongClick = { menuExpanded = true },
-            )
-            .padding(SESSION_CARD_PADDING),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clip(SESSION_CARD_SHAPE)
+                .background(
+                    brush = if (selected) SESSION_CARD_SELECTED_BRUSH else SESSION_CARD_BRUSH,
+                    shape = SESSION_CARD_SHAPE,
+                )
+                .background(brush = SESSION_CARD_SHEEN, shape = SESSION_CARD_SHAPE)
+                .border(
+                    width = if (selected) CARD_SELECTED_BORDER_WIDTH else CARD_BORDER_WIDTH,
+                    brush = if (selected) SOLID_PURPLE_BRUSH else SESSION_CARD_EDGE_BRUSH,
+                    shape = SESSION_CARD_SHAPE,
+                )
+                .combinedClickable(
+                    onClick = actions.onClick,
+                    onLongClick = { menuExpanded = true },
+                )
+                .padding(SESSION_CARD_PADDING),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(SESSION_CARD_GAP),
         ) {
-            SessionAvatar(name = ui.roleName)
+            SessionAvatar(
+                name = ui.roleName,
+                avatarFileName = ui.avatarFileName,
+            )
             SessionCardDetails(
                 ui = ui,
                 pinned = session.pinned,
@@ -232,35 +250,28 @@ private fun SessionCardDetails(
 }
 
 @Composable
-private fun SessionAvatar(name: String) {
-    val initial = name.trim().firstOrNull()?.uppercaseChar()?.toString() ?: AVATAR_FALLBACK_INITIAL
-    Box(
-        modifier = Modifier
-            .size(SESSION_AVATAR_SIZE)
-            .clip(CircleShape)
-            .background(SESSION_AVATAR_BRUSH)
-            .border(AVATAR_BORDER_WIDTH, TAVERN_AVATAR_BORDER, CircleShape),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = initial,
-            color = Color.White,
-            fontSize = AVATAR_INITIAL_SIZE,
-            fontWeight = FontWeight.Bold,
-        )
-    }
+private fun SessionAvatar(
+    name: String,
+    avatarFileName: String?,
+) {
+    CharacterAvatar(
+        name = name,
+        avatarFileName = avatarFileName,
+        size = SESSION_AVATAR_SIZE,
+    )
 }
 
 @Composable
 private fun PinnedBadge() {
     Box(
-        modifier = Modifier
-            .clip(CircleShape)
-            .background(TAVERN_PIN_BADGE_BG)
-            .padding(
-                horizontal = PIN_BADGE_HORIZONTAL_PADDING,
-                vertical = PIN_BADGE_VERTICAL_PADDING,
-            ),
+        modifier =
+            Modifier
+                .clip(CircleShape)
+                .background(TAVERN_PIN_BADGE_BG)
+                .padding(
+                    horizontal = PIN_BADGE_HORIZONTAL_PADDING,
+                    vertical = PIN_BADGE_VERTICAL_PADDING,
+                ),
     ) {
         Text(
             text = "置顶",
@@ -280,15 +291,16 @@ private fun SessionMenu(
 ) {
     Box {
         Box(
-            modifier = Modifier
-                .size(MENU_TOUCH_SIZE)
-                .clip(CircleShape)
-                .clickable(
-                    onClickLabel = MENU_CONTENT_DESCRIPTION,
-                    role = Role.Button,
-                    onClick = { onExpandedChange(true) },
-                )
-                .semantics { contentDescription = MENU_CONTENT_DESCRIPTION },
+            modifier =
+                Modifier
+                    .size(MENU_TOUCH_SIZE)
+                    .clip(CircleShape)
+                    .clickable(
+                        onClickLabel = MENU_CONTENT_DESCRIPTION,
+                        role = Role.Button,
+                        onClick = { onExpandedChange(true) },
+                    )
+                    .semantics { contentDescription = MENU_CONTENT_DESCRIPTION },
             contentAlignment = Alignment.Center,
         ) {
             Text(
@@ -350,8 +362,9 @@ private fun formatSessionTimestamp(updatedAt: Long): String =
     } else {
         val now = Calendar.getInstance()
         val sessionTime = Calendar.getInstance().apply { timeInMillis = updatedAt }
-        val isToday = now.get(Calendar.YEAR) == sessionTime.get(Calendar.YEAR) &&
-            now.get(Calendar.DAY_OF_YEAR) == sessionTime.get(Calendar.DAY_OF_YEAR)
+        val isToday =
+            now.get(Calendar.YEAR) == sessionTime.get(Calendar.YEAR) &&
+                now.get(Calendar.DAY_OF_YEAR) == sessionTime.get(Calendar.DAY_OF_YEAR)
         val pattern = if (isToday) TODAY_TIME_PATTERN else DATE_PATTERN
         SimpleDateFormat(pattern, Locale.getDefault()).format(Date(updatedAt))
     }

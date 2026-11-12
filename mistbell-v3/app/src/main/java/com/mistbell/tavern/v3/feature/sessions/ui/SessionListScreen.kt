@@ -2,14 +2,17 @@
 
 package com.mistbell.tavern.v3.feature.sessions.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -27,19 +30,29 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.mistbell.tavern.v3.R
 import com.mistbell.tavern.v3.feature.sessions.ChatSession
+import com.mistbell.tavern.v3.ui.CharacterAvatar
+import com.mistbell.tavern.v3.ui.TavernBackground
+import com.mistbell.tavern.v3.ui.tavern.TavernCheck
+import com.mistbell.tavern.v3.ui.tavern.TavernDialog
+import com.mistbell.tavern.v3.ui.tavern.TavernDialogActions
+import com.mistbell.tavern.v3.ui.tavern.TavernDialogTitle
+import com.mistbell.tavern.v3.ui.tavern.TavernPalette
+import com.mistbell.tavern.v3.ui.tavern.TavernShape
+import com.mistbell.tavern.v3.ui.tavern.rememberTavernListState
 
 private val LIST_HORIZONTAL_PADDING = 16.dp
-private val LIST_TOP_PADDING = 8.dp
-private val LIST_BOTTOM_PADDING = 112.dp
+private val LIST_TOP_PADDING = 4.dp
+private val LIST_BOTTOM_PADDING = 24.dp
 private val LIST_ITEM_SPACING = 10.dp
-private val FAB_END_PADDING = 20.dp
-private val FAB_BOTTOM_PADDING = 22.dp
 private val GROUP_DIALOG_MAX_HEIGHT = 320.dp
-private val GROUP_ITEM_SPACING = 4.dp
-private val GROUP_ITEM_VERTICAL_PADDING = 2.dp
+private val GROUP_AVATAR_SIZE = 38.dp
 
 private const val MIN_GROUP_MEMBERS = 2
 private const val MAX_GROUP_MEMBERS = 6
@@ -61,19 +74,24 @@ fun SessionListScreen(
     var deleteTarget by remember { mutableStateOf<ChatSession?>(null) }
     var showGroupDialog by remember { mutableStateOf(false) }
 
-
     MaterialTheme(colorScheme = TAVERN_DARK_COLOR_SCHEME) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            SessionListBackdrop()
+        // The painted backdrop replaces the flat gradient: the scrim is lighter here than on the
+        // chat screen because the list is mostly cards, which already carry their own contrast.
+        TavernBackground(
+            drawable = R.drawable.bg_sessions,
+            topAlpha = 0.30f,
+            middleAlpha = 0.26f,
+            bottomAlpha = 0.72f,
+        ) {
             Scaffold(
                 containerColor = Color.Transparent,
                 // The tab bar is drawn by the host below this surface and already reserves the
-                // system navigation inset. Reserving it again leaves a dead black band that clips
-                // the last rows and pushes the FAB upwards.
+                // system navigation inset. Reserving it again leaves a dead band under the list.
                 contentWindowInsets = WindowInsets(0, 0, 0, 0),
                 topBar = {
                     SessionListHeader(
                         showGroupAction = characters.isNotEmpty(),
+                        onCreateSession = onCreateSession,
                         onOpenGroupDialog = { showGroupDialog = true },
                     )
                 },
@@ -90,12 +108,6 @@ fun SessionListScreen(
                     onTogglePin = onTogglePin,
                 )
             }
-            NewSessionFab(
-                onClick = onCreateSession,
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(end = FAB_END_PADDING, bottom = FAB_BOTTOM_PADDING),
-            )
         }
         SessionMutationDialogs(
             renameTarget = renameTarget,
@@ -135,28 +147,33 @@ private fun SessionListContent(
     onTogglePin: (id: String, pinned: Boolean) -> Unit,
 ) {
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(contentPadding),
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .padding(contentPadding),
     ) {
         if (sessions.isEmpty()) {
             SessionEmptyState(
                 onCreateSession = onCreateSession,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
             )
         } else {
             LazyColumn(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                contentPadding = PaddingValues(
-                    start = LIST_HORIZONTAL_PADDING,
-                    end = LIST_HORIZONTAL_PADDING,
-                    top = LIST_TOP_PADDING,
-                    bottom = LIST_BOTTOM_PADDING,
-                ),
+                state = rememberTavernListState("session_list"),
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                contentPadding =
+                    PaddingValues(
+                        start = LIST_HORIZONTAL_PADDING,
+                        end = LIST_HORIZONTAL_PADDING,
+                        top = LIST_TOP_PADDING,
+                        bottom = LIST_BOTTOM_PADDING,
+                    ),
                 verticalArrangement = Arrangement.spacedBy(LIST_ITEM_SPACING),
             ) {
                 items(sessions, key = { it.id }) { session ->
@@ -241,46 +258,69 @@ private fun GroupCreateDialog(
     onConfirm: (List<String>) -> Unit,
 ) {
     var selected by remember { mutableStateOf(setOf<String>()) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("新建群聊") },
-        text = {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = GROUP_DIALOG_MAX_HEIGHT),
-                verticalArrangement = Arrangement.spacedBy(GROUP_ITEM_SPACING),
-            ) {
-                items(characters, key = { it.id }) { candidate ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = GROUP_ITEM_VERTICAL_PADDING),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Checkbox(
-                            checked = candidate.id in selected,
-                            onCheckedChange = { checked ->
-                                selected = if (checked) {
-                                    (selected + candidate.id).take(MAX_GROUP_MEMBERS).toSet()
-                                } else {
-                                    selected - candidate.id
-                                }
-                            },
-                        )
-                        Text(candidate.name)
-                    }
-                }
+    TavernDialog(onDismissRequest = onDismiss) {
+        TavernDialogTitle(title = "新建群聊", subtitle = "选 2–6 位角色，同一条时间线里一起回应")
+        Spacer(Modifier.height(12.dp))
+        LazyColumn(
+            modifier = Modifier.heightIn(max = GROUP_DIALOG_MAX_HEIGHT),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            items(characters, key = { it.id }) { candidate ->
+                val checked = candidate.id in selected
+                GroupCandidateRow(
+                    candidate = candidate,
+                    checked = checked,
+                    onToggle = {
+                        selected =
+                            if (checked) {
+                                selected - candidate.id
+                            } else {
+                                (selected + candidate.id).take(MAX_GROUP_MEMBERS).toSet()
+                            }
+                    },
+                )
             }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = { onConfirm(selected.toList()) },
-                enabled = selected.size in MIN_GROUP_MEMBERS..MAX_GROUP_MEMBERS,
-            ) { Text("创建") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("取消") }
-        },
-    )
+        }
+        TavernDialogActions(
+            confirmLabel = "创建群聊",
+            onConfirm = { onConfirm(selected.toList()) },
+            onDismiss = onDismiss,
+            confirmEnabled = selected.size in MIN_GROUP_MEMBERS..MAX_GROUP_MEMBERS,
+        )
+    }
+}
+
+@Suppress("FunctionNaming")
+@Composable
+private fun GroupCandidateRow(
+    candidate: GroupCandidate,
+    checked: Boolean,
+    onToggle: () -> Unit,
+) {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clip(TavernShape.CardSmall)
+                .background(if (checked) TavernPalette.Purple.copy(alpha = 0.12f) else Color.Transparent)
+                .clickable(role = androidx.compose.ui.semantics.Role.Checkbox, onClick = onToggle)
+                .padding(horizontal = 10.dp, vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        CharacterAvatar(
+            name = candidate.name,
+            avatarFileName = candidate.avatarFileName,
+            size = GROUP_AVATAR_SIZE,
+        )
+        Text(
+            text = candidate.name,
+            color = TavernPalette.TextPrimary,
+            fontSize = 15.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        TavernCheck(checked = checked)
+    }
 }

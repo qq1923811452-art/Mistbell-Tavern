@@ -13,6 +13,20 @@ internal data class ChatLine(
     val variants: List<String> = emptyList(),
     val activeVariant: Int = 0,
 ) {
+    /** Updates the visible alternative as well as the compatibility content field. */
+    fun withEditedContent(updated: String): ChatLine =
+        copy(
+            content = updated,
+            variants =
+                if (variants.isEmpty()) {
+                    emptyList()
+                } else {
+                    variants.mapIndexed { index, text ->
+                        if (index == activeVariant) updated else text
+                    }
+                },
+        )
+
     /** Text of the currently selected alternative, falling back to [content]. */
     val activeContent: String
         get() = variants.getOrNull(activeVariant) ?: content

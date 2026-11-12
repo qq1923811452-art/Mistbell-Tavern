@@ -6,16 +6,15 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
 import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -24,6 +23,7 @@ import com.mistbell.tavern.v3.core.inference.BackendEvidence
 import com.mistbell.tavern.v3.core.inference.InferenceBackend
 import com.mistbell.tavern.v3.core.inference.InferencePhase
 import com.mistbell.tavern.v3.core.inference.InferenceRuntimeStatus
+import com.mistbell.tavern.v3.ui.tavern.rememberTavernScrollState
 
 /** Compact page for the on-device embedding model and NPU diagnostics. */
 @Suppress("FunctionNaming", "LongParameterList", "LongMethod")
@@ -57,11 +57,12 @@ fun LocalModelScreen(
         },
     ) { padding ->
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp),
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .verticalScroll(rememberTavernScrollState("local_model"))
+                    .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             ModelStatusBlock(inferenceStatus)
@@ -137,38 +138,43 @@ fun LocalModelScreen(
 @Composable
 private fun ModelStatusBlock(status: InferenceRuntimeStatus) {
     // A verified runtime that has not run in this process is not the same as an unverified one.
-    val evidenceVerified = status.backendEvidence == BackendEvidence.RUNTIME_REPORTED ||
-        status.backendEvidence == BackendEvidence.DEVICE_VERIFIED
-    val backend = when (status.backend) {
-        InferenceBackend.NPU -> "NPU"
-        InferenceBackend.GPU -> "GPU"
-        InferenceBackend.CPU -> "CPU"
-        InferenceBackend.UNKNOWN -> if (evidenceVerified) "待本次启动执行" else "未验证"
-    }
-    val phase = when (status.phase) {
-        InferencePhase.NOT_INITIALIZED -> {
-            if (evidenceVerified) "本次进程尚未运行引擎（设备证据已验证）" else "尚未初始化"
+    val evidenceVerified =
+        status.backendEvidence == BackendEvidence.RUNTIME_REPORTED ||
+            status.backendEvidence == BackendEvidence.DEVICE_VERIFIED
+    val backend =
+        when (status.backend) {
+            InferenceBackend.NPU -> "NPU"
+            InferenceBackend.GPU -> "GPU"
+            InferenceBackend.CPU -> "CPU"
+            InferenceBackend.UNKNOWN -> if (evidenceVerified) "待本次启动执行" else "未验证"
         }
-        InferencePhase.LOADING_MODEL -> "正在加载模型"
-        InferencePhase.INITIALIZED -> "已初始化，尚未执行推理"
-        InferencePhase.READY -> "已就绪"
-        InferencePhase.RUNNING -> "正在推理"
-        InferencePhase.FALLBACK -> "已回退"
-        InferencePhase.FAILED -> "初始化/推理失败"
-    }
+    val phase =
+        when (status.phase) {
+            InferencePhase.NOT_INITIALIZED -> {
+                if (evidenceVerified) "本次进程尚未运行引擎（设备证据已验证）" else "尚未初始化"
+            }
+            InferencePhase.LOADING_MODEL -> "正在加载模型"
+            InferencePhase.INITIALIZED -> "已初始化，尚未执行推理"
+            InferencePhase.READY -> "已就绪"
+            InferencePhase.RUNNING -> "正在推理"
+            InferencePhase.FALLBACK -> "已回退"
+            InferencePhase.FAILED -> "初始化/推理失败"
+        }
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text("本地 Embedding / NPU 状态", style = MaterialTheme.typography.titleMedium)
         Text("$phase · 实际后端：$backend", style = MaterialTheme.typography.bodyMedium)
-        val evidence = when (status.backendEvidence) {
-            BackendEvidence.NOT_AVAILABLE -> "未验证"
-            BackendEvidence.CONFIGURED_ONLY -> "仅配置成功，未独立确认硬件调用"
-            BackendEvidence.RUNTIME_REPORTED -> when {
-                status.backend == InferenceBackend.NPU -> "运行时证据已验证（本次启动已执行）"
-                status.phase == InferencePhase.FAILED -> "运行时证据已验证；上次执行失败"
-                else -> "运行时证据已验证，本次启动尚未执行"
+        val evidence =
+            when (status.backendEvidence) {
+                BackendEvidence.NOT_AVAILABLE -> "未验证"
+                BackendEvidence.CONFIGURED_ONLY -> "仅配置成功，未独立确认硬件调用"
+                BackendEvidence.RUNTIME_REPORTED ->
+                    when {
+                        status.backend == InferenceBackend.NPU -> "运行时证据已验证（本次启动已执行）"
+                        status.phase == InferencePhase.FAILED -> "运行时证据已验证；上次执行失败"
+                        else -> "运行时证据已验证，本次启动尚未执行"
+                    }
+                BackendEvidence.DEVICE_VERIFIED -> "设备侧证据确认"
             }
-            BackendEvidence.DEVICE_VERIFIED -> "设备侧证据确认"
-        }
         Text("实际验证：$evidence", style = MaterialTheme.typography.bodySmall)
         status.modelId?.let { Text("模型：$it", style = MaterialTheme.typography.bodySmall) }
         status.acceleratorName?.let {

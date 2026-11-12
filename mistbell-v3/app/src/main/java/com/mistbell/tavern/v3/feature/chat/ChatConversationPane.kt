@@ -48,7 +48,8 @@ internal data class ConversationPaneState(
 internal fun ColumnScope.chatConversationPane(
     pane: ConversationPaneState,
     onSelectVariant: (String, Int) -> Unit,
-    onRegenerate: (String) -> Unit,
+    onMessageLongPress: (ChatLine) -> Unit = {},
+    assistantAvatarFileName: String? = null,
 ) {
     key(pane.conversationId) {
         val state = rememberLazyListState()
@@ -60,14 +61,16 @@ internal fun ColumnScope.chatConversationPane(
                     busy = pane.busy,
                     listState = state,
                     onSelectVariant = onSelectVariant,
-                    onRegenerate = onRegenerate,
+                    onMessageLongPress = onMessageLongPress,
+                    assistantAvatarFileName = assistantAvatarFileName,
                 )
             }
             if (pane.historyReady && scroll.showReturnToBottom) {
                 TextButton(
                     onClick = scroll.onReturnToBottom,
-                    modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp)
-                        .testTag("conversation-bottom"),
+                    modifier =
+                        Modifier.align(Alignment.BottomEnd).padding(8.dp)
+                            .testTag("conversation-bottom"),
                 ) { Text("回到底部 ↓") }
             }
         }
@@ -91,26 +94,31 @@ internal fun rememberConversationScroll(
     val messages by rememberUpdatedState(history)
     val policy = remember { ConversationScrollPolicy() }
     val requests = remember { Channel<Unit>(Channel.CONFLATED) }
-    val controls = remember(state) {
-        ConversationScrollControls(
-            connection = object : NestedScrollConnection {
-                override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                    if (source == NestedScrollSource.UserInput && available.y != 0f) policy.onUserScroll()
-                    return Offset.Zero
-                }
-            },
-            onReturnToBottom = {
-                policy.returnToBottom()
-                requests.trySend(Unit)
-            },
-        )
-    }
+    val controls =
+        remember(state) {
+            ConversationScrollControls(
+                connection =
+                    object : NestedScrollConnection {
+                        override fun onPreScroll(
+                            available: Offset,
+                            source: NestedScrollSource,
+                        ): Offset {
+                            if (source == NestedScrollSource.UserInput && available.y != 0f) policy.onUserScroll()
+                            return Offset.Zero
+                        }
+                    },
+                onReturnToBottom = {
+                    policy.returnToBottom()
+                    requests.trySend(Unit)
+                },
+            )
+        }
     LaunchedEffect(state) {
         launch {
             snapshotFlow { ready to messages.lastOrNull { it.role == "user" }?.id }
                 .collect { (loaded, userId) ->
-                if (policy.onHistory(loaded, userId)) requests.trySend(Unit)
-            }
+                    if (policy.onHistory(loaded, userId)) requests.trySend(Unit)
+                }
         }
         launch {
             snapshotFlow { state.canScrollForward to state.isScrollInProgress }.collect { (forward, scrolling) ->
