@@ -2,7 +2,6 @@ package com.mistbell.tavern.v3.feature.about
 
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Scaffold
@@ -14,6 +13,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.mistbell.tavern.v3.ui.tavern.rememberTavernScrollState
 
 /** Shows the bundled third-party notices so license obligations stay reachable in the app. */
 @Suppress("FunctionNaming")
@@ -21,11 +21,12 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun LicensesScreen(onBack: () -> Unit) {
     val context = LocalContext.current
-    val text = remember {
-        runCatching {
-            context.assets.open("THIRD_PARTY_NOTICES.md").bufferedReader().use { it.readText() }
-        }.getOrDefault("未找到许可文件。")
-    }
+    val text =
+        remember {
+            runCatching {
+                context.assets.open("THIRD_PARTY_NOTICES.md").bufferedReader().use { it.readText() }
+            }.getOrDefault("未找到许可文件。")
+        }
     Scaffold(
         topBar = {
             TopAppBar(
@@ -36,11 +37,12 @@ fun LicensesScreen(onBack: () -> Unit) {
     ) { padding ->
         Text(
             text = text,
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(16.dp)
-                .verticalScroll(rememberScrollState()),
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .padding(16.dp)
+                    .verticalScroll(rememberTavernScrollState("licenses")),
         )
     }
 }

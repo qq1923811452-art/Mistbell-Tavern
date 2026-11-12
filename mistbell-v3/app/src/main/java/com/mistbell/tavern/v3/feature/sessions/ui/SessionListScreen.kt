@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import com.mistbell.tavern.v3.R
 import com.mistbell.tavern.v3.feature.sessions.ChatSession
 import com.mistbell.tavern.v3.ui.TavernBackground
+import com.mistbell.tavern.v3.ui.tavern.rememberTavernListState
 
 private val LIST_HORIZONTAL_PADDING = 16.dp
 private val LIST_TOP_PADDING = 4.dp
@@ -148,6 +149,7 @@ private fun SessionListContent(
             )
         } else {
             LazyColumn(
+                state = rememberTavernListState("session_list"),
                 modifier =
                     Modifier
                         .fillMaxWidth()

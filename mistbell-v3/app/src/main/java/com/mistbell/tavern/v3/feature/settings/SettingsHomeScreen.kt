@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
@@ -40,6 +39,7 @@ import com.mistbell.tavern.v3.ui.tavern.TavernPageHeader
 import com.mistbell.tavern.v3.ui.tavern.TavernPalette
 import com.mistbell.tavern.v3.ui.tavern.TavernSectionLabel
 import com.mistbell.tavern.v3.ui.tavern.TavernShape
+import com.mistbell.tavern.v3.ui.tavern.rememberTavernScrollState
 
 private const val SWITCH_TRACK_ALPHA = 0.45f
 private const val TEXT_FIELD_WIDTH = 150
@@ -73,7 +73,7 @@ fun SettingsHomeScreen(
     Column(
         Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
+            .verticalScroll(rememberTavernScrollState("settings"))
             .padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {

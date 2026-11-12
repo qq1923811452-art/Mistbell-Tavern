@@ -24,6 +24,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.core.view.WindowCompat
 import androidx.lifecycle.lifecycleScope
 import com.mistbell.tavern.v3.core.diagnostics.DiagnosticLogStore
 import com.mistbell.tavern.v3.core.inference.InferenceBackend
@@ -108,8 +109,24 @@ class MainActivity : ComponentActivity() {
             allowCustomModel = allowCustomModel,
         )
 
+    /**
+     * Android 15+ ignores `window.navigationBarColor`, so the system draws its own contrast scrim
+     * over the gesture bar — a light grey strip on an otherwise dark app. Disabling the scrim lets
+     * the app's own bar show through, and light system icons keep them legible on it.
+     */
+    private fun configureSystemBars() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window.isNavigationBarContrastEnforced = false
+        }
+        WindowCompat.getInsetsController(window, window.decorView).apply {
+            isAppearanceLightStatusBars = false
+            isAppearanceLightNavigationBars = false
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        configureSystemBars()
         diagnostics = DiagnosticLogStore(filesDir)
         val settings = getSharedPreferences("mistbell-v3-settings", MODE_PRIVATE)
         contextTokens = settings.getIntCompat("chat_context_tokens", 32_000)

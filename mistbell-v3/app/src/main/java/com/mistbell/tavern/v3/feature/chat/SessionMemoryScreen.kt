@@ -43,6 +43,7 @@ import com.mistbell.tavern.v3.ui.tavern.TavernPalette
 import com.mistbell.tavern.v3.ui.tavern.TavernPill
 import com.mistbell.tavern.v3.ui.tavern.TavernSectionLabel
 import com.mistbell.tavern.v3.ui.tavern.TavernShape
+import com.mistbell.tavern.v3.ui.tavern.rememberTavernListState
 
 /** Screen state is owned by the caller so scope changes can discard it wholesale. */
 internal sealed interface SessionMemoryUiState {
@@ -229,7 +230,11 @@ private fun MemoryList(
                 modifier = Modifier.padding(vertical = 12.dp),
             )
         }
-        LazyColumn(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        LazyColumn(
+            state = rememberTavernListState("session_memory"),
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
             items(current, key = { it.factId }) { entry ->
                 MemoryEntryCard(entry, editable = true, onEdit = onEdit, onRevert = onRevert)
             }

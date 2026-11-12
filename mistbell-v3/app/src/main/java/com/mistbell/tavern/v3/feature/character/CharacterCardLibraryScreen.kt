@@ -37,6 +37,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.mistbell.tavern.v3.ui.CharacterAvatar
+import com.mistbell.tavern.v3.ui.tavern.rememberTavernListState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -209,6 +210,7 @@ fun CharacterCardLibraryScreen(onBack: () -> Unit) {
     ) { padding ->
         if (showEditor) {
             LazyColumn(
+                state = rememberTavernListState("character_library"),
                 modifier = Modifier.fillMaxSize().padding(padding).imePadding(),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -375,6 +377,7 @@ fun CharacterCardLibraryScreen(onBack: () -> Unit) {
             }
         } else {
             LazyColumn(
+                state = rememberTavernListState("card_editor"),
                 modifier = Modifier.fillMaxSize().padding(padding),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
