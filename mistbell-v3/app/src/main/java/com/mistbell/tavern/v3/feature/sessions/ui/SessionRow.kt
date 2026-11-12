@@ -167,7 +167,7 @@ private fun SessionCard(
         ) {
             SessionAvatar(
                 name = ui.roleName,
-                avatarFileName = session.avatarFileName(characters),
+                avatarFileName = ui.avatarFileName,
             )
             SessionCardDetails(
                 ui = ui,
