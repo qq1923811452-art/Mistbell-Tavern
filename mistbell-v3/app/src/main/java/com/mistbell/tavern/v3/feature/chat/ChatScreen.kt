@@ -1089,10 +1089,6 @@ fun ChatScreen(
                 showSessionSettings = false
                 sessionDocumentActions.onExportJsonl()
             },
-            onOpenGlobalSettings = {
-                showSessionSettings = false
-                onBack()
-            },
             onDismiss = { showSessionSettings = false },
         )
     }
