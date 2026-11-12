@@ -363,6 +363,7 @@ fun ChatScreen(
         selectedCharacterId = selectedCharacterId,
         setSelectedCharacterId = { selectedCharacterId = it },
         setCharacterCards = { characterCards = it },
+        revision = com.mistbell.tavern.v3.feature.character.CharacterLibraryRevision.value,
     )
     val memoryExtractionInFlight = remember { mutableSetOf<String>() }
 
@@ -896,7 +897,7 @@ fun ChatScreen(
             },
             characters =
                 characterCards.map { card ->
-                    GroupCandidate(card.id, card.card.name)
+                    GroupCandidate(card.id, card.card.name, card.card.avatarFileName)
                 },
             onCreateGroup = { ids ->
                 val participants =

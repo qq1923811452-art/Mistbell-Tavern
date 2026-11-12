@@ -424,7 +424,6 @@ class MainActivity : ComponentActivity() {
                                                 onOpenImage = { showImageGeneration = true },
                                                 onOpenCharacters = { showCharacterLibrary = true },
                                                 onOpenWorldBook = { showWorldBookLibrary = true },
-                                                onOpenLocalModel = { showLocalModel = true },
                                                 onOpenLicenses = { showLicenses = true },
                                             )
                                         }

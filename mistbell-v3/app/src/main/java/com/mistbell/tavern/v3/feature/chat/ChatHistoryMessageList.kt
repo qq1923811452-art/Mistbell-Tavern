@@ -91,36 +91,26 @@ private fun ChatMessageRow(
     val isUser = line.role == ROLE_USER
     BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
         val bubbleMaxWidth = maxWidth * BUBBLE_MAX_WIDTH_FRACTION
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start,
-            verticalAlignment = Alignment.Top,
-        ) {
-            if (!isUser) {
-                MessageAvatar(
-                    name = speakerLabel(line),
-                    avatarFileName = assistantAvatarFileName,
-                    isUser = false,
-                )
-                Spacer(Modifier.width(AVATAR_SPACING))
-            }
-            Column(
-                modifier = Modifier.widthIn(max = bubbleMaxWidth),
-                horizontalAlignment = if (isUser) Alignment.End else Alignment.Start,
+        Column(modifier = Modifier.fillMaxWidth()) {
+            // Identity sits on its own line so the transcript block below can use the full width.
+            MessageHeader(line = line, isUser = isUser, avatarFileName = assistantAvatarFileName)
+            Spacer(Modifier.height(HEADER_GAP))
+            Box(
+                modifier = Modifier.fillMaxWidth(),
+                contentAlignment = if (isUser) Alignment.CenterEnd else Alignment.CenterStart,
             ) {
-                MessageHeader(line = line, isUser = isUser)
-                Spacer(Modifier.height(HEADER_GAP))
-                ChatBubble(
-                    line = line,
-                    busy = busy,
-                    showRegenerate = showRegenerate,
-                    onSelectVariant = onSelectVariant,
-                    onRegenerate = onRegenerate,
-                )
-            }
-            if (isUser) {
-                Spacer(Modifier.width(AVATAR_SPACING))
-                MessageAvatar(name = USER_DISPLAY_NAME, avatarFileName = null, isUser = true)
+                Column(
+                    modifier = if (isUser) Modifier.widthIn(max = bubbleMaxWidth) else Modifier.fillMaxWidth(),
+                    horizontalAlignment = if (isUser) Alignment.End else Alignment.Start,
+                ) {
+                    ChatBubble(
+                        line = line,
+                        busy = busy,
+                        showRegenerate = showRegenerate,
+                        onSelectVariant = onSelectVariant,
+                        onRegenerate = onRegenerate,
+                    )
+                }
             }
         }
     }
@@ -131,13 +121,21 @@ private fun ChatMessageRow(
 private fun MessageHeader(
     line: ChatLine,
     isUser: Boolean,
+    avatarFileName: String?,
 ) {
     val time = rememberMessageTime(line.createdAtEpochMillis)
     Row(
+        modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(NAME_TIME_SPACING),
+        horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start,
     ) {
         if (!isUser) {
+            MessageAvatar(
+                name = speakerLabel(line),
+                avatarFileName = avatarFileName,
+                isUser = false,
+            )
+            Spacer(Modifier.width(NAME_TIME_SPACING))
             Text(
                 text = speakerLabel(line),
                 style = MaterialTheme.typography.labelLarge,
@@ -146,13 +144,32 @@ private fun MessageHeader(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-        }
-        if (time.isNotEmpty()) {
+            if (time.isNotEmpty()) {
+                Spacer(Modifier.width(NAME_TIME_SPACING))
+                Text(
+                    text = time,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TIME_TEXT_COLOR,
+                )
+            }
+        } else {
+            if (time.isNotEmpty()) {
+                Text(
+                    text = time,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TIME_TEXT_COLOR,
+                )
+                Spacer(Modifier.width(NAME_TIME_SPACING))
+            }
             Text(
-                text = time,
-                style = MaterialTheme.typography.labelSmall,
-                color = TIME_TEXT_COLOR,
+                text = USER_DISPLAY_NAME,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = SPEAKER_NAME_COLOR,
+                maxLines = 1,
             )
+            Spacer(Modifier.width(NAME_TIME_SPACING))
+            MessageAvatar(name = USER_DISPLAY_NAME, avatarFileName = null, isUser = true)
         }
     }
 }
@@ -315,7 +332,6 @@ private const val TIME_PATTERN = "HH:mm"
 private val MESSAGE_SPACING = 10.dp
 private val HEADER_GAP = 4.dp
 private val NAME_TIME_SPACING = 8.dp
-private val AVATAR_SPACING = 8.dp
 private val ASSISTANT_AVATAR_SIZE = 40.dp
 private val USER_AVATAR_SIZE = 30.dp
 private const val BUBBLE_MAX_WIDTH_FRACTION = 0.86f

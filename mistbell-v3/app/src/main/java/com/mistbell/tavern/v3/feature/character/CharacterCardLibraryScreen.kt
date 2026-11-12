@@ -126,6 +126,7 @@ fun CharacterCardLibraryScreen(onBack: () -> Unit) {
                         card
                     }.onSuccess {
                         refresh()
+                        CharacterLibraryRevision.bump()
                         status = "已导入角色：${it.name}"
                     }.onFailure {
                         status = "导入失败：${it.message ?: it::class.java.simpleName}"
@@ -185,6 +186,7 @@ fun CharacterCardLibraryScreen(onBack: () -> Unit) {
                         withContext(Dispatchers.IO) { store.save(item.id, updated) }
                     }.onSuccess {
                         refresh()
+                        CharacterLibraryRevision.bump()
                         status = "已更新角色形象：${target.first.card.name}"
                     }.onFailure {
                         status = "设置形象失败：${it.message ?: it::class.java.simpleName}"
@@ -213,6 +215,51 @@ fun CharacterCardLibraryScreen(onBack: () -> Unit) {
             ) {
                 item {
                     Text("基础信息", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    val editorCard = cards.firstOrNull { it.id == editingId }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        CharacterAvatar(
+                            name = name.ifBlank { "?" },
+                            avatarFileName = editorCard?.card?.avatarFileName,
+                            size = 56.dp,
+                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = if (editorCard?.card?.portraitFileName == null) "立绘未设置" else "立绘已设置",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                TextButton(
+                                    enabled = editorCard != null,
+                                    onClick = {
+                                        if (editorCard != null) {
+                                            artTarget = editorCard to CharacterArtKind.Avatar
+                                            artLauncher.launch(arrayOf("image/*"))
+                                        }
+                                    },
+                                ) { Text("设置头像") }
+                                TextButton(
+                                    enabled = editorCard != null,
+                                    onClick = {
+                                        if (editorCard != null) {
+                                            artTarget = editorCard to CharacterArtKind.Portrait
+                                            artLauncher.launch(arrayOf("image/*"))
+                                        }
+                                    },
+                                ) { Text("设置立绘") }
+                            }
+                            if (editorCard == null) {
+                                Text(
+                                    text = "先保存一次，再设置头像与立绘",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
                     OutlinedTextField(
                         name,
                         { name = it },
@@ -303,6 +350,10 @@ fun CharacterCardLibraryScreen(onBack: () -> Unit) {
                                             tags = tagsText.split(',').map { it.trim() }.filter(String::isNotEmpty),
                                             creator = creator,
                                             characterBookJson = characterBookJson.trim().takeIf(String::isNotEmpty),
+                                            avatarFileName =
+                                                cards.firstOrNull { it.id == editingId }?.card?.avatarFileName,
+                                            portraitFileName =
+                                                cards.firstOrNull { it.id == editingId }?.card?.portraitFileName,
                                         )
                                     require(card.name.isNotBlank()) { "角色名称不能为空。" }
                                     withContext(Dispatchers.IO) { store.save(editingId, card) }
@@ -310,6 +361,7 @@ fun CharacterCardLibraryScreen(onBack: () -> Unit) {
                                 }.onSuccess {
                                     showEditor = false
                                     refresh()
+                                    CharacterLibraryRevision.bump()
                                     status = "已保存角色：${it.name}"
                                 }.onFailure {
                                     status = "保存失败：${it.message ?: it::class.java.simpleName}"
@@ -407,6 +459,7 @@ fun CharacterCardLibraryScreen(onBack: () -> Unit) {
                         runCatching { withContext(Dispatchers.IO) { store.delete(target.id) } }
                             .onSuccess {
                                 refresh()
+                                CharacterLibraryRevision.bump()
                                 status = "已删除角色：${target.card.name}"
                             }
                             .onFailure { status = "删除失败：${it.message ?: it::class.java.simpleName}" }

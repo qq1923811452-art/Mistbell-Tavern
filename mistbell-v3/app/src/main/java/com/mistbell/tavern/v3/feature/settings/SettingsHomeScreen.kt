@@ -68,7 +68,6 @@ fun SettingsHomeScreen(
     onOpenImage: () -> Unit,
     onOpenCharacters: () -> Unit,
     onOpenWorldBook: () -> Unit,
-    onOpenLocalModel: () -> Unit,
     onOpenLicenses: () -> Unit,
 ) {
     Column(
@@ -87,7 +86,7 @@ fun SettingsHomeScreen(
         SettingsGroup("AI 连接") {
             ApiSettingsSection(onStatus = {})
             SettingsDivider()
-            SettingsRow("Embedding API", "本地向量与检索", onOpenEmbedding)
+            SettingsRow("Embedding API", "本地向量、模型与 NPU 诊断", onOpenEmbedding)
         }
         SettingsGroup("对话设置") {
             MaxOutputTokensRow(maxOutputTokens, onMaxOutputTokensChange)
@@ -131,9 +130,6 @@ fun SettingsHomeScreen(
             SettingsRow("世界书管理", "导入、启停、编辑", onOpenWorldBook)
             SettingsDivider()
             SettingsRow("图片生成", "独立 API 与本地图片库", onOpenImage)
-        }
-        SettingsGroup("本地推理") {
-            SettingsRow("模型与 NPU", "下载、导入、维度、诊断", onOpenLocalModel)
         }
         SettingsGroup("关于") {
             SettingsRow("许可与第三方声明", "开源许可、模型条款", onOpenLicenses)
