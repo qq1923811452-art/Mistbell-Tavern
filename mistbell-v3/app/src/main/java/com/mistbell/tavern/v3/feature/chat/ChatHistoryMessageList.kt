@@ -195,7 +195,7 @@ private fun ChatBubble(
                     color = if (isUser) USER_BORDER_COLOR else ASSISTANT_BORDER_COLOR,
                     shape = shape,
                 )
-                .padding(BUBBLE_PADDING),
+                .padding(horizontal = BUBBLE_PADDING_HORIZONTAL, vertical = BUBBLE_PADDING_VERTICAL),
     ) {
         Text(
             text = messageText(line = line, busy = busy),
@@ -329,7 +329,7 @@ private const val DEFAULT_SPEAKER_NAME = "Mistbell"
 private const val AVATAR_FALLBACK_INITIAL = "?"
 private const val TIME_PATTERN = "HH:mm"
 
-private val MESSAGE_SPACING = 10.dp
+private val MESSAGE_SPACING = 8.dp
 private val HEADER_GAP = 4.dp
 private val NAME_TIME_SPACING = 8.dp
 private val ASSISTANT_AVATAR_SIZE = 40.dp
@@ -338,7 +338,8 @@ private const val BUBBLE_MAX_WIDTH_FRACTION = 0.86f
 private val BUBBLE_RADIUS = 18.dp
 private val BUBBLE_TAIL_RADIUS = 4.dp
 private val BUBBLE_BORDER_WIDTH = 1.dp
-private val BUBBLE_PADDING = 12.dp
+private val BUBBLE_PADDING_HORIZONTAL = 14.dp
+private val BUBBLE_PADDING_VERTICAL = 9.dp
 private val ACTION_HORIZONTAL_PADDING = 8.dp
 private val VARIANT_TOP_SPACING = 4.dp
 private val VARIANT_RADIUS = 12.dp
