@@ -48,7 +48,7 @@ internal data class ConversationPaneState(
 internal fun ColumnScope.chatConversationPane(
     pane: ConversationPaneState,
     onSelectVariant: (String, Int) -> Unit,
-    onRegenerate: (String) -> Unit,
+    onMessageLongPress: (ChatLine) -> Unit = {},
     assistantAvatarFileName: String? = null,
 ) {
     key(pane.conversationId) {
@@ -61,7 +61,7 @@ internal fun ColumnScope.chatConversationPane(
                     busy = pane.busy,
                     listState = state,
                     onSelectVariant = onSelectVariant,
-                    onRegenerate = onRegenerate,
+                    onMessageLongPress = onMessageLongPress,
                     assistantAvatarFileName = assistantAvatarFileName,
                 )
             }

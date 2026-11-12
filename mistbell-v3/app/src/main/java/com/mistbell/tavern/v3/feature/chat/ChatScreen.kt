@@ -30,7 +30,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -83,6 +85,7 @@ fun ChatScreen(
     onSessionListVisibilityChange: (Boolean) -> Unit = {},
 ) {
     val context = LocalContext.current
+    val clipboard = LocalClipboardManager.current
     val chatViewModel: ChatViewModel = viewModel()
     val chatUiState by chatViewModel.uiState.collectAsStateWithLifecycle()
     val settings =
@@ -172,6 +175,8 @@ fun ChatScreen(
     }
     var showPromptPreview by remember { mutableStateOf(false) }
     var showCharacterPicker by remember { mutableStateOf(false) }
+    var messageActionTarget by remember { mutableStateOf<ChatMessageActionTarget?>(null) }
+    var messageEditTarget by remember { mutableStateOf<ChatMessageActionTarget?>(null) }
     var showCreateSession by remember { mutableStateOf(false) }
     var showSessionSettings by remember { mutableStateOf(false) }
     LaunchedEffect(sessionStore) {
@@ -1101,6 +1106,47 @@ fun ChatScreen(
         )
     }
 
+    messageActionTarget?.let { target ->
+        ChatMessageActionSheet(
+            target = target,
+            onCopy = {
+                messageActionTarget = null
+                clipboard.setText(AnnotatedString(target.content))
+            },
+            onEdit = {
+                messageActionTarget = null
+                messageEditTarget = target
+            },
+            onRegenerate = {
+                messageActionTarget = null
+                regenerateReply(target.messageId)
+            },
+            onDelete = {
+                messageActionTarget = null
+                history.removeAll { line -> line.id == target.messageId }
+                persistHistory()
+                diagnosticStore.info("chat.message.deleted", "role=${if (target.isUser) "user" else "assistant"}")
+            },
+            onDismiss = { messageActionTarget = null },
+        )
+    }
+
+    messageEditTarget?.let { target ->
+        ChatMessageEditDialog(
+            initial = target.content,
+            onDismiss = { messageEditTarget = null },
+            onConfirm = { updated ->
+                messageEditTarget = null
+                val index = history.indexOfFirst { line -> line.id == target.messageId }
+                if (index >= 0 && updated.isNotBlank()) {
+                    history[index] = history[index].copy(content = updated)
+                    persistHistory()
+                    diagnosticStore.info("chat.message.edited", "role=${if (target.isUser) "user" else "assistant"}")
+                }
+            },
+        )
+    }
+
     if (showCharacterPicker) {
         CharacterPickerSheet(
             characters = characterCards,
@@ -1175,7 +1221,14 @@ fun ChatScreen(
                         diagnosticStore.info("chat.swipe.selected", "variants=${line.variants.size}")
                     }
                 },
-                onRegenerate = ::regenerateReply,
+                onMessageLongPress = { line ->
+                    messageActionTarget =
+                        ChatMessageActionTarget(
+                            messageId = line.id,
+                            isUser = line.role == "user",
+                            content = line.activeContent,
+                        )
+                },
             )
             if (usageSummary.isNotBlank()) {
                 Text(

@@ -5,12 +5,12 @@ package com.mistbell.tavern.v3.feature.chat
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -24,16 +24,16 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -56,10 +56,9 @@ internal fun ColumnScope.ChatHistoryMessageList(
     busy: Boolean,
     listState: LazyListState,
     onSelectVariant: (messageId: String, index: Int) -> Unit = { _, _ -> },
-    onRegenerate: (messageId: String) -> Unit = {},
+    onMessageLongPress: (ChatLine) -> Unit = {},
     assistantAvatarFileName: String? = null,
 ) {
-    val lastAssistantId = history.lastOrNull { it.role == ROLE_ASSISTANT }?.id
     LazyColumn(
         modifier = Modifier.weight(1f).fillMaxWidth(),
         state = listState,
@@ -69,9 +68,8 @@ internal fun ColumnScope.ChatHistoryMessageList(
             ChatMessageRow(
                 line = line,
                 busy = busy,
-                showRegenerate = !busy && line.role == ROLE_ASSISTANT && line.id == lastAssistantId,
                 onSelectVariant = onSelectVariant,
-                onRegenerate = onRegenerate,
+                onMessageLongPress = onMessageLongPress,
                 assistantAvatarFileName = assistantAvatarFileName,
             )
         }
@@ -83,9 +81,8 @@ internal fun ColumnScope.ChatHistoryMessageList(
 private fun ChatMessageRow(
     line: ChatLine,
     busy: Boolean,
-    showRegenerate: Boolean,
     onSelectVariant: (messageId: String, index: Int) -> Unit,
-    onRegenerate: (messageId: String) -> Unit,
+    onMessageLongPress: (ChatLine) -> Unit,
     assistantAvatarFileName: String?,
 ) {
     val isUser = line.role == ROLE_USER
@@ -106,9 +103,8 @@ private fun ChatMessageRow(
                     ChatBubble(
                         line = line,
                         busy = busy,
-                        showRegenerate = showRegenerate,
                         onSelectVariant = onSelectVariant,
-                        onRegenerate = onRegenerate,
+                        onMessageLongPress = onMessageLongPress,
                     )
                 }
             }
@@ -179,9 +175,8 @@ private fun MessageHeader(
 private fun ChatBubble(
     line: ChatLine,
     busy: Boolean,
-    showRegenerate: Boolean,
     onSelectVariant: (messageId: String, index: Int) -> Unit,
-    onRegenerate: (messageId: String) -> Unit,
+    onMessageLongPress: (ChatLine) -> Unit,
 ) {
     val isUser = line.role == ROLE_USER
     val shape = bubbleShape(isUser)
@@ -189,12 +184,15 @@ private fun ChatBubble(
         modifier =
             Modifier
                 .clip(shape)
-                .background(if (isUser) USER_BUBBLE_COLOR else ASSISTANT_BUBBLE_COLOR)
+                .background(if (isUser) USER_BUBBLE_BRUSH else ASSISTANT_BUBBLE_BRUSH)
                 .border(
                     width = BUBBLE_BORDER_WIDTH,
                     color = if (isUser) USER_BORDER_COLOR else ASSISTANT_BORDER_COLOR,
                     shape = shape,
                 )
+                .pointerInput(line.id) {
+                    detectTapGestures(onLongPress = { onMessageLongPress(line) })
+                }
                 .padding(horizontal = BUBBLE_PADDING_HORIZONTAL, vertical = BUBBLE_PADDING_VERTICAL),
     ) {
         Text(
@@ -204,9 +202,7 @@ private fun ChatBubble(
         )
         MessageActions(
             line = line,
-            showRegenerate = showRegenerate,
             onSelectVariant = onSelectVariant,
-            onRegenerate = onRegenerate,
         )
     }
 }
@@ -215,19 +211,8 @@ private fun ChatBubble(
 @Composable
 private fun MessageActions(
     line: ChatLine,
-    showRegenerate: Boolean,
     onSelectVariant: (messageId: String, index: Int) -> Unit,
-    onRegenerate: (messageId: String) -> Unit,
 ) {
-    if (showRegenerate) {
-        TextButton(
-            onClick = { onRegenerate(line.id) },
-            contentPadding = PaddingValues(horizontal = ACTION_HORIZONTAL_PADDING),
-            colors = ButtonDefaults.textButtonColors(contentColor = ACTION_TEXT_COLOR),
-        ) {
-            Text(text = "重新生成", style = MaterialTheme.typography.labelMedium)
-        }
-    }
     if (line.variants.size > 1) {
         SwipeControls(
             index = line.activeVariant,
@@ -340,21 +325,21 @@ private val BUBBLE_TAIL_RADIUS = 4.dp
 private val BUBBLE_BORDER_WIDTH = 1.dp
 private val BUBBLE_PADDING_HORIZONTAL = 14.dp
 private val BUBBLE_PADDING_VERTICAL = 9.dp
-private val ACTION_HORIZONTAL_PADDING = 8.dp
 private val VARIANT_TOP_SPACING = 4.dp
 private val VARIANT_RADIUS = 12.dp
 private val VARIANT_HORIZONTAL_PADDING = 4.dp
 
-private val ASSISTANT_BUBBLE_COLOR = Color(0xE6342A3E)
+private val ASSISTANT_BUBBLE_BRUSH =
+    Brush.verticalGradient(listOf(Color(0xCC2E2145), Color(0xB3150C22)))
+private val USER_BUBBLE_BRUSH =
+    Brush.verticalGradient(listOf(Color(0xCC4A3626), Color(0xB32A1B12)))
 private val ASSISTANT_BORDER_COLOR = Color(0x668F7AB5)
-private val USER_BUBBLE_COLOR = Color(0xE64B3527)
 private val USER_BORDER_COLOR = Color(0x66D9A66C)
 private val BUBBLE_TEXT_COLOR = Color(0xFFF7F0E6)
 private val SPEAKER_NAME_COLOR = Color(0xFFE9C98F)
 private val TIME_TEXT_COLOR = Color(0xB3F7F0E6)
-private val ACTION_TEXT_COLOR = Color(0xFFE9C98F)
 private val ASSISTANT_AVATAR_COLOR = Color(0xFF57406B)
 private val ASSISTANT_AVATAR_TEXT_COLOR = Color(0xFFF4E9FF)
 private val USER_AVATAR_COLOR = Color(0xFF7A5A3C)
 private val USER_AVATAR_TEXT_COLOR = Color(0xFFFFF2E0)
-private val VARIANT_SURFACE_COLOR = Color(0xE6EFE6D8)
+private val VARIANT_SURFACE_COLOR = Color(0xB32A1B3D)
