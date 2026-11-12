@@ -16,13 +16,14 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
@@ -30,8 +31,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.mistbell.tavern.v3.feature.character.CharacterArtMemory
-import com.mistbell.tavern.v3.feature.character.decodeCharacterArt
+import com.mistbell.tavern.v3.feature.character.loadCharacterArtBitmap
 import com.mistbell.tavern.v3.ui.tavern.TavernPalette
 
 private val AVATAR_PLACEHOLDER_BRUSH =
@@ -50,8 +50,7 @@ private val PORTRAIT_PLACEHOLDER_BRUSH =
 /**
  * Circular character picture with a gradient-ring frame and an initial fallback.
  *
- * Artwork is loaded through [CharacterArtMemory] so scrolling a session list never touches the disk
- * twice for the same file, and the bitmap is memoised per file name rather than per recomposition.
+ * Artwork is decoded off the UI thread and downsampled to the rendered size to limit memory use.
  */
 @Suppress("FunctionNaming")
 @Composable
@@ -63,8 +62,14 @@ fun CharacterAvatar(
     ring: Boolean = true,
 ) {
     val context = LocalContext.current
-    val bytes = remember(avatarFileName) { CharacterArtMemory.getOrLoad(context.filesDir, avatarFileName) }
-    val bitmap = remember(bytes) { decodeCharacterArt(bytes)?.asImageBitmap() }
+    val bitmap by produceState<ImageBitmap?>(null, avatarFileName, size) {
+        value =
+            loadCharacterArtBitmap(
+                context.filesDir,
+                avatarFileName,
+                (size.value * context.resources.displayMetrics.density).toInt().coerceAtLeast(1),
+            )
+    }
     Box(
         modifier =
             modifier
@@ -108,8 +113,10 @@ fun CharacterPortrait(
     cornerRadius: Dp = 22.dp,
 ) {
     val context = LocalContext.current
-    val bytes = remember(portraitFileName) { CharacterArtMemory.getOrLoad(context.filesDir, portraitFileName) }
-    val bitmap = remember(bytes) { decodeCharacterArt(bytes)?.asImageBitmap() }
+    val maxDimensionPx = (430f * context.resources.displayMetrics.density).toInt().coerceAtLeast(1)
+    val bitmap by produceState<ImageBitmap?>(null, portraitFileName, maxDimensionPx) {
+        value = loadCharacterArtBitmap(context.filesDir, portraitFileName, maxDimensionPx)
+    }
     val shape = RoundedCornerShape(cornerRadius)
     Box(
         modifier =

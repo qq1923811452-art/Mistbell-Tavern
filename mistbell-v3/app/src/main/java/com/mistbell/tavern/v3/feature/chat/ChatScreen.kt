@@ -1125,8 +1125,10 @@ fun ChatScreen(
             },
             onDelete = {
                 messageActionTarget = null
-                history.removeAll { line -> line.id == target.messageId }
-                persistHistory()
+                if (!busy) {
+                    history.removeAll { line -> line.id == target.messageId }
+                    persistHistory()
+                }
                 diagnosticStore.info("chat.message.deleted", "role=${if (target.isUser) "user" else "assistant"}")
             },
             onDismiss = { messageActionTarget = null },
@@ -1140,8 +1142,8 @@ fun ChatScreen(
             onConfirm = { updated ->
                 messageEditTarget = null
                 val index = history.indexOfFirst { line -> line.id == target.messageId }
-                if (index >= 0 && updated.isNotBlank()) {
-                    history[index] = history[index].copy(content = updated)
+                if (!busy && index >= 0 && updated.isNotBlank()) {
+                    history[index] = history[index].withEditedContent(updated)
                     persistHistory()
                     diagnosticStore.info("chat.message.edited", "role=${if (target.isUser) "user" else "assistant"}")
                 }
@@ -1224,12 +1226,14 @@ fun ChatScreen(
                     }
                 },
                 onMessageLongPress = { line ->
-                    messageActionTarget =
-                        ChatMessageActionTarget(
-                            messageId = line.id,
-                            isUser = line.role == "user",
-                            content = line.activeContent,
-                        )
+                    if (!busy) {
+                        messageActionTarget =
+                            ChatMessageActionTarget(
+                                messageId = line.id,
+                                isUser = line.role == "user",
+                                content = line.activeContent,
+                            )
+                    }
                 },
             )
             if (usageSummary.isNotBlank()) {

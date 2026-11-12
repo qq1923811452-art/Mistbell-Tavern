@@ -23,6 +23,7 @@ class CharacterCardJsonCodecTest {
             name = "Mira", description = "A mage", personality = "Curious",
             firstMessage = "Hello", tags = listOf("fantasy", "magic"),
             characterBookJson = """{"name":"Lore","entries":[]}""",
+            avatarFileName = "avatar.img", portraitFileName = "portrait.img",
         )
         val roundTrip = CharacterCardJsonCodec.parse(CharacterCardJsonCodec.export(original))
         assertNotNull(roundTrip)
@@ -31,6 +32,8 @@ class CharacterCardJsonCodecTest {
         assertEquals(original.personality, roundTrip.personality)
         assertEquals(original.firstMessage, roundTrip.firstMessage)
         assertEquals(original.tags, roundTrip.tags)
+        assertEquals(original.avatarFileName, roundTrip.avatarFileName)
+        assertEquals(original.portraitFileName, roundTrip.portraitFileName)
         val originalBook = org.json.JSONObject(original.characterBookJson!!)
         val roundTripBook = org.json.JSONObject(roundTrip.characterBookJson!!)
         assertEquals(originalBook.getString("name"), roundTripBook.getString("name"))

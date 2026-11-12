@@ -190,7 +190,7 @@ private fun ChatBubble(
                     color = if (isUser) USER_BORDER_COLOR else ASSISTANT_BORDER_COLOR,
                     shape = shape,
                 )
-                .pointerInput(line.id) {
+                .pointerInput(line, busy) {
                     detectTapGestures(onLongPress = { onMessageLongPress(line) })
                 }
                 .padding(horizontal = BUBBLE_PADDING_HORIZONTAL, vertical = BUBBLE_PADDING_VERTICAL),
