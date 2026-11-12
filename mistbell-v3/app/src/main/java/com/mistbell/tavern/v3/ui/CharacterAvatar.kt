@@ -70,6 +70,7 @@ fun CharacterAvatar(
                 (size.value * context.resources.displayMetrics.density).toInt().coerceAtLeast(1),
             )
     }
+    val image = bitmap
     Box(
         modifier =
             modifier
@@ -79,9 +80,9 @@ fun CharacterAvatar(
                 .then(if (ring) Modifier.border(1.5.dp, RING_BRUSH, CircleShape) else Modifier),
         contentAlignment = Alignment.Center,
     ) {
-        if (bitmap != null) {
+        if (image != null) {
             Image(
-                bitmap = bitmap,
+                bitmap = image,
                 contentDescription = name,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
@@ -118,6 +119,7 @@ fun CharacterPortrait(
         value = loadCharacterArtBitmap(context.filesDir, portraitFileName, maxDimensionPx)
     }
     val shape = RoundedCornerShape(cornerRadius)
+    val image = bitmap
     Box(
         modifier =
             modifier
@@ -127,9 +129,9 @@ fun CharacterPortrait(
                 .border(1.dp, TavernPalette.Border, shape),
         contentAlignment = Alignment.Center,
     ) {
-        if (bitmap != null) {
+        if (image != null) {
             Image(
-                bitmap = bitmap,
+                bitmap = image,
                 contentDescription = name,
                 contentScale = ContentScale.Fit,
                 modifier = Modifier.fillMaxSize(),
