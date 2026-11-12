@@ -55,6 +55,18 @@ private val SESSION_CARD_SELECTED_BRUSH =
     Brush.verticalGradient(
         colors = listOf(TAVERN_CARD_SELECTED_TOP, TAVERN_CARD_SELECTED_BOTTOM),
     )
+private val SESSION_CARD_SHEEN =
+    Brush.verticalGradient(
+        colors = listOf(Color(0x33FFFFFF), Color(0x0AFFFFFF)),
+    )
+private val SESSION_CARD_EDGE_BRUSH =
+    Brush.verticalGradient(
+        colors = listOf(Color(0x4DFFFFFF), Color(0x0DFFFFFF)),
+    )
+private val SOLID_PURPLE_BRUSH =
+    Brush.verticalGradient(
+        colors = listOf(TAVERN_PURPLE, TAVERN_PURPLE),
+    )
 private val SESSION_CARD_PADDING = 14.dp
 private val SESSION_CARD_GAP = 12.dp
 private val SESSION_AVATAR_SIZE = 52.dp
