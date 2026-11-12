@@ -8,9 +8,23 @@ import org.junit.Test
 
 class CharacterCardJsonCodecTest {
     @Test fun parsesV2DataAndPreservesCharacterBook() {
-        val card = CharacterCardJsonCodec.parse(
-            """{"spec":"chara_card_v2","spec_version":"2.0","data":{"name":"Mira","description":"A mage","first_mes":"Hello","alternate_greetings":["Hi","Welcome"],"tags":["fantasy"],"character_book":{"name":"Lore","entries":[]}}}""",
-        )
+        val card =
+            CharacterCardJsonCodec.parse(
+                """
+                {
+                  "spec": "chara_card_v2",
+                  "spec_version": "2.0",
+                  "data": {
+                    "name": "Mira",
+                    "description": "A mage",
+                    "first_mes": "Hello",
+                    "alternate_greetings": ["Hi", "Welcome"],
+                    "tags": ["fantasy"],
+                    "character_book": {"name": "Lore", "entries": []}
+                  }
+                }
+                """.trimIndent(),
+            )
         assertNotNull(card)
         assertEquals("Mira", card!!.name)
         assertEquals("Hello", card.firstMessage)
@@ -19,12 +33,17 @@ class CharacterCardJsonCodecTest {
     }
 
     @Test fun exportsAndParsesWithoutLosingKnownFields() {
-        val original = CharacterCard(
-            name = "Mira", description = "A mage", personality = "Curious",
-            firstMessage = "Hello", tags = listOf("fantasy", "magic"),
-            characterBookJson = """{"name":"Lore","entries":[]}""",
-            avatarFileName = "avatar.img", portraitFileName = "portrait.img",
-        )
+        val original =
+            CharacterCard(
+                name = "Mira",
+                description = "A mage",
+                personality = "Curious",
+                firstMessage = "Hello",
+                tags = listOf("fantasy", "magic"),
+                characterBookJson = """{"name":"Lore","entries":[]}""",
+                avatarFileName = "avatar.img",
+                portraitFileName = "portrait.img",
+            )
         val roundTrip = CharacterCardJsonCodec.parse(CharacterCardJsonCodec.export(original))
         assertNotNull(roundTrip)
         assertEquals(original.name, roundTrip!!.name)
@@ -44,16 +63,18 @@ class CharacterCardJsonCodecTest {
         assertNull(CharacterCardJsonCodec.parse("not-json"))
         assertNull(CharacterCardJsonCodec.parse("""{"data":{"description":"No name"}}"""))
     }
+
     @Test fun stableDefinitionIsCanonicalAndExcludesConversationOpening() {
-        val card = CharacterCard(
-            name = " Mira ",
-            description = " A mage ",
-            personality = " Curious ",
-            firstMessage = "This is a volatile opening.",
-            exampleDialogue = "Example: The mage smiles.",
-            systemPrompt = "Be kind",
-            postHistoryInstructions = "Stay in character",
-        )
+        val card =
+            CharacterCard(
+                name = " Mira ",
+                description = " A mage ",
+                personality = " Curious ",
+                firstMessage = "This is a volatile opening.",
+                exampleDialogue = "Example: The mage smiles.",
+                systemPrompt = "Be kind",
+                postHistoryInstructions = "Stay in character",
+            )
 
         assertEquals(
             "Name: Mira\n\nDescription: A mage\n\nPersonality: Curious\n\n" +
@@ -67,5 +88,4 @@ class CharacterCardJsonCodecTest {
             !card.stableDefinition().contains("Stay in character"),
         )
     }
-
 }
