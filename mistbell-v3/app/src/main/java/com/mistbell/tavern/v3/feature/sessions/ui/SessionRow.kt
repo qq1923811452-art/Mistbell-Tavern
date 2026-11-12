@@ -149,9 +149,10 @@ private fun SessionCard(
                     brush = if (selected) SESSION_CARD_SELECTED_BRUSH else SESSION_CARD_BRUSH,
                     shape = SESSION_CARD_SHAPE,
                 )
+                .background(brush = SESSION_CARD_SHEEN, shape = SESSION_CARD_SHAPE)
                 .border(
                     width = if (selected) CARD_SELECTED_BORDER_WIDTH else CARD_BORDER_WIDTH,
-                    color = if (selected) TAVERN_PURPLE else TAVERN_CARD_BORDER,
+                    brush = if (selected) SOLID_PURPLE_BRUSH else SESSION_CARD_EDGE_BRUSH,
                     shape = SESSION_CARD_SHAPE,
                 )
                 .combinedClickable(

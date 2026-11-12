@@ -1247,8 +1247,21 @@ fun ChatScreen(
                             .fillMaxWidth()
                             .padding(end = 56.dp),
                 )
-                Button(
+                val sendButtonState =
+                    when {
+                        busy -> SendButtonState.Sending
+                        !historyReady || historyLoadFailed || !worldbookSession.ready -> SendButtonState.Disabled
+                        chatUiState.draft.isBlank() -> SendButtonState.Idle
+                        else -> SendButtonState.Ready
+                    }
+                TavernSendButton(
+                    state = sendButtonState,
+                    modifier = Modifier.align(Alignment.CenterEnd).padding(end = 2.dp),
                     onClick = {
+                        if (busy) {
+                            status = "生成中，请稍候。"
+                            return@TavernSendButton
+                        }
                         coroutineScope.launch {
                             val requestToken = requestGeneration.incrementAndGet()
 
@@ -1495,19 +1508,7 @@ fun ChatScreen(
                             )
                         }
                     },
-                    enabled =
-                        !busy && historyReady && !historyLoadFailed &&
-                            worldbookSession.ready && chatUiState.draft.isNotBlank(),
-                    modifier =
-                        Modifier
-                            .align(Alignment.CenterEnd)
-                            .padding(end = 4.dp)
-                            .size(48.dp),
-                    shape = androidx.compose.foundation.shape.CircleShape,
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
-                ) {
-                    Text("➤", style = MaterialTheme.typography.titleMedium)
-                }
+                )
             }
         }
     }
