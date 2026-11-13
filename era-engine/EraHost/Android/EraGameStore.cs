@@ -53,7 +53,7 @@ internal static class EraGameStore
 			NormalizeCsvFileNames(lastDir);
 			NormalizeCsvWhitespace(lastDir);
 			RepairMissingCflags(lastDir);
-			EnsureLazyLoadingConfig(lastDir);
+			DropBrokenLazyConfig(lastDir);
 			return lastDir;
 		}
 
@@ -79,7 +79,7 @@ internal static class EraGameStore
 		NormalizeCsvFileNames(gameDir);
 		NormalizeCsvWhitespace(gameDir);
 		RepairMissingCflags(gameDir);
-		EnsureLazyLoadingConfig(gameDir);
+		DropBrokenLazyConfig(gameDir);
 		prefs?.Edit()?.PutString(PrefLastGame, gameDir)?.PutString(PrefLastVersion, version)?.Apply();
 		return gameDir;
 	}
@@ -105,7 +105,7 @@ internal static class EraGameStore
 			NormalizeCsvFileNames(lastDir);
 			NormalizeCsvWhitespace(lastDir);
 			RepairMissingCflags(lastDir);
-			EnsureLazyLoadingConfig(lastDir);
+			DropBrokenLazyConfig(lastDir);
 			return lastDir;
 		}
 
@@ -115,7 +115,7 @@ internal static class EraGameStore
 		NormalizeCsvFileNames(gameDir);
 		NormalizeCsvWhitespace(gameDir);
 		RepairMissingCflags(gameDir);
-		EnsureLazyLoadingConfig(gameDir);
+		DropBrokenLazyConfig(gameDir);
 		prefs?.Edit()?.PutString(PrefLastGame, gameDir)?.PutString(PrefLastVersion, version)?.Apply();
 		return gameDir;
 	}
@@ -336,6 +336,31 @@ internal static class EraGameStore
 		{
 			var gbk = Encoding.GetEncoding(936);
 			return (gbk, gbk.GetString(bytes));
+		}
+	}
+
+	/// <summary>
+	/// 我们自己生成过 lazyloading.cfg，但那会让引擎跳过这些目录的 ERB，
+	/// 脚本在加载期引用其中函数就会报「无法解析的标识符」。没有 bins 说明缓存从未建成，
+	/// 直接把这份 cfg 删掉，恢复完整加载。
+	/// </summary>
+	private static void DropBrokenLazyConfig(string gameDir)
+	{
+		try
+		{
+			var cfg = Path.Combine(gameDir, "lazyloading.cfg");
+			if (!File.Exists(cfg))
+				return;
+			var bins = File.Exists(Path.Combine(gameDir, "lazyloading.bin"))
+				&& File.Exists(Path.Combine(gameDir, "lazyloadingfiles.bin"));
+			if (bins)
+				return;
+			File.Delete(cfg);
+			EraBootstrap.Trace("dropped lazyloading.cfg (no cache bins; full load restored)");
+		}
+		catch (Exception ex)
+		{
+			EraBootstrap.Trace("drop lazyloading.cfg failed: " + ex.Message);
 		}
 	}
 
