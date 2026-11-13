@@ -4,6 +4,7 @@ using MinorShift.Emuera.Runtime.Config;
 using MinorShift.Emuera.Runtime.Config.JSON;
 using MinorShift.Emuera.Runtime.Utils;
 using MinorShift.Emuera.Runtime.Utils.EvilMask;
+using EuConfig = MinorShift.Emuera.Runtime.Config.Config;
 using MinorShift.Emuera.UI;
 using MinorShift.Emuera.UI.Ewp;
 using SkiaSharp;
@@ -131,16 +132,16 @@ internal static class EraBootstrap
 	{
 		try
 		{
-			Trace("overrides: drawing=" + Config.TextDrawingMode + " win=" + Config.WindowX + "x" + Config.WindowY + " font=" + Config.FontName);
-			Config.TextDrawingMode = TextDrawingMode.SKIASHARP;
-			if (Config.WindowX <= 0 || Config.WindowY <= 0 || Config.WindowX > Config.WindowY)
+			Trace("overrides: drawing=" + EuConfig.TextDrawingMode + " win=" + EuConfig.WindowX + "x" + EuConfig.WindowY + " font=" + EuConfig.FontName);
+			EuConfig.TextDrawingMode = TextDrawingMode.SKIASHARP;
+			if (EuConfig.WindowX <= 0 || EuConfig.WindowY <= 0 || EuConfig.WindowX > EuConfig.WindowY)
 			{
-				Config.WindowX = 900;
-				Config.WindowY = 1600;
+				EuConfig.WindowX = 900;
+				EuConfig.WindowY = 1600;
 			}
 			if (RegisterEmbeddedFont())
-				Config.FontName = FallbackFontName;
-			Trace("overrides applied: drawing=" + Config.TextDrawingMode + " win=" + Config.WindowX + "x" + Config.WindowY + " font=" + Config.FontName);
+				EuConfig.FontName = FallbackFontName;
+			Trace("overrides applied: drawing=" + EuConfig.TextDrawingMode + " win=" + EuConfig.WindowX + "x" + EuConfig.WindowY + " font=" + EuConfig.FontName);
 		}
 		catch (Exception ex)
 		{
