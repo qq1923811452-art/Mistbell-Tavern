@@ -70,7 +70,7 @@ jobs:
       - name: Inspect AAR payload
         run: |
           set -e
-          OUT=era-engine/EraHost/bin/Release/net8.0-android
+          OUT=era-engine/EraHost/bin/Release/net8.0-android34.0
           AAR=$(find "$OUT" -maxdepth 1 -name '*.aar' | head -1)
           echo "AAR=$AAR"
           if [ -z "$AAR" ]; then
