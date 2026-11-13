@@ -50,6 +50,16 @@ jobs:
           git fetch --depth 1 origin "$ERA_UPSTREAM_SHA"
           git checkout -q FETCH_HEAD
 
+      - name: Guard .NET SDK version
+        run: |
+          set -e
+          V=$(dotnet --version)
+          echo "SDK in use: $V"
+          case "$V" in
+            8.0.*) echo "OK: .NET 8" ;;
+            *) echo "::error::期望 .NET 8，实际 $V（global.json 未生效）"; exit 1 ;;
+          esac
+
       - name: Install Android workload
         run: |
           echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
