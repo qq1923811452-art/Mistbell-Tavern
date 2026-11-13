@@ -132,12 +132,13 @@ def patch_name_helper(path: Path) -> bool:
             path.write_text(new_text, encoding="utf-8")
             return True
         return False
-    anchor = "namespace MinorShift.Emuera.Runtime.Script.Loader;"
-    if anchor in text:
-        text = text.replace(anchor, anchor + "\n\n" + NAME_HELPER_BLOCK.strip(), 1)
-        path.write_text(text, encoding="utf-8")
-        return True
-    raise SystemExit("namespace anchor missing in " + str(path))
+    match = re.search(r"^namespace\s+[\w.]+;\s*$", text, re.M)
+    if not match:
+        raise SystemExit("namespace anchor missing in " + str(path))
+    anchor = match.group(0)
+    text = text.replace(anchor, anchor + "\n\n" + NAME_HELPER_BLOCK.strip(), 1)
+    path.write_text(text, encoding="utf-8")
+    return True
 
 
 def patch_ewphost(path: Path) -> bool:
