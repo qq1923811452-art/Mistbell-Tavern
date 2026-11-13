@@ -25,11 +25,14 @@ import java.util.concurrent.atomic.AtomicReference
 class MemoryExtractionBoundaryTest {
     @Test
     fun overallCallTimeoutIsNotReportedAsCancellation() {
-        val http = OkHttpClient.Builder().eventListener(object : EventListener() {
-            override fun callStart(call: Call) {
-                call.timeout().timeout(100, TimeUnit.MILLISECONDS)
-            }
-        }).build()
+        val http =
+            OkHttpClient.Builder().eventListener(
+                object : EventListener() {
+                    override fun callStart(call: Call) {
+                        call.timeout().timeout(100, TimeUnit.MILLISECONDS)
+                    }
+                },
+            ).build()
         withServer(MockResponse().setBody("response").setHeadersDelay(1, TimeUnit.SECONDS)) { server ->
             val result = execute(client(server, http))
             assertEquals("Memory-extraction request timed out.", result.safeMessage)
@@ -49,8 +52,9 @@ class MemoryExtractionBoundaryTest {
 
     @Test
     fun errorDiagnosticsCannotWaitForSlowBody() {
-        val response = MockResponse().setResponseCode(400).setBody("{}")
-            .setBodyDelay(4, TimeUnit.SECONDS)
+        val response =
+            MockResponse().setResponseCode(400).setBody("{}")
+                .setBodyDelay(4, TimeUnit.SECONDS)
         withServer(response) { server ->
             val result = execute(client(server))
             assertEquals(400, result.httpStatus)
@@ -60,8 +64,9 @@ class MemoryExtractionBoundaryTest {
 
     @Test
     fun errorDiagnosticsHaveATotalDeadlineEvenWithDrippingBytes() {
-        val response = MockResponse().setResponseCode(400).setChunkedBody("{" + " ".repeat(100), 1)
-            .throttleBody(1, 50, TimeUnit.MILLISECONDS)
+        val response =
+            MockResponse().setResponseCode(400).setChunkedBody("{" + " ".repeat(100), 1)
+                .throttleBody(1, 50, TimeUnit.MILLISECONDS)
         withServer(response) { server ->
             assertEquals(400, execute(client(server)).httpStatus)
         }
@@ -70,20 +75,29 @@ class MemoryExtractionBoundaryTest {
     @Test
     fun unknownLengthErrorBodiesAreLimitedToEightKiB() {
         val bytesRead = AtomicLong()
-        val http = OkHttpClient.Builder().addInterceptor { chain ->
-            val response = chain.proceed(chain.request())
-            val body = requireNotNull(response.body)
-            val source = object : ForwardingSource(body.source()) {
-                override fun read(sink: Buffer, byteCount: Long): Long {
-                    return super.read(sink, byteCount).also { if (it > 0) bytesRead.addAndGet(it) }
-                }
-            }.buffer()
-            response.newBuilder().body(object : ResponseBody() {
-                override fun contentType() = body.contentType()
-                override fun contentLength() = -1L
-                override fun source() = source
-            }).build()
-        }.build()
+        val http =
+            OkHttpClient.Builder().addInterceptor { chain ->
+                val response = chain.proceed(chain.request())
+                val body = requireNotNull(response.body)
+                val source =
+                    object : ForwardingSource(body.source()) {
+                        override fun read(
+                            sink: Buffer,
+                            byteCount: Long,
+                        ): Long {
+                            return super.read(sink, byteCount).also { if (it > 0) bytesRead.addAndGet(it) }
+                        }
+                    }.buffer()
+                response.newBuilder().body(
+                    object : ResponseBody() {
+                        override fun contentType() = body.contentType()
+
+                        override fun contentLength() = -1L
+
+                        override fun source() = source
+                    },
+                ).build()
+            }.build()
         val diagnostics = mutableListOf<String>()
         val body = "{\"error\":{\"code\":\"context_length_exceeded\"}}" + " ".repeat(20_000)
         withServer(MockResponse().setResponseCode(400).setChunkedBody(body, 1_024)) { server ->
@@ -124,12 +138,13 @@ class MemoryExtractionBoundaryTest {
         http: OkHttpClient = OkHttpClient(),
         diagnostics: MutableList<String> = mutableListOf(),
     ): MemoryExtractionClient {
-        val profile = ProviderProfile(
-            id = "memory",
-            kind = ProviderKind.MEMORY_EXTRACTION,
-            baseUrl = server.url("/v1").toString(),
-            modelId = "memory-model",
-        )
+        val profile =
+            ProviderProfile(
+                id = "memory",
+                kind = ProviderKind.MEMORY_EXTRACTION,
+                baseUrl = server.url("/v1").toString(),
+                modelId = "memory-model",
+            )
         return MemoryExtractionClient(
             ProviderProfileSet(listOf(profile), mapOf(ProviderKind.MEMORY_EXTRACTION to profile.id)),
             MemoryCredentialResolver { null },
@@ -141,26 +156,34 @@ class MemoryExtractionBoundaryTest {
     private fun execute(client: MemoryExtractionClient): MemoryExtractionOutcome.Failure {
         val result = AtomicReference<MemoryExtractionOutcome>()
         val finished = CountDownLatch(1)
-        val call = client.extract(
-            MemoryExtractionInput(
-                conversationId = "conversation-1",
-                turns = listOf(EligibleConversationTurn("turn-1", 1)),
-                textByTurnId = mapOf("turn-1" to "The user likes tea."),
-            ),
-            MemoryExtractionObserver { result.set(it); finished.countDown() },
-        )
+        val call =
+            client.extract(
+                MemoryExtractionInput(
+                    conversationId = "conversation-1",
+                    turns = listOf(EligibleConversationTurn("turn-1", 1)),
+                    textByTurnId = mapOf("turn-1" to "The user likes tea."),
+                ),
+                MemoryExtractionObserver {
+                    result.set(it)
+                    finished.countDown()
+                },
+            )
         val completed = finished.await(2, TimeUnit.SECONDS)
         if (!completed) call.cancel()
         assertTrue("Callback exceeded diagnostic deadline", completed)
         return result.get() as MemoryExtractionOutcome.Failure
     }
 
-    private fun withServer(response: MockResponse, block: (MockWebServer) -> Unit) {
+    private fun withServer(
+        response: MockResponse,
+        block: (MockWebServer) -> Unit,
+    ) {
         val server = MockWebServer()
         // QueueDispatcher.peek() would also throttle the POST upload, before any error headers.
-        server.dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
-            override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest): MockResponse = response
-        }
+        server.dispatcher =
+            object : okhttp3.mockwebserver.Dispatcher() {
+                override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest): MockResponse = response
+            }
         server.start()
         try {
             block(server)

@@ -33,7 +33,8 @@ class OpenAiCompatibleChatClientTest {
                 .setBody(
                     "data: {\"choices\":[{\"delta\":{\"content\":\"Hello \"}}]}\n\n" +
                         "data: {\"choices\":[{\"delta\":{\"content\":\"there\"}}]}\n\n" +
-                        "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":17,\"completion_tokens\":2,\"total_tokens\":19,\"prompt_tokens_details\":{\"cached_tokens\":9}}}\n\n" +
+                        "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":17,\"completion_tokens\":2" +
+                        ",\"total_tokens\":19,\"prompt_tokens_details\":{\"cached_tokens\":9}}}\n\n" +
                         "data: [DONE]\n\n",
                 ),
         )
@@ -64,7 +65,6 @@ class OpenAiCompatibleChatClientTest {
         assertEquals("Hi", payload.getJSONArray("messages").getJSONObject(0).getString("content"))
     }
 
-
     @Test
     fun appliesTheDisabledThinkingTemplateWhenThinkingIsOff() {
         server.enqueue(
@@ -74,20 +74,22 @@ class OpenAiCompatibleChatClientTest {
                 .setBody("data: [DONE]\n\n"),
         )
         server.start()
-        val profile = ProviderProfile(
-            id = "chat",
-            kind = ProviderKind.CHAT,
-            baseUrl = server.url("/v1").toString().trimEnd('/'),
-            modelId = "chat-model",
-            credentialHandle = "chat-secret",
-            thinkingBodyTemplate = "{\"enable_thinking\":true}",
-            thinkingDisabledBody = "{\"enable_thinking\":false}",
-        )
-        val client = OpenAiCompatibleChatClient(
-            providers = ProviderProfileSet(listOf(profile), mapOf(ProviderKind.CHAT to profile.id)),
-            credentials = CredentialResolver { "test-chat-key" },
-            client = OkHttpClient(),
-        )
+        val profile =
+            ProviderProfile(
+                id = "chat",
+                kind = ProviderKind.CHAT,
+                baseUrl = server.url("/v1").toString().trimEnd('/'),
+                modelId = "chat-model",
+                credentialHandle = "chat-secret",
+                thinkingBodyTemplate = "{\"enable_thinking\":true}",
+                thinkingDisabledBody = "{\"enable_thinking\":false}",
+            )
+        val client =
+            OpenAiCompatibleChatClient(
+                providers = ProviderProfileSet(listOf(profile), mapOf(ProviderKind.CHAT to profile.id)),
+                credentials = CredentialResolver { "test-chat-key" },
+                client = OkHttpClient(),
+            )
         client.stream(
             listOf(PromptMessage(PromptRole.USER, "Hi")),
             RecordingObserver(),
@@ -220,17 +222,19 @@ class OpenAiCompatibleChatClientTest {
     @Test
     fun remoteProviderWithoutCredentialIsRejectedBeforeNetworkRequest() {
         server.start()
-        val profile = ProviderProfile(
-            id = "chat",
-            kind = ProviderKind.CHAT,
-            baseUrl = server.url("/v1").toString().trimEnd('/').replace("http://", "https://"),
-            modelId = "chat-model",
-        )
-        val client = OpenAiCompatibleChatClient(
-            providers = ProviderProfileSet(listOf(profile), mapOf(ProviderKind.CHAT to profile.id)),
-            credentials = CredentialResolver { null },
-            client = OkHttpClient(),
-        )
+        val profile =
+            ProviderProfile(
+                id = "chat",
+                kind = ProviderKind.CHAT,
+                baseUrl = server.url("/v1").toString().trimEnd('/').replace("http://", "https://"),
+                modelId = "chat-model",
+            )
+        val client =
+            OpenAiCompatibleChatClient(
+                providers = ProviderProfileSet(listOf(profile), mapOf(ProviderKind.CHAT to profile.id)),
+                credentials = CredentialResolver { null },
+                client = OkHttpClient(),
+            )
 
         try {
             client.stream(listOf(PromptMessage(PromptRole.USER, "Hi")), RecordingObserver())
@@ -268,22 +272,28 @@ class OpenAiCompatibleChatClientTest {
         }
     }
 
-    private fun clientFor(server: MockWebServer, apiKey: String): OpenAiCompatibleChatClient {
-        val profile = ProviderProfile(
-            id = "chat",
-            kind = ProviderKind.CHAT,
-            baseUrl = server.url("/v1").toString().trimEnd('/'),
-            modelId = "chat-model",
-            credentialHandle = "chat-secret",
-        )
+    private fun clientFor(
+        server: MockWebServer,
+        apiKey: String,
+    ): OpenAiCompatibleChatClient {
+        val profile =
+            ProviderProfile(
+                id = "chat",
+                kind = ProviderKind.CHAT,
+                baseUrl = server.url("/v1").toString().trimEnd('/'),
+                modelId = "chat-model",
+                credentialHandle = "chat-secret",
+            )
         return OpenAiCompatibleChatClient(
-            providers = ProviderProfileSet(
-                profiles = listOf(profile),
-                selectedProfileIds = mapOf(ProviderKind.CHAT to profile.id),
-            ),
-            credentials = CredentialResolver { handle ->
-                if (handle == "chat-secret") apiKey else null
-            },
+            providers =
+                ProviderProfileSet(
+                    profiles = listOf(profile),
+                    selectedProfileIds = mapOf(ProviderKind.CHAT to profile.id),
+                ),
+            credentials =
+                CredentialResolver { handle ->
+                    if (handle == "chat-secret") apiKey else null
+                },
             client = OkHttpClient(),
         )
     }
@@ -332,7 +342,9 @@ class OpenAiCompatibleChatClientTest {
         server.start()
         val observer = RecordingObserver()
         clientFor(server, apiKey = "key").stream(
-            listOf(PromptMessage(PromptRole.USER, "Hi")), observer, ChatGenerationOptions(stream = false),
+            listOf(PromptMessage(PromptRole.USER, "Hi")),
+            observer,
+            ChatGenerationOptions(stream = false),
         )
         assertTrue(observer.finished.await(5, TimeUnit.SECONDS))
         assertNull(observer.failure)
@@ -633,8 +645,11 @@ class OpenAiCompatibleChatClientTest {
         val reasoning = StringBuilder()
         val diagnostics = mutableListOf<String>()
         val finished = CountDownLatch(1)
+
         @Volatile var failure: ChatStreamFailure? = null
+
         @Volatile var usage: ChatTokenUsage? = null
+
         @Volatile var finishReason: ChatFinishReason? = null
 
         override fun onDelta(text: String) {
@@ -645,7 +660,10 @@ class OpenAiCompatibleChatClientTest {
             reasoning.append(text)
         }
 
-        override fun onDiagnostic(stage: String, detail: String) {
+        override fun onDiagnostic(
+            stage: String,
+            detail: String,
+        ) {
             diagnostics += "$stage:$detail"
         }
 

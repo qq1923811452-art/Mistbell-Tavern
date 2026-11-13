@@ -12,7 +12,6 @@ import kotlin.random.Random
 class WorldbookPlanner(
     private val randomDouble: () -> Double = { Random.nextDouble() },
 ) {
-
     data class Plan(
         val activated: List<ActivatedWorldbookEntry>,
         val droppedByBudget: Int,
@@ -64,7 +63,11 @@ class WorldbookPlanner(
         var usedBudget = 0
 
         @Suppress("ReturnCount")
-        fun tryActivate(entry: WorldbookEntry, matched: List<String>, carried: Boolean): Boolean {
+        fun tryActivate(
+            entry: WorldbookEntry,
+            matched: List<String>,
+            carried: Boolean,
+        ): Boolean {
             if (entry.id in activated) return false
             if (entry.groupName.isNotBlank() && entry.groupName in activatedGroups) return false
             if (!carried && !entry.constant && !passesProbability(entry.probability)) return false
@@ -84,17 +87,19 @@ class WorldbookPlanner(
         }
 
         ordered.filter(WorldbookEntry::constant).forEach { tryActivate(it, emptyList(), false) }
-        corpus += ordered
-            .filter { it.constant && it.recursive && it.id in activated }
-            .joinToString(separator = "\n") { it.content }
+        corpus +=
+            ordered
+                .filter { it.constant && it.recursive && it.id in activated }
+                .joinToString(separator = "\n") { it.content }
         loweredCorpus = corpus.lowercase()
 
         var recursionDepth = 0
         while (true) {
             val passLoweredCorpus = loweredCorpus
-            val candidates = ordered.filter { entry ->
-                isCandidate(entry, corpus, passLoweredCorpus, turn, state, activated.keys)
-            }
+            val candidates =
+                ordered.filter { entry ->
+                    isCandidate(entry, corpus, passLoweredCorpus, turn, state, activated.keys)
+                }
             if (candidates.isEmpty()) break
             val newlyActivated = mutableListOf<WorldbookEntry>()
             val groupsClaimedThisPass = mutableSetOf<String>()
@@ -115,9 +120,10 @@ class WorldbookPlanner(
                 if (tryActivate(entry, matched, carried)) newlyActivated += entry
             }
             if (newlyActivated.isEmpty() || recursionDepth >= limits.maxRecursiveDepth) break
-            val recursiveContent = newlyActivated
-                .filter(WorldbookEntry::recursive)
-                .joinToString(separator = "\n") { it.content }
+            val recursiveContent =
+                newlyActivated
+                    .filter(WorldbookEntry::recursive)
+                    .joinToString(separator = "\n") { it.content }
             if (recursiveContent.isBlank()) break
             corpus += "\n" + recursiveContent
             loweredCorpus = corpus.lowercase()
@@ -127,13 +133,20 @@ class WorldbookPlanner(
         return Plan(activated.values.toList(), droppedByBudget.size)
     }
 
-    fun buildCorpus(current: String, recentTexts: List<String>, maxScanDepth: Int): String = buildString {
-        appendLine(current)
-        recentTexts.takeLast(maxScanDepth.coerceAtLeast(0)).forEach(::appendLine)
-    }
+    fun buildCorpus(
+        current: String,
+        recentTexts: List<String>,
+        maxScanDepth: Int,
+    ): String =
+        buildString {
+            appendLine(current)
+            recentTexts.takeLast(maxScanDepth.coerceAtLeast(0)).forEach(::appendLine)
+        }
 
-    fun matchingKeys(keys: List<String>, text: String): List<String> =
-        matchingKeys(keys, text, text.lowercase())
+    fun matchingKeys(
+        keys: List<String>,
+        text: String,
+    ): List<String> = matchingKeys(keys, text, text.lowercase())
 
     private fun matchingKeys(
         keys: List<String>,
@@ -146,19 +159,21 @@ class WorldbookPlanner(
             when {
                 key.length > 2 && key.startsWith("/") && key.endsWith("/") -> {
                     val expression = key.substring(1, key.length - 1)
-                    val regex = cachedRegex("raw:$expression") {
-                        runCatching { Regex(expression, RegexOption.IGNORE_CASE) }.getOrNull()
-                    }
+                    val regex =
+                        cachedRegex("raw:$expression") {
+                            runCatching { Regex(expression, RegexOption.IGNORE_CASE) }.getOrNull()
+                        }
                     regex?.containsMatchIn(text) ?: haystack.contains(lowered)
                 }
 
                 lowered.contains('*') -> {
                     val expression = lowered.split('*').joinToString(".*") { Regex.escape(it) }
-                    val regex = cachedRegex("wild:$expression") {
-                        runCatching {
-                            Regex(expression, setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
-                        }.getOrNull()
-                    }
+                    val regex =
+                        cachedRegex("wild:$expression") {
+                            runCatching {
+                                Regex(expression, setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
+                            }.getOrNull()
+                        }
                     regex?.containsMatchIn(haystack) ?: haystack.contains(lowered.replace("*", ""))
                 }
 
@@ -175,8 +190,7 @@ class WorldbookPlanner(
             .filter { it.entry.insertPosition == WorldbookPositions.DEPTH || it.entry.depth > 0 }
             .groupBy { it.entry.depth.coerceIn(0, MAX_DEPTH) to it.entry.depthRole }
 
-    fun totalCharacters(activated: List<ActivatedWorldbookEntry>): Int =
-        activated.sumOf { it.entry.content.length }
+    fun totalCharacters(activated: List<ActivatedWorldbookEntry>): Int = activated.sumOf { it.entry.content.length }
 
     @Suppress("CyclomaticComplexMethod", "ComplexCondition", "LongParameterList")
     private fun isCandidate(
@@ -192,30 +206,40 @@ class WorldbookPlanner(
         val delayedUntil = state?.delayedUntilTurn?.get(entry.id) ?: Int.MAX_VALUE
         val delayedDue = delayedUntil <= turn
         val delayPending = (state?.delayedUntilTurn?.get(entry.id) ?: Int.MIN_VALUE) > turn
-        val primaryMatch = entry.keys.isNotEmpty() &&
-            matchingKeys(entry.keys, corpus, loweredCorpus).isNotEmpty()
-        val secondaryMatch = !entry.requireSecondaryMatch ||
-            (entry.secondaryKeys.isNotEmpty() &&
-                matchingKeys(entry.secondaryKeys, corpus, loweredCorpus).isNotEmpty())
+        val primaryMatch =
+            entry.keys.isNotEmpty() &&
+                matchingKeys(entry.keys, corpus, loweredCorpus).isNotEmpty()
+        val secondaryMatch =
+            !entry.requireSecondaryMatch ||
+                (
+                    entry.secondaryKeys.isNotEmpty() &&
+                        matchingKeys(entry.secondaryKeys, corpus, loweredCorpus).isNotEmpty()
+                )
         val matchesNow = primaryMatch && secondaryMatch
         val lastActivated = state?.lastActivatedTurn?.get(entry.id) ?: Int.MIN_VALUE
-        val cooldownOk = carried || delayedDue || entry.constant ||
-            lastActivated == Int.MIN_VALUE || turn - lastActivated > entry.cooldown
+        val cooldownOk =
+            carried || delayedDue || entry.constant ||
+                lastActivated == Int.MIN_VALUE || turn - lastActivated > entry.cooldown
         return (carried || delayedDue || (matchesNow && !delayPending)) && cooldownOk
     }
 
-    private fun isCarriedBySticky(entry: WorldbookEntry, turn: Int, state: WorldbookActivationState?): Boolean {
+    private fun isCarriedBySticky(
+        entry: WorldbookEntry,
+        turn: Int,
+        state: WorldbookActivationState?,
+    ): Boolean {
         if (!entry.sticky || state == null) return false
         val last = state.lastActivatedTurn[entry.id] ?: Int.MIN_VALUE
         val until = state.stickyUntilTurn[entry.id] ?: Int.MIN_VALUE
         return turn > last && turn <= until
     }
 
-    private fun passesProbability(probability: Double): Boolean = when {
-        probability >= 1.0 -> true
-        probability <= 0.0 -> false
-        else -> randomDouble() < probability.coerceIn(0.0, 1.0)
-    }
+    private fun passesProbability(probability: Double): Boolean =
+        when {
+            probability >= 1.0 -> true
+            probability <= 0.0 -> false
+            else -> randomDouble() < probability.coerceIn(0.0, 1.0)
+        }
 
     companion object {
         const val DEFAULT_MAX_BUDGET = 16_000
@@ -223,31 +247,32 @@ class WorldbookPlanner(
         const val DEFAULT_RECURSIVE_DEPTH = 4
         const val MAX_DEPTH = 10
 
-        private val regexCache = object : LinkedHashMap<String, Regex?>(
-            CACHE_INITIAL_CAPACITY,
-            CACHE_LOAD_FACTOR,
-            true,
-        ) {
-            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Regex?>?): Boolean =
-                size > MAX_REGEX_CACHE_ENTRIES
-        }
+        private val regexCache =
+            object : LinkedHashMap<String, Regex?>(
+                CACHE_INITIAL_CAPACITY,
+                CACHE_LOAD_FACTOR,
+                true,
+            ) {
+                override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Regex?>?): Boolean = size > MAX_REGEX_CACHE_ENTRIES
+            }
         private val regexCacheLock = Any()
         private const val MAX_REGEX_CACHE_ENTRIES = 256
         internal const val MAX_REGEX_CACHE_ENTRIES_FOR_TEST = MAX_REGEX_CACHE_ENTRIES
         private const val CACHE_INITIAL_CAPACITY = 16
         private const val CACHE_LOAD_FACTOR = 0.75f
 
-        internal fun regexCacheSizeForTest(): Int =
-            synchronized(regexCacheLock) { regexCache.size }
+        internal fun regexCacheSizeForTest(): Int = synchronized(regexCacheLock) { regexCache.size }
 
-        internal fun regexCacheContainsForTest(key: String): Boolean =
-            synchronized(regexCacheLock) { regexCache.containsKey(key) }
+        internal fun regexCacheContainsForTest(key: String): Boolean = synchronized(regexCacheLock) { regexCache.containsKey(key) }
 
         internal fun clearRegexCacheForTest() {
             synchronized(regexCacheLock) { regexCache.clear() }
         }
 
-        private fun cachedRegex(key: String, create: () -> Regex?): Regex? =
+        private fun cachedRegex(
+            key: String,
+            create: () -> Regex?,
+        ): Regex? =
             synchronized(regexCacheLock) {
                 if (regexCache.containsKey(key)) {
                     regexCache[key]

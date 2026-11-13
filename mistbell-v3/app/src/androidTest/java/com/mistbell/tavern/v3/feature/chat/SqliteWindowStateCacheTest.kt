@@ -54,7 +54,11 @@ class SqliteWindowStateCacheTest {
         store.append(
             SCOPE,
             PersistedChatMessage(
-                "kept", "user", "kept content", 1L, PersistedChatMessage.DeliveryState.COMPLETE,
+                "kept",
+                "user",
+                "kept content",
+                1L,
+                PersistedChatMessage.DeliveryState.COMPLETE,
             ),
         )
         store.writableDatabase.execSQL("DROP TABLE window_state")
@@ -78,7 +82,11 @@ class SqliteWindowStateCacheTest {
         store.append(
             SCOPE,
             PersistedChatMessage(
-                "kept", "user", "version four content", 1L, PersistedChatMessage.DeliveryState.COMPLETE,
+                "kept",
+                "user",
+                "version four content",
+                1L,
+                PersistedChatMessage.DeliveryState.COMPLETE,
             ),
         )
         val db = store.writableDatabase
@@ -108,12 +116,13 @@ class SqliteWindowStateCacheTest {
     fun explicitInvalidationReplacesLargerArchiveAndSurvivesReopen() {
         val planner = StableConversationWindowPlanner()
         val config = HistoryWindowConfig(recentTurns = 100, maxHistoryChars = 4_000)
-        val source = (0 until 13).flatMap {
-            listOf(
-                WindowHistoryMessage("u$it", PromptRole.USER, "u".repeat(500)),
-                WindowHistoryMessage("a$it", PromptRole.ASSISTANT, "a".repeat(500)),
-            )
-        }
+        val source =
+            (0 until 13).flatMap {
+                listOf(
+                    WindowHistoryMessage("u$it", PromptRole.USER, "u".repeat(500)),
+                    WindowHistoryMessage("a$it", PromptRole.ASSISTANT, "a".repeat(500)),
+                )
+            }
         for (turns in 4..13) planner.plan(SCOPE, source.take(turns * 2), config)
         val cache = SqliteWindowStateCache(store)
         val stable = checkNotNull(planner.exportState())

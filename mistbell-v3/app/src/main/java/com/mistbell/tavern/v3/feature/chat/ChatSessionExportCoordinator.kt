@@ -29,30 +29,33 @@ internal class ChatSessionExportCoordinator(
     ) {
         coroutineScope.launch {
             runCatching {
-                val archive = SessionArchive(
-                    id = conversationId,
-                    title = title,
-                    kind = kind,
-                    participants = participants,
-                    messages = history.map { line ->
-                        PersistedChatMessage(
-                            id = line.id,
-                            role = line.role,
-                            content = line.content,
-                            createdAtEpochMillis = line.createdAtEpochMillis,
-                            deliveryState = line.deliveryState,
-                            speakerId = line.speakerId,
-                            speakerName = line.speakerName,
-                            variants = line.variants,
-                            activeVariant = line.activeVariant,
-                        )
-                    },
-                )
-                val raw = if (jsonLines) {
-                    SessionArchiveCodec.exportJsonl(archive)
-                } else {
-                    SessionArchiveCodec.exportJson(archive)
-                }
+                val archive =
+                    SessionArchive(
+                        id = conversationId,
+                        title = title,
+                        kind = kind,
+                        participants = participants,
+                        messages =
+                            history.map { line ->
+                                PersistedChatMessage(
+                                    id = line.id,
+                                    role = line.role,
+                                    content = line.content,
+                                    createdAtEpochMillis = line.createdAtEpochMillis,
+                                    deliveryState = line.deliveryState,
+                                    speakerId = line.speakerId,
+                                    speakerName = line.speakerName,
+                                    variants = line.variants,
+                                    activeVariant = line.activeVariant,
+                                )
+                            },
+                    )
+                val raw =
+                    if (jsonLines) {
+                        SessionArchiveCodec.exportJsonl(archive)
+                    } else {
+                        SessionArchiveCodec.exportJson(archive)
+                    }
                 withContext(Dispatchers.IO) {
                     context.contentResolver.openOutputStream(uri)?.use { it.write(raw.toByteArray(Charsets.UTF_8)) }
                         ?: error("无法写入导出文件")

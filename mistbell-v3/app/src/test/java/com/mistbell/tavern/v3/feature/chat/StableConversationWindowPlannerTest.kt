@@ -2,7 +2,6 @@ package com.mistbell.tavern.v3.feature.chat
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -23,8 +22,10 @@ class StableConversationWindowPlannerTest {
             assertPartition(history, result)
             assertTrue(result.window.retainedHistoryChars <= config.maxHistoryChars + HIGH_WATER_TEST_ALLOWANCE)
             assertTrue(result.window.pinnedPrefixMessages.count { it.role == PromptRole.USER } <= MAX_TEST_PIN_TURNS)
-            assertTrue(result.window.pinnedPrefixMessages.count { it.role == PromptRole.USER } +
-                result.window.recentMessages.count { it.role == PromptRole.USER } <= RECENT_TURNS + BLOCK_TURNS)
+            assertTrue(
+                result.window.pinnedPrefixMessages.count { it.role == PromptRole.USER } +
+                    result.window.recentMessages.count { it.role == PromptRole.USER } <= RECENT_TURNS + BLOCK_TURNS,
+            )
             if (result.window.archivedMessageCount == previous.window.archivedMessageCount) {
                 assertEquals(previous.window.earlierSummary, result.window.earlierSummary)
                 assertFalse(result.summaryRebuilt)
@@ -78,8 +79,10 @@ class StableConversationWindowPlannerTest {
         val result = planner.plan(SCOPE, history, config)
         assertTrue(result.window.isOverHistoryBudget)
         assertEquals(history.last().content, result.window.recentMessages.last().content)
-        assertEquals(history.sumOf { it.content.length.toLong() } - result.window.pinnedPrefixChars,
-            result.window.recentHistoryChars)
+        assertEquals(
+            history.sumOf { it.content.length.toLong() } - result.window.pinnedPrefixChars,
+            result.window.recentHistoryChars,
+        )
         assertEquals("u1", result.startId)
         assertPartition(history, result)
     }
@@ -87,15 +90,16 @@ class StableConversationWindowPlannerTest {
     @Test
     fun identityRoleContentDeletionAndVariantsInvalidateSnapshots() {
         val history = turns(INITIAL_LONG_HISTORY)
-        val mutations = listOf(
-            history.dropLast(1),
-            history.toMutableList().apply { this[0] = first().copy(id = "replacement") },
-            history.toMutableList().apply { this[0] = first().copy(role = PromptRole.ASSISTANT) },
-            history.toMutableList().apply { this[0] = first().copy(content = "edited") },
-            history.toMutableList().apply { this[0] = first().copy(sourceRole = "changed-source-role") },
-            history.toMutableList().apply { this[1] = this[1].copy(variants = listOf("same", "same")) },
-            history.toMutableList().apply { this[1] = this[1].copy(activeVariant = 1) },
-        )
+        val mutations =
+            listOf(
+                history.dropLast(1),
+                history.toMutableList().apply { this[0] = first().copy(id = "replacement") },
+                history.toMutableList().apply { this[0] = first().copy(role = PromptRole.ASSISTANT) },
+                history.toMutableList().apply { this[0] = first().copy(content = "edited") },
+                history.toMutableList().apply { this[0] = first().copy(sourceRole = "changed-source-role") },
+                history.toMutableList().apply { this[1] = this[1].copy(variants = listOf("same", "same")) },
+                history.toMutableList().apply { this[1] = this[1].copy(activeVariant = 1) },
+            )
         for (mutation in mutations) {
             val planner = StableConversationWindowPlanner()
             val config = HistoryWindowConfig(maxHistoryChars = LARGE_BUDGET)
@@ -114,10 +118,13 @@ class StableConversationWindowPlannerTest {
         val history = turns(INITIAL_LONG_HISTORY)
         planner.plan(SCOPE, history, config)
         assertEquals("scope-changed", planner.plan("other", history, config).reason)
-        val configs = listOf(
-            config.copy(recentTurns = 1), config.copy(summaryMaxChars = 0),
-            config.copy(maxHistoryChars = SMALL_BUDGET), config.copy(blockTurns = 1),
-        )
+        val configs =
+            listOf(
+                config.copy(recentTurns = 1),
+                config.copy(summaryMaxChars = 0),
+                config.copy(maxHistoryChars = SMALL_BUDGET),
+                config.copy(blockTurns = 1),
+            )
         for (changed in configs) {
             assertEquals("config-changed", planner.plan("other", history, changed).reason)
         }
@@ -139,30 +146,35 @@ class StableConversationWindowPlannerTest {
         assertEquals(initial.window.pinnedPrefixMessages, result.window.pinnedPrefixMessages)
         assertPartition(appended, result)
         val pinCount = result.window.pinnedPrefixMessages.size
-        val expectedSummary = ConversationContextWindowBuilder.summarizeOlder(
-            appended.subList(pinCount, result.window.archivedMessageCount)
-                .map(WindowHistoryMessage::toPromptMessage),
-            config.summaryMaxChars,
-        )
+        val expectedSummary =
+            ConversationContextWindowBuilder.summarizeOlder(
+                appended.subList(pinCount, result.window.archivedMessageCount)
+                    .map(WindowHistoryMessage::toPromptMessage),
+                config.summaryMaxChars,
+            )
         assertEquals(expectedSummary, result.window.earlierSummary)
     }
 
     @Test
     fun openingAndMultipleAssistantsStayOnOneFinalBoundary() {
-        val history = listOf(WindowHistoryMessage("opening", PromptRole.ASSISTANT, "opening")) +
-            turns(INITIAL_LONG_HISTORY).flatMap { message ->
-                if (message.role == PromptRole.ASSISTANT) {
-                    listOf(message, message.copy(id = message.id + "extra"))
-                } else {
-                    listOf(message)
+        val history =
+            listOf(WindowHistoryMessage("opening", PromptRole.ASSISTANT, "opening")) +
+                turns(INITIAL_LONG_HISTORY).flatMap { message ->
+                    if (message.role == PromptRole.ASSISTANT) {
+                        listOf(message, message.copy(id = message.id + "extra"))
+                    } else {
+                        listOf(message)
+                    }
                 }
-            }
         val result = StableConversationWindowPlanner().plan(SCOPE, history, HistoryWindowConfig())
         assertTrue(result.window.pinnedPrefixMessages.isNotEmpty())
         assertPartition(history, result)
     }
 
-    private fun assertPartition(history: List<WindowHistoryMessage>, result: HistoryWindowDecision) {
+    private fun assertPartition(
+        history: List<WindowHistoryMessage>,
+        result: HistoryWindowDecision,
+    ) {
         val split = result.window.archivedMessageCount
         val pinCount = result.window.pinnedPrefixMessages.size
         assertEquals(
@@ -198,12 +210,16 @@ class StableConversationWindowPlannerTest {
         assertTrue(openingResult.window.pinnedPrefixMessages.first().content == "intro")
     }
 
-    private fun turns(count: Int, chars: Int = 1): List<WindowHistoryMessage> = (0 until count).flatMap { turn ->
-        listOf(
-            WindowHistoryMessage("u$turn", PromptRole.USER, "x".repeat(chars)),
-            WindowHistoryMessage("a$turn", PromptRole.ASSISTANT, "x".repeat(chars)),
-        )
-    }
+    private fun turns(
+        count: Int,
+        chars: Int = 1,
+    ): List<WindowHistoryMessage> =
+        (0 until count).flatMap { turn ->
+            listOf(
+                WindowHistoryMessage("u$turn", PromptRole.USER, "x".repeat(chars)),
+                WindowHistoryMessage("a$turn", PromptRole.ASSISTANT, "x".repeat(chars)),
+            )
+        }
 }
 
 private const val SCOPE = "session"

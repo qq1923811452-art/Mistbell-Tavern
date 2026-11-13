@@ -5,7 +5,10 @@ import java.security.MessageDigest
 
 /** Hashes roles and length-framed content; diagnostic logs never include the prompt text. */
 internal object PromptCacheDiagnostics {
-    fun describe(messages: List<PromptMessage>, pinnedMessageCount: Int): String {
+    fun describe(
+        messages: List<PromptMessage>,
+        pinnedMessageCount: Int,
+    ): String {
         val system = messages.takeWhile { it.role == PromptRole.SYSTEM }
         val prefix = messages.take(system.size + pinnedMessageCount.coerceAtLeast(0))
         return "systemHash=${hash(system)}; prefixHash=${hash(prefix)}; " +

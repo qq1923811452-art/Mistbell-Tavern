@@ -6,7 +6,10 @@ import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class MemoryJobLedgerTest {
-    private fun plan(id: String = "batch-1", start: Int = 1) = MemoryBatchPlan(
+    private fun plan(
+        id: String = "batch-1",
+        start: Int = 1,
+    ) = MemoryBatchPlan(
         id = id,
         conversationId = "conversation-1",
         turns = (start until start + 3).map { EligibleConversationTurn("turn-$it", it.toLong()) },
@@ -46,12 +49,13 @@ class MemoryJobLedgerTest {
     fun retryIsNotClaimedBeforeScheduledTime() {
         val pending = MemoryJobLedger().enqueue(plan())
         val (processing, _) = pending.claimNext(nowEpochMillis = 100)
-        val retry = processing.retry(
-            planId = "batch-1",
-            nowEpochMillis = 100,
-            delayMillis = 500,
-            safeError = "Temporary provider error.",
-        )
+        val retry =
+            processing.retry(
+                planId = "batch-1",
+                nowEpochMillis = 100,
+                delayMillis = 500,
+                safeError = "Temporary provider error.",
+            )
         val (tooEarly, earlyClaim) = retry.claimNext(nowEpochMillis = 599)
         assertNull(earlyClaim)
         assertEquals(retry, tooEarly)
@@ -67,12 +71,13 @@ class MemoryJobLedgerTest {
         repeat(MemoryJobLedger.DEFAULT_MAX_ATTEMPTS) {
             val (processing, job) = ledger.claimNext(nowEpochMillis = 1000L + it)
             requireNotNull(job)
-            ledger = processing.retry(
-                planId = "batch-1",
-                nowEpochMillis = 1000L + it,
-                delayMillis = 0,
-                safeError = "Provider unavailable.",
-            )
+            ledger =
+                processing.retry(
+                    planId = "batch-1",
+                    nowEpochMillis = 1000L + it,
+                    delayMillis = 0,
+                    safeError = "Provider unavailable.",
+                )
         }
         assertEquals(MemoryJobStatus.PERMANENT_FAILURE, ledger.jobs.single().status)
     }

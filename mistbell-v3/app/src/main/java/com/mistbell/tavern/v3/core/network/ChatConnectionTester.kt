@@ -1,6 +1,5 @@
 package com.mistbell.tavern.v3.core.network
 
-import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -8,18 +7,24 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
+import java.util.concurrent.TimeUnit
 
 /** Sends one minimal chat completion to verify endpoint, model and key together. */
 class ChatConnectionTester(
-    private val client: OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-        .readTimeout(READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-        .followRedirects(false)
-        .build(),
+    private val client: OkHttpClient =
+        OkHttpClient.Builder()
+            .connectTimeout(CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .readTimeout(READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .followRedirects(false)
+            .build(),
 ) {
     data class Result(val success: Boolean, val message: String)
 
-    suspend fun test(baseUrl: String, modelId: String, apiKey: String): Result =
+    suspend fun test(
+        baseUrl: String,
+        modelId: String,
+        apiKey: String,
+    ): Result =
         withContext(Dispatchers.IO) {
             if (baseUrl.isBlank() || modelId.isBlank()) {
                 return@withContext Result(false, "请先填写地址和模型 ID。")
@@ -29,28 +34,31 @@ class ChatConnectionTester(
             }
             val started = System.nanoTime()
             runCatching {
-                val endpoint = if (baseUrl.trimEnd('/').endsWith("/chat/completions")) {
-                    baseUrl.trimEnd('/')
-                } else {
-                    baseUrl.trimEnd('/') + "/chat/completions"
-                }
-                val body = JSONObject()
-                    .put("model", modelId)
-                    .put("stream", false)
-                    .put("max_tokens", 1)
-                    .put(
-                        "messages",
-                        org.json.JSONArray().put(
-                            JSONObject().put("role", "user").put("content", "ping"),
-                        ),
-                    )
-                    .toString()
-                    .toRequestBody("application/json; charset=utf-8".toMediaType())
-                val request = Request.Builder()
-                    .url(endpoint)
-                    .header("Authorization", "Bearer $apiKey")
-                    .post(body)
-                    .build()
+                val endpoint =
+                    if (baseUrl.trimEnd('/').endsWith("/chat/completions")) {
+                        baseUrl.trimEnd('/')
+                    } else {
+                        baseUrl.trimEnd('/') + "/chat/completions"
+                    }
+                val body =
+                    JSONObject()
+                        .put("model", modelId)
+                        .put("stream", false)
+                        .put("max_tokens", 1)
+                        .put(
+                            "messages",
+                            org.json.JSONArray().put(
+                                JSONObject().put("role", "user").put("content", "ping"),
+                            ),
+                        )
+                        .toString()
+                        .toRequestBody("application/json; charset=utf-8".toMediaType())
+                val request =
+                    Request.Builder()
+                        .url(endpoint)
+                        .header("Authorization", "Bearer $apiKey")
+                        .post(body)
+                        .build()
                 client.newCall(request).execute().use { response ->
                     val elapsed = (System.nanoTime() - started) / NANOS_PER_MILLI
                     if (response.isSuccessful) {

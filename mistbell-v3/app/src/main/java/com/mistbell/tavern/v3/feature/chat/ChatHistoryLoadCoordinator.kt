@@ -21,18 +21,21 @@ internal class ChatHistoryLoadCoordinator(
         if (loaded !is ChatHistoryLoadResult.Loaded) return loaded
 
         var recoveredInterruptedReply = false
-        val recoveredMessages = loaded.messages.map { message ->
-            val interruptedAssistant = message.role == "assistant" &&
-                message.deliveryState == PersistedChatMessage.DeliveryState.PENDING
-            if (interruptedAssistant) recoveredInterruptedReply = true
-            message.copy(
-                deliveryState = if (interruptedAssistant) {
-                    PersistedChatMessage.DeliveryState.FAILED
-                } else {
-                    message.deliveryState
-                },
-            )
-        }
+        val recoveredMessages =
+            loaded.messages.map { message ->
+                val interruptedAssistant =
+                    message.role == "assistant" &&
+                        message.deliveryState == PersistedChatMessage.DeliveryState.PENDING
+                if (interruptedAssistant) recoveredInterruptedReply = true
+                message.copy(
+                    deliveryState =
+                        if (interruptedAssistant) {
+                            PersistedChatMessage.DeliveryState.FAILED
+                        } else {
+                            message.deliveryState
+                        },
+                )
+            }
         onLoaded(recoveredMessages, recoveredInterruptedReply)
 
         if (recoveredInterruptedReply) {

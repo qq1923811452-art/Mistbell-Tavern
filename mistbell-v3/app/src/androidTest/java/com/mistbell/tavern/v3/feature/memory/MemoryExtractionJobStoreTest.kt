@@ -1,14 +1,14 @@
 package com.mistbell.tavern.v3.feature.memory
 
+import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import android.content.Context
-import java.io.File
-import java.util.UUID
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.io.File
+import java.util.UUID
 
 @RunWith(AndroidJUnit4::class)
 class MemoryExtractionJobStoreTest {
@@ -51,12 +51,13 @@ class MemoryExtractionJobStoreTest {
         File(context.filesDir, "$fileName.new").delete()
     }
 
-    private fun job() = MemoryExtractionJob(
-        id = "job-${UUID.randomUUID()}",
-        conversationId = "conversation-1",
-        turnIds = listOf("turn-1", "turn-2", "turn-3"),
-        providerProfileId = "memory-profile",
-        credentialHandle = "opaque-credential-handle",
-        createdAtEpochMillis = 100L,
-    )
+    private fun job() =
+        MemoryExtractionJob(
+            id = "job-${UUID.randomUUID()}",
+            conversationId = "conversation-1",
+            turnIds = listOf("turn-1", "turn-2", "turn-3"),
+            providerProfileId = "memory-profile",
+            credentialHandle = "opaque-credential-handle",
+            createdAtEpochMillis = 100L,
+        )
 }

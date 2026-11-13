@@ -19,9 +19,16 @@ object WorldbookPositions {
     const val ROLE_USER = "user"
     const val ROLE_ASSISTANT = "assistant"
 
-    val supportedPositions: Set<String> = setOf(
-        BEFORE_PROMPT, AFTER_PROMPT, AN_BEFORE, AN_AFTER, EM_BEFORE, EM_AFTER, DEPTH,
-    )
+    val supportedPositions: Set<String> =
+        setOf(
+            BEFORE_PROMPT,
+            AFTER_PROMPT,
+            AN_BEFORE,
+            AN_AFTER,
+            EM_BEFORE,
+            EM_AFTER,
+            DEPTH,
+        )
 }
 
 data class WorldbookDocument(

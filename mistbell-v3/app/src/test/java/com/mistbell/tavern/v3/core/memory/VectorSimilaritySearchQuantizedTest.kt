@@ -1,11 +1,11 @@
 package com.mistbell.tavern.v3.core.memory
 
-import java.nio.ByteBuffer
-import kotlin.math.abs
-import kotlin.math.sqrt
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.nio.ByteBuffer
+import kotlin.math.abs
+import kotlin.math.sqrt
 
 /**
  * The quantized path scores `v = scale * b` as `(u . b) / (|u| * |b|)` because a single positive
@@ -33,12 +33,13 @@ class VectorSimilaritySearchQuantizedTest {
 
     @Test
     fun quantizedPathKeepsTheStableIdTieBreakAndSkipsZeroVectors() {
-        val records = listOf(
-            StoredVector("zero", HASH, 1L, List(4) { 0f }),
-            StoredVector("alpha", HASH, 2L, listOf(1f, 0f, 0f, 0f)),
-            StoredVector("alpha-twin", HASH, 3L, listOf(2f, 0f, 0f, 0f)),
-            StoredVector("beta", HASH, 4L, listOf(0f, 1f, 0f, 0f)),
-        )
+        val records =
+            listOf(
+                StoredVector("zero", HASH, 1L, List(4) { 0f }),
+                StoredVector("alpha", HASH, 2L, listOf(1f, 0f, 0f, 0f)),
+                StoredVector("alpha-twin", HASH, 3L, listOf(2f, 0f, 0f, 0f)),
+                StoredVector("beta", HASH, 4L, listOf(0f, 1f, 0f, 0f)),
+            )
         val snapshot = mappedSnapshot(records)
         val hits = VectorSimilaritySearch.search(snapshot, listOf(1f, 0f, 0f, 0f), limit = 4, minimumScore = 0.0)
 
@@ -73,9 +74,10 @@ class VectorSimilaritySearchQuantizedTest {
 
     @Test
     fun mappedDecodeRejectsQuantizedValuesThatWouldOverflowFloat() {
-        val encoded = VectorSnapshotCodec.encode(
-            VectorSnapshot(MODEL, 1, listOf(StoredVector("r", HASH, 0L, listOf(1f)))),
-        )
+        val encoded =
+            VectorSnapshotCodec.encode(
+                VectorSnapshot(MODEL, 1, listOf(StoredVector("r", HASH, 0L, listOf(1f)))),
+            )
         val input = ByteBuffer.wrap(encoded)
         val payloadLength = input.int
         input.position(4 + 8)
@@ -108,16 +110,16 @@ class VectorSimilaritySearchQuantizedTest {
         val candidateValues = FloatArray(snapshot.dimensions)
         val norms = snapshot.norms
         return snapshot.records.asSequence().mapIndexedNotNull { index, record ->
-                (record.values as FloatVectorView).fillInto(candidateValues)
-                val recordNorm = norms[index]
-                if (recordNorm == 0.0) return@mapIndexedNotNull null
-                var dot = 0.0
-                for (position in queryValues.indices) {
-                    dot += queryValues[position].toDouble() * candidateValues[position].toDouble()
-                }
-                val score = (dot / (queryNorm * recordNorm)).coerceIn(-1.0, 1.0)
-                VectorSearchHit(record.id, score, record.sourceTextSha256, record.createdAtEpochMillis)
+            (record.values as FloatVectorView).fillInto(candidateValues)
+            val recordNorm = norms[index]
+            if (recordNorm == 0.0) return@mapIndexedNotNull null
+            var dot = 0.0
+            for (position in queryValues.indices) {
+                dot += queryValues[position].toDouble() * candidateValues[position].toDouble()
             }
+            val score = (dot / (queryNorm * recordNorm)).coerceIn(-1.0, 1.0)
+            VectorSearchHit(record.id, score, record.sourceTextSha256, record.createdAtEpochMillis)
+        }
             .sortedWith(compareByDescending<VectorSearchHit> { it.score }.thenBy { it.id })
             .take(limit)
             .toList()
@@ -126,16 +128,20 @@ class VectorSimilaritySearchQuantizedTest {
     private fun mappedSnapshot(records: List<StoredVector>): VectorSnapshot =
         VectorSnapshotCodec.decodeMapped(ByteBuffer.wrap(VectorSnapshotCodec.encode(VectorSnapshot(MODEL, 4, records))))
 
-    private fun mappedSnapshot(records: Int, dimensions: Int): VectorSnapshot {
+    private fun mappedSnapshot(
+        records: Int,
+        dimensions: Int,
+    ): VectorSnapshot {
         val random = java.util.Random(5L)
-        val stored = (0 until records).map { index ->
-            StoredVector(
-                id = "rec-%04d".format(index),
-                sourceTextSha256 = HASH,
-                createdAtEpochMillis = index.toLong(),
-                values = FloatArray(dimensions) { random.nextGaussian().toFloat() }.asList(),
-            )
-        }
+        val stored =
+            (0 until records).map { index ->
+                StoredVector(
+                    id = "rec-%04d".format(index),
+                    sourceTextSha256 = HASH,
+                    createdAtEpochMillis = index.toLong(),
+                    values = FloatArray(dimensions) { random.nextGaussian().toFloat() }.asList(),
+                )
+            }
         val encoded = VectorSnapshotCodec.encode(VectorSnapshot(MODEL, dimensions, stored))
         return VectorSnapshotCodec.decodeMapped(ByteBuffer.wrap(encoded))
     }

@@ -7,14 +7,24 @@ package com.mistbell.tavern.v3.feature.chat
  * should reverse the returned page before rendering it.
  */
 interface ChatStore {
-    fun append(scopeId: String, message: PersistedChatMessage)
-    fun upsert(scopeId: String, message: PersistedChatMessage)
+    fun append(
+        scopeId: String,
+        message: PersistedChatMessage,
+    )
+
+    fun upsert(
+        scopeId: String,
+        message: PersistedChatMessage,
+    )
+
     fun loadRecent(
         scopeId: String,
         limit: Int,
         before: ChatMessageCursor? = null,
     ): List<PersistedChatMessage>
+
     fun count(scopeId: String): Long
+
     fun deleteScope(scopeId: String)
 }
 

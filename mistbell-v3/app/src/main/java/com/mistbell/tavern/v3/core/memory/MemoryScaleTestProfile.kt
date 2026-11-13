@@ -25,10 +25,10 @@ enum class MemoryScaleTestProfile(
         recordCount = 100_000,
         label = "Large · 100k",
         purpose = "Stress-test retrieval quality, latency, storage, and memory use at ten times the baseline scale.",
-    );
+    ),
+    ;
 
     companion object {
-        fun fromRecordCount(recordCount: Int): MemoryScaleTestProfile? =
-            entries.firstOrNull { it.recordCount == recordCount }
+        fun fromRecordCount(recordCount: Int): MemoryScaleTestProfile? = entries.firstOrNull { it.recordCount == recordCount }
     }
 }

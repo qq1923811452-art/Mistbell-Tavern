@@ -3,14 +3,14 @@ package com.mistbell.tavern.v3.core.backup
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.util.Log
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
 import java.io.File
 import java.io.IOException
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 
 /**
  * Implemented by the app integration layer to close every live chat database handle before the
@@ -18,6 +18,7 @@ import kotlinx.coroutines.sync.withLock
  */
 interface BackupDatabaseLifecycle {
     fun closeBeforeRestore()
+
     fun reopenAfterRestore()
 }
 
@@ -35,69 +36,71 @@ class BackupService(
     private val appContext = context.applicationContext
     private val source = BackupSource(appContext)
 
-    suspend fun export(destination: File): BackupArchiveResult = operationMutex.withLock {
-        val started = clock()
-        val staging = File(appContext.cacheDir, "backup-export-${UUID.randomUUID()}")
-        var result: BackupArchiveResult? = null
-        try {
-            require(staging.mkdirs()) { "Backup temporary directory could not be created." }
-            writer.write(destination, source.collect(staging), appVersion, clock().toString())
-                .also { result = it }
-        } finally {
-            staging.deleteRecursively()
-            result?.let { log("backup.export", started, it.manifest.entryCount, it.archiveSha256) }
+    suspend fun export(destination: File): BackupArchiveResult =
+        operationMutex.withLock {
+            val started = clock()
+            val staging = File(appContext.cacheDir, "backup-export-${UUID.randomUUID()}")
+            var result: BackupArchiveResult? = null
+            try {
+                require(staging.mkdirs()) { "Backup temporary directory could not be created." }
+                writer.write(destination, source.collect(staging), appVersion, clock().toString())
+                    .also { result = it }
+            } finally {
+                staging.deleteRecursively()
+                result?.let { log("backup.export", started, it.manifest.entryCount, it.archiveSha256) }
+            }
         }
-    }
 
     fun preview(archive: File): BackupPreview = reader.preview(archive)
 
     @Suppress("TooGenericExceptionCaught")
-    suspend fun restore(archive: File): BackupPreview = operationMutex.withLock {
-        val started = clock()
-        val staging = File(appContext.filesDir, "restore-tmp-${UUID.randomUUID()}")
-        var entryCount = 0
-        var archiveHash = ""
-        try {
-            val extracted = reader.extract(archive, staging)
-            entryCount = extracted.manifest.entryCount
-            archiveHash = extracted.archiveSha256
-            validateStagedDatabase(File(staging, BackupSource.CHAT_DATABASE_NAME))
-            validateStagedDatabase(File(staging, BackupSource.SESSION_DATABASE_NAME))
-            val plan = mapRestoreTargets(extracted)
-            var rollbackSettings: (() -> Unit)? = null
-            var rollbackLifecycleHandled = false
-            databaseLifecycle.closeBeforeRestore()
+    suspend fun restore(archive: File): BackupPreview =
+        operationMutex.withLock {
+            val started = clock()
+            val staging = File(appContext.filesDir, "restore-tmp-${UUID.randomUUID()}")
+            var entryCount = 0
+            var archiveHash = ""
             try {
-                RestoreTransaction().replaceFiles(
-                    stagedToDestination = plan.replacements,
-                    removeDestinations = plan.removals,
-                    beforeCommit = {
-                        rollbackSettings = applySettings(File(staging, BackupSource.SETTINGS_BACKUP_FILE))
-                        databaseLifecycle.reopenAfterRestore()
-                    },
-                    beforeRollback = {
-                        databaseLifecycle.closeBeforeRestore()
-                        rollbackSettings?.invoke()
-                        rollbackSettings = null
-                    },
-                    afterRollback = {
-                        databaseLifecycle.reopenAfterRestore()
-                        rollbackLifecycleHandled = true
-                    },
-                )
-            } catch (failure: Throwable) {
-                runCatching { rollbackSettings?.invoke() }.onFailure(failure::addSuppressed)
-                if (!rollbackLifecycleHandled) {
-                    runCatching { databaseLifecycle.reopenAfterRestore() }.onFailure(failure::addSuppressed)
+                val extracted = reader.extract(archive, staging)
+                entryCount = extracted.manifest.entryCount
+                archiveHash = extracted.archiveSha256
+                validateStagedDatabase(File(staging, BackupSource.CHAT_DATABASE_NAME))
+                validateStagedDatabase(File(staging, BackupSource.SESSION_DATABASE_NAME))
+                val plan = mapRestoreTargets(extracted)
+                var rollbackSettings: (() -> Unit)? = null
+                var rollbackLifecycleHandled = false
+                databaseLifecycle.closeBeforeRestore()
+                try {
+                    RestoreTransaction().replaceFiles(
+                        stagedToDestination = plan.replacements,
+                        removeDestinations = plan.removals,
+                        beforeCommit = {
+                            rollbackSettings = applySettings(File(staging, BackupSource.SETTINGS_BACKUP_FILE))
+                            databaseLifecycle.reopenAfterRestore()
+                        },
+                        beforeRollback = {
+                            databaseLifecycle.closeBeforeRestore()
+                            rollbackSettings?.invoke()
+                            rollbackSettings = null
+                        },
+                        afterRollback = {
+                            databaseLifecycle.reopenAfterRestore()
+                            rollbackLifecycleHandled = true
+                        },
+                    )
+                } catch (failure: Throwable) {
+                    runCatching { rollbackSettings?.invoke() }.onFailure(failure::addSuppressed)
+                    if (!rollbackLifecycleHandled) {
+                        runCatching { databaseLifecycle.reopenAfterRestore() }.onFailure(failure::addSuppressed)
+                    }
+                    throw failure
                 }
-                throw failure
+                log("backup.restore", started, entryCount, archiveHash)
+                BackupPreview(extracted.manifest, extracted.archiveBytes, archiveHash)
+            } finally {
+                staging.deleteRecursively()
             }
-            log("backup.restore", started, entryCount, archiveHash)
-            BackupPreview(extracted.manifest, extracted.archiveBytes, archiveHash)
-        } finally {
-            staging.deleteRecursively()
         }
-    }
 
     private fun validateStagedDatabase(stagedDatabase: File) {
         if (!stagedDatabase.isFile) return
@@ -215,10 +218,11 @@ class BackupService(
     }
 
     private fun isCredentialKey(key: String): Boolean {
-        val sensitiveParts = listOf(
-            "credential", "secret", "apikey", "api_key", "api-key", "password",
-            "token", "keystore", "privatekey", "private_key",
-        )
+        val sensitiveParts =
+            listOf(
+                "credential", "secret", "apikey", "api_key", "api-key", "password",
+                "token", "keystore", "privatekey", "private_key",
+            )
         return sensitiveParts.any { part -> key.contains(part, ignoreCase = true) }
     }
 
@@ -240,7 +244,12 @@ class BackupService(
         if (!rollback.commit()) throw IOException("Previous settings could not be restored.")
     }
 
-    private fun log(event: String, started: Instant, entries: Int, hash: String) {
+    private fun log(
+        event: String,
+        started: Instant,
+        entries: Int,
+        hash: String,
+    ) {
         val elapsed = Duration.between(started, clock()).toMillis().coerceAtLeast(0)
         runCatching {
             File(appContext.filesDir, "mistbell-v3-backup-diagnostics.log").appendText(
@@ -274,5 +283,4 @@ class BackupValidatorFacade {
             database.close()
         }
     }
-
 }

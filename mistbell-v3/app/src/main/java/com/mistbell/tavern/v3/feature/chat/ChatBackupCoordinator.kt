@@ -6,10 +6,10 @@ import android.os.Handler
 import android.os.Looper
 import com.mistbell.tavern.v3.core.backup.BackupService
 import com.mistbell.tavern.v3.feature.backup.AppBackupDatabaseLifecycle
-import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import java.io.File
 
 /**
  * Bridges the SAF document pickers to [BackupService]. All file work runs on the IO dispatcher;
@@ -30,8 +30,9 @@ class ChatBackupCoordinator(
             val temporary = File(context.cacheDir, "mistbell-backup-${System.currentTimeMillis()}.zip")
             try {
                 val result = service.export(temporary)
-                val output = context.contentResolver.openOutputStream(target)
-                    ?: error("目标文件不可写")
+                val output =
+                    context.contentResolver.openOutputStream(target)
+                        ?: error("目标文件不可写")
                 output.use { sink ->
                     temporary.inputStream().use { source -> source.copyTo(sink) }
                 }
@@ -49,8 +50,9 @@ class ChatBackupCoordinator(
         scope.launch(Dispatchers.IO) {
             val temporary = File(context.cacheDir, "mistbell-restore-${System.currentTimeMillis()}.zip")
             try {
-                val input = context.contentResolver.openInputStream(source)
-                    ?: error("备份文件不可读")
+                val input =
+                    context.contentResolver.openInputStream(source)
+                        ?: error("备份文件不可读")
                 input.use { stream ->
                     temporary.outputStream().use { sink ->
                         val buffer = ByteArray(COPY_BUFFER_BYTES)

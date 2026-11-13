@@ -7,7 +7,10 @@ internal class ConversationScrollPolicy {
     private var historyLoaded = false
     private var lastUserMessageId: String? = null
 
-    fun onHistory(ready: Boolean, userMessageId: String?): Boolean {
+    fun onHistory(
+        ready: Boolean,
+        userMessageId: String?,
+    ): Boolean {
         if (!ready) return false
         val sentMessage = historyLoaded && userMessageId != null && userMessageId != lastUserMessageId
         lastUserMessageId = userMessageId

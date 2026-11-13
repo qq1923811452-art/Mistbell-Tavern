@@ -42,34 +42,36 @@ internal class ChatTurnPromptPreparationCoordinator(
         val characterDefinition = selectedCard?.let(CharacterDefinitionCache::format)
         val formatMs = (System.nanoTime() - formatStarted) / NANOS_PER_MILLI
         val prepareStarted = System.nanoTime()
-        val messages = ChatSendMessageCoordinator(
-            settings = settings,
-            diagnosticStore = diagnosticStore,
-            historyPlanner = historyPlanner,
-            historyWindowCache = historyWindowCache,
-        ).prepare(
-            history = history,
-            userText = userText,
-            selectedCard = selectedCard,
-            characterDefinition = characterDefinition,
-            localEntries = localWorldbookEntries,
-            worldbookState = worldbookState,
-            worldbookStateKey = worldbookStateKey,
-            historyIsComplete = historyIsComplete,
-            historyScopeId = historyScopeId,
-            invalidateHistoryWindow = invalidateHistoryWindow,
-            postHistoryInstructions = selectedCard?.postHistoryInstructions,
-            onBudgetExceeded = { droppedCount ->
-                mainHandler.post {
-                    setStatus("世界书预算超限：本轮有 " + droppedCount + " 个条目未注入")
-                }
-            },
-        ).messages
-        val finalMessages = if (groupContext == null) {
-            messages
-        } else {
-            labelGroupMessages(messages, history, historyIsComplete, groupContext)
-        }
+        val messages =
+            ChatSendMessageCoordinator(
+                settings = settings,
+                diagnosticStore = diagnosticStore,
+                historyPlanner = historyPlanner,
+                historyWindowCache = historyWindowCache,
+            ).prepare(
+                history = history,
+                userText = userText,
+                selectedCard = selectedCard,
+                characterDefinition = characterDefinition,
+                localEntries = localWorldbookEntries,
+                worldbookState = worldbookState,
+                worldbookStateKey = worldbookStateKey,
+                historyIsComplete = historyIsComplete,
+                historyScopeId = historyScopeId,
+                invalidateHistoryWindow = invalidateHistoryWindow,
+                postHistoryInstructions = selectedCard?.postHistoryInstructions,
+                onBudgetExceeded = { droppedCount ->
+                    mainHandler.post {
+                        setStatus("世界书预算超限：本轮有 " + droppedCount + " 个条目未注入")
+                    }
+                },
+            ).messages
+        val finalMessages =
+            if (groupContext == null) {
+                messages
+            } else {
+                labelGroupMessages(messages, history, historyIsComplete, groupContext)
+            }
         val prepareMs = (System.nanoTime() - prepareStarted) / NANOS_PER_MILLI
         val elapsedMillis = (System.nanoTime() - startedNanos) / NANOS_PER_MILLI
         val promptChars = finalMessages.sumOf { it.content.length }
@@ -89,13 +91,15 @@ internal class ChatTurnPromptPreparationCoordinator(
         context: GroupChatPromptContext,
     ): List<PromptMessage> {
         val completed = if (historyIsComplete) history else history.dropLast(2)
-        val assistantNames = completed
-            .filter { it.role == "assistant" && it.content.isNotBlank() }
-            .map { it.speakerName }
+        val assistantNames =
+            completed
+                .filter { it.role == "assistant" && it.content.isNotBlank() }
+                .map { it.speakerName }
         val block = GroupPromptAssembler.systemBlock(context.members, context.speakerName)
         val pinnedMessages = historyPlanner.exportState()?.pinnedMessageCount ?: 0
-        val pinnedAssistants = completed.filter { it.content.isNotBlank() }.take(pinnedMessages)
-            .count { it.role == "assistant" }
+        val pinnedAssistants =
+            completed.filter { it.content.isNotBlank() }.take(pinnedMessages)
+                .count { it.role == "assistant" }
         val labelled = GroupPromptAssembler.labelHistoryAssistantMessages(messages, assistantNames, pinnedAssistants)
         return labelled.map { message ->
             if (message.role == PromptRole.SYSTEM) {

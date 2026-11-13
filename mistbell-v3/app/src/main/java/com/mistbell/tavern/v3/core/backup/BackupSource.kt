@@ -47,7 +47,11 @@ class BackupSource(private val context: Context) {
         return result
     }
 
-    private fun includeDatabase(name: String, snapshotDirectory: File, result: MutableMap<String, File>) {
+    private fun includeDatabase(
+        name: String,
+        snapshotDirectory: File,
+        result: MutableMap<String, File>,
+    ) {
         val database = context.getDatabasePath(name)
         if (!database.isFile) return
         val snapshot = File(snapshotDirectory, name)
@@ -79,10 +83,11 @@ class BackupSource(private val context: Context) {
 
     private fun isCredentialKey(key: String): Boolean {
         val normalized = key.lowercase()
-        val sensitiveMarkers = listOf(
-            "credential", "secret", "apikey", "api_key", "api-key", "password",
-            "token", "keystore", "privatekey", "private_key",
-        )
+        val sensitiveMarkers =
+            listOf(
+                "credential", "secret", "apikey", "api_key", "api-key", "password",
+                "token", "keystore", "privatekey", "private_key",
+            )
         return sensitiveMarkers.any(normalized::contains)
     }
 
@@ -95,19 +100,21 @@ class BackupSource(private val context: Context) {
         const val SESSION_DATABASE_NAME = "mistbell-v3-sessions.db"
         const val SETTINGS_PREFERENCES = "mistbell-v3-settings"
         const val SETTINGS_BACKUP_FILE = "settings.json"
-        private val MEMORY_FILE_NAMES = setOf(
-            "mistbell-v3-memory-texts.bin",
-            "mistbell-v3-memory-facts.bin",
-            "mistbell-v3-memory-jobs.bin",
-            "mistbell-v3-temporal-facts.bin",
-            "mistbell-v3-vectors.bin",
-        )
-        private val MEMORY_FILE_PATTERNS = listOf(
-            Regex("mistbell-v3-memory-texts-[a-f0-9]{24}\\.bin"),
-            Regex("mistbell-v3-memory-facts-[a-f0-9]{24}\\.bin"),
-            Regex("mistbell-v3-memory-jobs-[a-f0-9]{24}\\.bin"),
-            Regex("mistbell-v3-temporal-facts-[a-f0-9]{24}\\.bin"),
-            Regex("mistbell-v3-vectors-[a-f0-9]{24}\\.bin"),
-        )
+        private val MEMORY_FILE_NAMES =
+            setOf(
+                "mistbell-v3-memory-texts.bin",
+                "mistbell-v3-memory-facts.bin",
+                "mistbell-v3-memory-jobs.bin",
+                "mistbell-v3-temporal-facts.bin",
+                "mistbell-v3-vectors.bin",
+            )
+        private val MEMORY_FILE_PATTERNS =
+            listOf(
+                Regex("mistbell-v3-memory-texts-[a-f0-9]{24}\\.bin"),
+                Regex("mistbell-v3-memory-facts-[a-f0-9]{24}\\.bin"),
+                Regex("mistbell-v3-memory-jobs-[a-f0-9]{24}\\.bin"),
+                Regex("mistbell-v3-temporal-facts-[a-f0-9]{24}\\.bin"),
+                Regex("mistbell-v3-vectors-[a-f0-9]{24}\\.bin"),
+            )
     }
 }

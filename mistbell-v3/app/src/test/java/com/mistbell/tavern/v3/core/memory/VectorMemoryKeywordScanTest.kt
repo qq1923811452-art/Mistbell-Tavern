@@ -50,7 +50,10 @@ class VectorMemoryKeywordScanTest {
         assertTrue(keywordResults(split + " tail", letter).isEmpty())
     }
 
-    private fun keywordResults(text: String, query: String): List<RetrievedMemory> =
+    private fun keywordResults(
+        text: String,
+        query: String,
+    ): List<RetrievedMemory> =
         VectorMemoryRetriever.retrieve(
             snapshot = VectorSnapshot("keyword-test", 2, emptyList()),
             queryVector = listOf(1f, 0f),

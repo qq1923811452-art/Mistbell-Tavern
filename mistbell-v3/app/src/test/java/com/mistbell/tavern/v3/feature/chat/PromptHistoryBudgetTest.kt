@@ -7,11 +7,12 @@ import org.junit.Test
 class PromptHistoryBudgetTest {
     @Test
     fun keepsNewestWholeMessagesWithinBothLimits() {
-        val history = listOf(
-            PromptMessage(PromptRole.USER, "old"),
-            PromptMessage(PromptRole.ASSISTANT, "12345"),
-            PromptMessage(PromptRole.USER, "new"),
-        )
+        val history =
+            listOf(
+                PromptMessage(PromptRole.USER, "old"),
+                PromptMessage(PromptRole.ASSISTANT, "12345"),
+                PromptMessage(PromptRole.USER, "new"),
+            )
         assertEquals(listOf("new"), PromptHistoryBudget.select(history, 6, 2).map { it.content })
     }
 
@@ -24,11 +25,12 @@ class PromptHistoryBudgetTest {
 
     @Test
     fun oversizedMessageBreaksTheNewestContiguousHistoryWindow() {
-        val history = listOf(
-            PromptMessage(PromptRole.USER, "older"),
-            PromptMessage(PromptRole.ASSISTANT, "too long"),
-            PromptMessage(PromptRole.USER, "new"),
-        )
+        val history =
+            listOf(
+                PromptMessage(PromptRole.USER, "older"),
+                PromptMessage(PromptRole.ASSISTANT, "too long"),
+                PromptMessage(PromptRole.USER, "new"),
+            )
         assertEquals(listOf("new"), PromptHistoryBudget.select(history, 4, 3).map { it.content })
     }
 
@@ -70,12 +72,13 @@ class PromptHistoryBudgetTest {
 
     @Test
     fun shortHistoryKeepsTheExactNewestWindow() {
-        val history = (0 until 9).map { index ->
-            PromptMessage(
-                if (index % 2 == 0) PromptRole.USER else PromptRole.ASSISTANT,
-                "s$index",
-            )
-        }
+        val history =
+            (0 until 9).map { index ->
+                PromptMessage(
+                    if (index % 2 == 0) PromptRole.USER else PromptRole.ASSISTANT,
+                    "s$index",
+                )
+            }
         // Three newest messages fit; a history shorter than one block is not expanded backwards.
         val selected = PromptHistoryBudget.select(history, maxCharacters = 6, maxMessages = 9)
         assertEquals(listOf("s6", "s7", "s8"), selected.map { it.content })
@@ -100,10 +103,11 @@ class PromptHistoryBudgetTest {
         assertTrue(selected.sumOf { it.content.length } > 10)
     }
 
-    private fun numberedHistory(count: Int): List<PromptMessage> = (0 until count).map { index ->
-        PromptMessage(
-            if (index % 2 == 0) PromptRole.USER else PromptRole.ASSISTANT,
-            "m${index.toString().padStart(2, '0')}",
-        )
-    }
+    private fun numberedHistory(count: Int): List<PromptMessage> =
+        (0 until count).map { index ->
+            PromptMessage(
+                if (index % 2 == 0) PromptRole.USER else PromptRole.ASSISTANT,
+                "m${index.toString().padStart(2, '0')}",
+            )
+        }
 }

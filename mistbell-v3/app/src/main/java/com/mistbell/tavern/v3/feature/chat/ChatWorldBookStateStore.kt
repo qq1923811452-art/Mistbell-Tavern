@@ -17,7 +17,11 @@ internal class ChatWorldBookStateStore(
                 val saved = settings.getString(stateKey, null) ?: return@runCatching
                 val json = org.json.JSONObject(saved)
                 state.turn = json.optInt("turn", 0)
-                fun restoreMap(name: String, target: MutableMap<String, Int>) {
+
+                fun restoreMap(
+                    name: String,
+                    target: MutableMap<String, Int>,
+                ) {
                     val values = json.optJSONObject(name) ?: return
                     val keys = values.keys()
                     while (keys.hasNext()) {

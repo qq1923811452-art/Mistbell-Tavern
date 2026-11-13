@@ -28,58 +28,68 @@ internal class ChatRequestClientCoordinator(
         memoryApiKey: String,
     ): ChatRequestClientConfiguration? {
         val trimmedBaseUrl = baseUrl.trim()
-        val enabledTemplate = settings.getString("chat_thinking_template", null)
-            ?.takeIf(String::isNotBlank)
-            ?: ThinkingModeTemplates.enabled(trimmedBaseUrl, modelId.trim())
-        val disabledTemplate = settings.getString("chat_thinking_disabled_template", null)
-            ?.takeIf(String::isNotBlank)
-            ?: ThinkingModeTemplates.disabled(trimmedBaseUrl, modelId.trim())
-        val profile = ProviderProfile(
-            id = "session-chat",
-            kind = ProviderKind.CHAT,
-            baseUrl = trimmedBaseUrl,
-            modelId = modelId.trim(),
-            credentialHandle = if (apiKey.isBlank()) null else "session-chat-key",
-            thinkingBodyTemplate = enabledTemplate,
-            thinkingDisabledBody = disabledTemplate,
-        )
+        val enabledTemplate =
+            settings.getString("chat_thinking_template", null)
+                ?.takeIf(String::isNotBlank)
+                ?: ThinkingModeTemplates.enabled(trimmedBaseUrl, modelId.trim())
+        val disabledTemplate =
+            settings.getString("chat_thinking_disabled_template", null)
+                ?.takeIf(String::isNotBlank)
+                ?: ThinkingModeTemplates.disabled(trimmedBaseUrl, modelId.trim())
+        val profile =
+            ProviderProfile(
+                id = "session-chat",
+                kind = ProviderKind.CHAT,
+                baseUrl = trimmedBaseUrl,
+                modelId = modelId.trim(),
+                credentialHandle = if (apiKey.isBlank()) null else "session-chat-key",
+                thinkingBodyTemplate = enabledTemplate,
+                thinkingDisabledBody = disabledTemplate,
+            )
         val secretForThisRequest = apiKey
         val memorySecretForThisRequest = memoryApiKey
-        val memoryProfile = memoryModelId.trim().takeIf(String::isNotBlank)?.let { configuredMemoryModel ->
-            ProviderProfile(
-                id = "session-memory-extraction",
-                kind = ProviderKind.MEMORY_EXTRACTION,
-                baseUrl = memoryBaseUrl.trim(),
-                modelId = configuredMemoryModel,
-                credentialHandle = when {
-                    memoryApiKey.isNotBlank() -> "session-memory-key"
-                    else -> settings.getString("memory_api_credential_handle", null)
-                        ?.takeIf(memoryCredentialStore::contains)
-                },
+        val memoryProfile =
+            memoryModelId.trim().takeIf(String::isNotBlank)?.let { configuredMemoryModel ->
+                ProviderProfile(
+                    id = "session-memory-extraction",
+                    kind = ProviderKind.MEMORY_EXTRACTION,
+                    baseUrl = memoryBaseUrl.trim(),
+                    modelId = configuredMemoryModel,
+                    credentialHandle =
+                        when {
+                            memoryApiKey.isNotBlank() -> "session-memory-key"
+                            else ->
+                                settings.getString("memory_api_credential_handle", null)
+                                    ?.takeIf(memoryCredentialStore::contains)
+                        },
+                )
+            }
+        val providersForRequest =
+            try {
+                ProviderProfileSet(
+                    profiles = listOfNotNull(profile, memoryProfile),
+                    selectedProfileIds =
+                        buildMap {
+                            put(ProviderKind.CHAT, profile.id)
+                            if (memoryProfile != null) put(ProviderKind.MEMORY_EXTRACTION, memoryProfile.id)
+                        },
+                )
+            } catch (_: IllegalArgumentException) {
+                setStatus("聊天或记忆 API 配置无效，请检查 Base URL 和模型 ID。")
+                return null
+            }
+        val client =
+            OpenAiCompatibleChatClient(
+                providers = providersForRequest,
+                credentials =
+                    CredentialResolver { handle ->
+                        when (handle) {
+                            "session-chat-key" -> secretForThisRequest
+                            "session-memory-key" -> memorySecretForThisRequest
+                            else -> null
+                        }
+                    },
             )
-        }
-        val providersForRequest = try {
-            ProviderProfileSet(
-                profiles = listOfNotNull(profile, memoryProfile),
-                selectedProfileIds = buildMap {
-                    put(ProviderKind.CHAT, profile.id)
-                    if (memoryProfile != null) put(ProviderKind.MEMORY_EXTRACTION, memoryProfile.id)
-                },
-            )
-        } catch (_: IllegalArgumentException) {
-            setStatus("聊天或记忆 API 配置无效，请检查 Base URL 和模型 ID。")
-            return null
-        }
-        val client = OpenAiCompatibleChatClient(
-            providers = providersForRequest,
-            credentials = CredentialResolver { handle ->
-                when (handle) {
-                    "session-chat-key" -> secretForThisRequest
-                    "session-memory-key" -> memorySecretForThisRequest
-                    else -> null
-                }
-            },
-        )
         return ChatRequestClientConfiguration(providersForRequest, client)
     }
 }

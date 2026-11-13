@@ -26,25 +26,29 @@ class TemporalFactExtractionPipelineTest {
         server.enqueue(MockResponse().setResponseCode(401).setBody("private provider response"))
         server.start()
         try {
-            val profile = ProviderProfile(
-                id = "memory",
-                kind = ProviderKind.MEMORY_EXTRACTION,
-                baseUrl = server.url("/v1").toString(),
-                modelId = "memory-model",
-                credentialHandle = "memory-key",
-            )
-            val client = MemoryExtractionClient(
-                providers = ProviderProfileSet(
-                    profiles = listOf(profile),
-                    selectedProfileIds = mapOf(ProviderKind.MEMORY_EXTRACTION to profile.id),
-                ),
-                credentials = MemoryCredentialResolver { "test-secret" },
-            )
-            val pipeline = TemporalFactExtractionPipeline(
-                client = client,
-                factStore = InMemoryFacts(),
-                memoryTextStore = InMemoryTexts(),
-            )
+            val profile =
+                ProviderProfile(
+                    id = "memory",
+                    kind = ProviderKind.MEMORY_EXTRACTION,
+                    baseUrl = server.url("/v1").toString(),
+                    modelId = "memory-model",
+                    credentialHandle = "memory-key",
+                )
+            val client =
+                MemoryExtractionClient(
+                    providers =
+                        ProviderProfileSet(
+                            profiles = listOf(profile),
+                            selectedProfileIds = mapOf(ProviderKind.MEMORY_EXTRACTION to profile.id),
+                        ),
+                    credentials = MemoryCredentialResolver { "test-secret" },
+                )
+            val pipeline =
+                TemporalFactExtractionPipeline(
+                    client = client,
+                    factStore = InMemoryFacts(),
+                    memoryTextStore = InMemoryTexts(),
+                )
             val result = AtomicReference<TemporalFactPipelineOutcome>()
             val latch = CountDownLatch(1)
             pipeline.extractAndPersist(
@@ -69,61 +73,69 @@ class TemporalFactExtractionPipelineTest {
     }
 
     @Test
-    fun expiredAttemptRejectsLatePipelineBeforeFactsOrTextsAreWritten() = kotlinx.coroutines.runBlocking {
-        val server = MockWebServer()
-        server.enqueue(MockResponse().setBody(extractionCompletionBody()))
-        server.start()
-        val entered = CountDownLatch(1)
-        val release = CountDownLatch(1)
-        val finished = CountDownLatch(1)
-        val facts = InMemoryFacts()
-        val texts = InMemoryTexts()
-        val attempt = MemoryExtractionAttempt()
-        val callbacks = java.util.concurrent.atomic.AtomicInteger()
-        try {
-            val profile = ProviderProfile(
-                id = "memory", kind = ProviderKind.MEMORY_EXTRACTION,
-                baseUrl = server.url("/v1").toString(), modelId = "memory-model", credentialHandle = "memory-key",
-            )
-            val client = MemoryExtractionClient(
-                providers = ProviderProfileSet(
-                    profiles = listOf(profile),
-                    selectedProfileIds = mapOf(ProviderKind.MEMORY_EXTRACTION to profile.id),
-                ),
-                credentials = MemoryCredentialResolver { "test-secret" },
-            )
-            TemporalFactExtractionPipeline(client, facts, texts).extractAndPersist(
-                input = MemoryExtractionInput(
-                    conversationId = "scope-1",
-                    turns = listOf(EligibleConversationTurn("turn-1", 1)),
-                    textByTurnId = mapOf("turn-1" to "The user likes tea."),
-                ),
-                commitGate = { commit ->
-                    entered.countDown()
-                    try {
-                        check(release.await(5, TimeUnit.SECONDS))
-                        attempt.commit(commit)
-                    } finally {
-                        finished.countDown()
-                    }
-                },
-            ) { callbacks.incrementAndGet() }
-            assertTrue(entered.await(3, TimeUnit.SECONDS))
+    fun expiredAttemptRejectsLatePipelineBeforeFactsOrTextsAreWritten() =
+        kotlinx.coroutines.runBlocking {
+            val server = MockWebServer()
+            server.enqueue(MockResponse().setBody(extractionCompletionBody()))
+            server.start()
+            val entered = CountDownLatch(1)
+            val release = CountDownLatch(1)
+            val finished = CountDownLatch(1)
+            val facts = InMemoryFacts()
+            val texts = InMemoryTexts()
+            val attempt = MemoryExtractionAttempt()
+            val callbacks = java.util.concurrent.atomic.AtomicInteger()
             try {
-                attempt.await(1)
-            } catch (_: java.io.IOException) {
-                // The response has arrived but must not commit after this expiry.
+                val profile =
+                    ProviderProfile(
+                        id = "memory",
+                        kind = ProviderKind.MEMORY_EXTRACTION,
+                        baseUrl = server.url("/v1").toString(),
+                        modelId = "memory-model",
+                        credentialHandle = "memory-key",
+                    )
+                val client =
+                    MemoryExtractionClient(
+                        providers =
+                            ProviderProfileSet(
+                                profiles = listOf(profile),
+                                selectedProfileIds = mapOf(ProviderKind.MEMORY_EXTRACTION to profile.id),
+                            ),
+                        credentials = MemoryCredentialResolver { "test-secret" },
+                    )
+                TemporalFactExtractionPipeline(client, facts, texts).extractAndPersist(
+                    input =
+                        MemoryExtractionInput(
+                            conversationId = "scope-1",
+                            turns = listOf(EligibleConversationTurn("turn-1", 1)),
+                            textByTurnId = mapOf("turn-1" to "The user likes tea."),
+                        ),
+                    commitGate = { commit ->
+                        entered.countDown()
+                        try {
+                            check(release.await(5, TimeUnit.SECONDS))
+                            attempt.commit(commit)
+                        } finally {
+                            finished.countDown()
+                        }
+                    },
+                ) { callbacks.incrementAndGet() }
+                assertTrue(entered.await(3, TimeUnit.SECONDS))
+                try {
+                    attempt.await(1)
+                } catch (_: java.io.IOException) {
+                    // The response has arrived but must not commit after this expiry.
+                }
+                release.countDown()
+                assertTrue(finished.await(3, TimeUnit.SECONDS))
+                assertEquals(TemporalFactLoadResult.Missing, facts.load())
+                assertEquals(MemoryTextLoadResult.Missing, texts.load())
+                assertEquals(0, callbacks.get())
+            } finally {
+                release.countDown()
+                server.shutdown()
             }
-            release.countDown()
-            assertTrue(finished.await(3, TimeUnit.SECONDS))
-            assertEquals(TemporalFactLoadResult.Missing, facts.load())
-            assertEquals(MemoryTextLoadResult.Missing, texts.load())
-            assertEquals(0, callbacks.get())
-        } finally {
-            release.countDown()
-            server.shutdown()
         }
-    }
 
     @Test
     fun persistenceUsesAtomicUpdateInsteadOfSeparateLoadAndSave() {
@@ -133,17 +145,23 @@ class TemporalFactExtractionPipelineTest {
         val saved = java.util.concurrent.atomic.AtomicReference<TemporalFactPipelineOutcome>()
         val latch = CountDownLatch(1)
         try {
-            val profile = ProviderProfile(
-                id = "memory", kind = ProviderKind.MEMORY_EXTRACTION,
-                baseUrl = server.url("/v1").toString(), modelId = "memory-model", credentialHandle = "memory-key",
-            )
-            val client = MemoryExtractionClient(
-                providers = ProviderProfileSet(
-                    profiles = listOf(profile),
-                    selectedProfileIds = mapOf(ProviderKind.MEMORY_EXTRACTION to profile.id),
-                ),
-                credentials = MemoryCredentialResolver { "test-secret" },
-            )
+            val profile =
+                ProviderProfile(
+                    id = "memory",
+                    kind = ProviderKind.MEMORY_EXTRACTION,
+                    baseUrl = server.url("/v1").toString(),
+                    modelId = "memory-model",
+                    credentialHandle = "memory-key",
+                )
+            val client =
+                MemoryExtractionClient(
+                    providers =
+                        ProviderProfileSet(
+                            profiles = listOf(profile),
+                            selectedProfileIds = mapOf(ProviderKind.MEMORY_EXTRACTION to profile.id),
+                        ),
+                    credentials = MemoryCredentialResolver { "test-secret" },
+                )
             val facts = UpdateOnlyFacts()
             TemporalFactExtractionPipeline(client, facts, InMemoryTexts()).extractAndPersist(
                 MemoryExtractionInput(
@@ -151,7 +169,10 @@ class TemporalFactExtractionPipelineTest {
                     turns = listOf(EligibleConversationTurn("turn-1", 1)),
                     textByTurnId = mapOf("turn-1" to "The user likes tea."),
                 ),
-            ) { saved.set(it); latch.countDown() }
+            ) {
+                saved.set(it)
+                latch.countDown()
+            }
             assertTrue(latch.await(3, TimeUnit.SECONDS))
             assertTrue(saved.get() is TemporalFactPipelineOutcome.Saved)
             assertEquals(1, facts.updateCalls)
@@ -166,26 +187,48 @@ class TemporalFactExtractionPipelineTest {
         server.enqueue(MockResponse().setBody(extractionCompletionBody()))
         server.start()
         try {
-            val profile = ProviderProfile(
-                id = "memory", kind = ProviderKind.MEMORY_EXTRACTION,
-                baseUrl = server.url("/v1").toString(), modelId = "memory-model", credentialHandle = "key",
-            )
+            val profile =
+                ProviderProfile(
+                    id = "memory",
+                    kind = ProviderKind.MEMORY_EXTRACTION,
+                    baseUrl = server.url("/v1").toString(),
+                    modelId = "memory-model",
+                    credentialHandle = "key",
+                )
             val facts = InMemoryFacts()
-            facts.save(listOf(TemporalMemoryFact(
-                "newer", "shared-role", "new-session-turn", "user", "likes", "coffee", 200L, 200L,
-            )))
-            val client = MemoryExtractionClient(
-                ProviderProfileSet(listOf(profile), mapOf(ProviderKind.MEMORY_EXTRACTION to profile.id)),
-                MemoryCredentialResolver { "secret" },
+            facts.save(
+                listOf(
+                    TemporalMemoryFact(
+                        "newer",
+                        "shared-role",
+                        "new-session-turn",
+                        "user",
+                        "likes",
+                        "coffee",
+                        200L,
+                        200L,
+                    ),
+                ),
             )
+            val client =
+                MemoryExtractionClient(
+                    ProviderProfileSet(listOf(profile), mapOf(ProviderKind.MEMORY_EXTRACTION to profile.id)),
+                    MemoryCredentialResolver { "secret" },
+                )
             val latch = CountDownLatch(1)
             val result = AtomicReference<TemporalFactPipelineOutcome>()
             TemporalFactExtractionPipeline(client, facts, InMemoryTexts(), clockMillis = { 9_000L })
-                .extractAndPersist(MemoryExtractionInput(
-                    "shared-role", listOf(EligibleConversationTurn("turn-1", 1L)),
-                    mapOf("turn-1" to "old conversation: user likes tea"),
-                    turnObservedAtEpochMillis = mapOf("turn-1" to 100L),
-                )) { result.set(it); latch.countDown() }
+                .extractAndPersist(
+                    MemoryExtractionInput(
+                        "shared-role",
+                        listOf(EligibleConversationTurn("turn-1", 1L)),
+                        mapOf("turn-1" to "old conversation: user likes tea"),
+                        turnObservedAtEpochMillis = mapOf("turn-1" to 100L),
+                    ),
+                ) {
+                    result.set(it)
+                    latch.countDown()
+                }
             assertTrue(latch.await(3, TimeUnit.SECONDS))
             assertTrue(result.get() is TemporalFactPipelineOutcome.Saved)
             val current = (facts.load() as TemporalFactLoadResult.Loaded).facts.filter { it.isCurrent }
@@ -199,7 +242,8 @@ class TemporalFactExtractionPipelineTest {
     private fun extractionCompletionBody(): String {
         val content = """{"facts":[{"subject":"user","predicate":"likes","value":"tea","source_turn_id":"turn-1"}]}"""
         return org.json.JSONObject().put(
-            "choices", org.json.JSONArray().put(
+            "choices",
+            org.json.JSONArray().put(
                 org.json.JSONObject().put("message", org.json.JSONObject().put("content", content)),
             ),
         ).toString()
@@ -210,9 +254,7 @@ class TemporalFactExtractionPipelineTest {
         var updateCalls = 0
         private var current: List<TemporalMemoryFact> = emptyList()
 
-        override fun update(
-            transform: (List<TemporalMemoryFact>) -> List<TemporalMemoryFact>,
-        ): List<TemporalMemoryFact> {
+        override fun update(transform: (List<TemporalMemoryFact>) -> List<TemporalMemoryFact>): List<TemporalMemoryFact> {
             updateCalls += 1
             current = transform(current)
             return current
@@ -230,8 +272,7 @@ class TemporalFactExtractionPipelineTest {
             this.facts = facts.toList()
         }
 
-        override fun load(): TemporalFactLoadResult =
-            facts?.let(TemporalFactLoadResult::Loaded) ?: TemporalFactLoadResult.Missing
+        override fun load(): TemporalFactLoadResult = facts?.let(TemporalFactLoadResult::Loaded) ?: TemporalFactLoadResult.Missing
     }
 
     private class InMemoryTexts : MemoryTextPersistence {
@@ -241,8 +282,7 @@ class TemporalFactExtractionPipelineTest {
             this.records = records.toList()
         }
 
-        override fun load(): MemoryTextLoadResult =
-            records?.let(MemoryTextLoadResult::Loaded) ?: MemoryTextLoadResult.Missing
+        override fun load(): MemoryTextLoadResult = records?.let(MemoryTextLoadResult::Loaded) ?: MemoryTextLoadResult.Missing
 
         override fun update(transform: (List<MemoryTextRecord>) -> List<MemoryTextRecord>): List<MemoryTextRecord> {
             val updated = transform(loadMemoryTexts())

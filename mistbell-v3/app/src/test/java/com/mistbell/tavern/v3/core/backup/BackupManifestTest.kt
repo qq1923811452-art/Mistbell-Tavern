@@ -11,14 +11,15 @@ class BackupManifestTest {
 
     @Test
     fun manifestRoundTripsAndPreservesEntryMetadata() {
-        val manifest = BackupManifest(
-            version = 1,
-            createdAt = "2026-10-21T12:00:00Z",
-            appVersion = "3.0.0-dev",
-            entryCount = 1,
-            totalBytes = 3,
-            entries = listOf(BackupEntry("data/settings.json", 3, hash)),
-        )
+        val manifest =
+            BackupManifest(
+                version = 1,
+                createdAt = "2026-10-21T12:00:00Z",
+                appVersion = "3.0.0-dev",
+                entryCount = 1,
+                totalBytes = 3,
+                entries = listOf(BackupEntry("data/settings.json", 3, hash)),
+            )
         val parsed = BackupManifest.parse(manifest.toJson())
         assertEquals(manifest, parsed)
         BackupValidator.validateManifest(parsed)
@@ -26,10 +27,15 @@ class BackupManifestTest {
 
     @Test
     fun rejectsUnsupportedVersionAndCountMismatch() {
-        val valid = BackupManifest(
-            1, "2026-10-21T12:00:00Z", "test", 1, 3,
-            listOf(BackupEntry("data/settings.json", 3, hash)),
-        )
+        val valid =
+            BackupManifest(
+                1,
+                "2026-10-21T12:00:00Z",
+                "test",
+                1,
+                3,
+                listOf(BackupEntry("data/settings.json", 3, hash)),
+            )
         assertThrows(IllegalArgumentException::class.java) {
             BackupValidator.validateManifest(valid.copy(version = 2))
         }
@@ -40,18 +46,20 @@ class BackupManifestTest {
 
     @Test
     fun roundTripsMultipleEntriesAndLongSizes() {
-        val entries = listOf(
-            BackupEntry("data/settings.json", 0, hash),
-            BackupEntry("data/memory/mistbell-v3-vectors.bin", BackupValidator.MAX_ENTRY_BYTES, hash),
-        )
-        val manifest = BackupManifest(
-            version = BackupManifest.CURRENT_VERSION,
-            createdAt = "2026-10-22T00:00:00Z",
-            appVersion = "3.0.0-dev",
-            entryCount = entries.size,
-            totalBytes = entries.sumOf(BackupEntry::size),
-            entries = entries,
-        )
+        val entries =
+            listOf(
+                BackupEntry("data/settings.json", 0, hash),
+                BackupEntry("data/memory/mistbell-v3-vectors.bin", BackupValidator.MAX_ENTRY_BYTES, hash),
+            )
+        val manifest =
+            BackupManifest(
+                version = BackupManifest.CURRENT_VERSION,
+                createdAt = "2026-10-22T00:00:00Z",
+                appVersion = "3.0.0-dev",
+                entryCount = entries.size,
+                totalBytes = entries.sumOf(BackupEntry::size),
+                entries = entries,
+            )
         val json = manifest.toJson()
         val parsed = BackupManifest.parse(json)
         assertEquals(manifest, parsed)
@@ -89,12 +97,13 @@ class BackupManifestTest {
             "A".repeat(64),
             "g".repeat(64),
         ).forEach { invalidSha ->
-            val entries = JSONArray().put(
-                JSONObject()
-                    .put("path", "data/settings.json")
-                    .put("size", 0)
-                    .put("sha256", invalidSha),
-            )
+            val entries =
+                JSONArray().put(
+                    JSONObject()
+                        .put("path", "data/settings.json")
+                        .put("size", 0)
+                        .put("sha256", invalidSha),
+                )
             val json = JSONObject(validManifest().toJson()).put("entries", entries).toString()
             assertThrows(IllegalArgumentException::class.java) {
                 BackupManifest.parse(json)
@@ -123,12 +132,13 @@ class BackupManifestTest {
         }
     }
 
-    private fun validManifest(): BackupManifest = BackupManifest(
-        version = BackupManifest.CURRENT_VERSION,
-        createdAt = "2026-10-22T00:00:00Z",
-        appVersion = "3.0.0-dev",
-        entryCount = 1,
-        totalBytes = 3,
-        entries = listOf(BackupEntry("data/settings.json", 3, hash)),
-    )
+    private fun validManifest(): BackupManifest =
+        BackupManifest(
+            version = BackupManifest.CURRENT_VERSION,
+            createdAt = "2026-10-22T00:00:00Z",
+            appVersion = "3.0.0-dev",
+            entryCount = 1,
+            totalBytes = 3,
+            entries = listOf(BackupEntry("data/settings.json", 3, hash)),
+        )
 }

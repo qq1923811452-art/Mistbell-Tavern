@@ -7,13 +7,14 @@ import org.junit.Test
 class ChatHistoryStoreTest {
     @Test
     fun persistedMessageAcceptsSupportedRolesAndStates() {
-        val message = PersistedChatMessage(
-            id = "conversation-1-message-1",
-            role = "assistant",
-            content = "Hello",
-            createdAtEpochMillis = 123L,
-            deliveryState = PersistedChatMessage.DeliveryState.COMPLETE,
-        )
+        val message =
+            PersistedChatMessage(
+                id = "conversation-1-message-1",
+                role = "assistant",
+                content = "Hello",
+                createdAtEpochMillis = 123L,
+                deliveryState = PersistedChatMessage.DeliveryState.COMPLETE,
+            )
 
         assertEquals("assistant", message.role)
         assertEquals(PersistedChatMessage.DeliveryState.COMPLETE, message.deliveryState)

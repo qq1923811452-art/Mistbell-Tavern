@@ -50,89 +50,100 @@ object PromptAssembler {
     fun assemble(input: PromptAssemblyInput): List<PromptMessage> {
         require(input.stableSystemPrefix.isNotBlank()) { "A stable system prefix is required." }
         require(input.latestUserMessage.isNotBlank()) { "The latest user message is required." }
-        require((input.pinnedPrefixMessages + input.conversationHistory).all {
-            it.role == PromptRole.USER || it.role == PromptRole.ASSISTANT
-        }) { "Conversation history may contain only user and assistant messages." }
+        require(
+            (input.pinnedPrefixMessages + input.conversationHistory).all {
+                it.role == PromptRole.USER || it.role == PromptRole.ASSISTANT
+            },
+        ) { "Conversation history may contain only user and assistant messages." }
 
         val plan = WorldBookPlacement.plan(input.worldbookEntries)
         // Never add a derived numeric target to SYSTEM. Post-history targets already reach the tail
         // verbatim; only a system-instruction target needs a derived tail reminder. Preserve card
         // text even when the card itself repeats a target across multiple fields.
         val lengthGuidance = ReplyLengthPolicy.tailGuidance(input.cardSystemInstructions, input.postHistoryInstructions)
-        val stableSections = buildList {
-            add(input.stableSystemPrefix.trimEnd())
-            input.stableCharacterDefinition?.trim()?.takeIf(String::isNotEmpty)?.let(::add)
-            appendEntries("Worldbook constants", plan.beforePrompt.filter(WorldBookEntry::constant))
-            appendEntries("Worldbook constants after character", plan.afterPrompt.filter(WorldBookEntry::constant))
-            add(DYNAMIC_CONTENT_TRUST_RULE)
-            if (!input.stableCharacterDefinition.isNullOrBlank()) add(CHARACTERIZATION_RULE)
-            add(RESPONSE_COMPLETENESS_RULE)
-        }
+        val stableSections =
+            buildList {
+                add(input.stableSystemPrefix.trimEnd())
+                input.stableCharacterDefinition?.trim()?.takeIf(String::isNotEmpty)?.let(::add)
+                appendEntries("Worldbook constants", plan.beforePrompt.filter(WorldBookEntry::constant))
+                appendEntries("Worldbook constants after character", plan.afterPrompt.filter(WorldBookEntry::constant))
+                add(DYNAMIC_CONTENT_TRUST_RULE)
+                if (!input.stableCharacterDefinition.isNullOrBlank()) add(CHARACTERIZATION_RULE)
+                add(RESPONSE_COMPLETENESS_RULE)
+            }
         val systemMessage = PromptMessage(PromptRole.SYSTEM, stableSections.joinToString("\n\n"))
 
-        val dynamicSections = buildList {
-            input.earlierConversationSummary?.trim()?.takeIf(String::isNotEmpty)?.let {
-                val scope = if (input.pinnedPrefixMessages.isEmpty()) {
-                    "Earlier conversation notes (extractive, not a full transcript):"
-                } else {
-                    "Earlier conversation notes (extractive): the omitted interval between the fixed opening " +
-                        "and recent messages. Opening events are historical, not the current scene:"
-                }
-                add("$scope\n$it")
-            }
-            appendEntries("Worldbook before character", plan.beforePrompt.filterNot(WorldBookEntry::constant))
-            appendEntries("Worldbook after character", plan.afterPrompt.filterNot(WorldBookEntry::constant))
-            val memoryFacts = input.activeMemoryFacts.map(String::trim).filter(String::isNotEmpty)
-            if (memoryFacts.isNotEmpty()) add("Relevant memory facts:\n" + memoryFacts.joinToString("\n") { "- $it" })
-            appendEntries("Author note before", plan.anBefore)
-            appendEntries("Author note after", plan.anAfter)
-            appendEntries("Example block before", plan.emBefore)
-            appendEntries("Example block after", plan.emAfter)
-            val depthSections = plan.byDepth.entries
-                .filter { it.key.second == WorldBookPlacement.DEPTH_ROLE_SYSTEM }
-                .flatMap { (key, entries) ->
-                    entries.mapNotNull { entry ->
-                        entry.content.trim().takeIf(String::isNotEmpty)?.let {
-                            "[depth ${key.first} · ${key.second}] $it"
+        val dynamicSections =
+            buildList {
+                input.earlierConversationSummary?.trim()?.takeIf(String::isNotEmpty)?.let {
+                    val scope =
+                        if (input.pinnedPrefixMessages.isEmpty()) {
+                            "Earlier conversation notes (extractive, not a full transcript):"
+                        } else {
+                            "Earlier conversation notes (extractive): the omitted interval between the fixed opening " +
+                                "and recent messages. Opening events are historical, not the current scene:"
                         }
-                    }
+                    add("$scope\n$it")
                 }
-            if (depthSections.isNotEmpty()) add("Worldbook depth entries:\n" + depthSections.joinToString("\n\n"))
-            // Non-system depth entries keep their historical position and role; only the system
-            // variant can live in the volatile tail without changing semantics.
-        }
+                appendEntries("Worldbook before character", plan.beforePrompt.filterNot(WorldBookEntry::constant))
+                appendEntries("Worldbook after character", plan.afterPrompt.filterNot(WorldBookEntry::constant))
+                val memoryFacts = input.activeMemoryFacts.map(String::trim).filter(String::isNotEmpty)
+                if (memoryFacts.isNotEmpty()) add("Relevant memory facts:\n" + memoryFacts.joinToString("\n") { "- $it" })
+                appendEntries("Author note before", plan.anBefore)
+                appendEntries("Author note after", plan.anAfter)
+                appendEntries("Example block before", plan.emBefore)
+                appendEntries("Example block after", plan.emAfter)
+                val depthSections =
+                    plan.byDepth.entries
+                        .filter { it.key.second == WorldBookPlacement.DEPTH_ROLE_SYSTEM }
+                        .flatMap { (key, entries) ->
+                            entries.mapNotNull { entry ->
+                                entry.content.trim().takeIf(String::isNotEmpty)?.let {
+                                    "[depth ${key.first} · ${key.second}] $it"
+                                }
+                            }
+                        }
+                if (depthSections.isNotEmpty()) add("Worldbook depth entries:\n" + depthSections.joinToString("\n\n"))
+                // Non-system depth entries keep their historical position and role; only the system
+                // variant can live in the volatile tail without changing semantics.
+            }
 
-        val latestUserContent = if (dynamicSections.isEmpty()) {
-            input.latestUserMessage.trim()
-        } else {
-            dynamicSections.joinToString("\n\n") + "\n\n" + input.latestUserMessage.trim()
-        }
+        val latestUserContent =
+            if (dynamicSections.isEmpty()) {
+                input.latestUserMessage.trim()
+            } else {
+                dynamicSections.joinToString("\n\n") + "\n\n" + input.latestUserMessage.trim()
+            }
         // Post-history policy remains after the transcript; SYSTEM delegates bounded writing
         // preferences, not unrestricted instruction authority, to card/reference content.
-        val userContentWithCard = input.postHistoryInstructions
-            ?.trim()
-            ?.takeIf(String::isNotEmpty)
-            ?.let { "$latestUserContent\n\n$POST_HISTORY_HEADER\n$it" }
-            ?: latestUserContent
+        val userContentWithCard =
+            input.postHistoryInstructions
+                ?.trim()
+                ?.takeIf(String::isNotEmpty)
+                ?.let { "$latestUserContent\n\n$POST_HISTORY_HEADER\n$it" }
+                ?: latestUserContent
         val userContent = lengthGuidance?.let { "$userContentWithCard\n\n$it" } ?: userContentWithCard
         val history = input.conversationHistory
         val pinned = input.pinnedPrefixMessages
-        val depthInsertions = plan.byDepth.entries
-            .filter { it.key.second != WorldBookPlacement.DEPTH_ROLE_SYSTEM }
-            .mapNotNull { (key, entries) ->
-                val content = entries
-                    .mapNotNull { entry -> entry.content.trim().takeIf(String::isNotEmpty) }
-                    .joinToString("\n\n")
-                if (content.isEmpty()) return@mapNotNull null
-                val role = if (key.second == WorldBookPlacement.DEPTH_ROLE_USER) {
-                    PromptRole.USER
-                } else {
-                    PromptRole.ASSISTANT
+        val depthInsertions =
+            plan.byDepth.entries
+                .filter { it.key.second != WorldBookPlacement.DEPTH_ROLE_SYSTEM }
+                .mapNotNull { (key, entries) ->
+                    val content =
+                        entries
+                            .mapNotNull { entry -> entry.content.trim().takeIf(String::isNotEmpty) }
+                            .joinToString("\n\n")
+                    if (content.isEmpty()) return@mapNotNull null
+                    val role =
+                        if (key.second == WorldBookPlacement.DEPTH_ROLE_USER) {
+                            PromptRole.USER
+                        } else {
+                            PromptRole.ASSISTANT
+                        }
+                    val insertIndex = (history.size - key.first).coerceIn(0, history.size)
+                    insertIndex to PromptMessage(role, content, synthetic = true)
                 }
-                val insertIndex = (history.size - key.first).coerceIn(0, history.size)
-                insertIndex to PromptMessage(role, content, synthetic = true)
-            }
-            .groupBy({ it.first }, { it.second })
+                .groupBy({ it.first }, { it.second })
 
         return buildList {
             add(systemMessage)
@@ -146,10 +157,14 @@ object PromptAssembler {
         }
     }
 
-    private fun MutableList<String>.appendEntries(label: String, entries: List<WorldBookEntry>) {
-        val contents = entries.mapNotNull { entry ->
-            entry.content.trim().takeIf(String::isNotEmpty)
-        }
+    private fun MutableList<String>.appendEntries(
+        label: String,
+        entries: List<WorldBookEntry>,
+    ) {
+        val contents =
+            entries.mapNotNull { entry ->
+                entry.content.trim().takeIf(String::isNotEmpty)
+            }
         if (contents.isNotEmpty()) add("$label:\n" + contents.joinToString("\n\n"))
     }
 

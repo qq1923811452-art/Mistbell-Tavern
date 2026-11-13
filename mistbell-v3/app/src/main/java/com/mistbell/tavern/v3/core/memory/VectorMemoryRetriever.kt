@@ -65,9 +65,11 @@ object VectorMemoryRetriever {
             "Memory text IDs must be unique."
         }
 
-        val textByHash = texts
-            .groupBy(MemoryTextRecord::sourceTextSha256)
-            .mapValues { (_, records) -> records.sortedBy(MemoryTextRecord::id).first() }
+        val textByHash =
+            texts
+                .groupBy(MemoryTextRecord::sourceTextSha256)
+                .mapValues { (_, records) -> records.sortedBy(MemoryTextRecord::id).first() }
+
         data class RankedCandidate(
             val source: MemoryTextRecord,
             val similarity: Double,
@@ -77,39 +79,42 @@ object VectorMemoryRetriever {
         )
 
         val candidatesByHash = linkedMapOf<String, RankedCandidate>()
-        val vectorHits = VectorSimilaritySearch.search(
-            snapshot = snapshot,
-            query = queryVector,
-            limit = VectorSimilaritySearch.MAX_RESULT_LIMIT,
-            minimumScore = minimumScore,
-        )
+        val vectorHits =
+            VectorSimilaritySearch.search(
+                snapshot = snapshot,
+                query = queryVector,
+                limit = VectorSimilaritySearch.MAX_RESULT_LIMIT,
+                minimumScore = minimumScore,
+            )
         var vectorRank = 0
         val seenVectorHashes = mutableSetOf<String>()
         for (hit in vectorHits) {
             if (!seenVectorHashes.add(hit.sourceTextSha256)) continue
             val source = textByHash[hit.sourceTextSha256] ?: continue
             vectorRank++
-            val candidate = candidatesByHash.getOrPut(hit.sourceTextSha256) {
-                RankedCandidate(source, hit.score)
-            }
+            val candidate =
+                candidatesByHash.getOrPut(hit.sourceTextSha256) {
+                    RankedCandidate(source, hit.score)
+                }
             candidate.hasVectorMatch = true
             candidate.rrfScore += vectorWeight / (rrfConstant + vectorRank)
         }
 
         val queryTerms = tokenizeQuery(queryText.orEmpty())
         if (queryTerms.isNotEmpty()) {
-            val keywordRanked = texts.asSequence()
-                .map { record ->
-                    val matchedTerms = countMatchedQueryTerms(record.text, queryTerms)
-                    record to matchedTerms
-                }
-                .filter { it.second > 0 }
-                .sortedWith(
-                    compareByDescending<Pair<MemoryTextRecord, Int>> { it.second }
-                        .thenBy { it.first.id },
-                )
-                .take(VectorSimilaritySearch.MAX_RESULT_LIMIT)
-                .toList()
+            val keywordRanked =
+                texts.asSequence()
+                    .map { record ->
+                        val matchedTerms = countMatchedQueryTerms(record.text, queryTerms)
+                        record to matchedTerms
+                    }
+                    .filter { it.second > 0 }
+                    .sortedWith(
+                        compareByDescending<Pair<MemoryTextRecord, Int>> { it.second }
+                            .thenBy { it.first.id },
+                    )
+                    .take(VectorSimilaritySearch.MAX_RESULT_LIMIT)
+                    .toList()
 
             val seenKeywordHashes = mutableSetOf<String>()
             var keywordRank = 0
@@ -118,9 +123,10 @@ object VectorMemoryRetriever {
                 if (!seenKeywordHashes.add(hash)) continue
                 val source = textByHash[hash] ?: continue
                 keywordRank++
-                val candidate = candidatesByHash.getOrPut(hash) {
-                    RankedCandidate(source, similarity = 0.0)
-                }
+                val candidate =
+                    candidatesByHash.getOrPut(hash) {
+                        RankedCandidate(source, similarity = 0.0)
+                    }
                 candidate.hasKeywordMatch = true
                 candidate.rrfScore += keywordWeight / (rrfConstant + keywordRank)
             }
@@ -136,30 +142,33 @@ object VectorMemoryRetriever {
             if (normalizedText.isEmpty()) continue
             val remaining = maxCharacters - usedCharacters
             if (remaining <= 0) break
-            val end = minOf(normalizedText.length, remaining).let { proposedEnd ->
-                // Do not split a UTF-16 surrogate pair when truncating to the remaining budget.
-                if (proposedEnd < normalizedText.length &&
-                    proposedEnd > 0 &&
-                    Character.isHighSurrogate(normalizedText[proposedEnd - 1])
-                ) {
-                    proposedEnd - 1
-                } else {
-                    proposedEnd
+            val end =
+                minOf(normalizedText.length, remaining).let { proposedEnd ->
+                    // Do not split a UTF-16 surrogate pair when truncating to the remaining budget.
+                    if (proposedEnd < normalizedText.length &&
+                        proposedEnd > 0 &&
+                        Character.isHighSurrogate(normalizedText[proposedEnd - 1])
+                    ) {
+                        proposedEnd - 1
+                    } else {
+                        proposedEnd
+                    }
                 }
-            }
             if (end <= 0) continue
             val selectedText = normalizedText.substring(0, end)
-            val source = when {
-                candidate.hasVectorMatch && candidate.hasKeywordMatch -> MemoryRetrievalSource.HYBRID
-                candidate.hasKeywordMatch -> MemoryRetrievalSource.KEYWORD
-                else -> MemoryRetrievalSource.VECTOR
-            }
-            result += RetrievedMemory(
-                id = candidate.source.id,
-                text = selectedText,
-                similarity = candidate.similarity,
-                source = source,
-            )
+            val source =
+                when {
+                    candidate.hasVectorMatch && candidate.hasKeywordMatch -> MemoryRetrievalSource.HYBRID
+                    candidate.hasKeywordMatch -> MemoryRetrievalSource.KEYWORD
+                    else -> MemoryRetrievalSource.VECTOR
+                }
+            result +=
+                RetrievedMemory(
+                    id = candidate.source.id,
+                    text = selectedText,
+                    similarity = candidate.similarity,
+                    source = source,
+                )
             usedCharacters += selectedText.length
         }
         return result
@@ -218,7 +227,10 @@ object VectorMemoryRetriever {
     }
 
     /** Tokenize each bounded candidate once; only count terms actually present in the query. */
-    private fun countMatchedQueryTerms(text: String, queryTerms: Set<String>): Int {
+    private fun countMatchedQueryTerms(
+        text: String,
+        queryTerms: Set<String>,
+    ): Int {
         if (queryTerms.isEmpty() || text.isEmpty()) return 0
         val bounded = keywordScanPrefix(text).lowercase(Locale.ROOT)
         val matched = mutableSetOf<String>()

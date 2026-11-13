@@ -26,9 +26,10 @@ class MemoryExtractionBatchInputFactory {
         val observedAtByTurnId = linkedMapOf<String, Long>()
 
         job.turnIds.forEachIndexed { index, turnId ->
-            val messageIndex = requireNotNull(byId[turnId]) {
-                "A queued source turn is missing from persisted chat history."
-            }
+            val messageIndex =
+                requireNotNull(byId[turnId]) {
+                    "A queued source turn is missing from persisted chat history."
+                }
             val user = history[messageIndex]
             require(user.role == "user") { "A queued source turn is not a user message." }
             val assistant = history.getOrNull(messageIndex + 1)

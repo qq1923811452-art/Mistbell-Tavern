@@ -22,16 +22,18 @@ class BackupArchiveReader {
         require(archive.isFile && archive.canRead()) { "Backup archive cannot be read." }
         require(archive.length() <= BackupValidator.MAX_ARCHIVE_BYTES) { "Backup archive exceeds 512 MiB." }
         ZipFile(archive).use { zip ->
-            val first = zip.entries().asSequence().firstOrNull()
-                ?: throw IllegalArgumentException("Backup archive is empty.")
+            val first =
+                zip.entries().asSequence().firstOrNull()
+                    ?: throw IllegalArgumentException("Backup archive is empty.")
             require(first.name == BackupArchiveWriter.MANIFEST_PATH && !first.isDirectory) {
                 "Backup manifest must be the first ZIP entry."
             }
-            val manifestText = zip.getInputStream(first).use { input ->
-                val bytes = input.readNBytes(MAX_MANIFEST_BYTES + 1)
-                require(bytes.size <= MAX_MANIFEST_BYTES) { "Backup manifest is too large." }
-                bytes.toString(Charsets.UTF_8)
-            }
+            val manifestText =
+                zip.getInputStream(first).use { input ->
+                    val bytes = input.readNBytes(MAX_MANIFEST_BYTES + 1)
+                    require(bytes.size <= MAX_MANIFEST_BYTES) { "Backup manifest is too large." }
+                    bytes.toString(Charsets.UTF_8)
+                }
             val manifest = BackupManifest.parse(manifestText)
             BackupValidator.validateManifest(manifest)
             val zipEntries = zip.entries().asSequence().toList()
@@ -46,7 +48,10 @@ class BackupArchiveReader {
     }
 
     @Suppress("NestedBlockDepth", "TooGenericExceptionCaught")
-    fun extract(archive: File, stagingDirectory: File): ExtractedBackup {
+    fun extract(
+        archive: File,
+        stagingDirectory: File,
+    ): ExtractedBackup {
         val preview = preview(archive)
         require(!stagingDirectory.exists() || stagingDirectory.deleteRecursively()) {
             "Restore staging directory could not be cleared."

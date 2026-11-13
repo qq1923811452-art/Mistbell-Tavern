@@ -1,8 +1,8 @@
 package com.mistbell.tavern.v3.feature.chat
 
+import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import android.content.Context
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
@@ -41,21 +41,21 @@ class SqliteChatStoreTest {
         assertEquals(listOf("a2", "a1"), store.loadRecent("role-a/session-1", 10).map { it.id })
     }
 
-
     @Test
     fun persistsSpeakerAndVariantsAcrossReopen() {
         val scope = "group/session-1"
-        val message = PersistedChatMessage(
-            id = "m1",
-            role = "assistant",
-            content = "second variant",
-            createdAtEpochMillis = 10L,
-            deliveryState = PersistedChatMessage.DeliveryState.COMPLETE,
-            speakerId = "character-2",
-            speakerName = "艾莉丝",
-            variants = listOf("first variant", "second variant"),
-            activeVariant = 1,
-        )
+        val message =
+            PersistedChatMessage(
+                id = "m1",
+                role = "assistant",
+                content = "second variant",
+                createdAtEpochMillis = 10L,
+                deliveryState = PersistedChatMessage.DeliveryState.COMPLETE,
+                speakerId = "character-2",
+                speakerName = "艾莉丝",
+                variants = listOf("first variant", "second variant"),
+                activeVariant = 1,
+            )
         store.upsert(scope, message)
         store.close()
         store = SqliteChatStore(context, databaseName)
@@ -77,15 +77,33 @@ class SqliteChatStoreTest {
 
     @Test
     fun upsertIsIdempotentAndUpdatesExistingMessage() {
-        store.upsert("session", message("same", "assistant", "pending", 10L,
-            PersistedChatMessage.DeliveryState.PENDING))
-        store.upsert("session", message("same", "assistant", "complete", 10L,
-            PersistedChatMessage.DeliveryState.COMPLETE))
+        store.upsert(
+            "session",
+            message(
+                "same",
+                "assistant",
+                "pending",
+                10L,
+                PersistedChatMessage.DeliveryState.PENDING,
+            ),
+        )
+        store.upsert(
+            "session",
+            message(
+                "same",
+                "assistant",
+                "complete",
+                10L,
+                PersistedChatMessage.DeliveryState.COMPLETE,
+            ),
+        )
 
         assertEquals(1L, store.count("session"))
         assertEquals("complete", store.loadRecent("session", 1).single().content)
-        assertEquals(PersistedChatMessage.DeliveryState.COMPLETE,
-            store.loadRecent("session", 1).single().deliveryState)
+        assertEquals(
+            PersistedChatMessage.DeliveryState.COMPLETE,
+            store.loadRecent("session", 1).single().deliveryState,
+        )
     }
 
     @Test

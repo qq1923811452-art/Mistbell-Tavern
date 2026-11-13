@@ -29,23 +29,26 @@ object BackupValidator {
 
     private fun validateSupportedDataPath(path: String) {
         val relative = path.removePrefix("data/")
-        val supported = when {
-            relative == SETTINGS_PATH -> true
-            relative == BackupSource.CHAT_DATABASE_NAME -> true
-            relative == BackupSource.SESSION_DATABASE_NAME -> true
-            relative.startsWith("memory/") -> {
-                val name = relative.removePrefix("memory/")
-                '/' !in name && BackupSource.isMemoryFileName(name)
+        val supported =
+            when {
+                relative == SETTINGS_PATH -> true
+                relative == BackupSource.CHAT_DATABASE_NAME -> true
+                relative == BackupSource.SESSION_DATABASE_NAME -> true
+                relative.startsWith("memory/") -> {
+                    val name = relative.removePrefix("memory/")
+                    '/' !in name && BackupSource.isMemoryFileName(name)
+                }
+                relative.startsWith("worldbooks/") ->
+                    relative
+                        .removePrefix("worldbooks/")
+                        .endsWith(".json", ignoreCase = true)
+                relative.startsWith("characters/") ->
+                    relative
+                        .removePrefix("characters/")
+                        .endsWith(".json", ignoreCase = true)
+                relative.startsWith("generated-images/") -> relative.removePrefix("generated-images/").isNotEmpty()
+                else -> false
             }
-            relative.startsWith("worldbooks/") -> relative
-                .removePrefix("worldbooks/")
-                .endsWith(".json", ignoreCase = true)
-            relative.startsWith("characters/") -> relative
-                .removePrefix("characters/")
-                .endsWith(".json", ignoreCase = true)
-            relative.startsWith("generated-images/") -> relative.removePrefix("generated-images/").isNotEmpty()
-            else -> false
-        }
         require(supported) { "Backup path is not a supported user-data file: $path" }
     }
 

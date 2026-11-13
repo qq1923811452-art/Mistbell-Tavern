@@ -3,14 +3,14 @@ package com.mistbell.tavern.v3.feature.chat
 import android.content.Context
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.withContext
 import com.mistbell.tavern.v3.core.diagnostics.DiagnosticLogStore
 import com.mistbell.tavern.v3.feature.memory.MemoryExtractionJob
 import com.mistbell.tavern.v3.feature.memory.MemoryExtractionJobRepository
 import com.mistbell.tavern.v3.feature.memory.MemoryExtractionJobStore
 import com.mistbell.tavern.v3.feature.memory.MemoryExtractionQueueWorker
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
 @Composable
 internal fun ChatHistoryLoadLifecycle(
@@ -87,20 +87,21 @@ private suspend fun resumePendingExtraction(
     context: Context,
     diagnosticStore: DiagnosticLogStore,
 ) {
-    val pendingQueue = withContext(Dispatchers.IO) {
-        runCatching {
-            MemoryExtractionJobRepository(
-                MemoryExtractionJobStore(context.applicationContext),
-            ).list().any { job ->
-                job.state == MemoryExtractionJob.State.PENDING ||
-                    job.state == MemoryExtractionJob.State.RUNNING ||
-                    job.state == MemoryExtractionJob.State.RETRY_WAIT
+    val pendingQueue =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                MemoryExtractionJobRepository(
+                    MemoryExtractionJobStore(context.applicationContext),
+                ).list().any { job ->
+                    job.state == MemoryExtractionJob.State.PENDING ||
+                        job.state == MemoryExtractionJob.State.RUNNING ||
+                        job.state == MemoryExtractionJob.State.RETRY_WAIT
+                }
+            }.getOrElse {
+                runCatching { diagnosticStore.warn("memory.extraction.queue_load_failed", "reason=queue_unavailable") }
+                false
             }
-        }.getOrElse {
-            runCatching { diagnosticStore.warn("memory.extraction.queue_load_failed", "reason=queue_unavailable") }
-            false
         }
-    }
     if (pendingQueue) MemoryExtractionQueueWorker.enqueue(context.applicationContext)
 }
 

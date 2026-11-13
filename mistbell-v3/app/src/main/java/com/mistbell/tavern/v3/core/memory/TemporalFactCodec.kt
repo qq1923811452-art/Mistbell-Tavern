@@ -73,28 +73,29 @@ object TemporalFactCodec {
         require(input.readInt() == VERSION) { "Temporal fact store version is unsupported." }
         val count = input.readInt()
         require(count in 0..TemporalFactLedger.MAX_FACTS) { "Temporal fact count is invalid." }
-        val facts = List(count) {
-            val id = readString(input)
-            val conversationId = readString(input)
-            val sourceTurnId = readString(input)
-            val subject = readString(input)
-            val predicate = readString(input)
-            val value = readString(input)
-            val observedAt = input.readLong()
-            val validFrom = input.readLong()
-            val validUntil = if (input.readBoolean()) input.readLong() else null
-            TemporalMemoryFact(
-                id = id,
-                conversationId = conversationId,
-                sourceTurnId = sourceTurnId,
-                subject = subject,
-                predicate = predicate,
-                value = value,
-                observedAtEpochMillis = observedAt,
-                validFromEpochMillis = validFrom,
-                validUntilEpochMillis = validUntil,
-            )
-        }
+        val facts =
+            List(count) {
+                val id = readString(input)
+                val conversationId = readString(input)
+                val sourceTurnId = readString(input)
+                val subject = readString(input)
+                val predicate = readString(input)
+                val value = readString(input)
+                val observedAt = input.readLong()
+                val validFrom = input.readLong()
+                val validUntil = if (input.readBoolean()) input.readLong() else null
+                TemporalMemoryFact(
+                    id = id,
+                    conversationId = conversationId,
+                    sourceTurnId = sourceTurnId,
+                    subject = subject,
+                    predicate = predicate,
+                    value = value,
+                    observedAtEpochMillis = observedAt,
+                    validFromEpochMillis = validFrom,
+                    validUntilEpochMillis = validUntil,
+                )
+            }
         require(input.available() == 0) { "Temporal fact payload contains trailing data." }
         require(facts.map(TemporalMemoryFact::id).distinct().size == facts.size) {
             "Temporal fact IDs must be unique."
@@ -102,7 +103,10 @@ object TemporalFactCodec {
         return facts
     }
 
-    private fun writeString(out: DataOutputStream, value: String) {
+    private fun writeString(
+        out: DataOutputStream,
+        value: String,
+    ) {
         val bytes = value.toByteArray(Charsets.UTF_8)
         require(bytes.isNotEmpty() && bytes.size <= MAX_STRING_BYTES) {
             "Temporal fact field is empty or too large."

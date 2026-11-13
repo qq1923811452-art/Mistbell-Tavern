@@ -81,9 +81,10 @@ object MemoryJobLedgerCodec {
             val conversationId = readString(input)
             val turnCount = input.readInt()
             require(turnCount in 1..MAX_TURNS_PER_JOB) { "Memory job turn count is invalid." }
-            val turns = List(turnCount) {
-                EligibleConversationTurn(readString(input), input.readLong())
-            }
+            val turns =
+                List(turnCount) {
+                    EligibleConversationTurn(readString(input), input.readLong())
+                }
             val statusOrdinal = input.readInt()
             require(statusOrdinal in MemoryJobStatus.entries.indices) { "Memory job status is invalid." }
             val status = MemoryJobStatus.entries[statusOrdinal]
@@ -91,28 +92,34 @@ object MemoryJobLedgerCodec {
             val nextAttemptAt = input.readLong()
             val safeError = readNullableString(input)
             val completedAt = if (input.readBoolean()) input.readLong() else null
-            jobs += MemoryExtractionJob(
-                plan = MemoryBatchPlan(planId, conversationId, turns),
-                status = status,
-                attemptCount = attempts,
-                nextAttemptAtEpochMillis = nextAttemptAt,
-                lastSafeError = safeError,
-                completedAtEpochMillis = completedAt,
-            )
+            jobs +=
+                MemoryExtractionJob(
+                    plan = MemoryBatchPlan(planId, conversationId, turns),
+                    status = status,
+                    attemptCount = attempts,
+                    nextAttemptAtEpochMillis = nextAttemptAt,
+                    lastSafeError = safeError,
+                    completedAtEpochMillis = completedAt,
+                )
         }
         require(input.available() == 0) { "Memory job ledger payload contains trailing data." }
         return MemoryJobLedger(jobs)
     }
 
-    private fun writeNullableString(out: DataOutputStream, value: String?) {
+    private fun writeNullableString(
+        out: DataOutputStream,
+        value: String?,
+    ) {
         out.writeBoolean(value != null)
         value?.let { writeString(out, it) }
     }
 
-    private fun readNullableString(input: DataInputStream): String? =
-        if (input.readBoolean()) readString(input) else null
+    private fun readNullableString(input: DataInputStream): String? = if (input.readBoolean()) readString(input) else null
 
-    private fun writeString(out: DataOutputStream, value: String) {
+    private fun writeString(
+        out: DataOutputStream,
+        value: String,
+    ) {
         val bytes = value.toByteArray(Charsets.UTF_8)
         require(bytes.size <= MAX_STRING_BYTES) { "Memory ledger string exceeds the size limit." }
         out.writeInt(bytes.size)

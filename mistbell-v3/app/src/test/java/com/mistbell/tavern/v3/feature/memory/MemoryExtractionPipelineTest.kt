@@ -66,13 +66,14 @@ class MemoryExtractionPipelineTest {
     fun missingSourceTextIsPermanentlyClassified() {
         val ledgerStore = InMemoryLedger()
         ledgerStore.save(MemoryJobLedger().enqueue(plan()))
-        val worker = MemoryExtractionWorker(
-            ledgerStore = ledgerStore,
-            factStore = InMemoryFacts(),
-            extractor = ImmediateExtractor(emptyList()),
-            textSource = MemoryTurnTextSource { _, _ -> null },
-            nowEpochMillis = { 1_000L },
-        )
+        val worker =
+            MemoryExtractionWorker(
+                ledgerStore = ledgerStore,
+                factStore = InMemoryFacts(),
+                extractor = ImmediateExtractor(emptyList()),
+                textSource = MemoryTurnTextSource { _, _ -> null },
+                nowEpochMillis = { 1_000L },
+            )
         var result: MemoryPipelineResult? = null
         worker.processNext { result = it }
 
@@ -85,16 +86,18 @@ class MemoryExtractionPipelineTest {
         val ledgerStore = InMemoryLedger()
         ledgerStore.save(MemoryJobLedger().enqueue(plan()))
         val factStore = InMemoryFacts()
-        val extractor = ImmediateExtractor(
-            listOf(ExtractedFactDraft("user", "likes", "tea", "not-in-batch")),
-        )
-        val worker = MemoryExtractionWorker(
-            ledgerStore,
-            factStore,
-            extractor,
-            MemoryTurnTextSource { _, _ -> "source text" },
-            nowEpochMillis = { 1_000L },
-        )
+        val extractor =
+            ImmediateExtractor(
+                listOf(ExtractedFactDraft("user", "likes", "tea", "not-in-batch")),
+            )
+        val worker =
+            MemoryExtractionWorker(
+                ledgerStore,
+                factStore,
+                extractor,
+                MemoryTurnTextSource { _, _ -> "source text" },
+                nowEpochMillis = { 1_000L },
+            )
         var result: MemoryPipelineResult? = null
         worker.processNext { result = it }
 
@@ -110,25 +113,28 @@ class MemoryExtractionPipelineTest {
     ) = MemoryExtractionWorker(
         ledgerStore = ledgerStore,
         factStore = factStore,
-        extractor = ImmediateExtractor(
-            listOf(ExtractedFactDraft("user", "likes", "tea", "turn-2")),
-        ),
+        extractor =
+            ImmediateExtractor(
+                listOf(ExtractedFactDraft("user", "likes", "tea", "turn-2")),
+            ),
         textSource = MemoryTurnTextSource { _, _ -> "The user likes tea." },
         nowEpochMillis = now,
     )
 
-    private fun plan() = MemoryBatchPlan(
-        id = "memory:conversation-1:turn-1:turn-3",
-        conversationId = "conversation-1",
-        turns = (1..3).map { EligibleConversationTurn("turn-$it", it.toLong()) },
-    )
+    private fun plan() =
+        MemoryBatchPlan(
+            id = "memory:conversation-1:turn-1:turn-3",
+            conversationId = "conversation-1",
+            turns = (1..3).map { EligibleConversationTurn("turn-$it", it.toLong()) },
+        )
 
     private class ImmediateExtractor(
         private val facts: List<ExtractedFactDraft>,
     ) : MemoryFactExtractor {
-        private val call = OkHttpClient().newCall(
-            Request.Builder().url("http://localhost/unused").build(),
-        )
+        private val call =
+            OkHttpClient().newCall(
+                Request.Builder().url("http://localhost/unused").build(),
+            )
 
         override fun extract(
             input: MemoryExtractionInput,
@@ -154,8 +160,7 @@ class MemoryExtractionPipelineTest {
 
         override fun load(): MemoryJobLedgerLoadResult = value
 
-        fun ledger(): MemoryJobLedger =
-            (value as MemoryJobLedgerLoadResult.Loaded).ledger
+        fun ledger(): MemoryJobLedger = (value as MemoryJobLedgerLoadResult.Loaded).ledger
     }
 
     private class InMemoryFacts : MemoryFactHistoryPersistence {
@@ -174,8 +179,6 @@ class MemoryExtractionPipelineTest {
             return updated
         }
 
-        fun history(): List<MemoryFact> =
-            (value as? MemoryFactHistoryLoadResult.Loaded)?.history.orEmpty()
-
+        fun history(): List<MemoryFact> = (value as? MemoryFactHistoryLoadResult.Loaded)?.history.orEmpty()
     }
 }

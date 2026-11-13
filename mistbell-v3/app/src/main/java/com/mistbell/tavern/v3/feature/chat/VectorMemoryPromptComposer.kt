@@ -14,22 +14,24 @@ object VectorMemoryPromptComposer {
     ): List<PromptMessage> {
         val userIndex = messages.indexOfLast { it.role == PromptRole.USER }
         if (userIndex < 0) return messages
-        val memories = (memoryResult as? VectorMemoryContextResult.Ready)?.memories
-            ?.filter { it.textIsUsable() }
-            ?.distinctBy { it.text.trim() }
-            .orEmpty()
-            .takeWhileWithBudget()
+        val memories =
+            (memoryResult as? VectorMemoryContextResult.Ready)?.memories
+                ?.filter { it.textIsUsable() }
+                ?.distinctBy { it.text.trim() }
+                .orEmpty()
+                .takeWhileWithBudget()
         if (memories.isEmpty()) return messages
 
-        val section = buildString {
-            append(MEMORY_SECTION_HEADER)
-            memories.forEachIndexed { index, memory ->
-                append("\n")
-                append(index + 1)
-                append(". ")
-                append(memory.text.trim())
+        val section =
+            buildString {
+                append(MEMORY_SECTION_HEADER)
+                memories.forEachIndexed { index, memory ->
+                    append("\n")
+                    append(index + 1)
+                    append(". ")
+                    append(memory.text.trim())
+                }
             }
-        }
         // Memories are volatile: keep them out of the system message so the stable prefix stays
         // byte-identical and provider prefix caches keep hitting.
         return messages.toMutableList().also { result ->
@@ -48,8 +50,7 @@ object VectorMemoryPromptComposer {
         }
     }
 
-    private fun RetrievedMemory.textIsUsable(): Boolean =
-        text.isNotBlank() && similarity.isFinite()
+    private fun RetrievedMemory.textIsUsable(): Boolean = text.isNotBlank() && similarity.isFinite()
 
     /** Upper bound for memory text; numbering and the section header are not counted. */
     const val MAX_MEMORY_SECTION_CHARS = 1_200

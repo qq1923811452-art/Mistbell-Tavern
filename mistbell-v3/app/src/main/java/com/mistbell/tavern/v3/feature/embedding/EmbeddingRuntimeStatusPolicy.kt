@@ -23,15 +23,17 @@ internal object EmbeddingRuntimeStatusPolicy {
         runtimeEvidenceVerified: Boolean,
         activeInProcess: Boolean,
     ): Reported {
-        val evidence = when {
-            selected == InferenceBackend.NPU && runtimeEvidenceVerified -> BackendEvidence.RUNTIME_REPORTED
-            else -> BackendEvidence.CONFIGURED_ONLY
-        }
-        val backend = when {
-            selected == InferenceBackend.NPU && !(runtimeEvidenceVerified && activeInProcess) ->
-                InferenceBackend.UNKNOWN
-            else -> selected
-        }
+        val evidence =
+            when {
+                selected == InferenceBackend.NPU && runtimeEvidenceVerified -> BackendEvidence.RUNTIME_REPORTED
+                else -> BackendEvidence.CONFIGURED_ONLY
+            }
+        val backend =
+            when {
+                selected == InferenceBackend.NPU && !(runtimeEvidenceVerified && activeInProcess) ->
+                    InferenceBackend.UNKNOWN
+                else -> selected
+            }
         return Reported(backend, evidence)
     }
 }

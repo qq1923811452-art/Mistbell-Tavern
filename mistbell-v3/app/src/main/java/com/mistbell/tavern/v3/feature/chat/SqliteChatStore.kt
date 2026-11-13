@@ -18,7 +18,6 @@ class SqliteChatStore(
     databaseName: String = DEFAULT_DATABASE_NAME,
 ) : SQLiteOpenHelper(context.applicationContext, validateDatabaseName(databaseName), null, DATABASE_VERSION),
     ChatStore {
-
     init {
         openStores.add(this)
         setWriteAheadLoggingEnabled(true)
@@ -28,7 +27,11 @@ class SqliteChatStore(
         createSchema(db)
     }
 
-    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+    override fun onUpgrade(
+        db: SQLiteDatabase,
+        oldVersion: Int,
+        newVersion: Int,
+    ) {
         if (oldVersion < 1) createSchema(db)
         if (oldVersion < 2) {
             db.execSQL("ALTER TABLE $TABLE_MESSAGES ADD COLUMN speaker_id TEXT")
@@ -49,17 +52,26 @@ class SqliteChatStore(
         }
     }
 
-    override fun append(scopeId: String, message: PersistedChatMessage) {
+    override fun append(
+        scopeId: String,
+        message: PersistedChatMessage,
+    ) {
         validateScope(scopeId)
         writableDatabase.insertOrThrow(TABLE_MESSAGES, null, values(scopeId, message))
     }
 
-    override fun upsert(scopeId: String, message: PersistedChatMessage) {
+    override fun upsert(
+        scopeId: String,
+        message: PersistedChatMessage,
+    ) {
         upsertAll(scopeId, listOf(message))
     }
 
     /** Commits a batch atomically; callers should pass only changed/new rows. */
-    fun upsertAll(scopeId: String, messages: List<PersistedChatMessage>) {
+    fun upsertAll(
+        scopeId: String,
+        messages: List<PersistedChatMessage>,
+    ) {
         syncSnapshot(scopeId, messages, emptySet())
     }
 
@@ -101,7 +113,10 @@ class SqliteChatStore(
      * committing. A mismatch or exception rolls the whole import back, so a later load can retry
      * from the untouched JSON recovery source.
      */
-    fun importScopeAtomically(scopeId: String, messages: List<PersistedChatMessage>): Boolean {
+    fun importScopeAtomically(
+        scopeId: String,
+        messages: List<PersistedChatMessage>,
+    ): Boolean {
         validateScope(scopeId)
         require(messages.map(PersistedChatMessage::id).distinct().size == messages.size) {
             "Chat message IDs must be unique within a batch."
@@ -109,31 +124,35 @@ class SqliteChatStore(
         val db = writableDatabase
         db.beginTransaction()
         try {
-            val existingCount = db.rawQuery(
-                "SELECT COUNT(*) FROM $TABLE_MESSAGES WHERE scope_id = ?",
-                arrayOf(scopeId),
-            ).use { cursor -> if (cursor.moveToFirst()) cursor.getLong(0) else 0L }
+            val existingCount =
+                db.rawQuery(
+                    "SELECT COUNT(*) FROM $TABLE_MESSAGES WHERE scope_id = ?",
+                    arrayOf(scopeId),
+                ).use { cursor -> if (cursor.moveToFirst()) cursor.getLong(0) else 0L }
             if (existingCount != 0L) return false
 
             messages.forEach { message ->
                 db.insertOrThrow(TABLE_MESSAGES, null, values(scopeId, message))
             }
-            val imported = db.query(
-                TABLE_MESSAGES,
-                MESSAGE_COLUMNS,
-                "scope_id = ?",
-                arrayOf(scopeId),
-                null,
-                null,
-                "created_at ASC, id ASC",
-            ).use { cursor ->
-                buildList(cursor.count) {
-                    while (cursor.moveToNext()) add(cursor.toPersistedMessage())
+            val imported =
+                db.query(
+                    TABLE_MESSAGES,
+                    MESSAGE_COLUMNS,
+                    "scope_id = ?",
+                    arrayOf(scopeId),
+                    null,
+                    null,
+                    "created_at ASC, id ASC",
+                ).use { cursor ->
+                    buildList(cursor.count) {
+                        while (cursor.moveToNext()) add(cursor.toPersistedMessage())
+                    }
                 }
-            }
             if (imported.size != messages.size ||
                 imported.associateBy(PersistedChatMessage::id) != messages.associateBy(PersistedChatMessage::id)
-            ) return false
+            ) {
+                return false
+            }
 
             db.setTransactionSuccessful()
             return true
@@ -167,12 +186,13 @@ class SqliteChatStore(
             args = arrayOf(scopeId)
         } else {
             selection = "scope_id = ? AND (created_at < ? OR (created_at = ? AND id < ?))"
-            args = arrayOf(
-                scopeId,
-                before.createdAtEpochMillis.toString(),
-                before.createdAtEpochMillis.toString(),
-                before.id,
-            )
+            args =
+                arrayOf(
+                    scopeId,
+                    before.createdAtEpochMillis.toString(),
+                    before.createdAtEpochMillis.toString(),
+                    before.id,
+                )
         }
         return readableDatabase.query(
             TABLE_MESSAGES,
@@ -186,28 +206,34 @@ class SqliteChatStore(
         ).use { cursor ->
             var nextCursor: ChatMessageCursor? = null
             var rowsRead = 0
-            val messages = buildList(cursor.count) {
-                while (cursor.moveToNext()) {
-                    rowsRead++
-                    nextCursor = ChatMessageCursor(
-                        cursor.getLong(cursor.getColumnIndexOrThrow("created_at")),
-                        cursor.getString(cursor.getColumnIndexOrThrow("id")),
-                    )
-                    val message = try {
-                        cursor.toPersistedMessage()
-                    } catch (error: IllegalArgumentException) {
-                        onRowRejected(error)
-                        null
+            val messages =
+                buildList(cursor.count) {
+                    while (cursor.moveToNext()) {
+                        rowsRead++
+                        nextCursor =
+                            ChatMessageCursor(
+                                cursor.getLong(cursor.getColumnIndexOrThrow("created_at")),
+                                cursor.getString(cursor.getColumnIndexOrThrow("id")),
+                            )
+                        val message =
+                            try {
+                                cursor.toPersistedMessage()
+                            } catch (error: IllegalArgumentException) {
+                                onRowRejected(error)
+                                null
+                            }
+                        if (message != null) add(message)
                     }
-                    if (message != null) add(message)
                 }
-            }
             ChatMessagePage(messages, rowsRead, nextCursor)
         }
     }
 
     /** Replace every physical row, including unreadable rows, in one transaction. */
-    fun replaceScope(scopeId: String, messages: List<PersistedChatMessage>) {
+    fun replaceScope(
+        scopeId: String,
+        messages: List<PersistedChatMessage>,
+    ) {
         validateScope(scopeId)
         val db = writableDatabase
         db.beginTransaction()
@@ -240,7 +266,10 @@ class SqliteChatStore(
     }
 
     /** Moves every row from one scope to another; existing target rows win on ID conflicts. */
-    fun migrateScope(fromScopeId: String, toScopeId: String): Boolean {
+    fun migrateScope(
+        fromScopeId: String,
+        toScopeId: String,
+    ): Boolean {
         if (fromScopeId == toScopeId) return false
         validateScope(fromScopeId)
         validateScope(toScopeId)
@@ -278,7 +307,10 @@ class SqliteChatStore(
     }
 
     /** Deletes only the specified message IDs within one conversation scope. */
-    fun deleteMessages(scopeId: String, messageIds: Set<String>) {
+    fun deleteMessages(
+        scopeId: String,
+        messageIds: Set<String>,
+    ) {
         validateScope(scopeId)
         if (messageIds.isEmpty()) return
         val db = writableDatabase
@@ -293,33 +325,37 @@ class SqliteChatStore(
         }
     }
 
-    private fun values(scopeId: String, message: PersistedChatMessage) =
-        ContentValues(PERSISTED_COLUMN_COUNT).apply {
-            put("scope_id", scopeId)
-            put("id", message.id)
-            put("role", message.role)
-            put("content", message.content)
-            put("created_at", message.createdAtEpochMillis)
-            put("delivery_state", message.deliveryState.name)
-            put("speaker_id", message.speakerId)
-            put("speaker_name", message.speakerName)
-            put("variants", JSONArray(message.variants).toString())
-            put("active_variant", message.activeVariant)
-        }
+    private fun values(
+        scopeId: String,
+        message: PersistedChatMessage,
+    ) = ContentValues(PERSISTED_COLUMN_COUNT).apply {
+        put("scope_id", scopeId)
+        put("id", message.id)
+        put("role", message.role)
+        put("content", message.content)
+        put("created_at", message.createdAtEpochMillis)
+        put("delivery_state", message.deliveryState.name)
+        put("speaker_id", message.speakerId)
+        put("speaker_name", message.speakerName)
+        put("variants", JSONArray(message.variants).toString())
+        put("active_variant", message.activeVariant)
+    }
 
-    private fun Cursor.toPersistedMessage() = PersistedChatMessage(
-        id = getString(getColumnIndexOrThrow("id")),
-        role = getString(getColumnIndexOrThrow("role")),
-        content = getString(getColumnIndexOrThrow("content")),
-        createdAtEpochMillis = getLong(getColumnIndexOrThrow("created_at")),
-        deliveryState = PersistedChatMessage.DeliveryState.valueOf(
-            getString(getColumnIndexOrThrow("delivery_state")),
-        ),
-        speakerId = getString(getColumnIndexOrThrow("speaker_id")),
-        speakerName = getString(getColumnIndexOrThrow("speaker_name")),
-        variants = parseVariants(getString(getColumnIndexOrThrow("variants"))),
-        activeVariant = getInt(getColumnIndexOrThrow("active_variant")),
-    )
+    private fun Cursor.toPersistedMessage() =
+        PersistedChatMessage(
+            id = getString(getColumnIndexOrThrow("id")),
+            role = getString(getColumnIndexOrThrow("role")),
+            content = getString(getColumnIndexOrThrow("content")),
+            createdAtEpochMillis = getLong(getColumnIndexOrThrow("created_at")),
+            deliveryState =
+                PersistedChatMessage.DeliveryState.valueOf(
+                    getString(getColumnIndexOrThrow("delivery_state")),
+                ),
+            speakerId = getString(getColumnIndexOrThrow("speaker_id")),
+            speakerName = getString(getColumnIndexOrThrow("speaker_name")),
+            variants = parseVariants(getString(getColumnIndexOrThrow("variants"))),
+            activeVariant = getInt(getColumnIndexOrThrow("active_variant")),
+        )
 
     private fun parseVariants(raw: String?): List<String> {
         if (raw.isNullOrBlank()) return emptyList()
@@ -366,7 +402,6 @@ class SqliteChatStore(
         )
     }
 
-
     companion object {
         private val openStores: MutableSet<SqliteChatStore> =
             java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap())
@@ -385,21 +420,23 @@ class SqliteChatStore(
         private const val TABLE_MESSAGES = "chat_messages"
         private const val TABLE_META = "scope_meta"
         private const val PERSISTED_COLUMN_COUNT = 10
-        private val MESSAGE_COLUMNS = arrayOf(
-            "id",
-            "role",
-            "content",
-            "created_at",
-            "delivery_state",
-            "speaker_id",
-            "speaker_name",
-            "variants",
-            "active_variant",
-        )
+        private val MESSAGE_COLUMNS =
+            arrayOf(
+                "id",
+                "role",
+                "content",
+                "created_at",
+                "delivery_state",
+                "speaker_id",
+                "speaker_name",
+                "variants",
+                "active_variant",
+            )
 
         private fun validateDatabaseName(name: String): String {
-            require(name.isNotBlank() && name != "." && name != ".." &&
-                '/' !in name && '\\' !in name
+            require(
+                name.isNotBlank() && name != "." && name != ".." &&
+                    '/' !in name && '\\' !in name,
             ) { "Database name must be a simple file name." }
             return name
         }

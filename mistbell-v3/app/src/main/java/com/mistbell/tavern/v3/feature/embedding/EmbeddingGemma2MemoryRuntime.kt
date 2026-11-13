@@ -33,11 +33,9 @@ class EmbeddingGemma2MemoryRuntime(
     override val dimensions: Int
         get() = adapter.model.dimensions
 
-    override suspend fun embed(text: String): List<Float> =
-        adapter.embedQueries(listOf(text)).vectors.single()
+    override suspend fun embed(text: String): List<Float> = adapter.embedQueries(listOf(text)).vectors.single()
 
-    override suspend fun embedPassage(text: String): List<Float> =
-        adapter.embedDocuments(listOf(text)).vectors.single()
+    override suspend fun embedPassage(text: String): List<Float> = adapter.embedDocuments(listOf(text)).vectors.single()
 
     /** The adapter caps one inference call at the model's configured batch size. */
     override val passageBatchSize: Int

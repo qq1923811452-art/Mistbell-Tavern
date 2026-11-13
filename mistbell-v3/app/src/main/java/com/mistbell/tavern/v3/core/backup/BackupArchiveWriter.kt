@@ -56,7 +56,10 @@ class BackupArchiveWriter {
         ).also(BackupValidator::validateManifest)
     }
 
-    private fun createEntry(path: String, file: File): BackupEntry {
+    private fun createEntry(
+        path: String,
+        file: File,
+    ): BackupEntry {
         BackupValidator.validatePath(path)
         require(file.isFile && file.canRead()) { "Backup source is not a readable file." }
         require(file.length() <= BackupValidator.MAX_ENTRY_BYTES) { "Backup entry exceeds the size limit." }
@@ -85,7 +88,11 @@ class BackupArchiveWriter {
     }
 
     @Suppress("ThrowsCount")
-    private fun writeEntry(zip: ZipOutputStream, file: File, entry: BackupEntry) {
+    private fun writeEntry(
+        zip: ZipOutputStream,
+        file: File,
+        entry: BackupEntry,
+    ) {
         zip.putNextEntry(ZipEntry(entry.path))
         val digest = MessageDigest.getInstance("SHA-256")
         file.inputStream().buffered().use { input ->
@@ -110,7 +117,10 @@ class BackupArchiveWriter {
         zip.closeEntry()
     }
 
-    private fun finalizeArchive(partial: File, destination: File) {
+    private fun finalizeArchive(
+        partial: File,
+        destination: File,
+    ) {
         require(partial.length() <= BackupValidator.MAX_ARCHIVE_BYTES) {
             "Backup archive exceeds 512 MiB."
         }

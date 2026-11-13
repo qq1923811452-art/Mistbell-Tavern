@@ -25,12 +25,16 @@ data class MemoryFact(
         require(sourceTurnId.isNotBlank()) { "Source turn ID must not be blank." }
         require(recordedAtEpochMillis >= 0) { "Recorded timestamp must not be negative." }
         require(
-            (status == FactStatus.ACTIVE &&
-                supersededAtEpochMillis == null &&
-                supersededByFactId == null) ||
-                (status == FactStatus.SUPERSEDED &&
-                    supersededAtEpochMillis != null &&
-                    !supersededByFactId.isNullOrBlank()),
+            (
+                status == FactStatus.ACTIVE &&
+                    supersededAtEpochMillis == null &&
+                    supersededByFactId == null
+            ) ||
+                (
+                    status == FactStatus.SUPERSEDED &&
+                        supersededAtEpochMillis != null &&
+                        !supersededByFactId.isNullOrBlank()
+                ),
         ) { "Superseded metadata must agree with fact status." }
     }
 }
@@ -51,7 +55,10 @@ data class FactHistoryUpdate(
  * Replaying an identical fact ID is idempotent; reusing an ID for different content is rejected.
  */
 object FactHistoryReducer {
-    fun append(history: List<MemoryFact>, incoming: MemoryFact): FactHistoryUpdate {
+    fun append(
+        history: List<MemoryFact>,
+        incoming: MemoryFact,
+    ): FactHistoryUpdate {
         require(incoming.status == FactStatus.ACTIVE) {
             "Only a new active fact can be appended."
         }
@@ -76,12 +83,14 @@ object FactHistoryReducer {
         }
 
         val incomingKey = key(incoming.subject, incoming.predicate)
-        val activeForKey = history.filter {
-            it.status == FactStatus.ACTIVE && key(it.subject, it.predicate) == incomingKey
-        }
-        val equivalentActive = activeForKey.firstOrNull {
-            normalize(it.value) == normalize(incoming.value)
-        }
+        val activeForKey =
+            history.filter {
+                it.status == FactStatus.ACTIVE && key(it.subject, it.predicate) == incomingKey
+            }
+        val equivalentActive =
+            activeForKey.firstOrNull {
+                normalize(it.value) == normalize(incoming.value)
+            }
 
         // If legacy/corrupt data has multiple active values for one fact key, keep the
         // already-recorded equivalent value and supersede only contradictory active records.
@@ -94,16 +103,18 @@ object FactHistoryReducer {
                     supersededFactIds = emptyList(),
                 )
             }
-            val superseded = conflicts.map { fact ->
-                fact.copy(
-                    status = FactStatus.SUPERSEDED,
-                    supersededAtEpochMillis = maxOf(
-                        incoming.recordedAtEpochMillis,
-                        fact.recordedAtEpochMillis,
-                    ),
-                    supersededByFactId = equivalentActive.id,
-                )
-            }
+            val superseded =
+                conflicts.map { fact ->
+                    fact.copy(
+                        status = FactStatus.SUPERSEDED,
+                        supersededAtEpochMillis =
+                            maxOf(
+                                incoming.recordedAtEpochMillis,
+                                fact.recordedAtEpochMillis,
+                            ),
+                        supersededByFactId = equivalentActive.id,
+                    )
+                }
             val replacements = superseded.associateBy(MemoryFact::id)
             return FactHistoryUpdate(
                 history = history.map { replacements[it.id] ?: it },
@@ -112,16 +123,18 @@ object FactHistoryReducer {
             )
         }
 
-        val superseded = activeForKey.map { fact ->
-            fact.copy(
-                status = FactStatus.SUPERSEDED,
-                supersededAtEpochMillis = maxOf(
-                    incoming.recordedAtEpochMillis,
-                    fact.recordedAtEpochMillis,
-                ),
-                supersededByFactId = incoming.id,
-            )
-        }
+        val superseded =
+            activeForKey.map { fact ->
+                fact.copy(
+                    status = FactStatus.SUPERSEDED,
+                    supersededAtEpochMillis =
+                        maxOf(
+                            incoming.recordedAtEpochMillis,
+                            fact.recordedAtEpochMillis,
+                        ),
+                    supersededByFactId = incoming.id,
+                )
+            }
         val replacements = superseded.associateBy(MemoryFact::id)
         return FactHistoryUpdate(
             history = history.map { replacements[it.id] ?: it } + incoming,
@@ -130,11 +143,12 @@ object FactHistoryReducer {
         )
     }
 
-    fun activeFacts(history: List<MemoryFact>): List<MemoryFact> =
-        history.filter { it.status == FactStatus.ACTIVE }
+    fun activeFacts(history: List<MemoryFact>): List<MemoryFact> = history.filter { it.status == FactStatus.ACTIVE }
 
-    private fun key(subject: String, predicate: String): Pair<String, String> =
-        normalize(subject) to normalize(predicate)
+    private fun key(
+        subject: String,
+        predicate: String,
+    ): Pair<String, String> = normalize(subject) to normalize(predicate)
 
     private fun normalize(value: String): String = value.trim().lowercase(Locale.ROOT)
 }

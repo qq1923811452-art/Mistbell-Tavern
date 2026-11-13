@@ -15,52 +15,58 @@ class EmbeddingGemma2MemoryRuntimeTest {
         val original = EmbeddingGemma2MemoryRuntime.snapshotIdentity(model, "a".repeat(64), 1)
         org.junit.Assert.assertNotEquals(model, original)
         org.junit.Assert.assertNotEquals(
-            original, EmbeddingGemma2MemoryRuntime.snapshotIdentity(model, "b".repeat(64), 1),
+            original,
+            EmbeddingGemma2MemoryRuntime.snapshotIdentity(model, "b".repeat(64), 1),
         )
         org.junit.Assert.assertNotEquals(
-            original, EmbeddingGemma2MemoryRuntime.snapshotIdentity(model, "a".repeat(64), 2),
+            original,
+            EmbeddingGemma2MemoryRuntime.snapshotIdentity(model, "a".repeat(64), 2),
         )
         assertEquals(original, EmbeddingGemma2MemoryRuntime.snapshotIdentity(model, "A".repeat(64), 1))
     }
 
     @Test
-    fun queryAndIndexPassageUseTheirDistinctModelTasks(): Unit = runBlocking {
-        val formattedInputs = mutableListOf<String>()
-        val engine = object : EmbeddingGemma2InferenceEngine {
-            override val runtimeId = "memory-test-engine"
+    fun queryAndIndexPassageUseTheirDistinctModelTasks(): Unit =
+        runBlocking {
+            val formattedInputs = mutableListOf<String>()
+            val engine =
+                object : EmbeddingGemma2InferenceEngine {
+                    override val runtimeId = "memory-test-engine"
 
-            override suspend fun infer(formattedInputsBatch: List<String>): EmbeddingBatch {
-                formattedInputs += formattedInputsBatch
-                return EmbeddingBatch(
-                    vectors = formattedInputsBatch.map {
-                        List(EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS) { 1f }
-                    },
-                    status = InferenceRuntimeStatus(
-                        phase = InferencePhase.READY,
-                        modelId = EmbeddingGemma2TextPolicy.MODEL_ID,
-                        backend = InferenceBackend.CPU,
-                        runtimeId = runtimeId,
-                        backendEvidence = BackendEvidence.RUNTIME_REPORTED,
-                    ),
-                )
-            }
+                    override suspend fun infer(formattedInputsBatch: List<String>): EmbeddingBatch {
+                        formattedInputs += formattedInputsBatch
+                        return EmbeddingBatch(
+                            vectors =
+                                formattedInputsBatch.map {
+                                    List(EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS) { 1f }
+                                },
+                            status =
+                                InferenceRuntimeStatus(
+                                    phase = InferencePhase.READY,
+                                    modelId = EmbeddingGemma2TextPolicy.MODEL_ID,
+                                    backend = InferenceBackend.CPU,
+                                    runtimeId = runtimeId,
+                                    backendEvidence = BackendEvidence.RUNTIME_REPORTED,
+                                ),
+                        )
+                    }
+                }
+            val runtime = EmbeddingGemma2MemoryRuntime(EmbeddingGemma2RuntimeAdapter(engine), "a".repeat(64))
+
+            val queryVector = runtime.embed("Who left the tavern?")
+            val passageVector = runtime.embedPassage("Mira left at midnight.")
+
+            assertEquals("task: search query | text: Who left the tavern?", formattedInputs[0])
+            assertEquals(
+                "task: search result | title: none | text: Mira left at midnight.",
+                formattedInputs[1],
+            )
+            assertEquals(EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS, queryVector.size)
+            assertEquals(queryVector.size, passageVector.size)
+            assertEquals(
+                EmbeddingGemma2MemoryRuntime.snapshotIdentity(EmbeddingGemma2TextPolicy.MODEL_ID, "a".repeat(64)),
+                runtime.modelId,
+            )
+            assertEquals(EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS, runtime.dimensions)
         }
-        val runtime = EmbeddingGemma2MemoryRuntime(EmbeddingGemma2RuntimeAdapter(engine), "a".repeat(64))
-
-        val queryVector = runtime.embed("Who left the tavern?")
-        val passageVector = runtime.embedPassage("Mira left at midnight.")
-
-        assertEquals("task: search query | text: Who left the tavern?", formattedInputs[0])
-        assertEquals(
-            "task: search result | title: none | text: Mira left at midnight.",
-            formattedInputs[1],
-        )
-        assertEquals(EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS, queryVector.size)
-        assertEquals(queryVector.size, passageVector.size)
-        assertEquals(
-            EmbeddingGemma2MemoryRuntime.snapshotIdentity(EmbeddingGemma2TextPolicy.MODEL_ID, "a".repeat(64)),
-            runtime.modelId,
-        )
-        assertEquals(EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS, runtime.dimensions)
-    }
 }

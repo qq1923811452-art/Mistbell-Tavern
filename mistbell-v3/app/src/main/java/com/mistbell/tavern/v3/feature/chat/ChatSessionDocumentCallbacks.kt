@@ -42,22 +42,23 @@ internal fun rememberChatSessionDocumentActions(
 ): ChatSessionDocumentCallbacks {
     var showImportWarning by remember { mutableStateOf(false) }
 
-    val importSessionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocument(),
-    ) { uri ->
-        if (uri != null) {
-            ChatSessionImportCoordinator(
-                context = context,
-                coroutineScope = coroutineScope,
-                historyStore = historyStore,
-                historySaveMutex = historySaveMutex,
-                historySaveRevision = historySaveRevision,
-                history = history,
-                setStatus = setStatus,
-                onImported = onImported,
-            ).import(uri)
+    val importSessionLauncher =
+        rememberLauncherForActivityResult(
+            ActivityResultContracts.OpenDocument(),
+        ) { uri ->
+            if (uri != null) {
+                ChatSessionImportCoordinator(
+                    context = context,
+                    coroutineScope = coroutineScope,
+                    historyStore = historyStore,
+                    historySaveMutex = historySaveMutex,
+                    historySaveRevision = historySaveRevision,
+                    history = history,
+                    setStatus = setStatus,
+                    onImported = onImported,
+                ).import(uri)
+            }
         }
-    }
     ChatSessionImportWarningDialog(
         visible = showImportWarning,
         onDismiss = { showImportWarning = false },
@@ -67,30 +68,40 @@ internal fun rememberChatSessionDocumentActions(
         },
     )
 
-    val exportJsonLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.CreateDocument("application/json"),
-    ) { uri ->
-        if (uri != null) {
-            ChatSessionExportCoordinator(context, coroutineScope, setStatus)
-                .export(
-                    uri, conversationId, history, jsonLines = false,
-                    title = sessionTitle, kind = sessionKind,
-                    participants = sessionParticipants,
-                )
+    val exportJsonLauncher =
+        rememberLauncherForActivityResult(
+            ActivityResultContracts.CreateDocument("application/json"),
+        ) { uri ->
+            if (uri != null) {
+                ChatSessionExportCoordinator(context, coroutineScope, setStatus)
+                    .export(
+                        uri,
+                        conversationId,
+                        history,
+                        jsonLines = false,
+                        title = sessionTitle,
+                        kind = sessionKind,
+                        participants = sessionParticipants,
+                    )
+            }
         }
-    }
-    val exportJsonlLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.CreateDocument("application/jsonl"),
-    ) { uri ->
-        if (uri != null) {
-            ChatSessionExportCoordinator(context, coroutineScope, setStatus)
-                .export(
-                    uri, conversationId, history, jsonLines = true,
-                    title = sessionTitle, kind = sessionKind,
-                    participants = sessionParticipants,
-                )
+    val exportJsonlLauncher =
+        rememberLauncherForActivityResult(
+            ActivityResultContracts.CreateDocument("application/jsonl"),
+        ) { uri ->
+            if (uri != null) {
+                ChatSessionExportCoordinator(context, coroutineScope, setStatus)
+                    .export(
+                        uri,
+                        conversationId,
+                        history,
+                        jsonLines = true,
+                        title = sessionTitle,
+                        kind = sessionKind,
+                        participants = sessionParticipants,
+                    )
+            }
         }
-    }
 
     return remember(importSessionLauncher, exportJsonLauncher, exportJsonlLauncher) {
         ChatSessionDocumentCallbacks(

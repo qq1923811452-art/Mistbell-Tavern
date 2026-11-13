@@ -31,7 +31,9 @@ data class MemoryExtractionJob(
         }
     }
 
-    companion object { const val MAX_ERROR_LENGTH = 500 }
+    companion object {
+        const val MAX_ERROR_LENGTH = 500
+    }
 }
 
 data class MemoryJobLedger(val jobs: List<MemoryExtractionJob> = emptyList()) {
@@ -39,9 +41,10 @@ data class MemoryJobLedger(val jobs: List<MemoryExtractionJob> = emptyList()) {
         require(jobs.map { it.plan.id }.distinct().size == jobs.size) {
             "Memory job IDs must be unique."
         }
-        val claimedTurnIds = jobs
-            .filter { it.status != MemoryJobStatus.PERMANENT_FAILURE }
-            .flatMap { job -> job.plan.turns.map(EligibleConversationTurn::id) }
+        val claimedTurnIds =
+            jobs
+                .filter { it.status != MemoryJobStatus.PERMANENT_FAILURE }
+                .flatMap { job -> job.plan.turns.map(EligibleConversationTurn::id) }
         require(claimedTurnIds.distinct().size == claimedTurnIds.size) {
             "A conversation turn cannot belong to multiple active or completed jobs."
         }
@@ -53,10 +56,11 @@ data class MemoryJobLedger(val jobs: List<MemoryExtractionJob> = emptyList()) {
             require(existing.plan == plan) { "A memory job ID cannot be reused for a different plan." }
             return this
         }
-        val occupied = jobs
-            .filter { it.status != MemoryJobStatus.PERMANENT_FAILURE }
-            .flatMap { it.plan.turns.map(EligibleConversationTurn::id) }
-            .toSet()
+        val occupied =
+            jobs
+                .filter { it.status != MemoryJobStatus.PERMANENT_FAILURE }
+                .flatMap { it.plan.turns.map(EligibleConversationTurn::id) }
+                .toSet()
         require(plan.turns.none { it.id in occupied }) {
             "One or more turns are already claimed by another memory job."
         }
@@ -66,33 +70,42 @@ data class MemoryJobLedger(val jobs: List<MemoryExtractionJob> = emptyList()) {
     /** Marks the oldest eligible job as processing and increments its attempt count. */
     fun claimNext(nowEpochMillis: Long): Pair<MemoryJobLedger, MemoryExtractionJob?> {
         require(nowEpochMillis >= 0)
-        val candidate = jobs.firstOrNull {
-            it.status == MemoryJobStatus.PENDING ||
-                (it.status == MemoryJobStatus.RETRY_WAIT && it.nextAttemptAtEpochMillis <= nowEpochMillis)
-        } ?: return this to null
-        val claimed = candidate.copy(
-            status = MemoryJobStatus.PROCESSING,
-            attemptCount = Math.addExact(candidate.attemptCount, 1),
-            nextAttemptAtEpochMillis = 0,
-            lastSafeError = null,
-        )
+        val candidate =
+            jobs.firstOrNull {
+                it.status == MemoryJobStatus.PENDING ||
+                    (it.status == MemoryJobStatus.RETRY_WAIT && it.nextAttemptAtEpochMillis <= nowEpochMillis)
+            } ?: return this to null
+        val claimed =
+            candidate.copy(
+                status = MemoryJobStatus.PROCESSING,
+                attemptCount = Math.addExact(candidate.attemptCount, 1),
+                nextAttemptAtEpochMillis = 0,
+                lastSafeError = null,
+            )
         return copy(jobs = jobs.map { if (it.plan.id == candidate.plan.id) claimed else it }) to claimed
     }
 
-    fun complete(planId: String, nowEpochMillis: Long): MemoryJobLedger {
+    fun complete(
+        planId: String,
+        nowEpochMillis: Long,
+    ): MemoryJobLedger {
         require(nowEpochMillis >= 0)
         val job = requireJob(planId)
         require(job.status == MemoryJobStatus.PROCESSING) { "Only a processing job can complete." }
-        val completed = job.copy(
-            status = MemoryJobStatus.COMPLETED,
-            nextAttemptAtEpochMillis = 0,
-            lastSafeError = null,
-            completedAtEpochMillis = nowEpochMillis,
-        )
+        val completed =
+            job.copy(
+                status = MemoryJobStatus.COMPLETED,
+                nextAttemptAtEpochMillis = 0,
+                lastSafeError = null,
+                completedAtEpochMillis = nowEpochMillis,
+            )
         return replace(completed)
     }
 
-    fun failPermanently(planId: String, safeError: String): MemoryJobLedger {
+    fun failPermanently(
+        planId: String,
+        safeError: String,
+    ): MemoryJobLedger {
         require(safeError.isNotBlank() && safeError.length <= MemoryExtractionJob.MAX_ERROR_LENGTH)
         val job = requireJob(planId)
         require(job.status == MemoryJobStatus.PROCESSING) {
@@ -120,19 +133,20 @@ data class MemoryJobLedger(val jobs: List<MemoryExtractionJob> = emptyList()) {
         require(safeError.isNotBlank() && safeError.length <= MemoryExtractionJob.MAX_ERROR_LENGTH)
         val job = requireJob(planId)
         require(job.status == MemoryJobStatus.PROCESSING) { "Only a processing job can retry." }
-        val next = if (job.attemptCount >= maxAttempts) {
-            job.copy(
-                status = MemoryJobStatus.PERMANENT_FAILURE,
-                nextAttemptAtEpochMillis = 0,
-                lastSafeError = safeError,
-            )
-        } else {
-            job.copy(
-                status = MemoryJobStatus.RETRY_WAIT,
-                nextAttemptAtEpochMillis = Math.addExact(nowEpochMillis, delayMillis),
-                lastSafeError = safeError,
-            )
-        }
+        val next =
+            if (job.attemptCount >= maxAttempts) {
+                job.copy(
+                    status = MemoryJobStatus.PERMANENT_FAILURE,
+                    nextAttemptAtEpochMillis = 0,
+                    lastSafeError = safeError,
+                )
+            } else {
+                job.copy(
+                    status = MemoryJobStatus.RETRY_WAIT,
+                    nextAttemptAtEpochMillis = Math.addExact(nowEpochMillis, delayMillis),
+                    lastSafeError = safeError,
+                )
+            }
         return replace(next)
     }
 
@@ -143,23 +157,24 @@ data class MemoryJobLedger(val jobs: List<MemoryExtractionJob> = emptyList()) {
         require(safeError.isNotBlank() && safeError.length <= MemoryExtractionJob.MAX_ERROR_LENGTH)
         require(maxAttempts > 0) { "Maximum attempts must be positive." }
         return copy(
-            jobs = jobs.map { job ->
-                if (job.status != MemoryJobStatus.PROCESSING) {
-                    job
-                } else if (job.attemptCount >= maxAttempts) {
-                    job.copy(
-                        status = MemoryJobStatus.PERMANENT_FAILURE,
-                        nextAttemptAtEpochMillis = 0,
-                        lastSafeError = safeError,
-                    )
-                } else {
-                    job.copy(
-                        status = MemoryJobStatus.RETRY_WAIT,
-                        nextAttemptAtEpochMillis = 0,
-                        lastSafeError = safeError,
-                    )
-                }
-            },
+            jobs =
+                jobs.map { job ->
+                    if (job.status != MemoryJobStatus.PROCESSING) {
+                        job
+                    } else if (job.attemptCount >= maxAttempts) {
+                        job.copy(
+                            status = MemoryJobStatus.PERMANENT_FAILURE,
+                            nextAttemptAtEpochMillis = 0,
+                            lastSafeError = safeError,
+                        )
+                    } else {
+                        job.copy(
+                            status = MemoryJobStatus.RETRY_WAIT,
+                            nextAttemptAtEpochMillis = 0,
+                            lastSafeError = safeError,
+                        )
+                    }
+                },
         )
     }
 

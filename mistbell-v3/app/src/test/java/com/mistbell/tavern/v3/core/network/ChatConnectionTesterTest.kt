@@ -17,37 +17,42 @@ class ChatConnectionTesterTest {
     }
 
     @Test
-    fun reportsSuccessForAnAuthorizedMinimalRequest() = runBlocking {
-        server.enqueue(MockResponse().setResponseCode(200).setBody("{}"))
-        server.start()
-        val result = ChatConnectionTester().test(
-            baseUrl = server.url("/v1").toString().trimEnd('/'),
-            modelId = "test-model",
-            apiKey = "test-key",
-        )
-        assertTrue(result.message, result.success)
-        val recorded = server.takeRequest()
-        assertTrue(recorded.path!!.endsWith("/chat/completions"))
-        assertTrue(recorded.getHeader("Authorization") == "Bearer test-key")
-    }
+    fun reportsSuccessForAnAuthorizedMinimalRequest() =
+        runBlocking {
+            server.enqueue(MockResponse().setResponseCode(200).setBody("{}"))
+            server.start()
+            val result =
+                ChatConnectionTester().test(
+                    baseUrl = server.url("/v1").toString().trimEnd('/'),
+                    modelId = "test-model",
+                    apiKey = "test-key",
+                )
+            assertTrue(result.message, result.success)
+            val recorded = server.takeRequest()
+            assertTrue(recorded.path!!.endsWith("/chat/completions"))
+            assertTrue(recorded.getHeader("Authorization") == "Bearer test-key")
+        }
 
     @Test
-    fun reportsHttpFailureWithoutThrowing() = runBlocking {
-        server.enqueue(MockResponse().setResponseCode(401))
-        server.start()
-        val result = ChatConnectionTester().test(
-            baseUrl = server.url("/v1").toString().trimEnd('/'),
-            modelId = "test-model",
-            apiKey = "bad-key",
-        )
-        assertFalse(result.success)
-        assertTrue(result.message.contains("401"))
-    }
+    fun reportsHttpFailureWithoutThrowing() =
+        runBlocking {
+            server.enqueue(MockResponse().setResponseCode(401))
+            server.start()
+            val result =
+                ChatConnectionTester().test(
+                    baseUrl = server.url("/v1").toString().trimEnd('/'),
+                    modelId = "test-model",
+                    apiKey = "bad-key",
+                )
+            assertFalse(result.success)
+            assertTrue(result.message.contains("401"))
+        }
 
     @Test
-    fun rejectsMissingFieldsBeforeSending() = runBlocking {
-        assertFalse(ChatConnectionTester().test("", "model", "key").success)
-        assertFalse(ChatConnectionTester().test("https://example.com", "", "key").success)
-        assertFalse(ChatConnectionTester().test("https://example.com", "model", "").success)
-    }
+    fun rejectsMissingFieldsBeforeSending() =
+        runBlocking {
+            assertFalse(ChatConnectionTester().test("", "model", "key").success)
+            assertFalse(ChatConnectionTester().test("https://example.com", "", "key").success)
+            assertFalse(ChatConnectionTester().test("https://example.com", "model", "").success)
+        }
 }

@@ -8,10 +8,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import com.mistbell.tavern.v3.core.diagnostics.DiagnosticLogStore
 import com.mistbell.tavern.v3.feature.worldbook.WorldBookEntry
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * Owns the loaded worldbook entries, loading readiness, and activation scope for a chat session.
@@ -35,24 +35,27 @@ internal fun rememberChatWorldBookSessionState(
     var entries by remember(context) { mutableStateOf<List<WorldBookEntry>>(emptyList()) }
     var ready by remember { mutableStateOf(false) }
 
-    val loadingCoordinator = remember(context, diagnosticStore) {
-        ChatLibraryLoadingCoordinator(context.applicationContext, diagnosticStore)
-    }
+    val loadingCoordinator =
+        remember(context, diagnosticStore) {
+            ChatLibraryLoadingCoordinator(context.applicationContext, diagnosticStore)
+        }
     LaunchedEffect(context, worldbookId) {
         ready = false
-        val loadedEntries = withContext(Dispatchers.IO) {
-            loadingCoordinator.loadWorldbookEntries(worldbookId)
-        }
+        val loadedEntries =
+            withContext(Dispatchers.IO) {
+                loadingCoordinator.loadWorldbookEntries(worldbookId)
+            }
         entries = loadedEntries
         ready = true
     }
-    val activation = rememberChatWorldBookActivationSession(
-        settings = settings,
-        diagnosticStore = diagnosticStore,
-        roleId = roleId,
-        conversationId = conversationId,
-        worldbookId = worldbookId,
-    )
+    val activation =
+        rememberChatWorldBookActivationSession(
+            settings = settings,
+            diagnosticStore = diagnosticStore,
+            roleId = roleId,
+            conversationId = conversationId,
+            worldbookId = worldbookId,
+        )
     return remember(entries, ready, activation) {
         ChatWorldBookSessionState(entries = entries, ready = ready, activation = activation)
     }

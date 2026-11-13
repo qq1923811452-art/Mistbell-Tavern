@@ -25,33 +25,36 @@ fun BackupSettingsSection(onRestored: () -> Unit = {}) {
     var status by remember { mutableStateOf("") }
     var pendingRestore by remember { mutableStateOf<android.net.Uri?>(null) }
     var restoreName by remember { mutableStateOf("所选备份") }
-    val coordinator = remember(context, scope) {
-        ChatBackupCoordinator(
-            context = context,
-            scope = scope,
-            onStatus = { status = it },
-            onRestored = {
-                onRestored()
-                activity?.recreate()
-            },
-        )
-    }
-    val exportLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.CreateDocument("application/zip"),
-    ) { uri -> if (uri != null) coordinator.export(uri) }
-    val restoreLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocument(),
-    ) { uri ->
-        if (uri != null) {
-            restoreName = runCatching {
-                context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
-                    ?.use { cursor ->
-                        if (cursor.moveToFirst()) cursor.getString(0) else null
-                    }
-            }.getOrNull() ?: uri.lastPathSegment ?: "所选备份"
-            pendingRestore = uri
+    val coordinator =
+        remember(context, scope) {
+            ChatBackupCoordinator(
+                context = context,
+                scope = scope,
+                onStatus = { status = it },
+                onRestored = {
+                    onRestored()
+                    activity?.recreate()
+                },
+            )
         }
-    }
+    val exportLauncher =
+        rememberLauncherForActivityResult(
+            ActivityResultContracts.CreateDocument("application/zip"),
+        ) { uri -> if (uri != null) coordinator.export(uri) }
+    val restoreLauncher =
+        rememberLauncherForActivityResult(
+            ActivityResultContracts.OpenDocument(),
+        ) { uri ->
+            if (uri != null) {
+                restoreName = runCatching {
+                    context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+                        ?.use { cursor ->
+                            if (cursor.moveToFirst()) cursor.getString(0) else null
+                        }
+                }.getOrNull() ?: uri.lastPathSegment ?: "所选备份"
+                pendingRestore = uri
+            }
+        }
 
     ChatBackupSettingsSection(
         onExport = { exportLauncher.launch("mistbell-backup.zip") },

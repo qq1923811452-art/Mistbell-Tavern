@@ -43,14 +43,17 @@ object SessionArchiveCodec {
 
     fun exportJsonl(archive: SessionArchive): String {
         validate(archive)
-        val lines = buildString {
-            appendLine(JSONObject().put("type", "session").put("session", sessionJson(archive)))
-            archive.messages.forEach { message ->
-                appendLine(messageJson(message).put("mes", message.content)
-                    .put("is_user", message.role == "user").put("is_system", message.role == "system")
-                    .put("send_date", message.createdAtEpochMillis.toString()))
+        val lines =
+            buildString {
+                appendLine(JSONObject().put("type", "session").put("session", sessionJson(archive)))
+                archive.messages.forEach { message ->
+                    appendLine(
+                        messageJson(message).put("mes", message.content)
+                            .put("is_user", message.role == "user").put("is_system", message.role == "system")
+                            .put("send_date", message.createdAtEpochMillis.toString()),
+                    )
+                }
             }
-        }
         require(lines.toByteArray(Charsets.UTF_8).size <= MAX_IMPORT_BYTES)
         return lines
     }
@@ -78,8 +81,11 @@ object SessionArchiveCodec {
 
         // JSONL records also begin with '{'. Try a complete JSON document first.
         val jsonRoot = runCatching { JSONObject(trimmed) }.getOrNull()
-        if (jsonRoot != null && (jsonRoot.has("format") || jsonRoot.has("version") ||
-                jsonRoot.has("messages"))) {
+        if (jsonRoot != null && (
+                jsonRoot.has("format") || jsonRoot.has("version") ||
+                    jsonRoot.has("messages")
+            )
+        ) {
             val format = jsonRoot.optString("format", "mistbell-session")
             if (format != "mistbell-session") {
                 return SessionArchiveImportResult(null, "不支持的会话文件格式：$format。")
@@ -90,8 +96,11 @@ object SessionArchiveCodec {
             return runCatching { parseJson(trimmed) }
                 .fold(
                     onSuccess = { archive ->
-                        if (archive == null) SessionArchiveImportResult(null, "JSON 文件缺少有效的 messages 数组。")
-                        else SessionArchiveImportResult(archive)
+                        if (archive == null) {
+                            SessionArchiveImportResult(null, "JSON 文件缺少有效的 messages 数组。")
+                        } else {
+                            SessionArchiveImportResult(archive)
+                        }
                     },
                     onFailure = { error ->
                         SessionArchiveImportResult(null, error.message ?: "JSON 会话文件内容无效。")
@@ -101,8 +110,11 @@ object SessionArchiveCodec {
 
         return runCatching { parseJsonl(trimmed) }.fold(
             onSuccess = { archive ->
-                if (archive == null) SessionArchiveImportResult(null, "JSONL 文件中没有有效的会话头或消息记录。")
-                else SessionArchiveImportResult(archive)
+                if (archive == null) {
+                    SessionArchiveImportResult(null, "JSONL 文件中没有有效的会话头或消息记录。")
+                } else {
+                    SessionArchiveImportResult(archive)
+                }
             },
             onFailure = { error ->
                 SessionArchiveImportResult(null, error.message ?: "JSONL 会话文件内容无效。")
@@ -119,18 +131,20 @@ object SessionArchiveCodec {
         val array = root.optJSONArray("messages") ?: return null
         if (array.length() > MAX_IMPORT_MESSAGES) return null
         val session = root.optJSONObject("session") ?: JSONObject()
-        val messages = (0 until array.length()).map { index ->
-            val item = array.opt(index)
-            require(item is JSONObject) { "第 ${index + 1} 条消息必须是 JSON 对象。" }
-            parseMessage(item, index)
-        }
-        val archive = SessionArchive(
-            id = session.optString("id", "").ifBlank { UUID.randomUUID().toString() },
-            title = session.optString("title", "Imported session").ifBlank { "Imported session" },
-            messages = messages,
-            kind = parseKind(session.optString("kind", "single")),
-            participants = parseParticipants(session.optJSONArray("participants")),
-        )
+        val messages =
+            (0 until array.length()).map { index ->
+                val item = array.opt(index)
+                require(item is JSONObject) { "第 ${index + 1} 条消息必须是 JSON 对象。" }
+                parseMessage(item, index)
+            }
+        val archive =
+            SessionArchive(
+                id = session.optString("id", "").ifBlank { UUID.randomUUID().toString() },
+                title = session.optString("title", "Imported session").ifBlank { "Imported session" },
+                messages = messages,
+                kind = parseKind(session.optString("kind", "single")),
+                participants = parseParticipants(session.optJSONArray("participants")),
+            )
         validate(archive)
         return archive
     }
@@ -147,9 +161,10 @@ object SessionArchiveCodec {
             val line = rawLine.trim()
             if (line.isEmpty()) return@forEachIndexed
             require(line.length <= MAX_IMPORT_LINE_CHARS) { "JSONL line exceeds the import limit." }
-            val item = runCatching { JSONObject(line) }.getOrElse {
-                throw IllegalArgumentException("第 ${lineIndex + 1} 行不是有效 JSON。")
-            }
+            val item =
+                runCatching { JSONObject(line) }.getOrElse {
+                    throw IllegalArgumentException("第 ${lineIndex + 1} 行不是有效 JSON。")
+                }
             if (item.optString("type") == "session" || item.has("session")) {
                 hasSessionHeader = true
                 val session = item.optJSONObject("session")
@@ -176,61 +191,71 @@ object SessionArchiveCodec {
         ).also(::validate)
     }
 
-    private fun sessionJson(archive: SessionArchive): JSONObject = JSONObject()
-        .put("id", archive.id)
-        .put("title", archive.title)
-        .put("kind", archive.kind.name.lowercase())
-        .put("participants", JSONArray().apply {
-            archive.participants.forEach { participant ->
-                put(JSONObject().put("id", participant.id).put("name", participant.name))
-            }
-        })
+    private fun sessionJson(archive: SessionArchive): JSONObject =
+        JSONObject()
+            .put("id", archive.id)
+            .put("title", archive.title)
+            .put("kind", archive.kind.name.lowercase())
+            .put(
+                "participants",
+                JSONArray().apply {
+                    archive.participants.forEach { participant ->
+                        put(JSONObject().put("id", participant.id).put("name", participant.name))
+                    }
+                },
+            )
 
-    private fun messageJson(message: PersistedChatMessage): JSONObject = JSONObject()
-        .put("id", message.id)
-        .put("role", message.role)
-        .put("content", message.content)
-        .put("created_at", message.createdAtEpochMillis)
-        .put("delivery_state", message.deliveryState.name)
-        .also { node ->
-            message.speakerId?.let { node.put("speaker_id", it) }
-            message.speakerName?.let { node.put("speaker_name", it) }
-            if (message.variants.isNotEmpty()) {
-                node.put("variants", JSONArray(message.variants))
-                node.put("active_variant", message.activeVariant)
+    private fun messageJson(message: PersistedChatMessage): JSONObject =
+        JSONObject()
+            .put("id", message.id)
+            .put("role", message.role)
+            .put("content", message.content)
+            .put("created_at", message.createdAtEpochMillis)
+            .put("delivery_state", message.deliveryState.name)
+            .also { node ->
+                message.speakerId?.let { node.put("speaker_id", it) }
+                message.speakerName?.let { node.put("speaker_name", it) }
+                if (message.variants.isNotEmpty()) {
+                    node.put("variants", JSONArray(message.variants))
+                    node.put("active_variant", message.activeVariant)
+                }
             }
-        }
 
-    private fun parseMessage(item: JSONObject, index: Int): PersistedChatMessage {
-        val role = item.optString("role").takeIf { it in setOf("user", "assistant", "system") }
-            ?: when {
-                item.optBoolean("is_system") -> "system"
-                item.optBoolean("is_user") -> "user"
-                else -> "assistant"
-            }
+    private fun parseMessage(
+        item: JSONObject,
+        index: Int,
+    ): PersistedChatMessage {
+        val role =
+            item.optString("role").takeIf { it in setOf("user", "assistant", "system") }
+                ?: when {
+                    item.optBoolean("is_system") -> "system"
+                    item.optBoolean("is_user") -> "user"
+                    else -> "assistant"
+                }
         val content = item.optString("content", item.optString("mes", ""))
         require(content.length <= PersistedChatMessage.MAX_MESSAGE_CHARS)
         val timestampRaw = item.opt("created_at")?.toString() ?: item.opt("send_date")?.toString()
         val timestamp = parseTimestamp(timestampRaw)
-        val state = runCatching {
-            PersistedChatMessage.DeliveryState.valueOf(item.optString("delivery_state", "COMPLETE"))
-        }.getOrDefault(PersistedChatMessage.DeliveryState.COMPLETE)
+        val state =
+            runCatching {
+                PersistedChatMessage.DeliveryState.valueOf(item.optString("delivery_state", "COMPLETE"))
+            }.getOrDefault(PersistedChatMessage.DeliveryState.COMPLETE)
         return PersistedChatMessage(
             id = item.optString("id", "").ifBlank { "imported-" + index + "-" + UUID.randomUUID() },
             role = role, content = content, createdAtEpochMillis = timestamp, deliveryState = state,
             speakerId = item.optString("speaker_id", "").takeIf(String::isNotBlank),
             speakerName = item.optString("speaker_name", "").takeIf(String::isNotBlank),
-            variants = item.optJSONArray("variants")?.let { array ->
-                (0 until array.length()).mapNotNull { i ->
-                    array.optString(i, "").takeIf(String::isNotEmpty)
-                }
-            }.orEmpty(),
+            variants =
+                item.optJSONArray("variants")?.let { array ->
+                    (0 until array.length()).mapNotNull { i ->
+                        array.optString(i, "").takeIf(String::isNotEmpty)
+                    }
+                }.orEmpty(),
             activeVariant = item.optInt("active_variant", 0),
         )
     }
 
-    private fun parseKind(raw: String): SessionKind =
-        if (raw.equals("group", ignoreCase = true)) SessionKind.GROUP else SessionKind.SINGLE
+    private fun parseKind(raw: String): SessionKind = if (raw.equals("group", ignoreCase = true)) SessionKind.GROUP else SessionKind.SINGLE
 
     private fun parseParticipants(array: JSONArray?): List<SessionParticipant> {
         if (array == null) return emptyList()

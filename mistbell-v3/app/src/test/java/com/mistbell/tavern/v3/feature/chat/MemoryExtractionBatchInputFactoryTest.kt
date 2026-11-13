@@ -11,12 +11,13 @@ class MemoryExtractionBatchInputFactoryTest {
 
     @Test fun rebuildsExactlyTheQueuedTurnsInTheirPersistedOrder() {
         val job = job(listOf("user-2", "user-1"))
-        val history = listOf(
-            message("user-1", "user", "first question"),
-            message("assistant-1", "assistant", "first answer"),
-            message("user-2", "user", "second question"),
-            message("assistant-2", "assistant", "second answer"),
-        )
+        val history =
+            listOf(
+                message("user-1", "user", "first question"),
+                message("assistant-1", "assistant", "first answer"),
+                message("user-2", "user", "second question"),
+                message("assistant-2", "assistant", "second answer"),
+            )
 
         val input = factory.create(job, history)
 
@@ -36,15 +37,16 @@ class MemoryExtractionBatchInputFactoryTest {
     }
 
     @Test fun incompleteAssistantReplyFailsClosed() {
-        val history = listOf(
-            message("user-1", "user", "question"),
-            message(
-                "assistant-1",
-                "assistant",
-                "partial answer",
-                PersistedChatMessage.DeliveryState.FAILED,
-            ),
-        )
+        val history =
+            listOf(
+                message("user-1", "user", "question"),
+                message(
+                    "assistant-1",
+                    "assistant",
+                    "partial answer",
+                    PersistedChatMessage.DeliveryState.FAILED,
+                ),
+            )
         assertThrows(MemoryExtractionQueueRunner.RetryableInputException::class.java) {
             factory.create(job(listOf("user-1")), history)
         }
@@ -57,14 +59,15 @@ class MemoryExtractionBatchInputFactoryTest {
         }
     }
 
-    private fun job(turnIds: List<String>) = MemoryExtractionJob(
-        id = "job-1",
-        conversationId = "conversation-7",
-        turnIds = turnIds,
-        providerProfileId = "memory-profile",
-        credentialHandle = "opaque-handle",
-        createdAtEpochMillis = 100L,
-    )
+    private fun job(turnIds: List<String>) =
+        MemoryExtractionJob(
+            id = "job-1",
+            conversationId = "conversation-7",
+            turnIds = turnIds,
+            providerProfileId = "memory-profile",
+            credentialHandle = "opaque-handle",
+            createdAtEpochMillis = 100L,
+        )
 
     private fun message(
         id: String,

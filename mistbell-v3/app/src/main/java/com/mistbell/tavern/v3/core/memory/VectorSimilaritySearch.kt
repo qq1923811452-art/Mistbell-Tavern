@@ -65,12 +65,13 @@ object VectorSimilaritySearch {
         score: Double,
         limit: Int,
     ) {
-        val hit = VectorSearchHit(
-            id = record.id,
-            score = score,
-            sourceTextSha256 = record.sourceTextSha256,
-            createdAtEpochMillis = record.createdAtEpochMillis,
-        )
+        val hit =
+            VectorSearchHit(
+                id = record.id,
+                score = score,
+                sourceTextSha256 = record.sourceTextSha256,
+                createdAtEpochMillis = record.createdAtEpochMillis,
+            )
         if (best.size < limit) {
             best.add(hit)
         } else if (BEST_FIRST.compare(hit, best.peek()) < 0) {
@@ -115,7 +116,10 @@ object VectorSimilaritySearch {
         }
 
         /** Legacy float32 path, unchanged: dequantize once, then a dot product. */
-        private fun legacyScore(values: List<Float>, index: Int): Double {
+        private fun legacyScore(
+            values: List<Float>,
+            index: Int,
+        ): Double {
             val scratch = legacyValues ?: FloatArray(snapshot.dimensions).also { legacyValues = it }
             if (values is FloatVectorView) {
                 values.fillInto(scratch)

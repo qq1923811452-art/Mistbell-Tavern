@@ -17,11 +17,12 @@ object EndpointPolicy {
             return EndpointValidation(isAllowed = false, reason = "Base URL is required.")
         }
 
-        val uri = try {
-            URI(value).normalize()
-        } catch (_: URISyntaxException) {
-            return EndpointValidation(isAllowed = false, reason = "Base URL is malformed.")
-        }
+        val uri =
+            try {
+                URI(value).normalize()
+            } catch (_: URISyntaxException) {
+                return EndpointValidation(isAllowed = false, reason = "Base URL is malformed.")
+            }
 
         val scheme = uri.scheme?.lowercase(Locale.ROOT)
         val host = uri.host?.trim('[', ']')?.lowercase(Locale.ROOT)

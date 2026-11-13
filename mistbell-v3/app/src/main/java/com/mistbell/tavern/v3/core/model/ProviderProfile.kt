@@ -40,9 +40,10 @@ class ProviderProfileSet(
         }
         profilesById = profiles.associateBy(ProviderProfile::id)
         selectedIds.forEach { (kind, id) ->
-            val profile = requireNotNull(profilesById[id]) {
-                "Selected provider profile '$id' does not exist."
-            }
+            val profile =
+                requireNotNull(profilesById[id]) {
+                    "Selected provider profile '$id' does not exist."
+                }
             require(profile.kind == kind) {
                 "Selected provider profile '$id' does not belong to $kind."
             }

@@ -20,10 +20,11 @@ class SqliteChatHistoryRepositoryTest {
         val databaseName = "history-migration-$suffix.db"
         val legacyName = "history-migration-$suffix.json"
         val legacy = ChatHistoryStore(context, legacyName)
-        val original = listOf(
-            message("user-1", "user", "hello", 10L),
-            message("assistant-1", "assistant", "hi", 11L),
-        )
+        val original =
+            listOf(
+                message("user-1", "user", "hello", 10L),
+                message("assistant-1", "assistant", "hi", 11L),
+            )
         legacy.save(original)
 
         val first = SqliteChatHistoryRepository(context, "role/session-$suffix", legacy, databaseName)
@@ -48,7 +49,6 @@ class SqliteChatHistoryRepositoryTest {
             context.deleteFile("$legacyName.bak")
         }
     }
-
 
     @Test
     fun clearedScopeDoesNotReimportTheLegacyJson() {
@@ -91,12 +91,13 @@ class SqliteChatHistoryRepositoryTest {
         val legacy = ChatHistoryStore(context, legacyName)
         val original = listOf(message("legacy-1", "user", "keep this history", 10L))
         legacy.save(original)
-        val repository = SqliteChatHistoryRepository(
-            context,
-            "role/session-$suffix",
-            legacy,
-            databaseName,
-        )
+        val repository =
+            SqliteChatHistoryRepository(
+                context,
+                "role/session-$suffix",
+                legacy,
+                databaseName,
+            )
         val appended = message("new-1", "assistant", "new reply", 11L)
 
         try {
@@ -177,17 +178,19 @@ class SqliteChatHistoryRepositoryTest {
         val databaseName = "history-replace-all-$suffix.db"
         val legacyName = "history-replace-all-$suffix.json"
         val legacy = ChatHistoryStore(context, legacyName)
-        val original = listOf(
-            message("old-1", "user", "old user", 1L),
-            message("old-2", "assistant", "old reply", 2L),
-        )
+        val original =
+            listOf(
+                message("old-1", "user", "old user", 1L),
+                message("old-2", "assistant", "old reply", 2L),
+            )
         legacy.save(original)
-        val repository = SqliteChatHistoryRepository(
-            context,
-            "role/session-$suffix",
-            legacy,
-            databaseName,
-        )
+        val repository =
+            SqliteChatHistoryRepository(
+                context,
+                "role/session-$suffix",
+                legacy,
+                databaseName,
+            )
         try {
             assertEquals(ChatHistoryLoadResult.Loaded(original), repository.load())
 
@@ -237,18 +240,20 @@ class SqliteChatHistoryRepositoryTest {
         val databaseName = "history-delete-sync-$suffix.db"
         val legacyName = "history-delete-sync-$suffix.json"
         val legacy = ChatHistoryStore(context, legacyName)
-        val original = listOf(
-            message("one", "user", "first", 1L),
-            message("two", "assistant", "second", 2L),
-            message("three", "user", "third", 3L),
-        )
+        val original =
+            listOf(
+                message("one", "user", "first", 1L),
+                message("two", "assistant", "second", 2L),
+                message("three", "user", "third", 3L),
+            )
         legacy.save(original)
-        val repository = SqliteChatHistoryRepository(
-            context,
-            "role/session-$suffix",
-            legacy,
-            databaseName,
-        )
+        val repository =
+            SqliteChatHistoryRepository(
+                context,
+                "role/session-$suffix",
+                legacy,
+                databaseName,
+            )
         try {
             assertEquals(ChatHistoryLoadResult.Loaded(original), repository.load())
             val retained = listOf(original[0], original[2])
@@ -328,13 +333,14 @@ class SqliteChatHistoryRepositoryTest {
         }
 
         val events = mutableListOf<String>()
-        val repository = SqliteChatHistoryRepository(
-            context,
-            scope,
-            legacy,
-            databaseName,
-            onDiagnostic = { event, _ -> events += event },
-        )
+        val repository =
+            SqliteChatHistoryRepository(
+                context,
+                scope,
+                legacy,
+                databaseName,
+                onDiagnostic = { event, _ -> events += event },
+            )
         try {
             val result = repository.load()
             assertEquals(
@@ -426,7 +432,11 @@ class SqliteChatHistoryRepositoryTest {
         }
     }
 
-    private fun insertRejectedRows(store: SqliteChatStore, scope: String, count: Int) {
+    private fun insertRejectedRows(
+        store: SqliteChatStore,
+        scope: String,
+        count: Int,
+    ) {
         repeat(count) { index ->
             // Invalid variant index keeps the fixture small while exercising row validation.
             store.writableDatabase.execSQL(

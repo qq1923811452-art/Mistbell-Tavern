@@ -27,38 +27,40 @@ internal class ChatSessionImportCoordinator(
     fun import(uri: Uri) {
         coroutineScope.launch {
             runCatching {
-                val raw = withContext(Dispatchers.IO) {
-                    context.contentResolver.openInputStream(uri)?.use { input ->
-                        val output = java.io.ByteArrayOutputStream()
-                        val buffer = ByteArray(8192)
-                        while (true) {
-                            val count = input.read(buffer)
-                            if (count < 0) break
-                            require(output.size() + count <= SessionArchiveCodec.MAX_IMPORT_BYTES) {
-                                "会话文件超过 32 MiB 导入上限。"
+                val raw =
+                    withContext(Dispatchers.IO) {
+                        context.contentResolver.openInputStream(uri)?.use { input ->
+                            val output = java.io.ByteArrayOutputStream()
+                            val buffer = ByteArray(8192)
+                            while (true) {
+                                val count = input.read(buffer)
+                                if (count < 0) break
+                                require(output.size() + count <= SessionArchiveCodec.MAX_IMPORT_BYTES) {
+                                    "会话文件超过 32 MiB 导入上限。"
+                                }
+                                output.write(buffer, 0, count)
                             }
-                            output.write(buffer, 0, count)
-                        }
-                        output.toByteArray().toString(Charsets.UTF_8)
-                    } ?: error("无法读取会话文件")
-                }
+                            output.toByteArray().toString(Charsets.UTF_8)
+                        } ?: error("无法读取会话文件")
+                    }
                 SessionArchiveCodec.importAnyDetailed(raw).let { result ->
                     result.archive ?: error(result.error ?: "会话文件无效。")
                 }
             }.onSuccess { archive ->
-                val importedLines = archive.messages.map { message ->
-                    ChatLine(
-                        id = message.id,
-                        role = message.role,
-                        content = message.content,
-                        createdAtEpochMillis = message.createdAtEpochMillis,
-                        deliveryState = message.deliveryState,
-                        speakerId = message.speakerId,
-                        speakerName = message.speakerName,
-                        variants = message.variants,
-                        activeVariant = message.activeVariant,
-                    )
-                }
+                val importedLines =
+                    archive.messages.map { message ->
+                        ChatLine(
+                            id = message.id,
+                            role = message.role,
+                            content = message.content,
+                            createdAtEpochMillis = message.createdAtEpochMillis,
+                            deliveryState = message.deliveryState,
+                            speakerId = message.speakerId,
+                            speakerName = message.speakerName,
+                            variants = message.variants,
+                            activeVariant = message.activeVariant,
+                        )
+                    }
                 try {
                     historySaveMutex.withLock {
                         // Keep visible history and save revision unchanged until SQLite commits.

@@ -8,13 +8,15 @@ import org.junit.Test
 class PersistedVectorSnapshotProviderTest {
     @Test
     fun missingRuntimeModelIsReportedAsIncompatibleWithoutLoadingStore() {
-        val provider = PersistedVectorSnapshotProvider(
-            store = VectorSnapshotLoader { _, _ ->
-                error("Store must not be queried without an active model.")
-            },
-            expectedModelId = { null },
-            expectedDimensions = { 3 },
-        )
+        val provider =
+            PersistedVectorSnapshotProvider(
+                store =
+                    VectorSnapshotLoader { _, _ ->
+                        error("Store must not be queried without an active model.")
+                    },
+                expectedModelId = { null },
+                expectedDimensions = { 3 },
+            )
 
         assertEquals(
             VectorSnapshotReadResult.Incompatible("No active local embedding model is available."),
@@ -24,13 +26,15 @@ class PersistedVectorSnapshotProviderTest {
 
     @Test
     fun invalidDimensionsAreReportedWithoutLoadingStore() {
-        val provider = PersistedVectorSnapshotProvider(
-            store = VectorSnapshotLoader { _, _ ->
-                error("Store must not be queried without valid dimensions.")
-            },
-            expectedModelId = { "local:embeddinggemma-2:int8" },
-            expectedDimensions = { 0 },
-        )
+        val provider =
+            PersistedVectorSnapshotProvider(
+                store =
+                    VectorSnapshotLoader { _, _ ->
+                        error("Store must not be queried without valid dimensions.")
+                    },
+                expectedModelId = { "local:embeddinggemma-2:int8" },
+                expectedDimensions = { 0 },
+            )
 
         assertEquals(
             VectorSnapshotReadResult.Incompatible(
@@ -42,33 +46,38 @@ class PersistedVectorSnapshotProviderTest {
 
     @Test
     fun loadedSnapshotIsPassedThroughFromDurableStore() {
-        val snapshot = VectorSnapshot(
-            modelId = "local-test",
-            dimensions = 2,
-            records = emptyList(),
-        )
-        val provider = PersistedVectorSnapshotProvider(
-            store = VectorSnapshotLoader { modelId, dimensions ->
-                assertEquals("local-test", modelId)
-                assertEquals(2, dimensions)
-                VectorSnapshotLoadResult.Loaded(snapshot)
-            },
-            expectedModelId = { "local-test" },
-            expectedDimensions = { 2 },
-        )
+        val snapshot =
+            VectorSnapshot(
+                modelId = "local-test",
+                dimensions = 2,
+                records = emptyList(),
+            )
+        val provider =
+            PersistedVectorSnapshotProvider(
+                store =
+                    VectorSnapshotLoader { modelId, dimensions ->
+                        assertEquals("local-test", modelId)
+                        assertEquals(2, dimensions)
+                        VectorSnapshotLoadResult.Loaded(snapshot)
+                    },
+                expectedModelId = { "local-test" },
+                expectedDimensions = { 2 },
+            )
 
         assertEquals(VectorSnapshotReadResult.Loaded(snapshot), provider.loadSnapshot())
     }
 
     @Test
     fun corruptionStateIsNotHiddenAsMissingData() {
-        val provider = PersistedVectorSnapshotProvider(
-            store = VectorSnapshotLoader { _, _ ->
-                VectorSnapshotLoadResult.Corrupt("checksum mismatch")
-            },
-            expectedModelId = { "local-test" },
-            expectedDimensions = { 2 },
-        )
+        val provider =
+            PersistedVectorSnapshotProvider(
+                store =
+                    VectorSnapshotLoader { _, _ ->
+                        VectorSnapshotLoadResult.Corrupt("checksum mismatch")
+                    },
+                expectedModelId = { "local-test" },
+                expectedDimensions = { 2 },
+            )
 
         assertEquals(
             VectorSnapshotReadResult.Corrupt("checksum mismatch"),

@@ -9,8 +9,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import com.mistbell.tavern.v3.core.network.ChatConnectionTester
-import com.mistbell.tavern.v3.feature.chat.ThinkingModeTemplates
 import com.mistbell.tavern.v3.core.security.ChatCredentialStore
+import com.mistbell.tavern.v3.feature.chat.ThinkingModeTemplates
 import kotlinx.coroutines.launch
 
 /** Edits the single default chat API profile stored in shared preferences. */
@@ -18,9 +18,10 @@ import kotlinx.coroutines.launch
 @Composable
 fun ApiSettingsSection(onStatus: (String) -> Unit) {
     val context = LocalContext.current
-    val prefs = remember(context) {
-        context.getSharedPreferences("mistbell-v3-settings", Context.MODE_PRIVATE)
-    }
+    val prefs =
+        remember(context) {
+            context.getSharedPreferences("mistbell-v3-settings", Context.MODE_PRIVATE)
+        }
     val credentialStore = remember(context) { ChatCredentialStore(context) }
     var profile by remember { mutableStateOf(loadProfile(context)) }
     var showDialog by remember { mutableStateOf(false) }
@@ -36,11 +37,12 @@ fun ApiSettingsSection(onStatus: (String) -> Unit) {
             } else {
                 onStatus("正在测试连接…")
                 scope.launch {
-                    val result = ChatConnectionTester().test(
-                        baseUrl = profile.baseUrl,
-                        modelId = profile.modelId,
-                        apiKey = apiKey,
-                    )
+                    val result =
+                        ChatConnectionTester().test(
+                            baseUrl = profile.baseUrl,
+                            modelId = profile.modelId,
+                            apiKey = apiKey,
+                        )
                     onStatus(result.message)
                 }
             }
@@ -65,11 +67,12 @@ fun ApiSettingsSection(onStatus: (String) -> Unit) {
                     .putBoolean("chat_long_context", updated.longContext)
                     .putString("chat_profile_name", updated.name)
                     .apply()
-                val template = if (updated.thinkingEnabled) {
-                    ThinkingModeTemplates.enabled(updated.baseUrl, updated.modelId)
-                } else {
-                    ThinkingModeTemplates.disabled(updated.baseUrl, updated.modelId)
-                }
+                val template =
+                    if (updated.thinkingEnabled) {
+                        ThinkingModeTemplates.enabled(updated.baseUrl, updated.modelId)
+                    } else {
+                        ThinkingModeTemplates.disabled(updated.baseUrl, updated.modelId)
+                    }
                 prefs.edit()
                     .putString("chat_credential_handle", handle)
                     .apply()

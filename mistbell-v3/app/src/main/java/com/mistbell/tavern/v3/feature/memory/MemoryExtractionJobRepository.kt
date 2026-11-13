@@ -182,89 +182,105 @@ class MemoryExtractionJobRepository(
         roleMemoryScopeId: String,
         historyScopeId: String,
         migrate: () -> Boolean,
-    ): Int = synchronized(QUEUE_LOCK) {
-        require(legacyMemoryScopeId.isNotBlank() && roleMemoryScopeId.isNotBlank() && historyScopeId.isNotBlank())
-        if (legacyMemoryScopeId == roleMemoryScopeId) return 0
-        val jobs = read()
-        // Validate before the copy can change any store.
-        jobs.filter { it.conversationId == legacyMemoryScopeId }.forEach { job ->
-            require(job.historyScopeId == legacyMemoryScopeId || job.historyScopeId == historyScopeId) {
-                "Legacy extraction job belongs to a different history scope."
-            }
-        }
-        val bindings = scopeRegistry.load()
-        val previous = bindings.firstOrNull { it.legacyScopeId == legacyMemoryScopeId }
-        validateScopeBinding(previous, roleMemoryScopeId, historyScopeId)
-        val binding =
-            MemoryExtractionScopeBinding(legacyMemoryScopeId, roleMemoryScopeId, historyScopeId, pending = true)
-        val pendingBindings = bindings.filterNot { it.legacyScopeId == legacyMemoryScopeId } + binding
-        scopeRegistry.save(pendingBindings)
-        // Persist a fence BEFORE touching memory files. If copy or final queue persistence fails,
-        // a restarted worker must not resume writing the old store. The same migration can retry.
-        val fenced = jobs.map { job ->
-            if (job.conversationId == legacyMemoryScopeId && legacyMemoryScopeId != roleMemoryScopeId) {
-                require(job.migrationRoleScopeId == null || job.migrationRoleScopeId == roleMemoryScopeId)
-                job.copy(migrationRoleScopeId = roleMemoryScopeId)
-            } else job
-        }
-        if (fenced != jobs) store.save(fenced)
-        check(migrate()) { "Memory scope migration did not complete." }
-        var rebound = 0
-        val next = fenced.map { job ->
-            if (job.conversationId != legacyMemoryScopeId || legacyMemoryScopeId == roleMemoryScopeId) {
-                job
-            } else {
+    ): Int =
+        synchronized(QUEUE_LOCK) {
+            require(legacyMemoryScopeId.isNotBlank() && roleMemoryScopeId.isNotBlank() && historyScopeId.isNotBlank())
+            if (legacyMemoryScopeId == roleMemoryScopeId) return 0
+            val jobs = read()
+            // Validate before the copy can change any store.
+            jobs.filter { it.conversationId == legacyMemoryScopeId }.forEach { job ->
                 require(job.historyScopeId == legacyMemoryScopeId || job.historyScopeId == historyScopeId) {
                     "Legacy extraction job belongs to a different history scope."
                 }
-                rebound++
-                rebindMigratedJob(job, legacyMemoryScopeId, roleMemoryScopeId, historyScopeId)
             }
+            val bindings = scopeRegistry.load()
+            val previous = bindings.firstOrNull { it.legacyScopeId == legacyMemoryScopeId }
+            validateScopeBinding(previous, roleMemoryScopeId, historyScopeId)
+            val binding =
+                MemoryExtractionScopeBinding(legacyMemoryScopeId, roleMemoryScopeId, historyScopeId, pending = true)
+            val pendingBindings = bindings.filterNot { it.legacyScopeId == legacyMemoryScopeId } + binding
+            scopeRegistry.save(pendingBindings)
+            // Persist a fence BEFORE touching memory files. If copy or final queue persistence fails,
+            // a restarted worker must not resume writing the old store. The same migration can retry.
+            val fenced =
+                jobs.map { job ->
+                    if (job.conversationId == legacyMemoryScopeId && legacyMemoryScopeId != roleMemoryScopeId) {
+                        require(job.migrationRoleScopeId == null || job.migrationRoleScopeId == roleMemoryScopeId)
+                        job.copy(migrationRoleScopeId = roleMemoryScopeId)
+                    } else {
+                        job
+                    }
+                }
+            if (fenced != jobs) store.save(fenced)
+            check(migrate()) { "Memory scope migration did not complete." }
+            var rebound = 0
+            val next =
+                fenced.map { job ->
+                    if (job.conversationId != legacyMemoryScopeId || legacyMemoryScopeId == roleMemoryScopeId) {
+                        job
+                    } else {
+                        require(job.historyScopeId == legacyMemoryScopeId || job.historyScopeId == historyScopeId) {
+                            "Legacy extraction job belongs to a different history scope."
+                        }
+                        rebound++
+                        rebindMigratedJob(job, legacyMemoryScopeId, roleMemoryScopeId, historyScopeId)
+                    }
+                }
+            if (rebound > 0) store.save(next)
+            scopeRegistry.save(
+                pendingBindings.map { activateScopeBinding(it, legacyMemoryScopeId) },
+            )
+            rebound
         }
-        if (rebound > 0) store.save(next)
-        scopeRegistry.save(
-            pendingBindings.map { activateScopeBinding(it, legacyMemoryScopeId) },
-        )
-        rebound
-    }
 
     /** Held through fact/text writes AND their completion callback, against scope migration. */
-    fun commitIfCurrent(claim: MemoryExtractionJob, commit: () -> Unit): Boolean = synchronized(QUEUE_LOCK) {
-        if (scopeBlocked(claim.conversationId)) return false
-        if (claim.state != MemoryExtractionJob.State.RUNNING || claim.migrationRoleScopeId != null ||
-            read().none { it == claim }) return false
-        commit()
-        true
-    }
+    fun commitIfCurrent(
+        claim: MemoryExtractionJob,
+        commit: () -> Unit,
+    ): Boolean =
+        synchronized(QUEUE_LOCK) {
+            if (scopeBlocked(claim.conversationId)) return false
+            if (claim.state != MemoryExtractionJob.State.RUNNING || claim.migrationRoleScopeId != null ||
+                read().none { it == claim }
+            ) {
+                return false
+            }
+            commit()
+            true
+        }
 
-    fun complete(claim: MemoryExtractionJob): Boolean = synchronized(QUEUE_LOCK) {
-        if (scopeBlocked(claim.conversationId) || read().none { it == claim }) false else complete(claim.id)
-    }
+    fun complete(claim: MemoryExtractionJob): Boolean =
+        synchronized(QUEUE_LOCK) {
+            if (scopeBlocked(claim.conversationId) || read().none { it == claim }) false else complete(claim.id)
+        }
 
     fun fail(
         claim: MemoryExtractionJob,
         now: Long,
         safeError: String,
         permanent: Boolean = false,
-    ): Boolean = synchronized(QUEUE_LOCK) {
-        if (scopeBlocked(claim.conversationId) || read().none { it == claim }) {
-            false
-        } else {
-            fail(claim.id, now, safeError, permanent)
+    ): Boolean =
+        synchronized(QUEUE_LOCK) {
+            if (scopeBlocked(claim.conversationId) || read().none { it == claim }) {
+                false
+            } else {
+                fail(claim.id, now, safeError, permanent)
+            }
         }
-    }
 
     /** Includes completed batches even when the preference cursor was lost or predates migration. */
-    fun coveredTurnIds(historyScopeId: String): Set<String> = synchronized(QUEUE_LOCK) {
-        read().filter { it.historyScopeId == historyScopeId && it.state != MemoryExtractionJob.State.PERMANENT_FAILURE }
-            .flatMap { it.turnIds }.toSet()
-    }
+    fun coveredTurnIds(historyScopeId: String): Set<String> =
+        synchronized(QUEUE_LOCK) {
+            read().filter { it.historyScopeId == historyScopeId && it.state != MemoryExtractionJob.State.PERMANENT_FAILURE }
+                .flatMap { it.turnIds }.toSet()
+        }
 
     fun list(): List<MemoryExtractionJob> = synchronized(QUEUE_LOCK) { read() }
 
-    private fun scopeBlocked(scopeId: String): Boolean = scopeRegistry.load().any {
-        it.legacyScopeId == scopeId || (it.pending && it.roleScopeId == scopeId)
-    }
+    private fun scopeBlocked(scopeId: String): Boolean =
+        scopeRegistry.load().any {
+            it.legacyScopeId == scopeId || (it.pending && it.roleScopeId == scopeId)
+        }
 
     private fun blocksLaterJob(
         earlier: MemoryExtractionJob,
@@ -325,17 +341,26 @@ private fun rebindMigratedJob(
         historyScopeId = historyScopeId,
         legacyHistoryScopeId = job.legacyHistoryScopeId ?: legacyMemoryScopeId,
         migrationRoleScopeId = null,
-        attemptCount = if (job.state == MemoryExtractionJob.State.RUNNING) {
-            (job.attemptCount - 1).coerceAtLeast(0)
-        } else job.attemptCount,
+        attemptCount =
+            if (job.state == MemoryExtractionJob.State.RUNNING) {
+                (job.attemptCount - 1).coerceAtLeast(0)
+            } else {
+                job.attemptCount
+            },
         // An in-flight request has stores and input bound to the old scope. Revoke it;
         // its late response cannot commit or change the rebound job's retry state.
-        state = if (job.state == MemoryExtractionJob.State.RUNNING) {
-            MemoryExtractionJob.State.RETRY_WAIT
-        } else job.state,
+        state =
+            if (job.state == MemoryExtractionJob.State.RUNNING) {
+                MemoryExtractionJob.State.RETRY_WAIT
+            } else {
+                job.state
+            },
     )
 
-private fun isJobDue(job: MemoryExtractionJob, now: Long): Boolean =
+private fun isJobDue(
+    job: MemoryExtractionJob,
+    now: Long,
+): Boolean =
     (job.state == MemoryExtractionJob.State.PENDING || job.state == MemoryExtractionJob.State.RETRY_WAIT) &&
         job.nextAttemptAtEpochMillis <= now
 
@@ -344,12 +369,13 @@ private fun validateScopeBinding(
     roleMemoryScopeId: String,
     historyScopeId: String,
 ) {
-    require(previous == null ||
-        (previous.roleScopeId == roleMemoryScopeId && previous.historyScopeId == historyScopeId))
+    require(
+        previous == null ||
+            (previous.roleScopeId == roleMemoryScopeId && previous.historyScopeId == historyScopeId),
+    )
 }
 
 private fun activateScopeBinding(
     binding: MemoryExtractionScopeBinding,
     legacyMemoryScopeId: String,
-): MemoryExtractionScopeBinding =
-    if (binding.legacyScopeId == legacyMemoryScopeId) binding.copy(pending = false) else binding
+): MemoryExtractionScopeBinding = if (binding.legacyScopeId == legacyMemoryScopeId) binding.copy(pending = false) else binding

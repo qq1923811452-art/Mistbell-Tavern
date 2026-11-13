@@ -34,8 +34,11 @@ class MemoryExtractionJobCodecTest {
 
     @Test
     fun decodesExplicitNullOptionalFieldsAsNull() {
-        val payload = """{"version":1,"jobs":[{"id":"job-null","conversation":"conversation-1","turns":["turn-1"],"provider":"memory-provider","credential_handle":null,"created":1000,"attempts":0,"next_attempt":1000,"state":"PENDING","error":null}]}"""
-            .toByteArray(Charsets.UTF_8)
+        val payloadJson =
+            """{"version":1,"jobs":[{"id":"job-null","conversation":"conversation-1",""" +
+                """"turns":["turn-1"],"provider":"memory-provider","credential_handle":null,""" +
+                """"created":1000,"attempts":0,"next_attempt":1000,"state":"PENDING","error":null}]}"""
+        val payload = payloadJson.toByteArray(Charsets.UTF_8)
         val encoded = payload + MessageDigest.getInstance("SHA-256").digest(payload)
 
         val decoded = MemoryExtractionJobCodec.decode(encoded).single()

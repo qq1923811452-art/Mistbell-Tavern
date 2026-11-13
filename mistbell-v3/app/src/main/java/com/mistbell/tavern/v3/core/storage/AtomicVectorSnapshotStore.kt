@@ -53,7 +53,6 @@ class AtomicVectorSnapshotStore(
         atomicFile = AtomicFile(File(context.filesDir, fileName))
     }
 
-
     override fun save(snapshot: VectorSnapshot): Unit =
         MemoryScopeStorageLock.withLock(atomicFile.baseFile) {
             val bytes = VectorSnapshotCodec.encode(snapshot)

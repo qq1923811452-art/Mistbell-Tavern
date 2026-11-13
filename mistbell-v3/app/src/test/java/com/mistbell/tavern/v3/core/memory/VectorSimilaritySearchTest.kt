@@ -6,17 +6,19 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class VectorSimilaritySearchTest {
-    private val snapshot = VectorSnapshot(
-        modelId = "embedding-test",
-        dimensions = 2,
-        records = listOf(
-            vector("same-direction", listOf(1f, 0f)),
-            vector("diagonal", listOf(1f, 1f)),
-            vector("opposite", listOf(-1f, 0f)),
-            vector("zero", listOf(0f, 0f)),
-            vector("same-direction-2", listOf(2f, 0f)),
-        ),
-    )
+    private val snapshot =
+        VectorSnapshot(
+            modelId = "embedding-test",
+            dimensions = 2,
+            records =
+                listOf(
+                    vector("same-direction", listOf(1f, 0f)),
+                    vector("diagonal", listOf(1f, 1f)),
+                    vector("opposite", listOf(-1f, 0f)),
+                    vector("zero", listOf(0f, 0f)),
+                    vector("same-direction-2", listOf(2f, 0f)),
+                ),
+        )
 
     @Test
     fun ranksByCosineSimilarityAndUsesStableIdTieBreak() {
@@ -33,12 +35,13 @@ class VectorSimilaritySearchTest {
 
     @Test
     fun appliesMinimumScoreAndResultLimit() {
-        val hits = VectorSimilaritySearch.search(
-            snapshot,
-            query = listOf(1f, 0f),
-            limit = 1,
-            minimumScore = 0.8,
-        )
+        val hits =
+            VectorSimilaritySearch.search(
+                snapshot,
+                query = listOf(1f, 0f),
+                limit = 1,
+                minimumScore = 0.8,
+            )
 
         assertEquals(1, hits.size)
         assertEquals("same-direction", hits.single().id)
@@ -67,7 +70,10 @@ class VectorSimilaritySearchTest {
         }
     }
 
-    private fun vector(id: String, values: List<Float>) = StoredVector(
+    private fun vector(
+        id: String,
+        values: List<Float>,
+    ) = StoredVector(
         id = id,
         sourceTextSha256 = "a".repeat(64),
         createdAtEpochMillis = 1L,

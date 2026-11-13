@@ -72,8 +72,9 @@ object ConversationContextWindowBuilder {
         maxHistoryChars: Int,
     ): Int {
         if (recentTurns == 0 || maxHistoryChars == 0 || history.isEmpty()) return history.size
-        val turnStarts = history.indices.filter { history[it].role == PromptRole.USER }
-            .ifEmpty { listOf(0) }
+        val turnStarts =
+            history.indices.filter { history[it].role == PromptRole.USER }
+                .ifEmpty { listOf(0) }
         var splitAt = history.size
         var turnEnd = history.size
         var selectedTurns = 0
@@ -102,15 +103,21 @@ object ConversationContextWindowBuilder {
      * facts) and the remaining two thirds for the most recent older messages. This is extractive,
      * not semantic, but prevents the opening of a long roleplay from disappearing entirely.
      */
-    internal fun summarizeOlder(history: List<PromptMessage>, maxChars: Int): String =
-        buildExtractiveSummary(history, maxChars)
+    internal fun summarizeOlder(
+        history: List<PromptMessage>,
+        maxChars: Int,
+    ): String = buildExtractiveSummary(history, maxChars)
 
-    private fun buildExtractiveSummary(history: List<PromptMessage>, maxChars: Int): String {
+    private fun buildExtractiveSummary(
+        history: List<PromptMessage>,
+        maxChars: Int,
+    ): String {
         if (history.isEmpty() || maxChars == 0) return ""
-        val normalized = history.mapNotNull { message ->
-            val content = message.content.replace(Regex("\\s+"), " ").trim()
-            if (content.isEmpty()) null else message to content
-        }
+        val normalized =
+            history.mapNotNull { message ->
+                val content = message.content.replace(Regex("\\s+"), " ").trim()
+                if (content.isEmpty()) null else message to content
+            }
         if (normalized.isEmpty()) return ""
 
         val oldestCount = (normalized.size + 1) / 2
@@ -120,10 +127,11 @@ object ConversationContextWindowBuilder {
         val newestBudget = if (oldest.isEmpty()) maxChars else (maxChars - oldestBudget - 1).coerceAtLeast(0)
         val oldestSnippets = collectSnippets(oldest, oldestBudget, newestFirst = false)
         val newestSnippets = collectSnippets(newest, newestBudget, newestFirst = true)
-        val sections = buildList {
-            addAll(oldestSnippets)
-            addAll(newestSnippets)
-        }
+        val sections =
+            buildList {
+                addAll(oldestSnippets)
+                addAll(newestSnippets)
+            }
         return sections.joinToString("；").takeWithoutSplittingSurrogatePair(maxChars)
     }
 
@@ -152,13 +160,14 @@ object ConversationContextWindowBuilder {
     }
 
     private fun String.takeWithoutSplittingSurrogatePair(maxChars: Int): String {
-        val end = length.coerceAtMost(maxChars.coerceAtLeast(0)).let { limit ->
-            if (limit > 0 && limit < length && this[limit - 1].isHighSurrogate() && this[limit].isLowSurrogate()) {
-                limit - 1
-            } else {
-                limit
+        val end =
+            length.coerceAtMost(maxChars.coerceAtLeast(0)).let { limit ->
+                if (limit > 0 && limit < length && this[limit - 1].isHighSurrogate() && this[limit].isLowSurrogate()) {
+                    limit - 1
+                } else {
+                    limit
+                }
             }
-        }
         return take(end)
     }
 }

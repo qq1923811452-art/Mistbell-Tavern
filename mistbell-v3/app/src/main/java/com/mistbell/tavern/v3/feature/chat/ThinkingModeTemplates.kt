@@ -7,14 +7,22 @@ package com.mistbell.tavern.v3.feature.chat
  * unchanged instead of sending a field the endpoint may reject.
  */
 internal object ThinkingModeTemplates {
-    fun enabled(baseUrl: String, modelId: String): String? =
-        select(baseUrl, modelId, enabled = true)
+    fun enabled(
+        baseUrl: String,
+        modelId: String,
+    ): String? = select(baseUrl, modelId, enabled = true)
 
-    fun disabled(baseUrl: String, modelId: String): String? =
-        select(baseUrl, modelId, enabled = false)
+    fun disabled(
+        baseUrl: String,
+        modelId: String,
+    ): String? = select(baseUrl, modelId, enabled = false)
 
     @Suppress("CyclomaticComplexMethod")
-    private fun select(baseUrl: String, modelId: String, enabled: Boolean): String? {
+    private fun select(
+        baseUrl: String,
+        modelId: String,
+        enabled: Boolean,
+    ): String? {
         val url = baseUrl.lowercase()
         val model = modelId.lowercase()
         val type = if (enabled) "enabled" else "disabled"

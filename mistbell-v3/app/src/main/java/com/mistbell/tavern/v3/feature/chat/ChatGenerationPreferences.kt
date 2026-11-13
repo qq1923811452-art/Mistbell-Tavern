@@ -7,7 +7,6 @@ import android.content.SharedPreferences
  * export them as plain preferences without touching encrypted credentials.
  */
 class ChatGenerationPreferences(private val settings: SharedPreferences) {
-
     val streamEnabled: Boolean
         get() = settings.getBoolean(KEY_STREAM_ENABLED, true)
 

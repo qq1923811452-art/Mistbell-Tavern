@@ -79,12 +79,13 @@ object GroupSpeakerResolver {
         val mentionStart = firstMentionStart(message)
         val mentioned = mentionStart?.let { bestMemberAt(message, it, usableMembers) }
         val speaker = mentioned ?: previous ?: usableMembers.first()
-        val reason = when {
-            mentioned != null -> GroupSpeakerResolution.Reason.MENTIONED
-            mentionStart != null -> GroupSpeakerResolution.Reason.UNKNOWN_MENTION_FALLBACK
-            previous != null -> GroupSpeakerResolution.Reason.FALLBACK_PREVIOUS
-            else -> GroupSpeakerResolution.Reason.FALLBACK_FIRST
-        }
+        val reason =
+            when {
+                mentioned != null -> GroupSpeakerResolution.Reason.MENTIONED
+                mentionStart != null -> GroupSpeakerResolution.Reason.UNKNOWN_MENTION_FALLBACK
+                previous != null -> GroupSpeakerResolution.Reason.FALLBACK_PREVIOUS
+                else -> GroupSpeakerResolution.Reason.FALLBACK_FIRST
+            }
         return GroupSpeakerResolution(
             speakerId = speaker.id,
             speakerName = speaker.name,
@@ -110,7 +111,11 @@ object GroupSpeakerResolver {
      * Longest member name matching right after the mention sign. Names are compared against the
      * trimmed member name; the boundary check rejects a shorter name that continues as a word.
      */
-    private fun bestMemberAt(message: String, mentionStart: Int, members: List<GroupMember>): GroupMember? {
+    private fun bestMemberAt(
+        message: String,
+        mentionStart: Int,
+        members: List<GroupMember>,
+    ): GroupMember? {
         val nameStart = skipWhitespace(message, mentionStart + 1)
         var best: GroupMember? = null
         var bestNameLength = 0
@@ -125,7 +130,11 @@ object GroupSpeakerResolver {
         return best
     }
 
-    private fun matchesAt(message: String, start: Int, name: String): Boolean {
+    private fun matchesAt(
+        message: String,
+        start: Int,
+        name: String,
+    ): Boolean {
         val nameEnd = start + name.length
         if (nameEnd > message.length) return false
         val matched = message.regionMatches(start, name, 0, name.length, ignoreCase = true)
@@ -133,11 +142,17 @@ object GroupSpeakerResolver {
     }
 
     /** True when [index] is a name character, so a name ending here would be a partial word. */
-    private fun isNameCharacter(message: String, index: Int): Boolean =
+    private fun isNameCharacter(
+        message: String,
+        index: Int,
+    ): Boolean =
         index < message.length &&
             (message[index].isLetterOrDigit() || message[index] == NAME_CONTINUATION_MARK)
 
-    private fun skipWhitespace(message: String, start: Int): Int {
+    private fun skipWhitespace(
+        message: String,
+        start: Int,
+    ): Int {
         var index = start
         while (index < message.length && message[index].isWhitespace()) index++
         return index

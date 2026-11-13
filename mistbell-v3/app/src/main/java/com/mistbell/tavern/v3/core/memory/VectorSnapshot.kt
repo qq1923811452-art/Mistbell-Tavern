@@ -1,11 +1,14 @@
 package com.mistbell.tavern.v3.core.memory
 
-import java.security.MessageDigest
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.security.MessageDigest
 
 internal interface FloatVectorView {
-    fun fillInto(destination: FloatArray, destinationOffset: Int = 0)
+    fun fillInto(
+        destination: FloatArray,
+        destinationOffset: Int = 0,
+    )
 }
 
 /**
@@ -44,7 +47,6 @@ private class MappedVectorValues(
     private val legacyFloat32: Boolean,
     private val scale: Float,
 ) : AbstractList<Float>(), FloatVectorView, QuantizedVectorView {
-
     override val isQuantized: Boolean
         get() = !legacyFloat32
 
@@ -79,25 +81,30 @@ private class MappedVectorValues(
 
     override fun get(index: Int): Float {
         if (index !in 0 until size) throw IndexOutOfBoundsException(index)
-        val value = if (legacyFloat32) {
-            buffer.getFloat(start + index * Float.SIZE_BYTES)
-        } else {
-            buffer.get(start + index).toFloat() * scale
-        }
-        require(value.isFinite()) { "Mapped vector contains a non-finite value." }
-        return value
-    }
-
-    override fun fillInto(destination: FloatArray, destinationOffset: Int) {
-        require(destinationOffset >= 0 && destinationOffset <= destination.size - size) {
-            "Destination array is too small for the mapped vector."
-        }
-        for (index in 0 until size) {
-            val value = if (legacyFloat32) {
+        val value =
+            if (legacyFloat32) {
                 buffer.getFloat(start + index * Float.SIZE_BYTES)
             } else {
                 buffer.get(start + index).toFloat() * scale
             }
+        require(value.isFinite()) { "Mapped vector contains a non-finite value." }
+        return value
+    }
+
+    override fun fillInto(
+        destination: FloatArray,
+        destinationOffset: Int,
+    ) {
+        require(destinationOffset >= 0 && destinationOffset <= destination.size - size) {
+            "Destination array is too small for the mapped vector."
+        }
+        for (index in 0 until size) {
+            val value =
+                if (legacyFloat32) {
+                    buffer.getFloat(start + index * Float.SIZE_BYTES)
+                } else {
+                    buffer.get(start + index).toFloat() * scale
+                }
             require(value.isFinite()) { "Mapped vector contains a non-finite value." }
             destination[destinationOffset + index] = value
         }
@@ -223,10 +230,11 @@ object VectorSnapshotCodec {
                 out.writeLong(record.createdAtEpochMillis)
                 val maxAbs = record.values.maxOf { kotlin.math.abs(it) }
                 require(maxAbs.isFinite()) { "Vector magnitude must be finite." }
-                val scale = when {
-                    maxAbs == 0f -> 1f
-                    else -> (maxAbs / 127f).coerceAtLeast(1.17549435E-38f)
-                }
+                val scale =
+                    when {
+                        maxAbs == 0f -> 1f
+                        else -> (maxAbs / 127f).coerceAtLeast(1.17549435E-38f)
+                    }
                 require(scale.isFinite() && scale > 0f && scale <= Float.MAX_VALUE / 127f) {
                     "Vector quantization scale is invalid."
                 }
@@ -302,15 +310,16 @@ object VectorSnapshotCodec {
             val id = readMappedUtf(input)
             val sourceHash = readMappedUtf(input)
             val createdAt = input.long
-            val scale = if (formatVersion == FORMAT_VERSION) {
-                input.float.also {
-                    require(it.isFinite() && it > 0f && it <= Float.MAX_VALUE / 127f) {
-                        "Vector quantization scale is invalid."
+            val scale =
+                if (formatVersion == FORMAT_VERSION) {
+                    input.float.also {
+                        require(it.isFinite() && it > 0f && it <= Float.MAX_VALUE / 127f) {
+                            "Vector quantization scale is invalid."
+                        }
                     }
+                } else {
+                    1f
                 }
-            } else {
-                1f
-            }
             val vectorStart = input.position()
             val vectorBytes = if (formatVersion == LEGACY_FORMAT_VERSION) dimensions * Float.SIZE_BYTES else dimensions
             require(input.remaining() >= vectorBytes) { "Vector data is truncated." }
@@ -324,13 +333,14 @@ object VectorSnapshotCodec {
                 }
             }
             input.position(vectorStart + vectorBytes)
-            val values = MappedVectorValues(
-                buffer = mapped,
-                start = vectorStart,
-                size = dimensions,
-                legacyFloat32 = formatVersion == LEGACY_FORMAT_VERSION,
-                scale = scale,
-            )
+            val values =
+                MappedVectorValues(
+                    buffer = mapped,
+                    start = vectorStart,
+                    size = dimensions,
+                    legacyFloat32 = formatVersion == LEGACY_FORMAT_VERSION,
+                    scale = scale,
+                )
             records += StoredVector(id, sourceHash, createdAt, values)
         }
         require(input.position() == payloadEnd) { "Vector snapshot payload contains trailing data." }
@@ -391,20 +401,22 @@ object VectorSnapshotCodec {
             val id = input.readUTF()
             val sourceHash = input.readUTF()
             val createdAt = input.readLong()
-            val values = if (formatVersion == LEGACY_FORMAT_VERSION) {
-                FloatArray(dimensions) { input.readFloat() }.asList()
-            } else {
-                val scale = input.readFloat()
-                require(scale.isFinite() && scale > 0f) { "Vector quantization scale is invalid." }
-                FloatArray(dimensions) { input.readByte().toFloat() * scale }.asList()
-            }
+            val values =
+                if (formatVersion == LEGACY_FORMAT_VERSION) {
+                    FloatArray(dimensions) { input.readFloat() }.asList()
+                } else {
+                    val scale = input.readFloat()
+                    require(scale.isFinite() && scale > 0f) { "Vector quantization scale is invalid." }
+                    FloatArray(dimensions) { input.readByte().toFloat() * scale }.asList()
+                }
             require(values.size == dimensions) { "Decoded vector dimension does not match the snapshot." }
-            records += StoredVector(
-                id = id,
-                sourceTextSha256 = sourceHash,
-                createdAtEpochMillis = createdAt,
-                values = values,
-            )
+            records +=
+                StoredVector(
+                    id = id,
+                    sourceTextSha256 = sourceHash,
+                    createdAtEpochMillis = createdAt,
+                    values = values,
+                )
         }
         require(input.available() == 0) { "Vector snapshot payload contains trailing data." }
         return VectorSnapshot(modelId = modelId, dimensions = dimensions, records = records)

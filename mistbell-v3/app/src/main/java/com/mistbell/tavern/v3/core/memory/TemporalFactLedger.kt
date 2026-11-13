@@ -67,19 +67,25 @@ object TemporalFactLedger {
     ): List<TemporalMemoryFact> {
         require(existing.size <= MAX_FACTS && observations.size <= MAX_FACTS)
         require(existing.map(TemporalMemoryFact::id).distinct().size == existing.size)
-        require(observations.all {
-            it.subject.length <= MAX_FIELD_CHARS &&
-                it.predicate.length <= MAX_FIELD_CHARS &&
-                it.value.length <= MAX_FIELD_CHARS
-        })
+        require(
+            observations.all {
+                it.subject.length <= MAX_FIELD_CHARS &&
+                    it.predicate.length <= MAX_FIELD_CHARS &&
+                    it.value.length <= MAX_FIELD_CHARS
+            },
+        )
+
         data class PredicateKey(val conversationId: String, val subject: String, val predicate: String)
 
         var facts = existing.toMutableList()
         val knownIds = existing.mapTo(mutableSetOf(), TemporalMemoryFact::id)
         val currentByPredicate = mutableMapOf<PredicateKey, MutableList<Int>>()
 
-        fun key(conversationId: String, subject: String, predicate: String) =
-            PredicateKey(conversationId, normalize(subject), normalize(predicate))
+        fun key(
+            conversationId: String,
+            subject: String,
+            predicate: String,
+        ) = PredicateKey(conversationId, normalize(subject), normalize(predicate))
 
         facts.forEachIndexed { index, fact ->
             if (fact.isCurrent) {
@@ -90,11 +96,12 @@ object TemporalFactLedger {
 
         // Stable tie-breaking makes same-millisecond observations deterministic.
         // Precompute IDs once and inspect only current facts for the affected predicate.
-        val orderedObservations = observations.map { it to stableId(it) }.sortedWith(
-            compareBy<Pair<TemporalFactObservation, String>> { it.first.observedAtEpochMillis }
-                .thenBy { it.first.sourceTurnId }
-                .thenBy { it.second },
-        )
+        val orderedObservations =
+            observations.map { it to stableId(it) }.sortedWith(
+                compareBy<Pair<TemporalFactObservation, String>> { it.first.observedAtEpochMillis }
+                    .thenBy { it.first.sourceTurnId }
+                    .thenBy { it.second },
+            )
         for ((observation, id) in orderedObservations) {
             if (id in knownIds) continue
 
@@ -114,23 +121,25 @@ object TemporalFactLedger {
             currentIndices.forEach { index ->
                 val fact = facts[index]
                 if (fact.isCurrent) {
-                    facts[index] = fact.copy(
-                        validUntilEpochMillis = maxOf(fact.validFromEpochMillis, observation.observedAtEpochMillis),
-                    )
+                    facts[index] =
+                        fact.copy(
+                            validUntilEpochMillis = maxOf(fact.validFromEpochMillis, observation.observedAtEpochMillis),
+                        )
                 }
             }
             currentByPredicate.remove(predicateKey)
 
-            facts += TemporalMemoryFact(
-                id = id,
-                conversationId = observation.conversationId,
-                sourceTurnId = observation.sourceTurnId,
-                subject = observation.subject.trim(),
-                predicate = observation.predicate.trim(),
-                value = observation.value.trim(),
-                observedAtEpochMillis = observation.observedAtEpochMillis,
-                validFromEpochMillis = observation.observedAtEpochMillis,
-            )
+            facts +=
+                TemporalMemoryFact(
+                    id = id,
+                    conversationId = observation.conversationId,
+                    sourceTurnId = observation.sourceTurnId,
+                    subject = observation.subject.trim(),
+                    predicate = observation.predicate.trim(),
+                    value = observation.value.trim(),
+                    observedAtEpochMillis = observation.observedAtEpochMillis,
+                    validFromEpochMillis = observation.observedAtEpochMillis,
+                )
             knownIds.add(id)
             currentByPredicate.getOrPut(predicateKey) { mutableListOf() }.add(facts.lastIndex)
             require(facts.size <= MAX_FACTS) { "Temporal fact ledger exceeds the size limit." }
@@ -139,25 +148,26 @@ object TemporalFactLedger {
     }
 
     fun stableId(observation: TemporalFactObservation): String {
-        val fields = listOf(
-            observation.conversationId,
-            observation.sourceTurnId,
-            normalize(observation.subject),
-            normalize(observation.predicate),
-            normalize(observation.value),
-        )
+        val fields =
+            listOf(
+                observation.conversationId,
+                observation.sourceTurnId,
+                normalize(observation.subject),
+                normalize(observation.predicate),
+                normalize(observation.value),
+            )
         // Length-prefix each field so embedded separators (including NUL) cannot make two
         // different field tuples produce the same canonical byte sequence.
-        val canonical = buildString {
-            fields.forEach { field ->
-                append(field.length).append(':').append(field)
+        val canonical =
+            buildString {
+                fields.forEach { field ->
+                    append(field.length).append(':').append(field)
+                }
             }
-        }
         return sha256(canonical)
     }
 
-    private fun normalize(value: String): String =
-        Normalizer.normalize(value.trim(), Normalizer.Form.NFKC).lowercase(Locale.ROOT)
+    private fun normalize(value: String): String = Normalizer.normalize(value.trim(), Normalizer.Form.NFKC).lowercase(Locale.ROOT)
 
     private fun sha256(value: String): String =
         MessageDigest.getInstance("SHA-256")

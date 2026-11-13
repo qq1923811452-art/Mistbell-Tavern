@@ -19,7 +19,9 @@ data class RuntimeProbe(
         require(detail == null || detail.length <= MAX_DETAIL_LENGTH) { "Runtime detail is too long." }
     }
 
-    companion object { const val MAX_DETAIL_LENGTH = 500 }
+    companion object {
+        const val MAX_DETAIL_LENGTH = 500
+    }
 }
 
 data class InferenceRuntimeStatus(
@@ -51,8 +53,10 @@ data class InferenceRuntimeStatus(
         require(phase != InferencePhase.READY || (modelId != null && runtimeId != null)) {
             "Ready status requires a model and runtime."
         }
-        require(backend != InferenceBackend.NPU ||
-            phase == InferencePhase.READY || phase == InferencePhase.RUNNING || phase == InferencePhase.FALLBACK) {
+        require(
+            backend != InferenceBackend.NPU ||
+                phase == InferencePhase.READY || phase == InferencePhase.RUNNING || phase == InferencePhase.FALLBACK,
+        ) {
             "NPU cannot be reported while no runtime is active."
         }
         require(
@@ -67,18 +71,23 @@ data class InferenceRuntimeStatus(
     companion object {
         const val MAX_LABEL_LENGTH = 120
         const val MAX_DETAIL_LENGTH = 500
-        fun idle() = InferenceRuntimeStatus(
-            phase = InferencePhase.NOT_INITIALIZED,
-            modelId = null,
-            backend = InferenceBackend.UNKNOWN,
-            runtimeId = null,
-        )
+
+        fun idle() =
+            InferenceRuntimeStatus(
+                phase = InferencePhase.NOT_INITIALIZED,
+                modelId = null,
+                backend = InferenceBackend.UNKNOWN,
+                runtimeId = null,
+            )
     }
 }
 
 /** Preference order never implies availability; probes must identify their evidence level before claiming hardware execution. */
 object InferenceBackendSelection {
-    fun select(preferredOrder: List<InferenceBackend>, probes: List<RuntimeProbe>): RuntimeProbe? {
+    fun select(
+        preferredOrder: List<InferenceBackend>,
+        probes: List<RuntimeProbe>,
+    ): RuntimeProbe? {
         require(preferredOrder.isNotEmpty()) { "At least one backend preference is required." }
         require(preferredOrder.distinct().size == preferredOrder.size) {
             "Backend preference must not contain duplicates."
@@ -96,12 +105,17 @@ object InferenceBackendSelection {
             .firstOrNull()
     }
 
-    fun fallbackReason(preferredOrder: List<InferenceBackend>, selected: RuntimeProbe?): String? {
+    fun fallbackReason(
+        preferredOrder: List<InferenceBackend>,
+        selected: RuntimeProbe?,
+    ): String? {
         if (selected == null) {
             return "No available runtime reported a verified CPU, GPU, or NPU backend."
         }
         val firstPreferred = preferredOrder.firstOrNull { it != InferenceBackend.UNKNOWN }
-        return if (firstPreferred == selected.reportedBackend) null else {
+        return if (firstPreferred == selected.reportedBackend) {
+            null
+        } else {
             "Preferred ${firstPreferred ?: "accelerator"} backend was unavailable; " +
                 "using ${selected.reportedBackend} via ${selected.runtimeId}."
         }

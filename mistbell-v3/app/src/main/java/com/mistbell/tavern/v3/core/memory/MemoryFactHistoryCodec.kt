@@ -72,29 +72,30 @@ object MemoryFactHistoryCodec {
         require(input.readInt() == VERSION) { "Fact history version is unsupported." }
         val count = input.readInt()
         require(count in 0..MAX_FACTS) { "Fact count is invalid." }
-        val history = List(count) {
-            val id = readString(input)
-            val subject = readString(input)
-            val predicate = readString(input)
-            val value = readString(input)
-            val sourceTurnId = readString(input)
-            val recordedAt = input.readLong()
-            val statusOrdinal = input.readInt()
-            require(statusOrdinal in FactStatus.entries.indices) { "Fact status is invalid." }
-            val supersededAt = if (input.readBoolean()) input.readLong() else null
-            val supersededBy = readNullableString(input)
-            MemoryFact(
-                id = id,
-                subject = subject,
-                predicate = predicate,
-                value = value,
-                sourceTurnId = sourceTurnId,
-                recordedAtEpochMillis = recordedAt,
-                status = FactStatus.entries[statusOrdinal],
-                supersededAtEpochMillis = supersededAt,
-                supersededByFactId = supersededBy,
-            )
-        }
+        val history =
+            List(count) {
+                val id = readString(input)
+                val subject = readString(input)
+                val predicate = readString(input)
+                val value = readString(input)
+                val sourceTurnId = readString(input)
+                val recordedAt = input.readLong()
+                val statusOrdinal = input.readInt()
+                require(statusOrdinal in FactStatus.entries.indices) { "Fact status is invalid." }
+                val supersededAt = if (input.readBoolean()) input.readLong() else null
+                val supersededBy = readNullableString(input)
+                MemoryFact(
+                    id = id,
+                    subject = subject,
+                    predicate = predicate,
+                    value = value,
+                    sourceTurnId = sourceTurnId,
+                    recordedAtEpochMillis = recordedAt,
+                    status = FactStatus.entries[statusOrdinal],
+                    supersededAtEpochMillis = supersededAt,
+                    supersededByFactId = supersededBy,
+                )
+            }
         require(input.available() == 0) { "Fact history payload contains trailing data." }
         require(history.map(MemoryFact::id).distinct().size == history.size) {
             "Fact IDs must be unique."
@@ -102,15 +103,20 @@ object MemoryFactHistoryCodec {
         return history
     }
 
-    private fun writeNullableString(out: DataOutputStream, value: String?) {
+    private fun writeNullableString(
+        out: DataOutputStream,
+        value: String?,
+    ) {
         out.writeBoolean(value != null)
         value?.let { writeString(out, it) }
     }
 
-    private fun readNullableString(input: DataInputStream): String? =
-        if (input.readBoolean()) readString(input) else null
+    private fun readNullableString(input: DataInputStream): String? = if (input.readBoolean()) readString(input) else null
 
-    private fun writeString(out: DataOutputStream, value: String) {
+    private fun writeString(
+        out: DataOutputStream,
+        value: String,
+    ) {
         val bytes = value.toByteArray(Charsets.UTF_8)
         require(bytes.size <= MAX_STRING_BYTES) { "Fact history field exceeds the size limit." }
         out.writeInt(bytes.size)

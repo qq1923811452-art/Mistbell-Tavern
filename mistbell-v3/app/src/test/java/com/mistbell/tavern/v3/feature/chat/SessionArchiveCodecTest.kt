@@ -6,10 +6,11 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class SessionArchiveCodecTest {
-    private val messages = listOf(
-        PersistedChatMessage("m1", "user", "hello", 100L, PersistedChatMessage.DeliveryState.COMPLETE),
-        PersistedChatMessage("m2", "assistant", "hi", 200L, PersistedChatMessage.DeliveryState.COMPLETE),
-    )
+    private val messages =
+        listOf(
+            PersistedChatMessage("m1", "user", "hello", 100L, PersistedChatMessage.DeliveryState.COMPLETE),
+            PersistedChatMessage("m2", "assistant", "hi", 200L, PersistedChatMessage.DeliveryState.COMPLETE),
+        )
 
     @Test fun jsonRoundTripPreservesSessionAndMessages() {
         val original = SessionArchive("session-1", "A session", messages)
@@ -25,9 +26,10 @@ class SessionArchiveCodecTest {
         assertEquals(original.id, decoded!!.id)
         assertEquals(original.title, decoded.title)
         assertEquals(original.messages, decoded.messages)
-        val imported = SessionArchiveCodec.importAny(
-            """{"role":"user","mes":"legacy content","send_date":"1970-01-01T00:00:01Z","is_user":true}""",
-        )
+        val imported =
+            SessionArchiveCodec.importAny(
+                """{"role":"user","mes":"legacy content","send_date":"1970-01-01T00:00:01Z","is_user":true}""",
+            )
         assertNotNull(imported)
         assertEquals("legacy content", imported!!.messages.single().content)
         assertEquals(1000L, imported.messages.single().createdAtEpochMillis)
@@ -46,47 +48,57 @@ class SessionArchiveCodecTest {
     }
 
     @Test fun unsupportedJsonFormatAndVersionAreRejected() {
-        assertNull(SessionArchiveCodec.importAny(
-            """{"format":"some-other-app","version":1,"messages":[]}""",
-        ))
-        assertNull(SessionArchiveCodec.importAny(
-            """{"format":"mistbell-session","version":2,"messages":[]}""",
-        ))
+        assertNull(
+            SessionArchiveCodec.importAny(
+                """{"format":"some-other-app","version":1,"messages":[]}""",
+            ),
+        )
+        assertNull(
+            SessionArchiveCodec.importAny(
+                """{"format":"mistbell-session","version":2,"messages":[]}""",
+            ),
+        )
     }
 
     @Test fun legacyJsonWithoutFormatMetadataRemainsSupported() {
-        val imported = SessionArchiveCodec.importAny(
-            """{"messages":[{"id":"legacy-1","role":"user","content":"legacy"}]}""",
-        )
+        val imported =
+            SessionArchiveCodec.importAny(
+                """{"messages":[{"id":"legacy-1","role":"user","content":"legacy"}]}""",
+            )
         assertNotNull(imported)
         assertEquals("legacy", imported!!.messages.single().content)
     }
 
     @Test fun duplicateMessageIdsAreRejectedForJsonAndJsonl() {
-        val duplicateJson = """{
-            "format":"mistbell-session","version":1,
-            "session":{"id":"session-1","title":"Duplicate IDs"},
-            "messages":[
-                {"id":"same","role":"user","content":"first"},
-                {"id":"same","role":"assistant","content":"second"}
-            ]
-        }""".trimIndent()
+        val duplicateJson =
+            """
+            {
+                "format":"mistbell-session","version":1,
+                "session":{"id":"session-1","title":"Duplicate IDs"},
+                "messages":[
+                    {"id":"same","role":"user","content":"first"},
+                    {"id":"same","role":"assistant","content":"second"}
+                ]
+            }
+            """.trimIndent()
         assertNull(SessionArchiveCodec.importAny(duplicateJson))
 
-        val duplicateJsonl = listOf(
-            """{"type":"session","session":{"id":"session-1","title":"Duplicate IDs"}}""",
-            """{"id":"same","role":"user","content":"first"}""",
-            """{"id":"same","role":"assistant","content":"second"}""",
-        ).joinToString("\n")
+        val duplicateJsonl =
+            listOf(
+                """{"type":"session","session":{"id":"session-1","title":"Duplicate IDs"}}""",
+                """{"id":"same","role":"user","content":"first"}""",
+                """{"id":"same","role":"assistant","content":"second"}""",
+            ).joinToString("\n")
         assertNull(SessionArchiveCodec.importAny(duplicateJsonl))
     }
 
     @Test fun invalidJsonlRecordDoesNotProducePartialArchive() {
-        val invalid = listOf(
-            """{"type":"session","session":{"id":"session-1","title":"Partial"}}""",
-            """{"id":"valid","role":"user","content":"keep me"}""",
-            """{"id":"broken","role":""",
-        ).joinToString("\n")
+        val invalid =
+            listOf(
+                """{"type":"session","session":{"id":"session-1","title":"Partial"}}""",
+                """{"id":"valid","role":"user","content":"keep me"}""",
+                """{"id":"broken","role":""",
+            ).joinToString("\n")
         assertNull(SessionArchiveCodec.importAny(invalid))
     }
 
@@ -96,10 +108,11 @@ class SessionArchiveCodecTest {
         assertNull(jsonResult.archive)
         org.junit.Assert.assertEquals("第 2 条消息必须是 JSON 对象。", jsonResult.error)
 
-        val invalidJsonl = listOf(
-            """{"type":"session","session":{"id":"session-1","title":"Bad line"}}""",
-            """{"id":"broken","role":""",
-        ).joinToString("\n")
+        val invalidJsonl =
+            listOf(
+                """{"type":"session","session":{"id":"session-1","title":"Bad line"}}""",
+                """{"id":"broken","role":""",
+            ).joinToString("\n")
         val jsonlResult = SessionArchiveCodec.importAnyDetailed(invalidJsonl)
         assertNull(jsonlResult.archive)
         org.junit.Assert.assertEquals("第 2 行不是有效 JSON。", jsonlResult.error)

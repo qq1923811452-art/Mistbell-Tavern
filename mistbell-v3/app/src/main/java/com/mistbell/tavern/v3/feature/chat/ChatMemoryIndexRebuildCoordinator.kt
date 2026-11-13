@@ -1,17 +1,17 @@
 package com.mistbell.tavern.v3.feature.chat
 
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import com.mistbell.tavern.v3.core.diagnostics.DiagnosticLogStore
-import com.mistbell.tavern.v3.core.memory.MemoryIndexRebuilder
 import com.mistbell.tavern.v3.core.memory.MemoryIndexRebuildResult
+import com.mistbell.tavern.v3.core.memory.MemoryIndexRebuilder
 import com.mistbell.tavern.v3.core.memory.MemoryTextRecord
 import com.mistbell.tavern.v3.core.memory.PassageEmbeddingRuntime
 import com.mistbell.tavern.v3.core.storage.AtomicMemoryTextStore
 import com.mistbell.tavern.v3.core.storage.AtomicVectorSnapshotStore
 import com.mistbell.tavern.v3.core.storage.VectorSnapshotLoadResult
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Owns the existing background rebuild scheduling and guarded index persistence flow.
@@ -51,21 +51,22 @@ internal class ChatMemoryIndexRebuildCoordinator(
             // means a full rebuild, which is the previous behaviour.
             val loaded = vectorSnapshotStore.load(runtime.modelId, runtime.dimensions)
             val previous = (loaded as? VectorSnapshotLoadResult.Loaded)?.snapshot
-            val result = MemoryIndexRebuilder(
-                runtime = runtime,
-                // Source text is already durable; validate it and save vectors under one lock.
-                saveSourceTexts = { },
-                saveSnapshot = { snapshot ->
-                    memoryTextStore.commitIndexIfCurrent(records) { vectorSnapshotStore.save(snapshot) }
-                },
-                onProgress = { progress ->
-                    diagnosticStore.info(
-                        "memory.index.rebuild_work",
-                        "reused=${progress.reusedRecords}; embedded=${progress.embeddedRecords}; " +
-                            "embeddingRequests=${progress.embeddingRequests}; scope=$scopePrefix",
-                    )
-                },
-            ).rebuild(records, previous)
+            val result =
+                MemoryIndexRebuilder(
+                    runtime = runtime,
+                    // Source text is already durable; validate it and save vectors under one lock.
+                    saveSourceTexts = { },
+                    saveSnapshot = { snapshot ->
+                        memoryTextStore.commitIndexIfCurrent(records) { vectorSnapshotStore.save(snapshot) }
+                    },
+                    onProgress = { progress ->
+                        diagnosticStore.info(
+                            "memory.index.rebuild_work",
+                            "reused=${progress.reusedRecords}; embedded=${progress.embeddedRecords}; " +
+                                "embeddingRequests=${progress.embeddingRequests}; scope=$scopePrefix",
+                        )
+                    },
+                ).rebuild(records, previous)
             withContext(Dispatchers.Main) {
                 setInFlight(false)
                 when (result) {

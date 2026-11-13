@@ -1,17 +1,17 @@
 package com.mistbell.tavern.v3.core.backup
 
-import java.io.File
-import java.io.FileOutputStream
-import java.nio.file.Files
-import java.io.RandomAccessFile
-import java.util.zip.ZipEntry
-import java.util.zip.ZipOutputStream
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
+import java.io.FileOutputStream
+import java.io.RandomAccessFile
+import java.nio.file.Files
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 
 class BackupArchiveRoundTripTest {
     @Test
@@ -20,12 +20,13 @@ class BackupArchiveRoundTripTest {
         try {
             val source = File(root, "settings.json").apply { writeText("{\"theme\":\"dark\"}") }
             val archive = File(root, "backup.zip")
-            val result = BackupArchiveWriter().write(
-                destination = archive,
-                files = mapOf("data/settings.json" to source),
-                appVersion = "3.0.0-dev",
-                createdAt = "2026-10-21T12:00:00Z",
-            )
+            val result =
+                BackupArchiveWriter().write(
+                    destination = archive,
+                    files = mapOf("data/settings.json" to source),
+                    appVersion = "3.0.0-dev",
+                    createdAt = "2026-10-21T12:00:00Z",
+                )
 
             val preview = BackupArchiveReader().preview(archive)
             assertEquals("manifest.json", java.util.zip.ZipFile(archive).use { it.entries().nextElement().name })
@@ -64,11 +65,12 @@ class BackupArchiveRoundTripTest {
         try {
             val source = File(root, "settings.json").apply { writeText("original") }
             val goodArchive = File(root, "good.zip")
-            val result = BackupArchiveWriter().write(
-                goodArchive,
-                mapOf("data/settings.json" to source),
-                "3.0.0-dev",
-            )
+            val result =
+                BackupArchiveWriter().write(
+                    goodArchive,
+                    mapOf("data/settings.json" to source),
+                    "3.0.0-dev",
+                )
             val corrupted = File(root, "corrupted.zip")
             ZipOutputStream(FileOutputStream(corrupted)).use { zip ->
                 zip.putNextEntry(ZipEntry("manifest.json"))

@@ -15,8 +15,7 @@ internal class ChatLibraryLoadingCoordinator(
 ) {
     private val applicationContext = context.applicationContext
 
-    fun loadCharacterCards(): List<StoredCharacterCard> =
-        ChatCharacterCardLibraryLoader(applicationContext).load()
+    fun loadCharacterCards(): List<StoredCharacterCard> = ChatCharacterCardLibraryLoader(applicationContext).load()
 
     fun loadWorldbookEntries(activeWorldbookId: String): List<WorldBookEntry> {
         val loaded = ChatWorldBookLibraryLoader(applicationContext, diagnosticStore).load(activeWorldbookId)

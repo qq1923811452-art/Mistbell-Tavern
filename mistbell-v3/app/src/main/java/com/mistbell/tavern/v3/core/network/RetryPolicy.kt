@@ -46,23 +46,28 @@ object RetryPolicy {
     private const val SECOND_RETRY_DELAY_MILLIS = 1_500L
     private const val MIN_JITTER_MILLIS = 0L
     private const val JITTER_UPPER_BOUND_MILLIS = MAX_JITTER_MILLIS + 1L
-    private val BASE_DELAYS_MILLIS = longArrayOf(
-        FIRST_RETRY_DELAY_MILLIS,
-        SECOND_RETRY_DELAY_MILLIS,
-    )
-    private val RETRYABLE_FAILURES = setOf(
-        FailureKind.NETWORK,
-        FailureKind.TIMEOUT,
-        FailureKind.RATE_LIMIT,
-        FailureKind.SERVER_ERROR,
-    )
+    private val BASE_DELAYS_MILLIS =
+        longArrayOf(
+            FIRST_RETRY_DELAY_MILLIS,
+            SECOND_RETRY_DELAY_MILLIS,
+        )
+    private val RETRYABLE_FAILURES =
+        setOf(
+            FailureKind.NETWORK,
+            FailureKind.TIMEOUT,
+            FailureKind.RATE_LIMIT,
+            FailureKind.SERVER_ERROR,
+        )
 
     /**
      * Returns whether another attempt is allowed after [attempt] failures caused by [failure].
      *
      * @throws IllegalArgumentException when [attempt] is negative.
      */
-    fun shouldRetry(attempt: Int, failure: FailureKind): Boolean {
+    fun shouldRetry(
+        attempt: Int,
+        failure: FailureKind,
+    ): Boolean {
         require(attempt >= 0) { "Attempt must not be negative." }
         return attempt < MAX_RETRIES && failure in RETRYABLE_FAILURES
     }
@@ -74,8 +79,7 @@ object RetryPolicy {
      *
      * @throws IllegalArgumentException when [attempt] is outside the retry budget.
      */
-    fun nextDelayMillis(attempt: Int): Long =
-        nextDelayMillis(attempt, Random.nextLong(MIN_JITTER_MILLIS, JITTER_UPPER_BOUND_MILLIS))
+    fun nextDelayMillis(attempt: Int): Long = nextDelayMillis(attempt, Random.nextLong(MIN_JITTER_MILLIS, JITTER_UPPER_BOUND_MILLIS))
 
     /**
      * Deterministic overload for callers and tests that inject their own jitter.
@@ -83,7 +87,10 @@ object RetryPolicy {
      * @throws IllegalArgumentException when [attempt] is outside the retry budget or
      * [jitterMillis] is outside `0..MAX_JITTER_MILLIS`.
      */
-    fun nextDelayMillis(attempt: Int, jitterMillis: Long): Long {
+    fun nextDelayMillis(
+        attempt: Int,
+        jitterMillis: Long,
+    ): Long {
         require(attempt in BASE_DELAYS_MILLIS.indices) { "Attempt is outside the retry budget." }
         require(jitterMillis in MIN_JITTER_MILLIS..MAX_JITTER_MILLIS) {
             "Jitter must be between $MIN_JITTER_MILLIS and $MAX_JITTER_MILLIS milliseconds."

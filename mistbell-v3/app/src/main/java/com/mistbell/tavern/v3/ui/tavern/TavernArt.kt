@@ -36,14 +36,20 @@ object TavernArt {
     private val cache = ConcurrentHashMap<String, Int>()
 
     @Suppress("DiscouragedApi")
-    fun drawableId(context: Context, resourceName: String): Int =
+    fun drawableId(
+        context: Context,
+        resourceName: String,
+    ): Int =
         cache.getOrPut(resourceName) {
             runCatching {
                 context.resources.getIdentifier(resourceName, "drawable", context.packageName)
             }.getOrDefault(0)
         }
 
-    fun isDelivered(context: Context, resourceName: String): Boolean = drawableId(context, resourceName) != 0
+    fun isDelivered(
+        context: Context,
+        resourceName: String,
+    ): Boolean = drawableId(context, resourceName) != 0
 }
 
 /** Every icon the UI needs, plus the drawable name an illustrator should deliver for it. */
@@ -108,13 +114,19 @@ fun TavernGlyph(
 
 private fun DrawScope.extent() = size.minDimension
 
-private fun DrawScope.drawSearchGlyph(tint: Color, stroke: Stroke) {
+private fun DrawScope.drawSearchGlyph(
+    tint: Color,
+    stroke: Stroke,
+) {
     val e = extent()
     drawCircle(tint, e * 0.29f, Offset(e * 0.42f, e * 0.42f), style = stroke)
     drawLine(tint, Offset(e * 0.63f, e * 0.63f), Offset(e * 0.86f, e * 0.86f), stroke.width, StrokeCap.Round)
 }
 
-private fun DrawScope.drawPlusGlyph(tint: Color, stroke: Stroke) {
+private fun DrawScope.drawPlusGlyph(
+    tint: Color,
+    stroke: Stroke,
+) {
     val e = extent()
     val mid = e / 2f
     val arm = e * 0.32f
@@ -122,7 +134,10 @@ private fun DrawScope.drawPlusGlyph(tint: Color, stroke: Stroke) {
     drawLine(tint, Offset(mid, mid - arm), Offset(mid, mid + arm), stroke.width, StrokeCap.Round)
 }
 
-private fun DrawScope.drawGroupGlyph(tint: Color, stroke: Stroke) {
+private fun DrawScope.drawGroupGlyph(
+    tint: Color,
+    stroke: Stroke,
+) {
     val e = extent()
     drawCircle(tint, e * 0.13f, Offset(e * 0.35f, e * 0.34f), style = stroke)
     drawCircle(tint, e * 0.11f, Offset(e * 0.65f, e * 0.40f), style = stroke)
@@ -130,7 +145,10 @@ private fun DrawScope.drawGroupGlyph(tint: Color, stroke: Stroke) {
     drawArc(tint, 200f, 140f, false, Offset(e * 0.47f, e * 0.52f), Size(e * 0.34f, e * 0.34f), style = stroke)
 }
 
-private fun DrawScope.drawGearGlyph(tint: Color, stroke: Stroke) {
+private fun DrawScope.drawGearGlyph(
+    tint: Color,
+    stroke: Stroke,
+) {
     val e = extent()
     val center = Offset(e / 2f, e / 2f)
     drawCircle(tint, e * 0.18f, center, style = stroke)
@@ -158,15 +176,19 @@ private fun DrawScope.drawMenuGlyph(tint: Color) {
     }
 }
 
-private fun DrawScope.drawSendGlyph(tint: Color, stroke: Stroke) {
+private fun DrawScope.drawSendGlyph(
+    tint: Color,
+    stroke: Stroke,
+) {
     val e = extent()
-    val path = Path().apply {
-        moveTo(e * 0.16f, e * 0.28f)
-        lineTo(e * 0.86f, e * 0.50f)
-        lineTo(e * 0.16f, e * 0.72f)
-        lineTo(e * 0.30f, e * 0.50f)
-        close()
-    }
+    val path =
+        Path().apply {
+            moveTo(e * 0.16f, e * 0.28f)
+            lineTo(e * 0.86f, e * 0.50f)
+            lineTo(e * 0.16f, e * 0.72f)
+            lineTo(e * 0.30f, e * 0.50f)
+            close()
+        }
     drawPath(path, tint, style = stroke)
 }
 
@@ -180,52 +202,68 @@ private fun DrawScope.drawStopGlyph(tint: Color) {
     )
 }
 
-private fun DrawScope.drawRefreshGlyph(tint: Color, stroke: Stroke) {
+private fun DrawScope.drawRefreshGlyph(
+    tint: Color,
+    stroke: Stroke,
+) {
     val e = extent()
     drawArc(tint, 40f, 280f, false, Offset(e * 0.22f, e * 0.22f), Size(e * 0.56f, e * 0.56f), style = stroke)
     drawLine(tint, Offset(e * 0.70f, e * 0.12f), Offset(e * 0.70f, e * 0.34f), stroke.width, StrokeCap.Round)
     drawLine(tint, Offset(e * 0.70f, e * 0.34f), Offset(e * 0.48f, e * 0.34f), stroke.width, StrokeCap.Round)
 }
 
-private fun DrawScope.drawChevronGlyph(tint: Color, stroke: Stroke, pointsLeft: Boolean) {
+private fun DrawScope.drawChevronGlyph(
+    tint: Color,
+    stroke: Stroke,
+    pointsLeft: Boolean,
+) {
     val e = extent()
     val near = if (pointsLeft) 0.64f else 0.36f
     val far = if (pointsLeft) 0.36f else 0.64f
-    val path = Path().apply {
-        moveTo(e * near, e * 0.28f)
-        lineTo(e * far, e * 0.50f)
-        lineTo(e * near, e * 0.72f)
-    }
+    val path =
+        Path().apply {
+            moveTo(e * near, e * 0.28f)
+            lineTo(e * far, e * 0.50f)
+            lineTo(e * near, e * 0.72f)
+        }
     drawPath(path, tint, style = stroke)
 }
 
-private fun DrawScope.drawPromptGlyph(tint: Color, stroke: Stroke) {
+private fun DrawScope.drawPromptGlyph(
+    tint: Color,
+    stroke: Stroke,
+) {
     val e = extent()
-    val sheet = Path().apply {
-        moveTo(e * 0.24f, e * 0.26f)
-        lineTo(e * 0.66f, e * 0.26f)
-        lineTo(e * 0.78f, e * 0.38f)
-        lineTo(e * 0.78f, e * 0.74f)
-        lineTo(e * 0.24f, e * 0.74f)
-        close()
-    }
+    val sheet =
+        Path().apply {
+            moveTo(e * 0.24f, e * 0.26f)
+            lineTo(e * 0.66f, e * 0.26f)
+            lineTo(e * 0.78f, e * 0.38f)
+            lineTo(e * 0.78f, e * 0.74f)
+            lineTo(e * 0.24f, e * 0.74f)
+            close()
+        }
     drawPath(sheet, tint, style = stroke)
     drawLine(tint, Offset(e * 0.34f, e * 0.48f), Offset(e * 0.68f, e * 0.48f), stroke.width, StrokeCap.Round)
     drawLine(tint, Offset(e * 0.34f, e * 0.60f), Offset(e * 0.58f, e * 0.60f), stroke.width, StrokeCap.Round)
 }
 
-private fun DrawScope.drawChatTabGlyph(tint: Color, stroke: Stroke) {
+private fun DrawScope.drawChatTabGlyph(
+    tint: Color,
+    stroke: Stroke,
+) {
     val e = extent()
-    val bubble = Path().apply {
-        moveTo(e * 0.20f, e * 0.34f)
-        lineTo(e * 0.80f, e * 0.34f)
-        lineTo(e * 0.80f, e * 0.66f)
-        lineTo(e * 0.44f, e * 0.66f)
-        lineTo(e * 0.30f, e * 0.78f)
-        lineTo(e * 0.31f, e * 0.66f)
-        lineTo(e * 0.20f, e * 0.66f)
-        close()
-    }
+    val bubble =
+        Path().apply {
+            moveTo(e * 0.20f, e * 0.34f)
+            lineTo(e * 0.80f, e * 0.34f)
+            lineTo(e * 0.80f, e * 0.66f)
+            lineTo(e * 0.44f, e * 0.66f)
+            lineTo(e * 0.30f, e * 0.78f)
+            lineTo(e * 0.31f, e * 0.66f)
+            lineTo(e * 0.20f, e * 0.66f)
+            close()
+        }
     drawPath(bubble, tint, style = stroke)
 }
 

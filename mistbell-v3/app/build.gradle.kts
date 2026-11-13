@@ -28,6 +28,29 @@ ktlint {
     baseline = file("$projectDir/config/ktlint/baseline.xml")
 }
 
+// ktlint-gradle 12.x does not see Android source sets under AGP 9, so :app:ktlintCheck used to
+// scan only Kotlin scripts and every .kt finding went unreported. Run the same pinned ktlint
+// version over the real sources so the gate actually gates.
+val ktlintCli: Configuration by configurations.creating {
+    isCanBeConsumed = false
+    isCanBeResolved = true
+}
+
+dependencies {
+    ktlintCli("com.pinterest.ktlint:ktlint-cli:1.1.1")
+}
+
+val ktlintSourcesCheck =
+    tasks.register<JavaExec>("ktlintSourcesCheck") {
+        group = "verification"
+        description = "Runs the pinned ktlint CLI over the app's Kotlin sources."
+        classpath = ktlintCli
+        mainClass.set("com.pinterest.ktlint.Main")
+        args("src/main/**/*.kt", "src/test/**/*.kt", "src/androidTest/**/*.kt")
+    }
+
+tasks.named("ktlintCheck").configure { dependsOn(ktlintSourcesCheck) }
+
 val enableQualcommNpuRuntime = providers.gradleProperty("enableQualcommNpuRuntime").orNull == "true"
 
 android {

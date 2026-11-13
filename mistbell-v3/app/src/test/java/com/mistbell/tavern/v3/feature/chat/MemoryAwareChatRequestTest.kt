@@ -1,6 +1,5 @@
 package com.mistbell.tavern.v3.feature.chat
 
-import kotlinx.coroutines.runBlocking
 import com.mistbell.tavern.v3.core.memory.MemoryTextProvider
 import com.mistbell.tavern.v3.core.memory.MemoryTextRecord
 import com.mistbell.tavern.v3.core.memory.QueryEmbeddingProvider
@@ -12,6 +11,7 @@ import com.mistbell.tavern.v3.core.memory.VectorSnapshotReadResult
 import com.mistbell.tavern.v3.core.model.ProviderKind
 import com.mistbell.tavern.v3.core.model.ProviderProfile
 import com.mistbell.tavern.v3.core.model.ProviderProfileSet
+import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -32,148 +32,169 @@ class MemoryAwareChatRequestTest {
     }
 
     @Test
-    fun retrievedMemoryIsSentWithRequestWithoutMutatingConversationHistory() = runBlocking {
-        server.enqueue(
-            MockResponse()
-                .setResponseCode(200)
-                .setHeader("Content-Type", "text/event-stream")
-                .setBody("data: [DONE]\n\n"),
-        )
-        server.start()
-        val memoryText = MemoryTextRecord("fact-1", "The user prefers concise answers.")
-        var capturedQuery: String? = null
-        val snapshot = VectorSnapshot(
-            modelId = "local-test-model",
-            dimensions = 2,
-            records = listOf(
-                StoredVector("vector-1", memoryText.sourceTextSha256, 1L, listOf(1f, 0f)),
-            ),
-        )
-        val context = VectorMemoryContextService(
-            snapshots = VectorSnapshotProvider { VectorSnapshotReadResult.Loaded(snapshot) },
-            embeddings = QueryEmbeddingProvider {
-                capturedQuery = it
-                listOf(1f, 0f)
-            },
-            textProvider = MemoryTextProvider { listOf(memoryText) },
-            minimumScore = 0.5,
-        )
-        val profile = ProviderProfile(
-            id = "chat",
-            kind = ProviderKind.CHAT,
-            baseUrl = server.url("/v1").toString().trimEnd('/'),
-            modelId = "chat-model",
-            credentialHandle = "chat-secret",
-        )
-        val chatClient = OpenAiCompatibleChatClient(
-            providers = ProviderProfileSet(
-                profiles = listOf(profile),
-                selectedProfileIds = mapOf(ProviderKind.CHAT to profile.id),
-            ),
-            credentials = CredentialResolver { if (it == "chat-secret") "test-key" else null },
-            client = OkHttpClient(),
-        )
-        val request = MemoryAwareChatRequest(chatClient, context)
-        val history = listOf(
-            PromptMessage(PromptRole.SYSTEM, "Stable instructions."),
-            PromptMessage(PromptRole.USER, "Earlier question"),
-            PromptMessage(PromptRole.ASSISTANT, "Earlier answer"),
-            PromptMessage(
-                PromptRole.USER,
-                "What response style do I prefer?\n\nPost-history instructions:\nStay in character.",
-            ),
-        )
-        val observer = RecordingObserver()
+    fun retrievedMemoryIsSentWithRequestWithoutMutatingConversationHistory() =
+        runBlocking {
+            server.enqueue(
+                MockResponse()
+                    .setResponseCode(200)
+                    .setHeader("Content-Type", "text/event-stream")
+                    .setBody("data: [DONE]\n\n"),
+            )
+            server.start()
+            val memoryText = MemoryTextRecord("fact-1", "The user prefers concise answers.")
+            var capturedQuery: String? = null
+            val snapshot =
+                VectorSnapshot(
+                    modelId = "local-test-model",
+                    dimensions = 2,
+                    records =
+                        listOf(
+                            StoredVector("vector-1", memoryText.sourceTextSha256, 1L, listOf(1f, 0f)),
+                        ),
+                )
+            val context =
+                VectorMemoryContextService(
+                    snapshots = VectorSnapshotProvider { VectorSnapshotReadResult.Loaded(snapshot) },
+                    embeddings =
+                        QueryEmbeddingProvider {
+                            capturedQuery = it
+                            listOf(1f, 0f)
+                        },
+                    textProvider = MemoryTextProvider { listOf(memoryText) },
+                    minimumScore = 0.5,
+                )
+            val profile =
+                ProviderProfile(
+                    id = "chat",
+                    kind = ProviderKind.CHAT,
+                    baseUrl = server.url("/v1").toString().trimEnd('/'),
+                    modelId = "chat-model",
+                    credentialHandle = "chat-secret",
+                )
+            val chatClient =
+                OpenAiCompatibleChatClient(
+                    providers =
+                        ProviderProfileSet(
+                            profiles = listOf(profile),
+                            selectedProfileIds = mapOf(ProviderKind.CHAT to profile.id),
+                        ),
+                    credentials = CredentialResolver { if (it == "chat-secret") "test-key" else null },
+                    client = OkHttpClient(),
+                )
+            val request = MemoryAwareChatRequest(chatClient, context)
+            val history =
+                listOf(
+                    PromptMessage(PromptRole.SYSTEM, "Stable instructions."),
+                    PromptMessage(PromptRole.USER, "Earlier question"),
+                    PromptMessage(PromptRole.ASSISTANT, "Earlier answer"),
+                    PromptMessage(
+                        PromptRole.USER,
+                        "What response style do I prefer?\n\nPost-history instructions:\nStay in character.",
+                    ),
+                )
+            val observer = RecordingObserver()
 
-        request.stream(history, observer, memoryQuery = "What response style do I prefer?")
+            request.stream(history, observer, memoryQuery = "What response style do I prefer?")
 
-        assertTrue(observer.finished.await(5, TimeUnit.SECONDS))
-        assertEquals(null, observer.failure)
-        assertEquals("What response style do I prefer?", capturedQuery)
-        val captured = server.takeRequest(1, TimeUnit.SECONDS)!!
-        val messages = JSONObject(captured.body.readUtf8()).getJSONArray("messages")
-        assertEquals(4, messages.length())
-        assertEquals("system", messages.getJSONObject(0).getString("role"))
-        assertEquals("Stable instructions.", messages.getJSONObject(0).getString("content"))
-        assertEquals("user", messages.getJSONObject(3).getString("role"))
-        val tail = messages.getJSONObject(3).getString("content")
-        assertTrue(tail.contains("The user prefers concise answers."))
-        assertTrue(tail.trimEnd().endsWith("Post-history instructions:\nStay in character."))
-        assertEquals(4, history.size)
-        assertEquals("Earlier answer", history[2].content)
-    }
+            assertTrue(observer.finished.await(5, TimeUnit.SECONDS))
+            assertEquals(null, observer.failure)
+            assertEquals("What response style do I prefer?", capturedQuery)
+            val captured = server.takeRequest(1, TimeUnit.SECONDS)!!
+            val messages = JSONObject(captured.body.readUtf8()).getJSONArray("messages")
+            assertEquals(4, messages.length())
+            assertEquals("system", messages.getJSONObject(0).getString("role"))
+            assertEquals("Stable instructions.", messages.getJSONObject(0).getString("content"))
+            assertEquals("user", messages.getJSONObject(3).getString("role"))
+            val tail = messages.getJSONObject(3).getString("content")
+            assertTrue(tail.contains("The user prefers concise answers."))
+            assertTrue(tail.trimEnd().endsWith("Post-history instructions:\nStay in character."))
+            assertEquals(4, history.size)
+            assertEquals("Earlier answer", history[2].content)
+        }
 
     @Test
-    fun explicitMemoryQueryIsNotTruncatedByHeaderTextInThePrompt() = runBlocking {
-        server.enqueue(
-            MockResponse()
-                .setResponseCode(200)
-                .setHeader("Content-Type", "text/event-stream")
-                .setBody("data: [DONE]\n\n"),
-        )
-        server.start()
-        val memoryText = MemoryTextRecord("fact-1", "The user prefers concise answers.")
-        var capturedQuery: String? = null
-        val snapshot = VectorSnapshot(
-            modelId = "local-test-model",
-            dimensions = 2,
-            records = listOf(
-                StoredVector("vector-1", memoryText.sourceTextSha256, 1L, listOf(1f, 0f)),
-            ),
-        )
-        val context = VectorMemoryContextService(
-            snapshots = VectorSnapshotProvider { VectorSnapshotReadResult.Loaded(snapshot) },
-            embeddings = QueryEmbeddingProvider {
-                capturedQuery = it
-                listOf(1f, 0f)
-            },
-            textProvider = MemoryTextProvider { listOf(memoryText) },
-            minimumScore = 0.5,
-        )
-        val profile = ProviderProfile(
-            id = "chat",
-            kind = ProviderKind.CHAT,
-            baseUrl = server.url("/v1").toString().trimEnd('/'),
-            modelId = "chat-model",
-            credentialHandle = "chat-secret",
-        )
-        val chatClient = OpenAiCompatibleChatClient(
-            providers = ProviderProfileSet(
-                profiles = listOf(profile),
-                selectedProfileIds = mapOf(ProviderKind.CHAT to profile.id),
-            ),
-            credentials = CredentialResolver { if (it == "chat-secret") "test-key" else null },
-            client = OkHttpClient(),
-        )
-        val request = MemoryAwareChatRequest(chatClient, context)
-        val history = listOf(
-            PromptMessage(PromptRole.SYSTEM, "Stable instructions."),
-            PromptMessage(PromptRole.USER, "Earlier question"),
-            PromptMessage(PromptRole.ASSISTANT, "Earlier answer"),
-            PromptMessage(
-                PromptRole.USER,
-                "Worldbook before character:\nCard template\n\n" +
-                    "Post-history instructions:\nExample directive\n\n" +
-                    "Where is the library?",
-            ),
-        )
-        val observer = RecordingObserver()
+    fun explicitMemoryQueryIsNotTruncatedByHeaderTextInThePrompt() =
+        runBlocking {
+            server.enqueue(
+                MockResponse()
+                    .setResponseCode(200)
+                    .setHeader("Content-Type", "text/event-stream")
+                    .setBody("data: [DONE]\n\n"),
+            )
+            server.start()
+            val memoryText = MemoryTextRecord("fact-1", "The user prefers concise answers.")
+            var capturedQuery: String? = null
+            val snapshot =
+                VectorSnapshot(
+                    modelId = "local-test-model",
+                    dimensions = 2,
+                    records =
+                        listOf(
+                            StoredVector("vector-1", memoryText.sourceTextSha256, 1L, listOf(1f, 0f)),
+                        ),
+                )
+            val context =
+                VectorMemoryContextService(
+                    snapshots = VectorSnapshotProvider { VectorSnapshotReadResult.Loaded(snapshot) },
+                    embeddings =
+                        QueryEmbeddingProvider {
+                            capturedQuery = it
+                            listOf(1f, 0f)
+                        },
+                    textProvider = MemoryTextProvider { listOf(memoryText) },
+                    minimumScore = 0.5,
+                )
+            val profile =
+                ProviderProfile(
+                    id = "chat",
+                    kind = ProviderKind.CHAT,
+                    baseUrl = server.url("/v1").toString().trimEnd('/'),
+                    modelId = "chat-model",
+                    credentialHandle = "chat-secret",
+                )
+            val chatClient =
+                OpenAiCompatibleChatClient(
+                    providers =
+                        ProviderProfileSet(
+                            profiles = listOf(profile),
+                            selectedProfileIds = mapOf(ProviderKind.CHAT to profile.id),
+                        ),
+                    credentials = CredentialResolver { if (it == "chat-secret") "test-key" else null },
+                    client = OkHttpClient(),
+                )
+            val request = MemoryAwareChatRequest(chatClient, context)
+            val history =
+                listOf(
+                    PromptMessage(PromptRole.SYSTEM, "Stable instructions."),
+                    PromptMessage(PromptRole.USER, "Earlier question"),
+                    PromptMessage(PromptRole.ASSISTANT, "Earlier answer"),
+                    PromptMessage(
+                        PromptRole.USER,
+                        "Worldbook before character:\nCard template\n\n" +
+                            "Post-history instructions:\nExample directive\n\n" +
+                            "Where is the library?",
+                    ),
+                )
+            val observer = RecordingObserver()
 
-        request.stream(history, observer, memoryQuery = "Where is the library?")
+            request.stream(history, observer, memoryQuery = "Where is the library?")
 
-        assertTrue(observer.finished.await(5, TimeUnit.SECONDS))
-        assertEquals(null, observer.failure)
-        assertEquals("Where is the library?", capturedQuery)
-    }
+            assertTrue(observer.finished.await(5, TimeUnit.SECONDS))
+            assertEquals(null, observer.failure)
+            assertEquals("Where is the library?", capturedQuery)
+        }
 
     private class RecordingObserver : ChatStreamObserver {
         val finished = CountDownLatch(1)
+
         @Volatile var failure: ChatStreamFailure? = null
 
         override fun onDelta(text: String) = Unit
+
         override fun onComplete() {
             finished.countDown()
         }
+
         override fun onFailure(failure: ChatStreamFailure) {
             this.failure = failure
             finished.countDown()

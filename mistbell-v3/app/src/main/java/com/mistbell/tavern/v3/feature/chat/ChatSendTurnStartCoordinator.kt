@@ -9,7 +9,10 @@ internal class ChatSendTurnStartCoordinator(
     private val setMemoryStatusNotice: (String) -> Unit,
     private val setStatus: (String) -> Unit,
 ) {
-    fun start(openingMessage: String, userText: String) {
+    fun start(
+        openingMessage: String,
+        userText: String,
+    ) {
         ChatTurnHistoryCoordinator().appendPendingTurn(history, openingMessage, userText)
         persistHistory()
         clearDraft()

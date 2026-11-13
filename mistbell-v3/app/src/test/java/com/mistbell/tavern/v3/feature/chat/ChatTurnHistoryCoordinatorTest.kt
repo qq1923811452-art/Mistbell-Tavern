@@ -5,8 +5,10 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ChatTurnHistoryCoordinatorTest {
-
-    private fun existingLine(id: String, createdAt: Long) = ChatLine(
+    private fun existingLine(
+        id: String,
+        createdAt: Long,
+    ) = ChatLine(
         id = id,
         role = "assistant",
         content = "",

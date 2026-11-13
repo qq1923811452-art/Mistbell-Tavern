@@ -6,10 +6,10 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class StWorldbookImporterTest {
-
     @Test
     fun mapsDocumentedStFieldSemantics() {
-        val raw = """
+        val raw =
+            """
             {
               "name": "Test Book",
               "entries": {
@@ -38,7 +38,7 @@ class StWorldbookImporterTest {
                 }
               }
             }
-        """.trimIndent()
+            """.trimIndent()
         val document = StWorldbookImporter.import(raw)
         assertEquals("Test Book", document.name)
         assertEquals(2, document.entries.size)
@@ -65,11 +65,12 @@ class StWorldbookImporterTest {
 
     @Test
     fun acceptsArrayEntriesAndCommaSeparatedKeys() {
-        val raw = """
+        val raw =
+            """
             {"entries": [
               {"uid": 7, "content": "body", "key": "alpha, beta", "disable": true}
             ]}
-        """.trimIndent()
+            """.trimIndent()
         val document = StWorldbookImporter.import(raw)
         val entry = document.entries.single()
         assertEquals(listOf("alpha", "beta"), entry.keys)

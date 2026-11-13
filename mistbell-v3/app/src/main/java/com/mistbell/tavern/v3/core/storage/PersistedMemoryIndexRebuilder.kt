@@ -24,28 +24,29 @@ class PersistedMemoryIndexRebuilder(
     private val loadPreviousSnapshot: () -> VectorSnapshot? = { null },
     onProgress: (MemoryIndexRebuildProgress) -> Unit = {},
 ) {
-    private val rebuilder = MemoryIndexRebuilder(
-        runtime = runtime,
-        saveSourceTexts = textStore::save,
-        saveSnapshot = vectorStore::save,
-        clockMillis = clockMillis,
-        onProgress = onProgress,
-    )
+    private val rebuilder =
+        MemoryIndexRebuilder(
+            runtime = runtime,
+            saveSourceTexts = textStore::save,
+            saveSnapshot = vectorStore::save,
+            clockMillis = clockMillis,
+            onProgress = onProgress,
+        )
 
     suspend fun rebuildCurrentIndex(): MemoryIndexRebuildResult {
-        val currentRecords = when (val loaded = textStore.load()) {
-            MemoryTextLoadResult.Missing -> emptyList()
-            is MemoryTextLoadResult.Loaded -> loaded.records
-            is MemoryTextLoadResult.Corrupt -> {
-                return MemoryIndexRebuildResult.Failed(
-                    MemoryIndexRebuildResult.Stage.INVALID_INPUT,
-                    "Stored source text is corrupt; refusing to overwrite it during rebuild.",
-                )
+        val currentRecords =
+            when (val loaded = textStore.load()) {
+                MemoryTextLoadResult.Missing -> emptyList()
+                is MemoryTextLoadResult.Loaded -> loaded.records
+                is MemoryTextLoadResult.Corrupt -> {
+                    return MemoryIndexRebuildResult.Failed(
+                        MemoryIndexRebuildResult.Stage.INVALID_INPUT,
+                        "Stored source text is corrupt; refusing to overwrite it during rebuild.",
+                    )
+                }
             }
-        }
         return rebuild(currentRecords)
     }
 
-    suspend fun rebuild(records: List<MemoryTextRecord>): MemoryIndexRebuildResult =
-        rebuilder.rebuild(records, loadPreviousSnapshot())
+    suspend fun rebuild(records: List<MemoryTextRecord>): MemoryIndexRebuildResult = rebuilder.rebuild(records, loadPreviousSnapshot())
 }

@@ -37,10 +37,13 @@ class ConversationWindowStateTest {
         val short = history(1)
         val first = StableConversationWindowPlanner().plan(SCOPE, short, config)
         assertEquals(0, first.window.pinnedPrefixMessages.size)
-        val state = checkNotNull(StableConversationWindowPlanner().let { planner ->
-            planner.plan(SCOPE, short, config)
-            planner.exportState()
-        })
+        val state =
+            checkNotNull(
+                StableConversationWindowPlanner().let { planner ->
+                    planner.plan(SCOPE, short, config)
+                    planner.exportState()
+                },
+            )
         val restarted = StableConversationWindowPlanner()
         assertTrue(restarted.restore(state, SCOPE, short, config))
         val grown = restarted.plan(SCOPE, history(4), config)
@@ -53,12 +56,13 @@ class ConversationWindowStateTest {
         val planner = StableConversationWindowPlanner()
         planner.plan(SCOPE, source, CONFIG)
         val valid = checkNotNull(planner.exportState())
-        val inconsistent = valid.copy(
-            archivedMessageCount = 0,
-            startId = source.first().id,
-            summaryThroughId = null,
-            summary = "stale summary",
-        )
+        val inconsistent =
+            valid.copy(
+                archivedMessageCount = 0,
+                startId = source.first().id,
+                summaryThroughId = null,
+                summary = "stale summary",
+            )
         assertFalse(inconsistent.matches(SCOPE, source, CONFIG))
         assertTrue(valid.matches(SCOPE, source, CONFIG))
     }
@@ -67,12 +71,17 @@ class ConversationWindowStateTest {
     fun everyFieldWhitespaceVariantsAndFramingChangeFingerprint() {
         val original = WindowHistoryMessage("id", PromptRole.USER, " text ", listOf("a", "b"))
         val hash = WindowSourceFingerprint.hash(listOf(original))
-        val changes = listOf(
-            original.copy(id = "other"), original.copy(role = PromptRole.ASSISTANT),
-            original.copy(content = "text"), original.copy(variants = listOf("b", "a")),
-            original.copy(activeVariant = 1), original.copy(sourceRole = "changed"),
-            original.copy(variants = listOf("ab")), original.copy(content = " "),
-        )
+        val changes =
+            listOf(
+                original.copy(id = "other"),
+                original.copy(role = PromptRole.ASSISTANT),
+                original.copy(content = "text"),
+                original.copy(variants = listOf("b", "a")),
+                original.copy(activeVariant = 1),
+                original.copy(sourceRole = "changed"),
+                original.copy(variants = listOf("ab")),
+                original.copy(content = " "),
+            )
         changes.forEach { assertNotEquals(hash, WindowSourceFingerprint.hash(listOf(it))) }
         assertNotEquals(WindowSourceFingerprint.hash(emptyList()), WindowSourceFingerprint.hash(listOf(original)))
         assertNotEquals(
@@ -83,10 +92,11 @@ class ConversationWindowStateTest {
 
     @Test
     fun sharedHashBufferMatchesIndependentFramingAcrossLongAndEmptyFields() {
-        val source = listOf(
-            WindowHistoryMessage("", PromptRole.USER, "😀x".repeat(3_000), listOf("", "ab", "中")),
-            WindowHistoryMessage("second", PromptRole.ASSISTANT, "tail"),
-        )
+        val source =
+            listOf(
+                WindowHistoryMessage("", PromptRole.USER, "😀x".repeat(3_000), listOf("", "ab", "中")),
+                WindowHistoryMessage("second", PromptRole.ASSISTANT, "tail"),
+            )
         val bytes = java.io.ByteArrayOutputStream()
         java.io.DataOutputStream(bytes).use { output ->
             fun writeString(value: String) {
@@ -104,8 +114,9 @@ class ConversationWindowStateTest {
                 writeString(message.sourceRole)
             }
         }
-        val expected = java.security.MessageDigest.getInstance("SHA-256").digest(bytes.toByteArray())
-            .joinToString("") { "%02x".format(it) }
+        val expected =
+            java.security.MessageDigest.getInstance("SHA-256").digest(bytes.toByteArray())
+                .joinToString("") { "%02x".format(it) }
         assertEquals(expected, WindowSourceFingerprint.hash(source))
     }
 
@@ -131,15 +142,20 @@ class ConversationWindowStateTest {
         val source = history(50)
         planner.plan(SCOPE, source, CONFIG)
         val state = checkNotNull(planner.exportState())
-        val invalid = listOf(
-            state.copy(version = 0), state.copy(sourceCount = -1), state.copy(archivedMessageCount = -1),
-            state.copy(startId = "wrong"), state.copy(summaryThroughId = "wrong"),
-            state.copy(
-                archivedMessageCount = state.archivedMessageCount + 1,
-                startId = "a10", summaryThroughId = "u10",
-            ),
-            state.copy(summary = "x".repeat(CONFIG.summaryMaxChars + 1)),
-        )
+        val invalid =
+            listOf(
+                state.copy(version = 0),
+                state.copy(sourceCount = -1),
+                state.copy(archivedMessageCount = -1),
+                state.copy(startId = "wrong"),
+                state.copy(summaryThroughId = "wrong"),
+                state.copy(
+                    archivedMessageCount = state.archivedMessageCount + 1,
+                    startId = "a10",
+                    summaryThroughId = "u10",
+                ),
+                state.copy(summary = "x".repeat(CONFIG.summaryMaxChars + 1)),
+            )
         invalid.forEach { assertFalse(it.matches(SCOPE, source, CONFIG)) }
         val restart = StableConversationWindowPlanner()
         assertTrue(restart.restore(state, SCOPE, source, CONFIG))
@@ -147,12 +163,13 @@ class ConversationWindowStateTest {
         assertFalse(restart.restore(state, SCOPE, source, CONFIG))
     }
 
-    private fun history(turns: Int) = (0 until turns).flatMap {
-        listOf(
-            WindowHistoryMessage("u$it", PromptRole.USER, "same"),
-            WindowHistoryMessage("a$it", PromptRole.ASSISTANT, "same"),
-        )
-    }
+    private fun history(turns: Int) =
+        (0 until turns).flatMap {
+            listOf(
+                WindowHistoryMessage("u$it", PromptRole.USER, "same"),
+                WindowHistoryMessage("a$it", PromptRole.ASSISTANT, "same"),
+            )
+        }
 }
 
 private const val SCOPE = "session"

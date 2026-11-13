@@ -28,20 +28,29 @@ class CharacterCardLibraryStore(private val directory: File) {
                     }
                     .getOrNull()
             }
-            .sortedWith(compareBy<StoredCharacterCard, String>(String.CASE_INSENSITIVE_ORDER) { item -> item.card.name }.thenBy { item -> item.id })
+            .sortedWith(
+                compareBy<StoredCharacterCard, String>(String.CASE_INSENSITIVE_ORDER) { item -> item.card.name }.thenBy {
+                        item ->
+                    item.id
+                },
+            )
     }
 
-    fun save(id: String?, card: CharacterCard): StoredCharacterCard {
+    fun save(
+        id: String?,
+        card: CharacterCard,
+    ): StoredCharacterCard {
         require(card.name.isNotBlank()) { "Character name is required." }
         if (!directory.exists() && !directory.mkdirs()) {
             throw IllegalStateException("Unable to create the character library directory.")
         }
         val safeId = id?.takeIf { it.matches(ID_PATTERN) } ?: UUID.randomUUID().toString()
         val target = AtomicFile(File(directory, "$safeId.json"))
-        val record = JSONObject()
-            .put("id", safeId)
-            .put("card", CharacterCardJsonCodec.export(card))
-            .toString()
+        val record =
+            JSONObject()
+                .put("id", safeId)
+                .put("card", CharacterCardJsonCodec.export(card))
+                .toString()
         var stream: FileOutputStream? = null
         try {
             val output = target.startWrite()
@@ -69,8 +78,9 @@ class CharacterCardLibraryStore(private val directory: File) {
         val record = JSONObject(raw)
         val id = record.getString("id")
         require(id.matches(ID_PATTERN)) { "Invalid stored character ID." }
-        val card = CharacterCardJsonCodec.parse(record.getString("card"))
-            ?: throw IllegalArgumentException("Stored character card is invalid.")
+        val card =
+            CharacterCardJsonCodec.parse(record.getString("card"))
+                ?: throw IllegalArgumentException("Stored character card is invalid.")
         return StoredCharacterCard(id, card)
     }
 

@@ -9,31 +9,40 @@ internal class ChatPromptHistoryCoordinator(
     private val planner: StableConversationWindowPlanner,
     private val cache: WindowStateCache? = null,
 ) {
-    fun build(scopeId: String, history: List<ChatLine>, invalidate: Boolean): HistoryWindowDecision {
-        val source = history.map { line ->
-            WindowHistoryMessage(
-                id = line.id,
-                role = if (line.role == "user") PromptRole.USER else PromptRole.ASSISTANT,
-                content = line.content,
-                variants = line.variants,
-                activeVariant = line.activeVariant,
-                sourceRole = line.role,
+    fun build(
+        scopeId: String,
+        history: List<ChatLine>,
+        invalidate: Boolean,
+    ): HistoryWindowDecision {
+        val source =
+            history.map { line ->
+                WindowHistoryMessage(
+                    id = line.id,
+                    role = if (line.role == "user") PromptRole.USER else PromptRole.ASSISTANT,
+                    content = line.content,
+                    variants = line.variants,
+                    activeVariant = line.activeVariant,
+                    sourceRole = line.role,
+                )
+            }
+        val config =
+            HistoryWindowConfig(
+                recentTurns =
+                    settings.getIntCompat(
+                        "chat_history_recent_turns",
+                        ConversationContextWindowBuilder.DEFAULT_RECENT_TURNS,
+                    ).coerceIn(1, MAX_RECENT_TURNS),
+                summaryMaxChars =
+                    settings.getIntCompat(
+                        "chat_history_summary_max_chars",
+                        ConversationContextWindowBuilder.DEFAULT_SUMMARY_MAX_CHARS,
+                    ).coerceIn(0, MAX_SUMMARY_CHARS),
+                maxHistoryChars =
+                    settings.getIntCompat(
+                        "chat_history_max_chars",
+                        ConversationContextWindowBuilder.DEFAULT_MAX_HISTORY_CHARS,
+                    ).coerceIn(MIN_HISTORY_CHARS, MAX_HISTORY_CHARS),
             )
-        }
-        val config = HistoryWindowConfig(
-            recentTurns = settings.getIntCompat(
-                "chat_history_recent_turns",
-                ConversationContextWindowBuilder.DEFAULT_RECENT_TURNS,
-            ).coerceIn(1, MAX_RECENT_TURNS),
-            summaryMaxChars = settings.getIntCompat(
-                "chat_history_summary_max_chars",
-                ConversationContextWindowBuilder.DEFAULT_SUMMARY_MAX_CHARS,
-            ).coerceIn(0, MAX_SUMMARY_CHARS),
-            maxHistoryChars = settings.getIntCompat(
-                "chat_history_max_chars",
-                ConversationContextWindowBuilder.DEFAULT_MAX_HISTORY_CHARS,
-            ).coerceIn(MIN_HISTORY_CHARS, MAX_HISTORY_CHARS),
-        )
         if (!invalidate && !planner.hasState()) {
             runCatching { cache?.load(scopeId) }.getOrNull()?.let { state ->
                 planner.restore(state, scopeId, source, config)

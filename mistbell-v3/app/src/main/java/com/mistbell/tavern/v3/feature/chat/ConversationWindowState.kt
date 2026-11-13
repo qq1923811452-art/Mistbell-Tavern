@@ -5,7 +5,11 @@ import java.security.MessageDigest
 /** A disposable cache, never an authority for transcript content. */
 internal interface WindowStateCache {
     fun load(scopeId: String): ConversationWindowState?
-    fun save(state: ConversationWindowState, replaceExisting: Boolean = false)
+
+    fun save(
+        state: ConversationWindowState,
+        replaceExisting: Boolean = false,
+    )
 }
 
 internal data class ConversationWindowState(
@@ -20,29 +24,43 @@ internal data class ConversationWindowState(
     val pinnedMessageCount: Int,
     val summary: String,
 ) {
-    fun matches(scope: String, history: List<WindowHistoryMessage>, currentConfig: HistoryWindowConfig): Boolean {
+    fun matches(
+        scope: String,
+        history: List<WindowHistoryMessage>,
+        currentConfig: HistoryWindowConfig,
+    ): Boolean {
         val sourceFits = sourceCount in 0..history.size
         val matchingMetadata = version == VERSION && scopeId == scope && config == currentConfig
         if (!matchingMetadata || !sourceFits) return false
         val prefix = history.take(sourceCount)
         val messages = prefix.filter { it.content.isNotBlank() }
-        val validBoundary = archivedMessageCount in 0..messages.size &&
-            pinnedMessageCount in 0..archivedMessageCount
+        val validBoundary =
+            archivedMessageCount in 0..messages.size &&
+                pinnedMessageCount in 0..archivedMessageCount
         val next = messages.getOrNull(archivedMessageCount)
         val expectedStartId = next?.id
         val expectedThroughId = messages.getOrNull(archivedMessageCount - 1)?.id
         val boundaryIdsMatch = expectedStartId == startId && expectedThroughId == summaryThroughId
-        val pinWholeTurn = pinnedMessageCount == 0 ||
-            (pinnedMessageCount in 0..messages.size &&
-                (pinnedMessageCount == messages.size || messages[pinnedMessageCount].role == PromptRole.USER))
-        val wholeTurn = pinWholeTurn &&
-            (next == null || archivedMessageCount == pinnedMessageCount || next.role == PromptRole.USER)
+        val pinWholeTurn =
+            pinnedMessageCount == 0 ||
+                (
+                    pinnedMessageCount in 0..messages.size &&
+                        (pinnedMessageCount == messages.size || messages[pinnedMessageCount].role == PromptRole.USER)
+                )
+        val wholeTurn =
+            pinWholeTurn &&
+                (next == null || archivedMessageCount == pinnedMessageCount || next.role == PromptRole.USER)
         val safeSummary = summary.length <= config.summaryMaxChars
         // The summary covers only the middle gap; a pin-only window has no summary.
         val summaryConsistent = archivedMessageCount > pinnedMessageCount || summary.isEmpty()
         val matchingSource = sourceFingerprint == WindowSourceFingerprint.hash(prefix)
         return listOf(
-            validBoundary, safeSummary, summaryConsistent, boundaryIdsMatch, wholeTurn, matchingSource,
+            validBoundary,
+            safeSummary,
+            summaryConsistent,
+            boundaryIdsMatch,
+            wholeTurn,
+            matchingSource,
         ).all { it }
     }
 
@@ -69,7 +87,10 @@ internal object WindowSourceFingerprint {
         return digest.digest().joinToString("") { byte -> "%02x".format(byte) }
     }
 
-    private fun MessageDigest.addString(value: String, buffer: ByteArray) {
+    private fun MessageDigest.addString(
+        value: String,
+        buffer: ByteArray,
+    ) {
         addInt(value.length)
         var used = 0
         value.forEach { char ->

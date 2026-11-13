@@ -24,9 +24,10 @@ internal fun rememberChatWorldBookActivationSession(
     worldbookId: String,
 ): ChatWorldBookActivationSession {
     val stateKey = "worldbook_activation_state_${roleId}_${conversationId}_${worldbookId.ifBlank { "none" }}"
-    val activationState = remember(settings, diagnosticStore, roleId, conversationId, worldbookId) {
-        ChatWorldBookStateStore(settings, diagnosticStore).restore(stateKey)
-    }
+    val activationState =
+        remember(settings, diagnosticStore, roleId, conversationId, worldbookId) {
+            ChatWorldBookStateStore(settings, diagnosticStore).restore(stateKey)
+        }
     return remember(stateKey, activationState) {
         ChatWorldBookActivationSession(
             stateKey = stateKey,

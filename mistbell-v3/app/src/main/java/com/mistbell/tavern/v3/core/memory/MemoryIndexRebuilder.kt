@@ -75,25 +75,27 @@ class MemoryIndexRebuilder(
         val dimensions = runtime.dimensions
         metadataFailure(records, modelId, dimensions)?.let { return it }
         sourceTextFailure(records)?.let { return it }
-        val timestamp = try {
-            clockMillis().also { require(it >= 0L) }
-        } catch (_: Exception) {
-            return MemoryIndexRebuildResult.Failed(
-                MemoryIndexRebuildResult.Stage.INVALID_INPUT,
-                "A valid index timestamp is unavailable.",
-            )
-        }
+        val timestamp =
+            try {
+                clockMillis().also { require(it >= 0L) }
+            } catch (_: Exception) {
+                return MemoryIndexRebuildResult.Failed(
+                    MemoryIndexRebuildResult.Stage.INVALID_INPUT,
+                    "A valid index timestamp is unavailable.",
+                )
+            }
 
         val ordered = records.sortedBy(MemoryTextRecord::id)
         val reusedById = reusedVectors(ordered, previous, modelId, dimensions)
         val pending = ordered.filterNot { reusedById.containsKey(it.id) }
-        val embedded = when (val outcome = embedPending(pending, dimensions, timestamp)) {
-            is EmbeddingOutcome.Ready -> outcome
-            EmbeddingOutcome.Failed -> return MemoryIndexRebuildResult.Failed(
-                MemoryIndexRebuildResult.Stage.EMBEDDING,
-                "Local embedding failed or returned an invalid vector; no data was saved.",
-            )
-        }
+        val embedded =
+            when (val outcome = embedPending(pending, dimensions, timestamp)) {
+                is EmbeddingOutcome.Ready -> outcome
+                EmbeddingOutcome.Failed -> return MemoryIndexRebuildResult.Failed(
+                    MemoryIndexRebuildResult.Stage.EMBEDDING,
+                    "Local embedding failed or returned an invalid vector; no data was saved.",
+                )
+            }
         onProgress(
             MemoryIndexRebuildProgress(
                 reusedRecords = reusedById.size,
@@ -102,11 +104,12 @@ class MemoryIndexRebuilder(
             ),
         )
 
-        val snapshot = assembleSnapshot(modelId, dimensions, ordered, reusedById, embedded.vectors)
-            ?: return MemoryIndexRebuildResult.Failed(
-                MemoryIndexRebuildResult.Stage.INVALID_INPUT,
-                "The generated snapshot failed validation.",
-            )
+        val snapshot =
+            assembleSnapshot(modelId, dimensions, ordered, reusedById, embedded.vectors)
+                ?: return MemoryIndexRebuildResult.Failed(
+                    MemoryIndexRebuildResult.Stage.INVALID_INPUT,
+                    "The generated snapshot failed validation.",
+                )
 
         try {
             saveSourceTexts(ordered)
@@ -174,6 +177,7 @@ class MemoryIndexRebuilder(
 
     private sealed interface EmbeddingOutcome {
         data class Ready(val vectors: Map<String, StoredVector>, val batches: Int) : EmbeddingOutcome
+
         data object Failed : EmbeddingOutcome
     }
 
@@ -231,9 +235,10 @@ class MemoryIndexRebuilder(
         reusedById: Map<String, StoredVector>,
         embeddedById: Map<String, StoredVector>,
     ): VectorSnapshot? {
-        val records = ordered.map { record ->
-            reusedById[record.id] ?: embeddedById.getValue(record.id)
-        }
+        val records =
+            ordered.map { record ->
+                reusedById[record.id] ?: embeddedById.getValue(record.id)
+            }
         return try {
             VectorSnapshot(modelId = modelId, dimensions = dimensions, records = records)
         } catch (_: IllegalArgumentException) {
@@ -256,13 +261,15 @@ class MemoryIndexRebuilder(
         modelId: String,
         dimensions: Int,
     ): Map<String, StoredVector> {
-        val usable = previous?.takeIf { it.modelId == modelId && it.dimensions == dimensions }
-            ?: return emptyMap()
+        val usable =
+            previous?.takeIf { it.modelId == modelId && it.dimensions == dimensions }
+                ?: return emptyMap()
         val byId = usable.records.associateBy(StoredVector::id)
         return ordered.mapNotNull { record ->
-            val candidate = byId[record.id]
-                ?.takeIf { it.sourceTextSha256 == record.sourceTextSha256 }
-                ?: return@mapNotNull null
+            val candidate =
+                byId[record.id]
+                    ?.takeIf { it.sourceTextSha256 == record.sourceTextSha256 }
+                    ?: return@mapNotNull null
             // A damaged reuse candidate must never abort the rebuild; re-embed instead.
             runCatching {
                 StoredVector(
@@ -275,7 +282,10 @@ class MemoryIndexRebuilder(
         }.associateBy(StoredVector::id)
     }
 
-    private fun copyValues(values: List<Float>, dimensions: Int): List<Float> {
+    private fun copyValues(
+        values: List<Float>,
+        dimensions: Int,
+    ): List<Float> {
         require(values.size == dimensions) { "Stored vector dimension does not match the model." }
         val copy = FloatArray(dimensions)
         if (values is FloatVectorView) {

@@ -30,26 +30,34 @@ class GeneratedImageStore(
     private val directory: File,
     private val clockMillis: () -> Long = System::currentTimeMillis,
 ) {
-    fun save(image: GeneratedImage, prompt: String, model: String?): StoredGeneratedImage {
+    fun save(
+        image: GeneratedImage,
+        prompt: String,
+        model: String?,
+    ): StoredGeneratedImage {
         require(prompt.isNotBlank()) { "Image prompt must not be blank." }
-        val encoded = image.base64Data
-            ?: throw IllegalArgumentException("Remote image URLs are not downloaded automatically.")
+        val encoded =
+            image.base64Data
+                ?: throw IllegalArgumentException("Remote image URLs are not downloaded automatically.")
         require(encoded.length <= MAX_ENCODED_IMAGE_CHARS) {
             "Encoded image exceeds the configured storage limit."
         }
-        val bytes = try {
-            Base64.getDecoder().decode(encoded)
-        } catch (error: IllegalArgumentException) {
-            throw IllegalArgumentException("Image API returned invalid base64 image data.", error)
-        }
+        val bytes =
+            try {
+                Base64.getDecoder().decode(encoded)
+            } catch (error: IllegalArgumentException) {
+                throw IllegalArgumentException("Image API returned invalid base64 image data.", error)
+            }
         require(bytes.isNotEmpty() && bytes.size <= MAX_IMAGE_BYTES) {
             "Image data is empty or exceeds the configured storage limit."
         }
-        val format = detectFormat(bytes)
-            ?: throw IllegalArgumentException("Image data is not a supported PNG, JPEG, or WebP file.")
-        val timestamp = clockMillis().also {
-            require(it >= 0L) { "Image timestamp must not be negative." }
-        }
+        val format =
+            detectFormat(bytes)
+                ?: throw IllegalArgumentException("Image data is not a supported PNG, JPEG, or WebP file.")
+        val timestamp =
+            clockMillis().also {
+                require(it >= 0L) { "Image timestamp must not be negative." }
+            }
         if (!directory.exists() && !directory.mkdirs()) {
             throw IOException("Image library directory could not be created.")
         }
@@ -68,23 +76,25 @@ class GeneratedImageStore(
                 output.fd.sync()
             }
             if (!imageTemp.renameTo(imageFile)) throw IOException("Image file could not be committed.")
-            val metadata = StoredGeneratedImage(
-                id = id,
-                fileName = fileName,
-                mimeType = format.mimeType,
-                sizeBytes = bytes.size.toLong(),
-                createdAtEpochMillis = timestamp,
-                prompt = prompt,
-                model = model?.takeIf(String::isNotBlank),
-            )
-            val json = JSONObject()
-                .put("id", metadata.id)
-                .put("fileName", metadata.fileName)
-                .put("mimeType", metadata.mimeType)
-                .put("sizeBytes", metadata.sizeBytes)
-                .put("createdAtEpochMillis", metadata.createdAtEpochMillis)
-                .put("prompt", metadata.prompt)
-                .put("model", metadata.model)
+            val metadata =
+                StoredGeneratedImage(
+                    id = id,
+                    fileName = fileName,
+                    mimeType = format.mimeType,
+                    sizeBytes = bytes.size.toLong(),
+                    createdAtEpochMillis = timestamp,
+                    prompt = prompt,
+                    model = model?.takeIf(String::isNotBlank),
+                )
+            val json =
+                JSONObject()
+                    .put("id", metadata.id)
+                    .put("fileName", metadata.fileName)
+                    .put("mimeType", metadata.mimeType)
+                    .put("sizeBytes", metadata.sizeBytes)
+                    .put("createdAtEpochMillis", metadata.createdAtEpochMillis)
+                    .put("prompt", metadata.prompt)
+                    .put("model", metadata.model)
             FileOutputStream(metadataTemp).use { output ->
                 output.write(json.toString().toByteArray(Charsets.UTF_8))
                 output.flush()
@@ -118,10 +128,14 @@ class GeneratedImageStore(
 
     /** Copies a saved image to the caller-owned stream without closing that stream. */
     @Throws(IOException::class)
-    fun export(id: String, output: OutputStream) {
+    fun export(
+        id: String,
+        output: OutputStream,
+    ) {
         require(id.matches(UUID_PATTERN)) { "Image ID is invalid." }
-        val metadata = File(directory, "$id.json").takeIf(File::isFile)?.let(::readMetadata)
-            ?: throw IOException("Saved image was not found.")
+        val metadata =
+            File(directory, "$id.json").takeIf(File::isFile)?.let(::readMetadata)
+                ?: throw IOException("Saved image was not found.")
         val expectedName = imageFileName(metadata.id, metadata.mimeType)
         require(metadata.id == id && metadata.fileName == expectedName) { "Image metadata is invalid." }
         val source = File(directory, expectedName)
@@ -158,36 +172,41 @@ class GeneratedImageStore(
         return StoredGeneratedImage(id, fileName, mimeType, sizeBytes, timestamp, prompt, model)
     }
 
-    private fun imageFileName(id: String, mimeType: String): String {
-        val extension = when (mimeType) {
-            "image/png" -> "png"
-            "image/jpeg" -> "jpg"
-            "image/webp" -> "webp"
-            else -> throw IllegalArgumentException("Unsupported stored image MIME type.")
-        }
+    private fun imageFileName(
+        id: String,
+        mimeType: String,
+    ): String {
+        val extension =
+            when (mimeType) {
+                "image/png" -> "png"
+                "image/jpeg" -> "jpg"
+                "image/webp" -> "webp"
+                else -> throw IllegalArgumentException("Unsupported stored image MIME type.")
+            }
         return "image-$id.$extension"
     }
 
-    private fun detectFormat(bytes: ByteArray): ImageFormat? = when {
-        bytes.size >= 8 &&
-            bytes[0] == 0x89.toByte() &&
-            bytes[1] == 0x50.toByte() &&
-            bytes[2] == 0x4E.toByte() &&
-            bytes[3] == 0x47.toByte() &&
-            bytes[4] == 0x0D.toByte() &&
-            bytes[5] == 0x0A.toByte() &&
-            bytes[6] == 0x1A.toByte() &&
-            bytes[7] == 0x0A.toByte() -> ImageFormat("png", "image/png")
-        bytes.size >= 3 &&
-            bytes[0] == 0xFF.toByte() &&
-            bytes[1] == 0xD8.toByte() &&
-            bytes[2] == 0xFF.toByte() -> ImageFormat("jpg", "image/jpeg")
-        bytes.size >= 12 &&
-            bytes.copyOfRange(0, 4).contentEquals(byteArrayOf(0x52, 0x49, 0x46, 0x46)) &&
-            bytes.copyOfRange(8, 12).contentEquals(byteArrayOf(0x57, 0x45, 0x42, 0x50)) ->
-            ImageFormat("webp", "image/webp")
-        else -> null
-    }
+    private fun detectFormat(bytes: ByteArray): ImageFormat? =
+        when {
+            bytes.size >= 8 &&
+                bytes[0] == 0x89.toByte() &&
+                bytes[1] == 0x50.toByte() &&
+                bytes[2] == 0x4E.toByte() &&
+                bytes[3] == 0x47.toByte() &&
+                bytes[4] == 0x0D.toByte() &&
+                bytes[5] == 0x0A.toByte() &&
+                bytes[6] == 0x1A.toByte() &&
+                bytes[7] == 0x0A.toByte() -> ImageFormat("png", "image/png")
+            bytes.size >= 3 &&
+                bytes[0] == 0xFF.toByte() &&
+                bytes[1] == 0xD8.toByte() &&
+                bytes[2] == 0xFF.toByte() -> ImageFormat("jpg", "image/jpeg")
+            bytes.size >= 12 &&
+                bytes.copyOfRange(0, 4).contentEquals(byteArrayOf(0x52, 0x49, 0x46, 0x46)) &&
+                bytes.copyOfRange(8, 12).contentEquals(byteArrayOf(0x57, 0x45, 0x42, 0x50)) ->
+                ImageFormat("webp", "image/webp")
+            else -> null
+        }
 
     private data class ImageFormat(val extension: String, val mimeType: String)
 

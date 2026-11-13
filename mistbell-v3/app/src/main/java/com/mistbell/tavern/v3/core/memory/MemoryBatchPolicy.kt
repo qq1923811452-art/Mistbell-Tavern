@@ -51,9 +51,10 @@ object MemoryBatchPolicy {
             "Turn ordinals must be unique."
         }
 
-        val pending = orderedTurns
-            .sortedBy(EligibleConversationTurn::ordinal)
-            .filterNot { it.id in claimedTurnIds }
+        val pending =
+            orderedTurns
+                .sortedBy(EligibleConversationTurn::ordinal)
+                .filterNot { it.id in claimedTurnIds }
         if (pending.size < batchSize && !(flushPartialBatch && pending.isNotEmpty())) {
             return null
         }
@@ -71,6 +72,7 @@ object MemoryBatchPolicy {
         selected: List<EligibleConversationTurn>,
     ): String {
         val digest = MessageDigest.getInstance("SHA-256")
+
         fun updateString(value: String) {
             val bytes = value.toByteArray(Charsets.UTF_8)
             digest.update(ByteBuffer.allocate(Int.SIZE_BYTES).putInt(bytes.size).array())

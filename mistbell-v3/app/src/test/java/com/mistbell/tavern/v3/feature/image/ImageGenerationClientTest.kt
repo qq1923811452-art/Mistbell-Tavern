@@ -19,14 +19,16 @@ class ImageGenerationClientTest {
                     .setBody("""{"model":"image-model","data":[{"b64_json":"aGVsbG8=","revised_prompt":"A lighthouse"}]}"""),
             )
             server.start()
-            val client = ImageGenerationClient(
-                baseUrl = server.url("/v1").toString().trimEnd('/'),
-                apiKeyProvider = { "image-only-secret" },
-            )
+            val client =
+                ImageGenerationClient(
+                    baseUrl = server.url("/v1").toString().trimEnd('/'),
+                    apiKeyProvider = { "image-only-secret" },
+                )
 
-            val result = client.generate(
-                ImageGenerationRequest(prompt = "A lighthouse", model = "image-model"),
-            )
+            val result =
+                client.generate(
+                    ImageGenerationRequest(prompt = "A lighthouse", model = "image-model"),
+                )
             val recorded = server.takeRequest()
 
             assertEquals("Bearer image-only-secret", recorded.getHeader("Authorization"))
@@ -40,12 +42,13 @@ class ImageGenerationClientTest {
 
     @Test
     fun refusesRemoteHttpEndpointsBeforeMakingRequests() {
-        val error = assertThrows(IllegalArgumentException::class.java) {
-            ImageGenerationClient(
-                baseUrl = "http://example.com/v1",
-                apiKeyProvider = { "secret" },
-            )
-        }
+        val error =
+            assertThrows(IllegalArgumentException::class.java) {
+                ImageGenerationClient(
+                    baseUrl = "http://example.com/v1",
+                    apiKeyProvider = { "secret" },
+                )
+            }
 
         assertTrue(error.message!!.contains("HTTPS"))
     }
@@ -55,15 +58,17 @@ class ImageGenerationClientTest {
         MockWebServer().use { server ->
             server.enqueue(MockResponse().setResponseCode(302).setHeader("Location", "https://example.com/collect"))
             server.start()
-            val client = ImageGenerationClient(
-                baseUrl = server.url("/v1").toString().trimEnd('/'),
-                apiKeyProvider = { "image-only-secret" },
-                httpClient = OkHttpClient(),
-            )
+            val client =
+                ImageGenerationClient(
+                    baseUrl = server.url("/v1").toString().trimEnd('/'),
+                    apiKeyProvider = { "image-only-secret" },
+                    httpClient = OkHttpClient(),
+                )
 
-            val error = assertThrows(ImageGenerationException::class.java) {
-                client.generate(ImageGenerationRequest(prompt = "A lighthouse", model = "image-model"))
-            }
+            val error =
+                assertThrows(ImageGenerationException::class.java) {
+                    client.generate(ImageGenerationRequest(prompt = "A lighthouse", model = "image-model"))
+                }
 
             assertEquals(302, error.httpStatus)
             assertTrue(error.message!!.contains("redirects are not followed"))
@@ -78,14 +83,16 @@ class ImageGenerationClientTest {
                 MockResponse().setBody("""{"data":[{"url":"http://example.com/image.png"}]}"""),
             )
             server.start()
-            val client = ImageGenerationClient(
-                baseUrl = server.url("/v1").toString().trimEnd('/'),
-                apiKeyProvider = { "image-only-secret" },
-            )
+            val client =
+                ImageGenerationClient(
+                    baseUrl = server.url("/v1").toString().trimEnd('/'),
+                    apiKeyProvider = { "image-only-secret" },
+                )
 
-            val error = assertThrows(ImageGenerationException::class.java) {
-                client.generate(ImageGenerationRequest(prompt = "A lighthouse", model = "image-model"))
-            }
+            val error =
+                assertThrows(ImageGenerationException::class.java) {
+                    client.generate(ImageGenerationRequest(prompt = "A lighthouse", model = "image-model"))
+                }
 
             assertTrue(error.message!!.contains("non-HTTPS"))
         }
@@ -100,21 +107,22 @@ class ImageGenerationClientTest {
                     .setBody("""{"data":[{"b64_json":"aGVsbG8="}]}"""),
             )
             server.start()
-            val client = ImageGenerationClient(
-                baseUrl = server.url("/v1").toString().trimEnd('/'),
-                apiKeyProvider = { "image-only-secret" },
-            )
-
-            val error = assertThrows(ImageGenerationException::class.java) {
-                client.generate(
-                    ImageGenerationRequest(prompt = "Two lanterns", model = "image-model", count = 2),
+            val client =
+                ImageGenerationClient(
+                    baseUrl = server.url("/v1").toString().trimEnd('/'),
+                    apiKeyProvider = { "image-only-secret" },
                 )
-            }
+
+            val error =
+                assertThrows(ImageGenerationException::class.java) {
+                    client.generate(
+                        ImageGenerationRequest(prompt = "Two lanterns", model = "image-model", count = 2),
+                    )
+                }
 
             assertTrue(error.message!!.contains("unexpected number of images"))
         }
     }
-
 
     @Test
     fun acceptsMaximumConfiguredInlineImagePayload() {
@@ -126,14 +134,16 @@ class ImageGenerationClientTest {
                     .setBody("""{"data":[{"b64_json":"${"A".repeat(maxEncodedChars)}"}]}"""),
             )
             server.start()
-            val client = ImageGenerationClient(
-                baseUrl = server.url("/v1").toString().trimEnd('/'),
-                apiKeyProvider = { "image-only-secret" },
-            )
+            val client =
+                ImageGenerationClient(
+                    baseUrl = server.url("/v1").toString().trimEnd('/'),
+                    apiKeyProvider = { "image-only-secret" },
+                )
 
-            val result = client.generate(
-                ImageGenerationRequest(prompt = "A lighthouse", model = "image-model"),
-            )
+            val result =
+                client.generate(
+                    ImageGenerationRequest(prompt = "A lighthouse", model = "image-model"),
+                )
 
             assertEquals(maxEncodedChars, result.images.single().base64Data!!.length)
         }
@@ -149,16 +159,18 @@ class ImageGenerationClientTest {
                     .setBody("""{"data":[{"b64_json":"${"A".repeat(maxEncodedChars + 1)}"}]}"""),
             )
             server.start()
-            val client = ImageGenerationClient(
-                baseUrl = server.url("/v1").toString().trimEnd('/'),
-                apiKeyProvider = { "image-only-secret" },
-            )
-
-            val error = assertThrows(ImageGenerationException::class.java) {
-                client.generate(
-                    ImageGenerationRequest(prompt = "A lighthouse", model = "image-model"),
+            val client =
+                ImageGenerationClient(
+                    baseUrl = server.url("/v1").toString().trimEnd('/'),
+                    apiKeyProvider = { "image-only-secret" },
                 )
-            }
+
+            val error =
+                assertThrows(ImageGenerationException::class.java) {
+                    client.generate(
+                        ImageGenerationRequest(prompt = "A lighthouse", model = "image-model"),
+                    )
+                }
 
             assertTrue(error.message!!.contains("per-image size limit"))
         }

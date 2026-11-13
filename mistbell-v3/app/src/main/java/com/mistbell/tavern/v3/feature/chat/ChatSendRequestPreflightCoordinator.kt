@@ -1,8 +1,8 @@
 package com.mistbell.tavern.v3.feature.chat
 
 import android.content.SharedPreferences
-import com.mistbell.tavern.v3.core.security.AndroidKeystoreMemoryCredentialStore
 import com.mistbell.tavern.v3.core.model.ProviderProfileSet
+import com.mistbell.tavern.v3.core.security.AndroidKeystoreMemoryCredentialStore
 
 internal data class PreparedChatSendRequest(
     val userText: String,
@@ -37,18 +37,19 @@ internal class ChatSendRequestPreflightCoordinator(
             setStatus("请先填写模型 ID。")
             return null
         }
-        val request = ChatRequestClientCoordinator(
-            memoryCredentialStore = memoryCredentialStore,
-            settings = settings,
-            setStatus = setStatus,
-        ).create(
-            baseUrl = baseUrl,
-            modelId = modelId,
-            apiKey = apiKey,
-            memoryBaseUrl = memoryBaseUrl,
-            memoryModelId = memoryModelId,
-            memoryApiKey = memoryApiKey,
-        ) ?: return null
+        val request =
+            ChatRequestClientCoordinator(
+                memoryCredentialStore = memoryCredentialStore,
+                settings = settings,
+                setStatus = setStatus,
+            ).create(
+                baseUrl = baseUrl,
+                modelId = modelId,
+                apiKey = apiKey,
+                memoryBaseUrl = memoryBaseUrl,
+                memoryModelId = memoryModelId,
+                memoryApiKey = memoryApiKey,
+            ) ?: return null
         return PreparedChatSendRequest(
             userText = normalizedText,
             providers = request.providers,

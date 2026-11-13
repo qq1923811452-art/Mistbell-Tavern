@@ -10,13 +10,17 @@ import java.io.IOException
 
 sealed interface MemoryTextLoadResult {
     data object Missing : MemoryTextLoadResult
+
     data class Loaded(val records: List<MemoryTextRecord>) : MemoryTextLoadResult
+
     data class Corrupt(val safeReason: String) : MemoryTextLoadResult
 }
 
 interface MemoryTextPersistence : MemoryTextProvider {
     fun save(records: List<MemoryTextRecord>)
+
     fun load(): MemoryTextLoadResult
+
     fun update(transform: (List<MemoryTextRecord>) -> List<MemoryTextRecord>): List<MemoryTextRecord>
 }
 
@@ -47,36 +51,41 @@ class AtomicMemoryTextStore(
      * Read-modify-write under the shared per-path lock, so two store instances cannot interleave
      * a load and a save and silently drop each other's records.
      */
-    override fun update(
-        transform: (List<MemoryTextRecord>) -> List<MemoryTextRecord>,
-    ): List<MemoryTextRecord> = MemoryScopeStorageLock.withLock(atomicFile.baseFile) {
-        synchronized(pathLock) {
-            val current = when (val loaded = loadLocked()) {
-                MemoryTextLoadResult.Missing -> emptyList()
-                is MemoryTextLoadResult.Loaded -> loaded.records
-                is MemoryTextLoadResult.Corrupt -> throw IllegalStateException(loaded.safeReason)
+    override fun update(transform: (List<MemoryTextRecord>) -> List<MemoryTextRecord>): List<MemoryTextRecord> =
+        MemoryScopeStorageLock.withLock(atomicFile.baseFile) {
+            synchronized(pathLock) {
+                val current =
+                    when (val loaded = loadLocked()) {
+                        MemoryTextLoadResult.Missing -> emptyList()
+                        is MemoryTextLoadResult.Loaded -> loaded.records
+                        is MemoryTextLoadResult.Corrupt -> throw IllegalStateException(loaded.safeReason)
+                    }
+                val updated = transform(current)
+                if (updated != current) saveLocked(updated)
+                updated
             }
-            val updated = transform(current)
-            if (updated != current) saveLocked(updated)
-            updated
         }
-    }
 
-    override fun load(): MemoryTextLoadResult = MemoryScopeStorageLock.withLock(atomicFile.baseFile) {
-        synchronized(pathLock) { loadLocked() }
-    }
+    override fun load(): MemoryTextLoadResult =
+        MemoryScopeStorageLock.withLock(atomicFile.baseFile) {
+            synchronized(pathLock) { loadLocked() }
+        }
 
     /** Holds the text-store lock until an index commit finishes, excluding intervening updates. */
-    fun commitIndexIfCurrent(expected: List<MemoryTextRecord>, commit: () -> Unit) {
+    fun commitIndexIfCurrent(
+        expected: List<MemoryTextRecord>,
+        commit: () -> Unit,
+    ) {
         // The vector store also takes the storage transaction lock: acquire it before pathLock,
         // matching load/update, so an index commit cannot deadlock with a concurrent writer.
         MemoryScopeStorageLock.withLock(atomicFile.baseFile) {
             synchronized(pathLock) {
-                val current = when (val loaded = loadLocked()) {
-                    MemoryTextLoadResult.Missing -> emptyList()
-                    is MemoryTextLoadResult.Loaded -> loaded.records
-                    is MemoryTextLoadResult.Corrupt -> error(loaded.safeReason)
-                }
+                val current =
+                    when (val loaded = loadLocked()) {
+                        MemoryTextLoadResult.Missing -> emptyList()
+                        is MemoryTextLoadResult.Loaded -> loaded.records
+                        is MemoryTextLoadResult.Corrupt -> error(loaded.safeReason)
+                    }
                 check(current.sortedBy { it.id } == expected.sortedBy { it.id }) {
                     "Source text changed during index rebuild."
                 }
@@ -86,11 +95,12 @@ class AtomicMemoryTextStore(
     }
 
     /** Retrieval treats missing storage as no memories, but refuses to use corrupt text. */
-    override fun loadMemoryTexts(): List<MemoryTextRecord> = when (val result = load()) {
-        MemoryTextLoadResult.Missing -> emptyList()
-        is MemoryTextLoadResult.Loaded -> result.records
-        is MemoryTextLoadResult.Corrupt -> throw IllegalStateException(result.safeReason)
-    }
+    override fun loadMemoryTexts(): List<MemoryTextRecord> =
+        when (val result = load()) {
+            MemoryTextLoadResult.Missing -> emptyList()
+            is MemoryTextLoadResult.Loaded -> result.records
+            is MemoryTextLoadResult.Corrupt -> throw IllegalStateException(result.safeReason)
+        }
 
     private fun saveLocked(records: List<MemoryTextRecord>) {
         try {

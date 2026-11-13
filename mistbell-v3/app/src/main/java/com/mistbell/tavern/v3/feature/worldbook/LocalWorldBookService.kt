@@ -48,9 +48,16 @@ class LocalWorldBookService(
         maxDepth: Int = DEFAULT_SCAN_DEPTH,
         maxRecursiveDepth: Int = DEFAULT_RECURSIVE_DEPTH,
         state: WorldBookActivationState? = null,
-    ): List<ActivatedWorldBookEntry> = activateEntriesWithReport(
-        entries, scanText, maxBudget, recentTexts, maxDepth, maxRecursiveDepth, state,
-    ).activatedEntries
+    ): List<ActivatedWorldBookEntry> =
+        activateEntriesWithReport(
+            entries,
+            scanText,
+            maxBudget,
+            recentTexts,
+            maxDepth,
+            maxRecursiveDepth,
+            state,
+        ).activatedEntries
 
     fun activateEntriesWithReport(
         entries: List<WorldBookEntry>,
@@ -61,27 +68,33 @@ class LocalWorldBookService(
         maxRecursiveDepth: Int = DEFAULT_RECURSIVE_DEPTH,
         state: WorldBookActivationState? = null,
     ): WorldBookActivationReport {
-        val limits = WorldbookPlanner.ActivationLimits(
-            maxScanDepth = maxDepth,
-            maxBudget = maxBudget,
-            maxRecursiveDepth = maxRecursiveDepth,
-        )
-        val plan = planner.activate(
-            entries = entries.mapNotNull(::toPlannerEntry),
-            scanText = scanText,
-            recentTexts = recentTexts,
-            limits = limits,
-            state = state?.plannerState,
-        )
+        val limits =
+            WorldbookPlanner.ActivationLimits(
+                maxScanDepth = maxDepth,
+                maxBudget = maxBudget,
+                maxRecursiveDepth = maxRecursiveDepth,
+            )
+        val plan =
+            planner.activate(
+                entries = entries.mapNotNull(::toPlannerEntry),
+                scanText = scanText,
+                recentTexts = recentTexts,
+                limits = limits,
+                state = state?.plannerState,
+            )
         return WorldBookActivationReport(
-            activatedEntries = plan.activated.map { activated ->
-                ActivatedWorldBookEntry(fromPlannerEntry(activated.entry), activated.matchedKeys)
-            },
+            activatedEntries =
+                plan.activated.map { activated ->
+                    ActivatedWorldBookEntry(fromPlannerEntry(activated.entry), activated.matchedKeys)
+                },
             droppedByBudget = plan.droppedByBudget,
         )
     }
 
-    fun matchingKeys(keys: List<String>, text: String): List<String> = planner.matchingKeys(keys, text)
+    fun matchingKeys(
+        keys: List<String>,
+        text: String,
+    ): List<String> = planner.matchingKeys(keys, text)
 
     fun buildScanCorpus(
         current: String,
@@ -97,10 +110,13 @@ class LocalWorldBookService(
             .filter { it.entry.insertPosition == WorldBookPlacement.POSITION_DEPTH || it.entry.depth > 0 }
             .groupBy { it.entry.depth.coerceIn(0, 10) to it.entry.depthRole }
 
-    fun calculateTotalChars(entries: List<ActivatedWorldBookEntry>): Int =
-        entries.sumOf { it.entry.content.length }
+    fun calculateTotalChars(entries: List<ActivatedWorldBookEntry>): Int = entries.sumOf { it.entry.content.length }
 
-    fun buildScanText(userMessage: String, recentMessages: List<String> = emptyList(), maxMessages: Int = 5): String =
+    fun buildScanText(
+        userMessage: String,
+        recentMessages: List<String> = emptyList(),
+        maxMessages: Int = 5,
+    ): String =
         buildString {
             appendLine(userMessage)
             appendLine()
@@ -132,27 +148,28 @@ class LocalWorldBookService(
         )
     }
 
-    private fun fromPlannerEntry(entry: WorldbookEntry): WorldBookEntry = WorldBookEntry(
-        id = entry.id,
-        bookId = "",
-        comment = entry.comment,
-        keys = entry.keys,
-        secondaryKeys = entry.secondaryKeys,
-        requireSecondaryMatch = entry.requireSecondaryMatch,
-        recursive = entry.recursive,
-        content = entry.content,
-        constant = entry.constant,
-        disable = entry.disabled,
-        order = entry.order,
-        insertPosition = entry.insertPosition,
-        depth = entry.depth,
-        probability = entry.probability,
-        depthRole = entry.depthRole,
-        sticky = entry.sticky,
-        cooldown = entry.cooldown,
-        delay = entry.delay,
-        groupName = entry.groupName,
-    )
+    private fun fromPlannerEntry(entry: WorldbookEntry): WorldBookEntry =
+        WorldBookEntry(
+            id = entry.id,
+            bookId = "",
+            comment = entry.comment,
+            keys = entry.keys,
+            secondaryKeys = entry.secondaryKeys,
+            requireSecondaryMatch = entry.requireSecondaryMatch,
+            recursive = entry.recursive,
+            content = entry.content,
+            constant = entry.constant,
+            disable = entry.disabled,
+            order = entry.order,
+            insertPosition = entry.insertPosition,
+            depth = entry.depth,
+            probability = entry.probability,
+            depthRole = entry.depthRole,
+            sticky = entry.sticky,
+            cooldown = entry.cooldown,
+            delay = entry.delay,
+            groupName = entry.groupName,
+        )
 
     companion object {
         const val DEFAULT_MAX_BUDGET = 16_000

@@ -28,24 +28,26 @@ class MemoryAwareChatRequest(
     ): Call {
         // Prefer the caller's raw user text. Parsing the assembled message for a post-history
         // marker is unsafe: user or worldbook content can contain the same text.
-        val latestUserMessage = memoryQuery
-            ?.trim()
-            ?.takeIf(String::isNotEmpty)
-            ?: messages.lastOrNull { it.role == PromptRole.USER }?.content
-        val memoryResult = if (latestUserMessage.isNullOrBlank()) {
-            VectorMemoryContextResult.NoRelevantMemories
-        } else {
-            try {
-                memoryContext.retrieveForQuery(latestUserMessage)
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (_: Exception) {
-                // A storage/runtime adapter failure must not prevent ordinary chat from working.
-                VectorMemoryContextResult.Unavailable(
-                    VectorMemoryContextResult.Reason.UNEXPECTED_FAILURE,
-                )
+        val latestUserMessage =
+            memoryQuery
+                ?.trim()
+                ?.takeIf(String::isNotEmpty)
+                ?: messages.lastOrNull { it.role == PromptRole.USER }?.content
+        val memoryResult =
+            if (latestUserMessage.isNullOrBlank()) {
+                VectorMemoryContextResult.NoRelevantMemories
+            } else {
+                try {
+                    memoryContext.retrieveForQuery(latestUserMessage)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    // A storage/runtime adapter failure must not prevent ordinary chat from working.
+                    VectorMemoryContextResult.Unavailable(
+                        VectorMemoryContextResult.Reason.UNEXPECTED_FAILURE,
+                    )
+                }
             }
-        }
         bestEffortDiagnostic {
             when (memoryResult) {
                 is VectorMemoryContextResult.Ready -> {

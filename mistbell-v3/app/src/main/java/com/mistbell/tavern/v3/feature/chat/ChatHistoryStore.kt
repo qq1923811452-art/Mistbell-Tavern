@@ -128,26 +128,29 @@ class ChatHistoryStore(
             require(root.getInt("version") == FORMAT_VERSION)
             val array = root.getJSONArray("messages")
             require(array.length() <= MAX_MESSAGES)
-            val messages = (0 until array.length()).map { index ->
-                val item = array.getJSONObject(index)
-                PersistedChatMessage(
-                    id = item.getString("id"),
-                    role = item.getString("role"),
-                    content = item.getString("content"),
-                    createdAtEpochMillis = item.getLong("created_at"),
-                    deliveryState = PersistedChatMessage.DeliveryState.valueOf(
-                        item.getString("delivery_state"),
-                    ),
-                    speakerId = item.optString("speaker_id", "").takeIf(String::isNotBlank),
-                    speakerName = item.optString("speaker_name", "").takeIf(String::isNotBlank),
-                    variants = item.optJSONArray("variants")?.let { array ->
-                        (0 until array.length()).mapNotNull { index ->
-                            array.optString(index, "").takeIf(String::isNotEmpty)
-                        }
-                    }.orEmpty(),
-                    activeVariant = item.optInt("active_variant", 0),
-                )
-            }
+            val messages =
+                (0 until array.length()).map { index ->
+                    val item = array.getJSONObject(index)
+                    PersistedChatMessage(
+                        id = item.getString("id"),
+                        role = item.getString("role"),
+                        content = item.getString("content"),
+                        createdAtEpochMillis = item.getLong("created_at"),
+                        deliveryState =
+                            PersistedChatMessage.DeliveryState.valueOf(
+                                item.getString("delivery_state"),
+                            ),
+                        speakerId = item.optString("speaker_id", "").takeIf(String::isNotBlank),
+                        speakerName = item.optString("speaker_name", "").takeIf(String::isNotBlank),
+                        variants =
+                            item.optJSONArray("variants")?.let { array ->
+                                (0 until array.length()).mapNotNull { index ->
+                                    array.optString(index, "").takeIf(String::isNotEmpty)
+                                }
+                            }.orEmpty(),
+                        activeVariant = item.optInt("active_variant", 0),
+                    )
+                }
             require(messages.map(PersistedChatMessage::id).distinct().size == messages.size)
             ChatHistoryLoadResult.Loaded(messages)
         } catch (_: IOException) {

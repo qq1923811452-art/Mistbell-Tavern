@@ -1,31 +1,38 @@
 package com.mistbell.tavern.v3.feature.memory
 
-import com.mistbell.tavern.v3.core.memory.TemporalFactIdentity
-
 import com.mistbell.tavern.v3.core.memory.EligibleConversationTurn
 import com.mistbell.tavern.v3.core.memory.FactHistoryReducer
-import com.mistbell.tavern.v3.core.memory.MemoryBatchPolicy
 import com.mistbell.tavern.v3.core.memory.MemoryBatchPlan
-import com.mistbell.tavern.v3.core.memory.MemoryFact
+import com.mistbell.tavern.v3.core.memory.MemoryBatchPolicy
 import com.mistbell.tavern.v3.core.memory.MemoryExtractionJob
+import com.mistbell.tavern.v3.core.memory.MemoryFact
 import com.mistbell.tavern.v3.core.memory.MemoryJobLedger
 import com.mistbell.tavern.v3.core.memory.MemoryJobStatus
+import com.mistbell.tavern.v3.core.memory.TemporalFactIdentity
 import com.mistbell.tavern.v3.core.storage.MemoryFactHistoryPersistence
 import com.mistbell.tavern.v3.core.storage.MemoryJobLedgerLoadResult
 import com.mistbell.tavern.v3.core.storage.MemoryJobLedgerPersistence
 import okhttp3.Call
 
 fun interface MemoryFactExtractor {
-    fun extract(input: MemoryExtractionInput, observer: MemoryExtractionObserver): Call
+    fun extract(
+        input: MemoryExtractionInput,
+        observer: MemoryExtractionObserver,
+    ): Call
 }
 
 fun interface MemoryTurnTextSource {
-    fun textForTurn(conversationId: String, turnId: String): String?
+    fun textForTurn(
+        conversationId: String,
+        turnId: String,
+    ): String?
 }
 
 sealed interface MemoryEnqueueResult {
     data class Enqueued(val plan: MemoryBatchPlan) : MemoryEnqueueResult
+
     data object NoBatchReady : MemoryEnqueueResult
+
     data class Failure(val safeMessage: String) : MemoryEnqueueResult
 }
 
@@ -41,25 +48,28 @@ class MemoryTurnCompletionCoordinator(
         conversationId: String,
         orderedTurns: List<EligibleConversationTurn>,
     ): MemoryEnqueueResult {
-        val ledger = when (val loaded = ledgerStore.load()) {
-            MemoryJobLedgerLoadResult.Missing -> MemoryJobLedger()
-            is MemoryJobLedgerLoadResult.Loaded -> loaded.ledger
-            is MemoryJobLedgerLoadResult.Corrupt -> return MemoryEnqueueResult.Failure(loaded.safeReason)
-        }
-        val claimedTurnIds = ledger.jobs
-            .filter { it.status != MemoryJobStatus.PERMANENT_FAILURE }
-            .flatMap { it.plan.turns }
-            .map(EligibleConversationTurn::id)
-            .toSet()
-        val plan = try {
-            MemoryBatchPolicy.nextBatch(
-                conversationId = conversationId,
-                orderedTurns = orderedTurns,
-                claimedTurnIds = claimedTurnIds,
-            ) ?: return MemoryEnqueueResult.NoBatchReady
-        } catch (_: IllegalArgumentException) {
-            return MemoryEnqueueResult.Failure("Completed turns failed memory-batch validation.")
-        }
+        val ledger =
+            when (val loaded = ledgerStore.load()) {
+                MemoryJobLedgerLoadResult.Missing -> MemoryJobLedger()
+                is MemoryJobLedgerLoadResult.Loaded -> loaded.ledger
+                is MemoryJobLedgerLoadResult.Corrupt -> return MemoryEnqueueResult.Failure(loaded.safeReason)
+            }
+        val claimedTurnIds =
+            ledger.jobs
+                .filter { it.status != MemoryJobStatus.PERMANENT_FAILURE }
+                .flatMap { it.plan.turns }
+                .map(EligibleConversationTurn::id)
+                .toSet()
+        val plan =
+            try {
+                MemoryBatchPolicy.nextBatch(
+                    conversationId = conversationId,
+                    orderedTurns = orderedTurns,
+                    claimedTurnIds = claimedTurnIds,
+                ) ?: return MemoryEnqueueResult.NoBatchReady
+            } catch (_: IllegalArgumentException) {
+                return MemoryEnqueueResult.Failure("Completed turns failed memory-batch validation.")
+            }
         return try {
             ledgerStore.save(ledger.enqueue(plan))
             MemoryEnqueueResult.Enqueued(plan)
@@ -71,7 +81,9 @@ class MemoryTurnCompletionCoordinator(
 
 sealed interface MemoryPipelineResult {
     data object NoWork : MemoryPipelineResult
+
     data class Completed(val planId: String, val insertedFacts: Int) : MemoryPipelineResult
+
     data class Failed(val safeMessage: String) : MemoryPipelineResult
 }
 
@@ -95,17 +107,18 @@ class MemoryExtractionWorker(
             observer(MemoryPipelineResult.NoWork)
             return null
         }
-        val ledger = when (val loaded = ledgerStore.load()) {
-            MemoryJobLedgerLoadResult.Missing -> {
-                observer(MemoryPipelineResult.NoWork)
-                return null
+        val ledger =
+            when (val loaded = ledgerStore.load()) {
+                MemoryJobLedgerLoadResult.Missing -> {
+                    observer(MemoryPipelineResult.NoWork)
+                    return null
+                }
+                is MemoryJobLedgerLoadResult.Loaded -> loaded.ledger
+                is MemoryJobLedgerLoadResult.Corrupt -> {
+                    observer(MemoryPipelineResult.Failed(loaded.safeReason))
+                    return null
+                }
             }
-            is MemoryJobLedgerLoadResult.Loaded -> loaded.ledger
-            is MemoryJobLedgerLoadResult.Corrupt -> {
-                observer(MemoryPipelineResult.Failed(loaded.safeReason))
-                return null
-            }
-        }
         val (claimedLedger, job) = ledger.claimNext(nowEpochMillis())
         if (job == null) {
             observer(MemoryPipelineResult.NoWork)
@@ -121,17 +134,19 @@ class MemoryExtractionWorker(
 
         val texts = LinkedHashMap<String, String>()
         for (turn in job.plan.turns) {
-            val text = try {
-                textSource.textForTurn(job.plan.conversationId, turn.id)
-            } catch (_: Exception) {
-                null
-            }
+            val text =
+                try {
+                    textSource.textForTurn(job.plan.conversationId, turn.id)
+                } catch (_: Exception) {
+                    null
+                }
             if (text.isNullOrBlank()) {
-                val failure = failJob(
-                    job.plan.id,
-                    "A source conversation turn is unavailable.",
-                    permanent = true,
-                )
+                val failure =
+                    failJob(
+                        job.plan.id,
+                        "A source conversation turn is unavailable.",
+                        permanent = true,
+                    )
                 synchronized(this) { activeJobId = null }
                 observer(failure)
                 return null
@@ -147,14 +162,15 @@ class MemoryExtractionWorker(
                     textByTurnId = texts,
                 ),
             ) { outcome ->
-                val result = try {
-                    when (outcome) {
-                        is MemoryExtractionOutcome.Failure -> failJob(job.plan.id, outcome.safeMessage)
-                        is MemoryExtractionOutcome.Success -> finishJob(job.plan, outcome.result)
+                val result =
+                    try {
+                        when (outcome) {
+                            is MemoryExtractionOutcome.Failure -> failJob(job.plan.id, outcome.safeMessage)
+                            is MemoryExtractionOutcome.Success -> finishJob(job.plan, outcome.result)
+                        }
+                    } finally {
+                        synchronized(this) { activeJobId = null }
                     }
-                } finally {
-                    synchronized(this) { activeJobId = null }
-                }
                 observer(result)
             }
         } catch (_: Exception) {
@@ -165,7 +181,10 @@ class MemoryExtractionWorker(
         }
     }
 
-    private fun finishJob(plan: MemoryBatchPlan, result: MemoryExtractionResult): MemoryPipelineResult {
+    private fun finishJob(
+        plan: MemoryBatchPlan,
+        result: MemoryExtractionResult,
+    ): MemoryPipelineResult {
         return try {
             val allowedTurnIds = plan.turns.map(EligibleConversationTurn::id).toSet()
             var insertedFacts = 0
@@ -175,14 +194,15 @@ class MemoryExtractionWorker(
                     require(draft.sourceTurnId in allowedTurnIds) {
                         "Extracted fact references a turn outside its job."
                     }
-                    val fact = MemoryFact(
-                        id = stableFactId(plan.conversationId, draft),
-                        subject = draft.subject,
-                        predicate = draft.predicate,
-                        value = draft.value,
-                        sourceTurnId = draft.sourceTurnId,
-                        recordedAtEpochMillis = nowEpochMillis(),
-                    )
+                    val fact =
+                        MemoryFact(
+                            id = stableFactId(plan.conversationId, draft),
+                            subject = draft.subject,
+                            predicate = draft.predicate,
+                            value = draft.value,
+                            sourceTurnId = draft.sourceTurnId,
+                            recordedAtEpochMillis = nowEpochMillis(),
+                        )
                     val update = FactHistoryReducer.append(updatedHistory, fact)
                     updatedHistory = update.history
                     if (update.inserted) insertedFacts++
@@ -191,13 +211,14 @@ class MemoryExtractionWorker(
             }
 
             // Completion is deliberately written only after the entire fact history was saved.
-            val currentLedger = when (val loaded = ledgerStore.load()) {
-                is MemoryJobLedgerLoadResult.Loaded -> loaded.ledger
-                MemoryJobLedgerLoadResult.Missing ->
-                    error("Memory job ledger disappeared during extraction.")
-                is MemoryJobLedgerLoadResult.Corrupt ->
-                    error(loaded.safeReason)
-            }
+            val currentLedger =
+                when (val loaded = ledgerStore.load()) {
+                    is MemoryJobLedgerLoadResult.Loaded -> loaded.ledger
+                    MemoryJobLedgerLoadResult.Missing ->
+                        error("Memory job ledger disappeared during extraction.")
+                    is MemoryJobLedgerLoadResult.Corrupt ->
+                        error(loaded.safeReason)
+                }
             val completed = currentLedger.complete(plan.id, nowEpochMillis())
             ledgerStore.save(completed)
             MemoryPipelineResult.Completed(plan.id, insertedFacts)
@@ -212,32 +233,36 @@ class MemoryExtractionWorker(
         permanent: Boolean = false,
     ): MemoryPipelineResult {
         return try {
-            val currentLedger = when (val loaded = ledgerStore.load()) {
-                is MemoryJobLedgerLoadResult.Loaded -> loaded.ledger
-                MemoryJobLedgerLoadResult.Missing ->
-                    return MemoryPipelineResult.Failed("Memory job ledger is unavailable.")
-                is MemoryJobLedgerLoadResult.Corrupt ->
-                    return MemoryPipelineResult.Failed(loaded.safeReason)
-            }
-            val job = currentLedger.jobs.firstOrNull { it.plan.id == planId }
-                ?: return MemoryPipelineResult.Failed("Memory job is no longer available.")
+            val currentLedger =
+                when (val loaded = ledgerStore.load()) {
+                    is MemoryJobLedgerLoadResult.Loaded -> loaded.ledger
+                    MemoryJobLedgerLoadResult.Missing ->
+                        return MemoryPipelineResult.Failed("Memory job ledger is unavailable.")
+                    is MemoryJobLedgerLoadResult.Corrupt ->
+                        return MemoryPipelineResult.Failed(loaded.safeReason)
+                }
+            val job =
+                currentLedger.jobs.firstOrNull { it.plan.id == planId }
+                    ?: return MemoryPipelineResult.Failed("Memory job is no longer available.")
             if (job.status != MemoryJobStatus.PROCESSING) {
                 return MemoryPipelineResult.Failed("Memory job is not in a processing state.")
             }
-            val boundedMessage = safeMessage.take(MemoryExtractionJob.MAX_ERROR_LENGTH)
-                .ifBlank { "Memory extraction failed." }
-            val updated = if (permanent) {
-                currentLedger.failPermanently(planId, boundedMessage)
-            } else {
-                val attempt = (job.attemptCount - 1).coerceIn(0, 10)
-                val delay = minOf(30_000L * (1L shl attempt), MAX_RETRY_DELAY_MILLIS)
-                currentLedger.retry(
-                    planId = planId,
-                    nowEpochMillis = nowEpochMillis(),
-                    delayMillis = delay,
-                    safeError = boundedMessage,
-                )
-            }
+            val boundedMessage =
+                safeMessage.take(MemoryExtractionJob.MAX_ERROR_LENGTH)
+                    .ifBlank { "Memory extraction failed." }
+            val updated =
+                if (permanent) {
+                    currentLedger.failPermanently(planId, boundedMessage)
+                } else {
+                    val attempt = (job.attemptCount - 1).coerceIn(0, 10)
+                    val delay = minOf(30_000L * (1L shl attempt), MAX_RETRY_DELAY_MILLIS)
+                    currentLedger.retry(
+                        planId = planId,
+                        nowEpochMillis = nowEpochMillis(),
+                        delayMillis = delay,
+                        safeError = boundedMessage,
+                    )
+                }
             ledgerStore.save(updated)
             MemoryPipelineResult.Failed(boundedMessage)
         } catch (_: Exception) {
@@ -245,7 +270,10 @@ class MemoryExtractionWorker(
         }
     }
 
-    private fun stableFactId(conversationId: String, fact: ExtractedFactDraft): String =
+    private fun stableFactId(
+        conversationId: String,
+        fact: ExtractedFactDraft,
+    ): String =
         TemporalFactIdentity.forObservation(
             conversationId = conversationId,
             sourceTurnId = fact.sourceTurnId,

@@ -9,12 +9,15 @@ import java.io.IOException
 
 sealed interface MemoryJobLedgerLoadResult {
     data object Missing : MemoryJobLedgerLoadResult
+
     data class Loaded(val ledger: MemoryJobLedger) : MemoryJobLedgerLoadResult
+
     data class Corrupt(val safeReason: String) : MemoryJobLedgerLoadResult
 }
 
 interface MemoryJobLedgerPersistence {
     fun save(ledger: MemoryJobLedger)
+
     fun load(): MemoryJobLedgerLoadResult
 }
 
@@ -55,9 +58,10 @@ class AtomicMemoryJobLedgerStore(
             return MemoryJobLedgerLoadResult.Corrupt("Memory job ledger exceeds the size limit.")
         }
         return try {
-            val ledger = atomicFile.openRead().use { input ->
-                MemoryJobLedgerCodec.decode(input.readBytes())
-            }
+            val ledger =
+                atomicFile.openRead().use { input ->
+                    MemoryJobLedgerCodec.decode(input.readBytes())
+                }
             MemoryJobLedgerLoadResult.Loaded(ledger)
         } catch (_: IOException) {
             MemoryJobLedgerLoadResult.Corrupt("Memory job ledger could not be read.")

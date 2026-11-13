@@ -1,11 +1,11 @@
 package com.mistbell.tavern.v3.core.diagnostics
 
-import java.io.ByteArrayOutputStream
-import java.io.File
-import java.time.Instant
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.ByteArrayOutputStream
+import java.io.File
+import java.time.Instant
 
 class DiagnosticLogStoreTest {
     @Test
@@ -16,11 +16,13 @@ class DiagnosticLogStoreTest {
             store.info("embedding.initialize", "Bearer super-secret-token; Bearer 私密令牌; api_key=private-key")
             store.warn(
                 "network.error",
-                "Authorization: Basic dXNlcjpwYXNz; X-Api-Key=api-secret; https://example.test/?token=query-secret; hf_abcdefghijklmnopqrstuvwxyz; \"token\": \"json-secret\"",
+                "Authorization: Basic dXNlcjpwYXNz; X-Api-Key=api-secret; https://example.test/?token=query-secret;" +
+                    " hf_abcdefghijklmnopqrstuvwxyz; \"token\": \"json-secret\"",
             )
             store.warn(
                 "provider.raw_token",
-                "sk-12345678901234567890 ghp_123456789012345678901234567890 github_pat_123456789012345678901234567890 xoxb-1234567890-abcdefghij AKIA1234567890123456 ya29.123456789012345678901234567890",
+                "sk-12345678901234567890 ghp_123456789012345678901234567890 github_pat_123456789012345678901234567890" +
+                    " xoxb-1234567890-abcdefghij AKIA1234567890123456 ya29.123456789012345678901234567890",
             )
             val output = ByteArrayOutputStream()
             store.exportTo(output)
@@ -52,8 +54,9 @@ class DiagnosticLogStoreTest {
         val directory = kotlin.io.path.createTempDirectory(prefix = "mistbell-diagnostics-test").toFile()
         try {
             val store = DiagnosticLogStore(directory) { Instant.EPOCH }
-            val detail = "x".repeat(DiagnosticLogStore.MAX_DETAIL_CHARS - 20) +
-                " api_key=boundary-secret " + "z".repeat(2_000_000)
+            val detail =
+                "x".repeat(DiagnosticLogStore.MAX_DETAIL_CHARS - 20) +
+                    " api_key=boundary-secret " + "z".repeat(2_000_000)
             store.warn("oversized.detail", detail)
             val text = File(directory, DiagnosticLogStore.LOG_FILE_NAME).readText()
             val recordedDetail = text.substringAfter(" - ").trimEnd()

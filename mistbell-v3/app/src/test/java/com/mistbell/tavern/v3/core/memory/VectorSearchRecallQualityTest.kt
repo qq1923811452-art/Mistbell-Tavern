@@ -1,11 +1,11 @@
 package com.mistbell.tavern.v3.core.memory
 
-import java.nio.ByteBuffer
-import kotlin.math.abs
-import kotlin.math.sqrt
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.nio.ByteBuffer
+import kotlin.math.abs
+import kotlin.math.sqrt
 
 /**
  * Answers the question an equivalence test cannot: does the stored int8 form still surface the
@@ -76,11 +76,15 @@ class VectorSearchRecallQualityTest {
         }
     }
 
-    private fun noisyQuery(base: FloatArray, random: java.util.Random): FloatArray = normalize(
-        FloatArray(DIMENSIONS) { position ->
-            (base[position] + (random.nextGaussian() * 0.12).toFloat())
-        },
-    )
+    private fun noisyQuery(
+        base: FloatArray,
+        random: java.util.Random,
+    ): FloatArray =
+        normalize(
+            FloatArray(DIMENSIONS) { position ->
+                (base[position] + (random.nextGaussian() * 0.12).toFloat())
+            },
+        )
 
     private fun normalize(vector: FloatArray): FloatArray {
         var squared = 0.0
@@ -89,7 +93,10 @@ class VectorSearchRecallQualityTest {
         return FloatArray(vector.size) { (vector[it] / norm).toFloat() }
     }
 
-    private fun exactCosine(left: FloatArray, right: FloatArray): Double {
+    private fun exactCosine(
+        left: FloatArray,
+        right: FloatArray,
+    ): Double {
         var dot = 0.0
         var leftSquared = 0.0
         var rightSquared = 0.0
@@ -103,18 +110,22 @@ class VectorSearchRecallQualityTest {
         return dot / sqrt(leftSquared * rightSquared)
     }
 
-    private fun exactTopK(vectors: List<FloatArray>, query: FloatArray, k: Int): List<Int> =
-        vectors.indices.sortedWith(compareByDescending<Int> { exactCosine(vectors[it], query) }.thenBy { it }).take(k)
+    private fun exactTopK(
+        vectors: List<FloatArray>,
+        query: FloatArray,
+        k: Int,
+    ): List<Int> = vectors.indices.sortedWith(compareByDescending<Int> { exactCosine(vectors[it], query) }.thenBy { it }).take(k)
 
     private fun mappedSnapshot(vectors: List<FloatArray>): VectorSnapshot {
-        val records = vectors.mapIndexed { index, vector ->
-            StoredVector(
-                id = "$RECORD_PREFIX%04d".format(index),
-                sourceTextSha256 = HASH,
-                createdAtEpochMillis = index.toLong(),
-                values = vector.toList(),
-            )
-        }
+        val records =
+            vectors.mapIndexed { index, vector ->
+                StoredVector(
+                    id = "$RECORD_PREFIX%04d".format(index),
+                    sourceTextSha256 = HASH,
+                    createdAtEpochMillis = index.toLong(),
+                    values = vector.toList(),
+                )
+            }
         val encoded = VectorSnapshotCodec.encode(VectorSnapshot(MODEL, DIMENSIONS, records))
         return VectorSnapshotCodec.decodeMapped(ByteBuffer.wrap(encoded))
     }
