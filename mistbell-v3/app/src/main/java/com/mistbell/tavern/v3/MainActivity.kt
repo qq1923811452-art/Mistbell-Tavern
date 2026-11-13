@@ -82,6 +82,7 @@ class MainActivity : ComponentActivity() {
     private var showCharacterLibrary by mutableStateOf(false)
     private var showWorldBookLibrary by mutableStateOf(false)
     private var showEraGame by mutableStateOf(false)
+    private var eraAutoImport by mutableStateOf(false)
     private val embeddingDimensionOptions = listOf(128, 256, 512, 768, 1024, 1536, 2048)
     private var selectedEmbeddingDimensions by mutableStateOf(768)
     private var qualcommModelSelected by mutableStateOf(false)
@@ -319,7 +320,10 @@ class MainActivity : ComponentActivity() {
                     showWorldBookLibrary -> showWorldBookLibrary = false
                     showMemorySettings -> showMemorySettings = false
                     showLocalModel -> showLocalModel = false
-                    showEraGame -> showEraGame = false
+                    showEraGame -> {
+                        showEraGame = false
+                        eraAutoImport = false
+                    }
                 }
             }
             TavernTheme {
@@ -367,7 +371,13 @@ class MainActivity : ComponentActivity() {
                             onBack = { showLocalModel = false },
                         )
                     } else if (showEraGame) {
-                        EraGameScreen(onBack = { showEraGame = false })
+                        EraGameScreen(
+                            autoOpenImport = eraAutoImport,
+                            onBack = {
+                                showEraGame = false
+                                eraAutoImport = false
+                            },
+                        )
                     } else {
                         Column(Modifier.fillMaxSize()) {
                             Box(Modifier.weight(1f)) {
@@ -379,7 +389,14 @@ class MainActivity : ComponentActivity() {
                                                 onSessionListVisibilityChange = { visible ->
                                                     sessionListVisible = visible
                                                 },
-                                                onOpenEraGame = { showEraGame = true },
+                                                onImportEraGame = {
+                                                    eraAutoImport = true
+                                                    showEraGame = true
+                                                },
+                                                onOpenEraGame = {
+                                                    eraAutoImport = false
+                                                    showEraGame = true
+                                                },
                                             )
                                         }
                                     TavernTab.SETTINGS ->

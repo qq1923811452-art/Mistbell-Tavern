@@ -1,4 +1,4 @@
-@file:Suppress("FunctionNaming", "MagicNumber")
+@file:Suppress("FunctionNaming", "MagicNumber", "StringLiteralDuplication", "TooGenericExceptionCaught")
 
 package com.mistbell.tavern.v3.feature.era
 
@@ -28,10 +28,12 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -68,6 +70,12 @@ private val ERA_GOLD_BORDER = Color(0x4DFFCE8A)
 private val ERA_GOLD_SOFT = Color(0x26FFCE8A)
 private val ERA_GOLD_TEXT = Color(0xFFFFCE8A)
 private val ERA_DIVIDER = Color(0x1FFFFFFF)
+private val ZIP_MIME_TYPES =
+    arrayOf(
+        "application/zip",
+        "application/x-zip-compressed",
+        "application/octet-stream",
+    )
 
 /**
  * First landing surface for the 4.0 Gensokyo adaptation.
@@ -78,7 +86,10 @@ private val ERA_DIVIDER = Color(0x1FFFFFFF)
  */
 @Suppress("LongMethod")
 @Composable
-fun EraGameScreen(onBack: () -> Unit) {
+fun EraGameScreen(
+    onBack: () -> Unit,
+    autoOpenImport: Boolean = false,
+) {
     BackHandler(onBack = onBack)
     val context = LocalContext.current
     val repository = remember(context) { EraGameRepository(context) }
@@ -86,6 +97,7 @@ fun EraGameScreen(onBack: () -> Unit) {
     var installed by remember(repository) { mutableStateOf(repository.current()) }
     var importing by remember { mutableStateOf(false) }
     var importMessage by remember { mutableStateOf<String?>(null) }
+    var autoImportLaunched by rememberSaveable { mutableStateOf(false) }
     val zipPicker =
         rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
             if (uri == null) return@rememberLauncherForActivityResult
@@ -106,6 +118,13 @@ fun EraGameScreen(onBack: () -> Unit) {
                 }
             }
         }
+
+    LaunchedEffect(autoOpenImport) {
+        if (autoOpenImport && !autoImportLaunched) {
+            autoImportLaunched = true
+            zipPicker.launch(ZIP_MIME_TYPES)
+        }
+    }
 
     TavernBackground(
         drawable = R.drawable.bg_tavern,
@@ -140,13 +159,7 @@ fun EraGameScreen(onBack: () -> Unit) {
                     importing = importing,
                     message = importMessage,
                     onImport = {
-                        zipPicker.launch(
-                            arrayOf(
-                                "application/zip",
-                                "application/x-zip-compressed",
-                                "application/octet-stream",
-                            ),
-                        )
+                        zipPicker.launch(ZIP_MIME_TYPES)
                     },
                 )
                 Spacer(modifier = Modifier.height(24.dp))

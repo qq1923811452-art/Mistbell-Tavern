@@ -2,9 +2,10 @@
 
 package com.mistbell.tavern.v3.feature.sessions.ui
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -99,8 +100,12 @@ private val ERA_ENTRY_BRUSH = Brush.linearGradient(listOf(ERA_ENTRY_BG_TOP, ERA_
  * Entry to the Gensokyo / eraTW adaptation. It sits above the session actions because it is a
  * different way to start a story, not another session mutation.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-internal fun EraGameEntry(onClick: () -> Unit) {
+internal fun EraGameEntry(
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+) {
     Row(
         modifier =
             Modifier
@@ -108,10 +113,12 @@ internal fun EraGameEntry(onClick: () -> Unit) {
                 .clip(TavernShape.Card)
                 .background(ERA_ENTRY_BRUSH)
                 .border(1.dp, ERA_ENTRY_BORDER, TavernShape.Card)
-                .clickable(
+                .combinedClickable(
                     role = Role.Button,
                     onClickLabel = "进入幻想乡",
+                    onLongClickLabel = "导入或更新游戏 ZIP",
                     onClick = onClick,
+                    onLongClick = onLongClick,
                 )
                 .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -160,7 +167,7 @@ internal fun EraGameEntry(onClick: () -> Unit) {
                 )
             }
             Text(
-                text = "东方角色扮演 · 引擎适配中",
+                text = "点击进入游戏 · 长按导入/更新",
                 modifier = Modifier.padding(top = 2.dp),
                 color = TavernPalette.TextSecondary,
                 fontSize = 12.sp,
@@ -187,6 +194,7 @@ internal fun SessionListHeader(
     showGroupAction: Boolean,
     onCreateSession: () -> Unit,
     onOpenGroupDialog: () -> Unit,
+    onImportEraGame: () -> Unit,
     onOpenEraGame: () -> Unit,
 ) {
     Column(
@@ -203,7 +211,7 @@ internal fun SessionListHeader(
     ) {
         TavernPageHeader(title = "会话", subtitle = "继续你的故事")
         Spacer(modifier = Modifier.height(HEADER_ENTRY_TOP_GAP))
-        EraGameEntry(onClick = onOpenEraGame)
+        EraGameEntry(onClick = onOpenEraGame, onLongClick = onImportEraGame)
         Spacer(modifier = Modifier.height(HEADER_ACTION_TOP_GAP))
         Row(
             modifier = Modifier.fillMaxWidth().height(HEADER_ACTION_HEIGHT),

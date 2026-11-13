@@ -13,6 +13,7 @@ import java.util.zip.ZipFile
  * truth. The installer still guards against path traversal, zip bombs, and accidental loss of the
  * player's `sav/` folder when a pack is updated.
  */
+@Suppress("TooGenericExceptionCaught")
 class EraGameZipInstaller(
     private val gamesRoot: File,
 ) {
