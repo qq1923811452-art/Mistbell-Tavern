@@ -48,6 +48,10 @@ internal static class EraGameStore
 		if (!string.IsNullOrEmpty(version) && version == lastVersion
 			&& !string.IsNullOrEmpty(lastDir) && Directory.Exists(lastDir))
 		{
+			// 已有安装也要跑一遍；这些修复是幂等的，老用户不该因为「版本没变」错过。
+			NormalizeCsvFileNames(lastDir);
+			RepairMissingCflags(lastDir);
+			EnsureLazyLoadingConfig(lastDir);
 			return lastDir;
 		}
 
@@ -94,6 +98,10 @@ internal static class EraGameStore
 		if (!string.IsNullOrEmpty(version) && version == lastVersion
 			&& !string.IsNullOrEmpty(lastDir) && Directory.Exists(lastDir))
 		{
+			// 已有安装也要跑一遍；这些修复是幂等的，老用户不该因为「版本没变」错过。
+			NormalizeCsvFileNames(lastDir);
+			RepairMissingCflags(lastDir);
+			EnsureLazyLoadingConfig(lastDir);
 			return lastDir;
 		}
 
