@@ -1,0 +1,159 @@
+name: Era AAR Spike
+
+# 只回答一个问题：按 .NET 8 的标准做法发布后，程序集到底在
+#   assembleies/ 还是 lib/<abi>/libassemblies.<abi>.so？
+# 并尝试按 AAR 重组，把结构打全，供决策。
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - era-aar-spike
+
+env:
+  ERA_UPSTREAM_REPO: https://github.com/KuroPeach/SkiaX-android-CI.git
+  ERA_UPSTREAM_SHA: 07bc3c054fce12d5fa0464597a7bb4c4a98847f2
+
+jobs:
+  spike:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+          dotnet-quality: "ga"
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Fetch engine sources
+        run: |
+          set -e
+          rm -rf era-engine/upstream
+          git init era-engine/upstream
+          cd era-engine/upstream
+          git remote add origin "$ERA_UPSTREAM_REPO"
+          git fetch --depth 1 origin "$ERA_UPSTREAM_SHA"
+          git checkout -q FETCH_HEAD
+
+      - name: Guard .NET SDK version
+        run: |
+          set -e
+          V=$(dotnet --version)
+          echo "SDK in use: $V"
+          case "$V" in
+            8.0.*) echo "OK" ;;
+            *) echo "::error::期望 .NET 8，实际 $V"; exit 1 ;;
+          esac
+
+      - name: Install Android workload
+        run: |
+          echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
+          dotnet workload install android --skip-manifest-update
+
+      - name: Publish engine APK (RID-specified, per review suggestion)
+        run: |
+          set -e
+          dotnet publish era-engine/EraHost/EraHost.csproj \
+            -c Release -f net8.0-android34.0 -r android-arm64 \
+            -p:AndroidPackageFormat=apk \
+            -p:AndroidKeyStore=false \
+            -p:CheckEolWorkloads=false \
+            -p:RunAOTCompilation=false \
+            -p:AndroidUseAssemblyStore=true \
+            -v minimal
+
+      - name: Report where the assemblies actually live
+        run: |
+          set -e
+          echo "=== 产物里的 assembly 相关文件 ==="
+          find era-engine/EraHost/bin era-engine/EraHost/obj \
+            \( -name '*assembl*' -o -name 'libassemblies*' -o -name '*.blob' -o -name '*.blob.so' \) \
+            -printf '%s\t%p\n' 2>/dev/null | sort -nr | head -30 || true
+
+          APK=$(find era-engine/EraHost/bin/Release/net8.0-android34.0 -name '*.apk' | head -1)
+          echo "APK=$APK"
+          echo "=== APK 顶层结构（python 读，unzip 不支持 zstd） ==="
+          python3 - "$APK" <<'PY'
+import sys, zipfile
+z = zipfile.ZipFile(sys.argv[1])
+names = z.namelist()
+print("entries:", len(names))
+for n in sorted(names):
+    if n.startswith('assemblies') or 'assembl' in n or n.startswith('lib/arm64-v8a') or n.endswith('.blob'):
+        print("  %10d  %s" % (z.getinfo(n).file_size, n))
+PY
+
+      - name: Try reassembling an AAR from the publish output
+        run: |
+          set -e
+          TFM=net8.0-android34.0
+          RID=android-arm64
+          PUB=era-engine/EraHost/bin/Release/$TFM/$RID/publish
+          APK=$(find era-engine/EraHost/bin/Release/$TFM -name '*.apk' | head -1)
+          STAGE=/tmp/aar_stage
+          rm -rf "$STAGE" /tmp/apk_unpack && mkdir -p "$STAGE/jni/arm64-v8a" "$STAGE/res" /tmp/apk_unpack
+
+          # 用 python 解包（runner 的 unzip 不支持 zstd method 93）
+          python3 - "$APK" /tmp/apk_unpack <<'PY'
+import sys, zipfile
+zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])
+PY
+
+          echo "=== APK 里的 jni 部分 ==="
+          ls -la /tmp/apk_unpack/lib/arm64-v8a/ 2>/dev/null | head -20 || echo "无 lib/arm64-v8a"
+          echo "=== APK 根目录 ==="
+          ls /tmp/apk_unpack | head -20
+
+          if [ -d /tmp/apk_unpack/lib/arm64-v8a ]; then
+            cp /tmp/apk_unpack/lib/arm64-v8a/*.so "$STAGE/jni/arm64-v8a/" 2>/dev/null || true
+          fi
+
+          # obj 里的文本 manifest
+          MF=$(find era-engine/EraHost/obj/Release/$TFM -path '*android*' -name AndroidManifest.xml | head -1)
+          echo "MANIFEST=$MF"
+          if [ -n "$MF" ]; then
+            cp "$MF" "$STAGE/AndroidManifest.xml"
+            echo "=== manifest 片段 ==="
+            grep -n "provider\|MonoRuntimeProvider\|package=" "$STAGE/AndroidManifest.xml" | head -10 || true
+          fi
+
+          touch "$STAGE/R.txt"
+          # 用 python 打 zip，避免 unzip 兼容问题
+          python3 - "$STAGE" /tmp/MistbellEra.aar <<'PY'
+import os, sys, zipfile
+stage, out = sys.argv[1], sys.argv[2]
+with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as z:
+    for root, _, files in os.walk(stage):
+        for f in files:
+            p = os.path.join(root, f)
+            z.write(p, os.path.relpath(p, stage))
+print("wrote", out, os.path.getsize(out))
+PY
+
+          echo "=== 重组后的 AAR 内容 ==="
+          python3 - <<'PY'
+import zipfile
+z = zipfile.ZipFile('/tmp/MistbellEra.aar')
+for n in sorted(z.namelist()):
+    print("  %10d  %s" % (z.getinfo(n).file_size, n))
+PY
+
+      - name: Upload AAR (if any)
+        uses: actions/upload-artifact@v4
+        with:
+          name: era-aar-spike
+          path: /tmp/MistbellEra.aar
+          retention-days: 3
+          if-no-files-found: warn
