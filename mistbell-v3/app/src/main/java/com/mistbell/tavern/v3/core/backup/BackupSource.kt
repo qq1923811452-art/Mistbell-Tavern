@@ -53,7 +53,7 @@ internal object BackupPreferenceCodec {
 
     fun decode(
         json: JSONObject,
-        previous: Map<String, *> = emptyMap(),
+        previous: Map<String, *> = emptyMap<String, Any>(),
     ): Map<String, Any> {
         val types =
             if (json.has(BackupSource.SETTING_TYPES_KEY)) {
