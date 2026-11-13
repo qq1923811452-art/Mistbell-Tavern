@@ -10,6 +10,7 @@
     <!-- 单包变体：引擎注入同一 APK 时，MonoVM 只在 :era 进程初始化 -->
     <application
         android:allowBackup="false"
+        android:largeHeap="true"
         android:label="Mistbell Tavern 3.0 Dev"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"

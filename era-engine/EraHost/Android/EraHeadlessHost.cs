@@ -74,7 +74,9 @@ internal static class EraHeadlessHost
 		}
 		catch (Exception ex)
 		{
-			Log.Error(Tag, "headless host failed: " + ex);
+			EraBootstrap.LastError = "host failed: " + ex.GetType().Name + ": " + ex.Message;
+			EraBootstrap.Trace(EraBootstrap.LastError);
+			EraBootstrap.Trace(ex.StackTrace ?? "");
 			return 1;
 		}
 		finally

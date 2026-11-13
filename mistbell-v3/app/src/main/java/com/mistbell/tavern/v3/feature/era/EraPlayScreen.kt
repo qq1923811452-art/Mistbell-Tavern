@@ -6,6 +6,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,6 +37,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -110,6 +112,7 @@ internal fun EraPlayScreen(
         )
         EraGameLog(
             lines = state.lines,
+            onTap = { fx, fy -> session.clickNormalized(fx, fy) },
             modifier = Modifier.fillMaxWidth().weight(1f).padding(horizontal = 16.dp, vertical = 8.dp),
         )
         state.error?.let { message ->
@@ -195,6 +198,7 @@ private fun EraPlayTopBar(
 @Composable
 private fun EraGameLog(
     lines: List<EraLine>,
+    onTap: (Float, Float) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
@@ -206,7 +210,14 @@ private fun EraGameLog(
         if (nearBottom) listState.scrollToItem(lines.lastIndex)
     }
     LazyColumn(
-        modifier = modifier,
+        modifier =
+            modifier.pointerInput(Unit) {
+                detectTapGestures { offset ->
+                    val width = size.width.toFloat().coerceAtLeast(1f)
+                    val height = size.height.toFloat().coerceAtLeast(1f)
+                    onTap(offset.x / width, offset.y / height)
+                }
+            },
         state = listState,
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {

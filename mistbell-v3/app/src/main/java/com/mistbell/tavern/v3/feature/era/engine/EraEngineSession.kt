@@ -117,6 +117,16 @@ internal class EraEngineSession(
             }
     }
 
+    /** 把界面上的相对坐标换算成引擎 render 像素后发送点击。 */
+    fun clickNormalized(
+        fractionX: Float,
+        fractionY: Float,
+    ) {
+        val x = (fractionX.coerceIn(0f, 1f) * VIEWPORT_WIDTH).toInt()
+        val y = (fractionY.coerceIn(0f, 1f) * viewportHeight()).toInt()
+        client.send(EwpCommand.click(x, y))
+    }
+
     private fun packGame(game: EraGameInstall): File =
         packager.pack(
             game = game,

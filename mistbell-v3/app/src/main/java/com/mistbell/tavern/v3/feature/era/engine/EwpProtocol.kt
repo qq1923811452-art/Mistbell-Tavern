@@ -140,6 +140,12 @@ internal object EwpCommand {
 
     fun quit(): String = JSONObject().put("t", "sys.quit").toString()
 
+    /** 手指点击 → 引擎鼠标点击（需要上游安装 sys.click 补丁）。 */
+    fun click(
+        x: Int,
+        y: Int,
+    ): String = JSONObject().put("t", "sys.click").put("x", x).put("y", y).toString()
+
     /** 只声明真的会处理的能力；引擎会据此降级，不会发我们渲染不了的事件。 */
     private val FRONTEND_CAPS =
         listOf(
