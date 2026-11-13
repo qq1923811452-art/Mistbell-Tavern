@@ -10,6 +10,11 @@
         <package android:name="com.mistbell.era" />
     </queries>
 
+    <!-- 单包变体：引擎注入同一 APK 时，MonoVM 只在 :era 进程初始化 -->
+    <permission
+        android:name="com.mistbell.tavern.v3.permission.ERA_CONTROL"
+        android:protectionLevel="signature" />
+
     <application
         android:allowBackup="false"
         android:label="Mistbell Tavern 3.0 Dev"
@@ -22,6 +27,18 @@
         <uses-native-library android:name="libvndksupport.so" android:required="false" />
         <uses-native-library android:name="libOpenCL.so" android:required="false" />
         <uses-native-library android:name="libcdsprpc.so" android:required="false" />
+        <provider
+            android:name="mono.MonoRuntimeProvider"
+            android:authorities="com.mistbell.tavern.v3.mono.MonoRuntimeProvider.__mono_init__"
+            android:enabled="${eraMerged}"
+            android:exported="false"
+            android:initOrder="2147483647"
+            android:process=":era" />
+        <service
+            android:name="com.mistbell.era.EraEngineService"
+            android:enabled="${eraMerged}"
+            android:exported="false"
+            android:process=":era" />
         <activity
             android:name=".MainActivity"
             android:exported="true">

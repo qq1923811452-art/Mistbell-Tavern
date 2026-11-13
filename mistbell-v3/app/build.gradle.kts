@@ -65,6 +65,11 @@ android {
         versionCode = 1
         versionName = "3.0.0-dev"
 
+        // 单包变体：把 .NET 引擎注入同一个 APK（manifest 里的 provider/service 由占位符开关）
+        val eraMerged = providers.gradleProperty("eraMerged").orNull == "true"
+        manifestPlaceholders["eraMerged"] = eraMerged.toString()
+        buildConfigField("boolean", "ERA_MERGED", eraMerged.toString())
+
         // NPU device-test builds are arm64-only. Keep ordinary builds unrestricted so
         // x86_64 emulator tests and CPU/GPU development remain available.
         if (enableQualcommNpuRuntime) {

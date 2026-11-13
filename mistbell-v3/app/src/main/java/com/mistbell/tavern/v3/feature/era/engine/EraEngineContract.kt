@@ -1,5 +1,9 @@
 package com.mistbell.tavern.v3.feature.era.engine
 
+import android.content.ComponentName
+import android.content.Context
+import com.mistbell.tavern.v3.BuildConfig
+
 /**
  * 引擎组件（独立 APK）的绑定契约。
  *
@@ -30,4 +34,12 @@ internal object EraEngineContract {
     const val STATE_RUNNING = "running"
     const val STATE_STOPPED = "stopped"
     const val STATE_ERROR = "error"
+
+    /** 两包时绑定独立 APK；单包（注入）时绑定本包里的同名类。 */
+    fun componentFor(context: Context): ComponentName =
+        if (BuildConfig.ERA_MERGED) {
+            ComponentName(context.packageName, SERVICE_CLASS)
+        } else {
+            ComponentName(ENGINE_PACKAGE, SERVICE_CLASS)
+        }
 }

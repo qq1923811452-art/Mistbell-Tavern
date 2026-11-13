@@ -171,7 +171,7 @@ internal class EraEngineSession(
         val descriptor = ParcelFileDescriptor.open(zip, ParcelFileDescriptor.MODE_READ_ONLY)
         val intent =
             Intent().apply {
-                component = ComponentName(EraEngineContract.ENGINE_PACKAGE, EraEngineContract.SERVICE_CLASS)
+                component = EraEngineContract.componentFor(appContext)
                 putExtra(EraEngineContract.EXTRA_REPLY_TO, messenger)
                 putExtra(EraEngineContract.EXTRA_PORT, port)
                 putExtra(EraEngineContract.EXTRA_GAME_NAME, game.name)
