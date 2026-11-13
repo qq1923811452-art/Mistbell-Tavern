@@ -7,6 +7,8 @@
   -->
   <PropertyGroup>
     <TargetFramework>net8.0-android</TargetFramework>
+    <!-- SkiaSharp 3.119.2 的 Android 原生资产只面向 API 34+；显式钉住平台版本 -->
+    <TargetPlatformVersion>34.0</TargetPlatformVersion>
     <OutputType>Exe</OutputType>
     <RootNamespace>Mistbell.Era.Host</RootNamespace>
     <AssemblyName>MistbellEra</AssemblyName>
