@@ -119,7 +119,7 @@ internal class EraEngineSession(
 
     fun stop() {
         request = null
-        scope.launch { runCatching { client.send(EwpCommand.quit()) } }
+        runCatching { client.send(EwpCommand.quit()) }
         client.close()
         if (serviceBound) {
             runCatching { appContext.unbindService(connection) }
@@ -149,8 +149,9 @@ internal class EraEngineSession(
             runCatching {
                 appContext.bindService(intent, connection, Context.BIND_AUTO_CREATE)
             }.getOrDefault(false)
+        // Binder 已把 fd dup 给引擎进程，本地这份可以立刻关掉，避免每次进游戏漏一个 fd。
+        runCatching { descriptor.close() }
         if (!bound) {
-            runCatching { descriptor.close() }
             fail("没有找到引擎组件（com.mistbell.era），请先安装引擎 APK")
         }
     }

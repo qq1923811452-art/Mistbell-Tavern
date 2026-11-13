@@ -1,8 +1,10 @@
 using Android.Util;
+using MinorShift.Emuera;
 using MinorShift.Emuera.GameView;
-using MinorShift.Emuera.Runtime.Config;
+using MinorShift.Emuera.Runtime.Utils;
 using MinorShift.Emuera.UI.Ewp;
 using MinorShift.Emuera.UI.Headless;
+using EuConfig = MinorShift.Emuera.Runtime.Config.Config;
 using System;
 using System.Threading;
 
@@ -36,8 +38,8 @@ internal static class EraHeadlessHost
 			SynchronizationContext.SetSynchronizationContext(ctx);
 			PlatformInterop.DoEvents = () => ctx.PumpOnce(false);
 
-			var w = Math.Max(320, Config.WindowX);
-			var h = Math.Max(240, Config.WindowY);
+			var w = Math.Max(320, EuConfig.WindowX);
+			var h = Math.Max(240, EuConfig.WindowY);
 			var hostSurface = new HeadlessSurface(ctx, w, h);
 			lock (Gate) { surface = hostSurface; }
 

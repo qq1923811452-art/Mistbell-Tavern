@@ -49,7 +49,7 @@ internal static class EraGameStore
 		}
 
 		var tempZip = Path.Combine(ctx.CacheDir!.AbsolutePath, "era-import.zip");
-		using (var input = ParcelFileDescriptor.AutoCloseInputStream(fd))
+		using (var input = new ParcelFileDescriptor.AutoCloseInputStream(fd))
 		using (var output = File.Create(tempZip))
 			input.CopyTo(output);
 
