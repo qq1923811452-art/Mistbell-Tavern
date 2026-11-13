@@ -24,7 +24,7 @@ internal static class EraBootstrap
 	private static string logPath;
 
 	/// <summary>最近一次失败的结构化说明，随退出码一起回传前端。</summary>
-	public static string LastError { get; private set; } = string.Empty;
+	public static string LastError { get; internal set; } = string.Empty;
 
 	/// <summary>把启动过程写到外部私有目录，便于在没有 logcat 时远程排查。</summary>
 	public static void InitLog(Android.Content.Context ctx)
