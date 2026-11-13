@@ -95,7 +95,15 @@ internal fun EraPlayScreen(
         EraPlayTopBar(
             name = game.name,
             status = state.statusText,
-            detail = state.detail ?: state.warningCount.takeIf { it > 0 }?.let { "已过滤 $it 条引擎警告" },
+            detail =
+                state.detail
+                    ?: buildString {
+                        if (state.lineCount > 0) append("已收到 ${state.lineCount} 行")
+                        if (state.warningCount > 0) {
+                            if (isNotEmpty()) append("，")
+                            append("已过滤 ${state.warningCount} 条警告")
+                        }
+                    }.ifEmpty { null },
             onBack = onBack,
             onOpenSetup = onOpenSetup,
             onOpenLog = { logLines = readEngineLog(context) },

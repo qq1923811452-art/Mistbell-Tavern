@@ -44,6 +44,7 @@ internal data class EraGameState(
     val error: String? = null,
     val detail: String? = null,
     val warningCount: Int = 0,
+    val lineCount: Int = 0,
 )
 
 /**
@@ -262,7 +263,10 @@ internal class EraEngineSession(
         }
         _state.update { current ->
             val next = current.lines + EraLine(id, text)
-            current.copy(lines = if (next.size > MAX_LINES) next.takeLast(MAX_LINES) else next)
+            current.copy(
+                lines = if (next.size > MAX_LINES) next.takeLast(MAX_LINES) else next,
+                lineCount = current.lineCount + 1,
+            )
         }
     }
 
