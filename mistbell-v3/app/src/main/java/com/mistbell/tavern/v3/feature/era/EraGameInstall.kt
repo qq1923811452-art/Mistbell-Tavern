@@ -13,4 +13,6 @@ data class EraGameInstall(
     val directory: File,
     val importedAtEpochMillis: Long,
     val fileCount: Int,
+    /** 单包模式下直接把这个 ZIP 交给引擎解一次，避免 Kotlin 与引擎各解一份。 */
+    val zipPath: File? = null,
 )

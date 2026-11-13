@@ -107,7 +107,7 @@ internal class EraEngineSession(
             scope.launch {
                 try {
                     _state.update { it.copy(statusText = "正在打包 ${game.name}…") }
-                    val zip = packGame(game)
+                    val zip = game.zipPath ?: packGame(game)
                     pendingPort = pickPort()
                     _state.update { it.copy(statusText = "正在唤起引擎…") }
                     bindEngine(game, zip, pendingPort)
@@ -271,9 +271,10 @@ internal class EraEngineSession(
         id: Long,
         text: String,
     ) {
-        // 警告照常显示（用户要求可见）；只额外计数，便于判断问题规模。
+        // 警告照常显示（用户要求可见），并落到日志文件，方便用文件管理器/MT 直接看。
         if (text.startsWith("警告")) {
             _state.update { it.copy(warningCount = it.warningCount + 1) }
+            appendToLogFile("WARN " + text)
         }
         _state.update { current ->
             val next = current.lines + EraLine(id, text)
@@ -314,6 +315,14 @@ internal class EraEngineSession(
                 }
             EraEngineContract.STATE_ERROR -> fail("引擎启动失败")
             else -> Unit
+        }
+    }
+
+    /** 追加到 /sdcard/Android/data/<pkg>/files/era-engine.log（与引擎同一份）。 */
+    private fun appendToLogFile(line: String) {
+        runCatching {
+            val dir = appContext.getExternalFilesDir(null) ?: appContext.filesDir
+            File(dir, "era-engine.log").appendText(line + "\n")
         }
     }
 
