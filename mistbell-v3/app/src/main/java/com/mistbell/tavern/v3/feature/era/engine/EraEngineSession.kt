@@ -1,0 +1,261 @@
+@file:Suppress("TooGenericExceptionCaught", "TooManyFunctions")
+
+package com.mistbell.tavern.v3.feature.era.engine
+
+import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
+import android.content.ServiceConnection
+import android.os.Handler
+import android.os.IBinder
+import android.os.Looper
+import android.os.Message
+import android.os.Messenger
+import android.os.ParcelFileDescriptor
+import com.mistbell.tavern.v3.feature.era.EraGameInstall
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import java.io.BufferedReader
+import java.io.File
+import java.net.InetAddress
+import java.net.ServerSocket
+
+/** 游戏里的一行文本。lineId 单调递增，`legacy.clear` 靠它裁剪。 */
+internal data class EraLine(
+    val id: Long,
+    val text: String,
+)
+
+internal data class EraGameState(
+    val connected: Boolean = false,
+    val statusText: String = "正在准备游戏…",
+    val lines: List<EraLine> = emptyList(),
+    val input: EwpInputRequest? = null,
+    val error: String? = null,
+)
+
+/**
+ * 一次游戏会话：打包 → 绑定引擎服务 → 连 EWP → 收事件 → 回输入。
+ *
+ * 引擎是独立 APK；绑定期间它的进程被前台客户端拉住，解绑即停。
+ */
+internal class EraEngineSession(
+    context: Context,
+) {
+    private val appContext = context.applicationContext
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val client = EwpClient()
+    private val packager = EraGamePackager(appContext.cacheDir)
+    private val _state = MutableStateFlow(EraGameState())
+    val state: StateFlow<EraGameState> = _state.asStateFlow()
+
+    private var serviceBound = false
+    private var pendingPort = 0
+    private var request: EwpInputRequest? = null
+    private var reading: Job? = null
+
+    private val handler =
+        Handler(Looper.getMainLooper()) { message: Message ->
+            if (message.what == EraEngineContract.MSG_STATUS) {
+                message.data?.getString("state")?.let(::onEngineStatus)
+                message.data?.getString("detail")?.let { detail -> onEngineDetail(detail) }
+            }
+            true
+        }
+
+    private val connection =
+        object : ServiceConnection {
+            override fun onServiceConnected(
+                name: ComponentName?,
+                service: IBinder?,
+            ) {
+                serviceBound = true
+                reading = scope.launch { connectEwp() }
+            }
+
+            override fun onServiceDisconnected(name: ComponentName?) {
+                serviceBound = false
+                fail("引擎进程已断开")
+            }
+
+            override fun onBindingDied(name: ComponentName?) {
+                serviceBound = false
+                fail("引擎组件不可用，请重新安装")
+            }
+        }
+
+    fun start(game: EraGameInstall) {
+        scope.launch {
+            try {
+                _state.update { it.copy(statusText = "正在打包 ${game.name}…") }
+                val zip = packager.pack(game)
+                pendingPort = pickPort()
+                _state.update { it.copy(statusText = "正在唤起引擎…") }
+                bindEngine(game, zip, pendingPort)
+            } catch (error: Exception) {
+                fail(error.message ?: "启动引擎失败")
+            }
+        }
+    }
+
+    fun submit(
+        value: String,
+        via: String,
+    ) {
+        val current = request ?: return
+        request = null
+        _state.update { it.copy(input = null, statusText = "等待引擎结算…") }
+        client.send(EwpCommand.submit(current.requestId, value, via))
+    }
+
+    fun stop() {
+        request = null
+        scope.launch { runCatching { client.send(EwpCommand.quit()) } }
+        client.close()
+        if (serviceBound) {
+            runCatching { appContext.unbindService(connection) }
+            serviceBound = false
+        }
+        reading?.cancel()
+        scope.cancel()
+    }
+
+    private fun bindEngine(
+        game: EraGameInstall,
+        zip: File,
+        port: Int,
+    ) {
+        val messenger = Messenger(handler)
+        val descriptor = ParcelFileDescriptor.open(zip, ParcelFileDescriptor.MODE_READ_ONLY)
+        val intent =
+            Intent().apply {
+                component = ComponentName(EraEngineContract.ENGINE_PACKAGE, EraEngineContract.SERVICE_CLASS)
+                putExtra(EraEngineContract.EXTRA_REPLY_TO, messenger)
+                putExtra(EraEngineContract.EXTRA_PORT, port)
+                putExtra(EraEngineContract.EXTRA_GAME_NAME, game.name)
+                putExtra(EraEngineContract.EXTRA_PACK_VERSION, packager.versionKey(game))
+                putExtra(EraEngineContract.EXTRA_ZIP_FD, descriptor)
+            }
+        val bound =
+            runCatching {
+                appContext.bindService(intent, connection, Context.BIND_AUTO_CREATE)
+            }.getOrDefault(false)
+        if (!bound) {
+            runCatching { descriptor.close() }
+            fail("没有找到引擎组件（com.mistbell.era），请先安装引擎 APK")
+        }
+    }
+
+    private suspend fun connectEwp() {
+        _state.update { it.copy(statusText = "等待引擎监听 $pendingPort…") }
+        val reader = client.open(pendingPort, HANDSHAKE_TIMEOUT_MS)
+        if (reader == null) {
+            fail("引擎在 ${HANDSHAKE_TIMEOUT_MS / MILLIS_PER_SECOND} 秒内没有就绪")
+            return
+        }
+        client.send(EwpCommand.helloOk(viewportWidth(), viewportHeight()))
+        _state.update { it.copy(connected = true, statusText = "已连接引擎") }
+        readLoop(reader)
+    }
+
+    private fun readLoop(reader: BufferedReader) {
+        try {
+            while (scope.isActive) {
+                val raw = reader.readLine() ?: break
+                EwpParser.parse(raw)?.let(::handle)
+            }
+        } catch (error: Exception) {
+            if (scope.isActive) fail(error.message ?: "与引擎的连接中断")
+        }
+    }
+
+    private fun handle(event: EwpEvent) {
+        when (event) {
+            is EwpEvent.Hello -> _state.update { it.copy(statusText = "引擎 ${event.proto}") }
+            EwpEvent.Ready -> _state.update { it.copy(statusText = "游戏已启动") }
+            is EwpEvent.Line -> appendLine(event.id, event.text)
+            is EwpEvent.Clear -> clearLines(event.fromId, event.count)
+            is EwpEvent.Input -> {
+                request = event.request
+                _state.update { it.copy(input = event.request, statusText = "轮到你了") }
+            }
+            is EwpEvent.Commit -> client.send(EwpCommand.ack(event.frameId))
+            is EwpEvent.Dialog -> appendLine(-1, "【系统】${event.text}")
+            is EwpEvent.Failure -> _state.update { it.copy(error = event.detail) }
+            EwpEvent.Exit -> _state.update { it.copy(statusText = "引擎已退出") }
+        }
+    }
+
+    private fun appendLine(
+        id: Long,
+        text: String,
+    ) {
+        _state.update { current ->
+            val next = current.lines + EraLine(id, text)
+            current.copy(lines = if (next.size > MAX_LINES) next.takeLast(MAX_LINES) else next)
+        }
+    }
+
+    private fun clearLines(
+        fromId: Long,
+        count: Int,
+    ) {
+        val until = if (count > 0) fromId + count else Long.MAX_VALUE
+        _state.update { current ->
+            current.copy(lines = current.lines.filterNot { it.id in fromId until until })
+        }
+    }
+
+    private fun onEngineStatus(state: String) {
+        when (state) {
+            EraEngineContract.STATE_IMPORTING -> _state.update { it.copy(statusText = "引擎正在解包游戏…") }
+            EraEngineContract.STATE_IMPORTED -> _state.update { it.copy(statusText = "游戏包已就位") }
+            EraEngineContract.STATE_STARTING -> _state.update { it.copy(statusText = "引擎正在启动…") }
+            EraEngineContract.STATE_RUNNING -> _state.update { it.copy(statusText = "引擎运行中") }
+            EraEngineContract.STATE_STOPPED -> _state.update { it.copy(statusText = "引擎已停止") }
+            EraEngineContract.STATE_ERROR -> fail("引擎启动失败")
+            else -> Unit
+        }
+    }
+
+    private fun onEngineDetail(detail: String) {
+        if (detail.startsWith("no_game_installed")) fail("引擎里没有游戏包，请重新导入 ZIP")
+    }
+
+    private fun fail(message: String) {
+        _state.update { it.copy(error = message, statusText = message) }
+    }
+
+    private fun viewportWidth(): Int = VIEWPORT_WIDTH
+
+    private fun viewportHeight(): Int {
+        val metrics = appContext.resources.displayMetrics
+        if (metrics.widthPixels <= 0) return VIEWPORT_HEIGHT_FALLBACK
+        return VIEWPORT_WIDTH * metrics.heightPixels / metrics.widthPixels
+    }
+
+    private fun pickPort(): Int =
+        runCatching {
+            ServerSocket(EPHEMERAL_PORT, LISTEN_BACKLOG, InetAddress.getByName("127.0.0.1")).use { it.localPort }
+        }.getOrDefault(DEFAULT_PORT)
+
+    private companion object {
+        const val HANDSHAKE_TIMEOUT_MS = 180_000L
+        const val MILLIS_PER_SECOND = 1000
+        const val LISTEN_BACKLOG = 1
+        const val EPHEMERAL_PORT = 0
+        const val DEFAULT_PORT = 5177
+        const val MAX_LINES = 600
+        const val VIEWPORT_WIDTH = 960
+        const val VIEWPORT_HEIGHT_FALLBACK = 540
+    }
+}

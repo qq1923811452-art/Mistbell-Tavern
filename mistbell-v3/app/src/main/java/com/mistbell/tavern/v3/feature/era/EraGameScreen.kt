@@ -98,6 +98,8 @@ fun EraGameScreen(
     var importing by remember { mutableStateOf(false) }
     var importMessage by remember { mutableStateOf<String?>(null) }
     var autoImportLaunched by rememberSaveable { mutableStateOf(false) }
+    var playing by rememberSaveable { mutableStateOf(false) }
+    var autoPlayed by rememberSaveable { mutableStateOf(false) }
     val zipPicker =
         rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
             if (uri == null) return@rememberLauncherForActivityResult
@@ -111,6 +113,7 @@ fun EraGameScreen(
                         }
                     installed = result
                     importMessage = "已导入 ${result.name}，共 ${result.fileCount} 个文件。"
+                    playing = true
                 } catch (error: Exception) {
                     importMessage = "导入失败：${error.message ?: error.javaClass.simpleName}"
                 } finally {
@@ -124,6 +127,24 @@ fun EraGameScreen(
             autoImportLaunched = true
             zipPicker.launch(ZIP_MIME_TYPES)
         }
+    }
+
+    LaunchedEffect(installed) {
+        val ready = installed
+        if (!autoOpenImport && ready != null && !autoPlayed) {
+            autoPlayed = true
+            playing = true
+        }
+    }
+
+    val playable = installed
+    if (playing && playable != null) {
+        EraPlayScreen(
+            game = playable,
+            onBack = onBack,
+            onOpenSetup = { playing = false },
+        )
+        return
     }
 
     TavernBackground(
@@ -154,6 +175,16 @@ fun EraGameScreen(
                 Spacer(modifier = Modifier.height(CARD_GAP))
                 EraStatusCard(installed = installed)
                 Spacer(modifier = Modifier.height(CARD_GAP))
+                if (installed != null) {
+                    TavernPill(
+                        label = "进入游戏",
+                        onClick = { playing = true },
+                        modifier = Modifier.fillMaxWidth().height(46.dp),
+                        filled = true,
+                        contentDescription = "进入幻想乡",
+                    )
+                    Spacer(modifier = Modifier.height(CARD_GAP))
+                }
                 EraImportCard(
                     installed = installed,
                     importing = importing,
