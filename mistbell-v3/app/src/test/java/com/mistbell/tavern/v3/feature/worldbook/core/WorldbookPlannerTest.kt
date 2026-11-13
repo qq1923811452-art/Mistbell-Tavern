@@ -66,6 +66,12 @@ class WorldbookPlannerTest {
     }
 
     @Test
+    fun selectiveEntryWithoutSecondaryKeysUsesOnlyPrimaryMatch() {
+        val entries = listOf(entry("a", keys = listOf("火"), requireSecondary = true))
+        assertEquals(1, planner.activate(entries, "火球术").activated.size)
+    }
+
+    @Test
     fun budgetDropsOversizedEntries() {
         val plan =
             planner.activate(

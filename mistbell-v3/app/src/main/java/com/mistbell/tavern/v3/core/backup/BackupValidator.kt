@@ -13,6 +13,7 @@ object BackupValidator {
     const val MAX_SEGMENT_CHARS = 255
     private const val SETTINGS_PATH = "settings.json"
     private const val SETTINGS_PATH_FULL = "data/settings.json"
+    private val CHARACTER_ART_PATH = Regex("art/[a-f0-9]{64}-(avatar|portrait)\\.img")
 
     fun validatePath(path: String) {
         require(path.isNotEmpty() && path.length <= MAX_PATH_CHARS) { "Backup path is empty or too long." }
@@ -42,10 +43,11 @@ object BackupValidator {
                     relative
                         .removePrefix("worldbooks/")
                         .endsWith(".json", ignoreCase = true)
-                relative.startsWith("characters/") ->
-                    relative
-                        .removePrefix("characters/")
-                        .endsWith(".json", ignoreCase = true)
+                relative.startsWith("characters/") -> {
+                    val characterPath = relative.removePrefix("characters/")
+                    characterPath.endsWith(".json", ignoreCase = true) ||
+                        CHARACTER_ART_PATH.matches(characterPath)
+                }
                 relative.startsWith("generated-images/") -> relative.removePrefix("generated-images/").isNotEmpty()
                 else -> false
             }

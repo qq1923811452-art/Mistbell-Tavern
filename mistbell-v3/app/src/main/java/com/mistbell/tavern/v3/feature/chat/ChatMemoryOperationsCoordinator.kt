@@ -10,6 +10,7 @@ import com.mistbell.tavern.v3.core.storage.AtomicMemoryTextStore
 import com.mistbell.tavern.v3.core.storage.AtomicVectorSnapshotStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.sync.Mutex
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Keeps chat-screen memory scheduling in one cohesive coordinator.
@@ -31,6 +32,7 @@ internal class ChatMemoryOperationsCoordinator(
     private val setIndexRebuildInFlight: (Boolean) -> Unit,
     private val isChatBusy: () -> Boolean,
     private val setStatus: (String) -> Unit,
+    private val historySaveRevision: AtomicLong,
 ) {
     fun createIndexRebuildCoordinator(): ChatMemoryIndexRebuildCoordinator =
         ChatMemoryIndexRebuildCoordinator(
@@ -67,6 +69,7 @@ internal class ChatMemoryOperationsCoordinator(
             memoryScopeId = memoryScopeId,
             historyScopeId = historyScopeId,
             setStatus = setStatus,
+            historySaveRevision = historySaveRevision,
         ).schedule(providers, history)
     }
 }

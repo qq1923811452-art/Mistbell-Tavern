@@ -90,6 +90,33 @@ class WorldBookParserTest {
         assertEquals(0.5, entry.probability, 0.00001)
     }
 
+    @Test
+    fun parsesIntegerStickyAndCommaSeparatedKeywords() {
+        val book =
+            WorldBookParser.parse(
+                """{"entries":[{"uid":"st","key":"alpha, , beta","keysecondary":"one, two", """ +
+                    """"selective":true,"sticky":3,"recursive":true,"content":"ok"}]}""",
+                "fallback",
+            )
+        assertNotNull(book)
+        val entry = book!!.entries.single()
+        assertEquals(listOf("alpha", "beta"), entry.keys)
+        assertEquals(listOf("one", "two"), entry.secondaryKeys)
+        assertTrue(entry.sticky)
+        assertTrue(entry.recursive)
+    }
+
+    @Test
+    fun jsonArrayKeywordsKeepCommasInsideRegex() {
+        val book =
+            WorldBookParser.parse(
+                """{"entries":[{"uid":"re","key":["/\\d{1,3}/"],"content":"ok"}]}""",
+                "fallback",
+            )
+        assertNotNull(book)
+        assertEquals(listOf("/\\d{1,3}/"), book!!.entries.single().keys)
+    }
+
     @Test fun rejectsMalformedOrMissingEntries() {
         assertNull(WorldBookParser.parse("not-json", "fallback"))
         assertNull(WorldBookParser.parse("""{"name":"empty"}""", "fallback"))

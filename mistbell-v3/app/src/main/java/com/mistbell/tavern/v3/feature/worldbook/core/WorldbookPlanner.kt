@@ -210,11 +210,8 @@ class WorldbookPlanner(
             entry.keys.isNotEmpty() &&
                 matchingKeys(entry.keys, corpus, loweredCorpus).isNotEmpty()
         val secondaryMatch =
-            !entry.requireSecondaryMatch ||
-                (
-                    entry.secondaryKeys.isNotEmpty() &&
-                        matchingKeys(entry.secondaryKeys, corpus, loweredCorpus).isNotEmpty()
-                )
+            !entry.requireSecondaryMatch || entry.secondaryKeys.isEmpty() ||
+                matchingKeys(entry.secondaryKeys, corpus, loweredCorpus).isNotEmpty()
         val matchesNow = primaryMatch && secondaryMatch
         val lastActivated = state?.lastActivatedTurn?.get(entry.id) ?: Int.MIN_VALUE
         val cooldownOk =

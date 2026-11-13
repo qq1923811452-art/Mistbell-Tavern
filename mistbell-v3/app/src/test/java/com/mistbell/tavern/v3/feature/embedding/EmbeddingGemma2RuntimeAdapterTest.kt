@@ -47,8 +47,8 @@ class EmbeddingGemma2RuntimeAdapterTest {
             val queryResult = adapter.embedQueries(listOf("Who left the tavern?"))
             val documentResult = adapter.embedDocuments(listOf("Mira left at midnight."), listOf("Night 1"))
 
-            assertEquals("task: search query | text: Who left the tavern?", seen[0][0])
-            assertEquals("task: search result | title: Night 1 | text: Mira left at midnight.", seen[1][0])
+            assertEquals("task: search result | query: Who left the tavern?", seen[0][0])
+            assertEquals("title: Night 1 | text: Mira left at midnight.", seen[1][0])
             assertEquals(128, queryResult.vectors.single().size)
             assertEquals(128, documentResult.vectors.single().size)
             assertEquals(InferenceBackend.CPU, queryResult.status.backend)
@@ -132,28 +132,25 @@ class EmbeddingGemma2RuntimeAdapterTest {
         }
 
     @Test
-    fun rejectsOversizedFormattedTitleBeforeCallingEngine(): Unit =
+    fun safelyTruncatesOversizedFormattedTitleBeforeCallingEngine(): Unit =
         runBlocking {
             var calls = 0
             val adapter =
                 EmbeddingGemma2RuntimeAdapter(
                     engine =
-                        engine {
+                        engine { inputs ->
                             calls++
-                            error("Engine must not run for an overlong formatted title.")
+                            EmbeddingBatch(
+                                inputs.map { List(EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS) { 1f } },
+                                rawStatus,
+                            )
                         },
                 )
-            val error =
-                assertThrows(EmbeddingOutputException::class.java) {
-                    runBlocking {
-                        adapter.embedDocuments(
-                            listOf("short text"),
-                            listOf("x".repeat(EmbeddingGemma2RuntimeAdapter.MAX_FORMATTED_INPUT_BYTES)),
-                        )
-                    }
-                }
-            assertTrue(error.message!!.contains("split the text"))
-            assertEquals(0, calls)
+            adapter.embedDocuments(
+                listOf("short text"),
+                listOf("中".repeat(EmbeddingGemma2RuntimeAdapter.MAX_FORMATTED_INPUT_BYTES)),
+            )
+            assertEquals(1, calls)
         }
 
     @Test
@@ -312,11 +309,41 @@ class EmbeddingGemma2RuntimeAdapterTest {
 
             adapter.embedQueries(listOf("x".repeat(3_000)))
 
-            assertEquals(2_000, sentInput!!.substringAfter("| text: ").length)
+            assertTrue(
+                sentInput!!.toByteArray(Charsets.UTF_8).size <=
+                    EmbeddingGemma2RuntimeAdapter.MAX_FORMATTED_INPUT_BYTES,
+            )
+            assertTrue(sentInput!!.startsWith("task: search result | query: "))
             assertTrue(
                 events.any {
                     it.first == "embedding.input.truncated" &&
-                        it.second.contains("originalLength=3000") && it.second.contains("truncatedLength=2000")
+                        it.second.contains("originalLength=3000") && it.second.contains("truncatedLength=")
+                },
+            )
+        }
+
+    @Test
+    fun logsTruncationForChineseDocumentCutByByteBudget(): Unit =
+        runBlocking {
+            EmbeddingVectorCache.clear()
+            val events = mutableListOf<Pair<String, String>>()
+            val adapter =
+                EmbeddingGemma2RuntimeAdapter(
+                    engine =
+                        engine { inputs ->
+                            EmbeddingBatch(
+                                vectors = inputs.map { List(EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS) { 1f } },
+                                status = rawStatus,
+                            )
+                        },
+                    onDiagnostic = { event, detail -> events += event to detail },
+                )
+
+            adapter.embedDocuments(listOf("中".repeat(900)))
+
+            assertTrue(
+                events.any {
+                    it.first == "embedding.input.truncated" && it.second.contains("originalLength=900")
                 },
             )
         }
@@ -350,6 +377,29 @@ class EmbeddingGemma2RuntimeAdapterTest {
             }.isFailure,
         )
     }
+
+    @Test
+    fun longChineseTitleIsByteBoundedWithoutEngineFailure(): Unit =
+        runBlocking {
+            var input: String? = null
+            val adapter =
+                EmbeddingGemma2RuntimeAdapter(
+                    engine =
+                        engine { inputs ->
+                            input = inputs.single()
+                            EmbeddingBatch(
+                                listOf(List(EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS) { 1f }),
+                                rawStatus,
+                            )
+                        },
+                )
+            adapter.embedDocuments(listOf("中".repeat(2_000)), listOf("标题".repeat(1_000)))
+            assertTrue(
+                input!!.toByteArray(Charsets.UTF_8).size <=
+                    EmbeddingGemma2RuntimeAdapter.MAX_FORMATTED_INPUT_BYTES,
+            )
+            assertTrue(input!!.startsWith("title: "))
+        }
 
     @Test
     fun rejectsTitleCountMismatch(): Unit =

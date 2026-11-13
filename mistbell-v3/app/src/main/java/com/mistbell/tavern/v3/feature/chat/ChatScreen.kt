@@ -497,6 +497,7 @@ fun ChatScreen(
                 setIndexRebuildInFlight = { memoryIndexRebuildInFlight = it },
                 isChatBusy = { busy },
                 setStatus = { status = it },
+                historySaveRevision = historySaveRevision,
             )
         }
 

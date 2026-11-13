@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -53,6 +55,8 @@ fun WorldBookLibraryScreen(onBack: () -> Unit) {
     var books by remember { mutableStateOf(emptyList<WorldBook>()) }
     var selectedId by remember { mutableStateOf<String?>(null) }
     var editingEntryId by remember { mutableStateOf<String?>(null) }
+    var requireSecondaryMatch by remember { mutableStateOf(false) }
+    var recursive by remember { mutableStateOf(false) }
     var showBookDialog by remember { mutableStateOf(false) }
     var showEntryDialog by remember { mutableStateOf(false) }
     var deleteBook by remember { mutableStateOf<WorldBook?>(null) }
@@ -88,6 +92,8 @@ fun WorldBookLibraryScreen(onBack: () -> Unit) {
 
     fun editEntry(entry: WorldBookEntry?) {
         editingEntryId = entry?.id
+        requireSecondaryMatch = entry?.requireSecondaryMatch ?: false
+        recursive = entry?.recursive ?: false
         comment = entry?.comment.orEmpty()
         keys = entry?.keys.orEmpty().joinToString(", ")
         secondaryKeys = entry?.secondaryKeys.orEmpty().joinToString(", ")
@@ -309,10 +315,21 @@ fun WorldBookLibraryScreen(onBack: () -> Unit) {
             onDismissRequest = { showEntryDialog = false },
             title = { Text(if (editingEntryId == null) "新建条目" else "编辑条目") },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
                     OutlinedTextField(comment, { comment = it }, label = { Text("条目名称") })
                     OutlinedTextField(keys, { keys = it }, label = { Text("关键词（逗号分隔）") })
                     OutlinedTextField(secondaryKeys, { secondaryKeys = it }, label = { Text("二级关键词（逗号分隔）") })
+                    Row {
+                        Checkbox(requireSecondaryMatch, { requireSecondaryMatch = it })
+                        Text("要求匹配二级关键词", modifier = Modifier.padding(top = 12.dp))
+                    }
+                    Row {
+                        Checkbox(recursive, { recursive = it })
+                        Text("递归扫描新内容", modifier = Modifier.padding(top = 12.dp))
+                    }
                     OutlinedTextField(orderText, { orderText = it.filter(Char::isDigit).take(6) }, label = { Text("插入顺序") })
                     OutlinedTextField(insertPosition, {
                         insertPosition = it
@@ -355,6 +372,8 @@ fun WorldBookLibraryScreen(onBack: () -> Unit) {
                             comment = comment.trim(),
                             keys = keys.split(',').map(String::trim).filter(String::isNotEmpty),
                             content = content,
+                            requireSecondaryMatch = requireSecondaryMatch,
+                            recursive = recursive,
                             constant = constant,
                             disable = disabled,
                             secondaryKeys = secondaryKeys.split(',').map(String::trim).filter(String::isNotEmpty),

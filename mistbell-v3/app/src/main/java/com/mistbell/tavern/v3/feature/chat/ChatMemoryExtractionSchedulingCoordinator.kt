@@ -17,6 +17,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Owns the existing turn batching and durable enqueue flow for memory extraction.
@@ -32,6 +33,7 @@ internal class ChatMemoryExtractionSchedulingCoordinator(
     private val memoryScopeId: String,
     private val historyScopeId: String,
     private val setStatus: (String) -> Unit,
+    private val historySaveRevision: AtomicLong,
 ) {
     fun schedule(
         providers: ProviderProfileSet,
@@ -69,16 +71,8 @@ internal class ChatMemoryExtractionSchedulingCoordinator(
         if (pending.size < 3) return
 
         val conversationId = memoryScopeId
-        val historySnapshot =
-            history.map { line ->
-                PersistedChatMessage(
-                    id = line.id,
-                    role = line.role,
-                    content = line.content,
-                    createdAtEpochMillis = line.createdAtEpochMillis,
-                    deliveryState = line.deliveryState,
-                )
-            }
+        val snapshotRevision = historySaveRevision.get()
+        val historySnapshot = ChatHistorySnapshotFactory.create(history)
         coroutineScope.launch {
             val queuedCount =
                 runCatching {
@@ -86,6 +80,8 @@ internal class ChatMemoryExtractionSchedulingCoordinator(
                         // Share the same mutex as history saves: commit the source snapshot before
                         // a worker can observe jobs that reference its turn IDs.
                         historySaveMutex.withLock {
+                            // A newer save or deletion supersedes this immutable UI-thread snapshot.
+                            if (snapshotRevision != historySaveRevision.get()) return@withLock 0
                             historyStore.save(historySnapshot)
                             val repository =
                                 MemoryExtractionJobRepository(

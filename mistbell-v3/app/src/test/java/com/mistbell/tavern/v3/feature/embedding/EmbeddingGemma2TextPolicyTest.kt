@@ -9,7 +9,7 @@ class EmbeddingGemma2TextPolicyTest {
     @Test
     fun searchQueryUsesTheRetrievalQueryInstruction() {
         assertEquals(
-            "task: search query | text: What happened last night?",
+            "task: search result | query: What happened last night?",
             EmbeddingGemma2TextPolicy.formatSearchQuery("What happened last night?"),
         )
     }
@@ -17,11 +17,11 @@ class EmbeddingGemma2TextPolicyTest {
     @Test
     fun documentUsesTitleAndTextFieldsAndDefaultsTitleToNone() {
         assertEquals(
-            "task: search result | title: none | text: The tavern was closed.",
+            "title: none | text: The tavern was closed.",
             EmbeddingGemma2TextPolicy.formatDocument("The tavern was closed."),
         )
         assertEquals(
-            "task: search result | title: Chapter 4 | text: The tavern was closed.",
+            "title: Chapter 4 | text: The tavern was closed.",
             EmbeddingGemma2TextPolicy.formatDocument("The tavern was closed.", " Chapter 4 "),
         )
     }
@@ -34,6 +34,31 @@ class EmbeddingGemma2TextPolicyTest {
         val truncated = EmbeddingGemma2TextPolicy.truncateInput(emojiAtBoundary)
         assertEquals(1_999, truncated.length)
         assertFalse(Character.isSurrogate(truncated.last()))
+        assertEquals("中".repeat(2_000), EmbeddingGemma2TextPolicy.truncateInput("中".repeat(2_001)))
+    }
+
+    @Test
+    fun truncatesFormattedInputByUtf8BytesWithoutSplittingSurrogatePairs() {
+        val emojiAtBoundary = "a".repeat(2_046) + "😀" + "tail"
+        val truncated = EmbeddingGemma2TextPolicy.truncateFormattedInput(emojiAtBoundary)
+        assertEquals(2_046, truncated.length)
+        assertFalse(Character.isSurrogate(truncated.last()))
+        val chinese = EmbeddingGemma2TextPolicy.truncateFormattedInput("中".repeat(2_000))
+        assertEquals(2_046, chinese.toByteArray(Charsets.UTF_8).size)
+    }
+
+    @Test
+    fun formattersRespectWholeFormattedInputByteBudget() {
+        val query = EmbeddingGemma2TextPolicy.formatSearchQuery("中".repeat(2_000))
+        val document = EmbeddingGemma2TextPolicy.formatDocument("文".repeat(2_000), "题".repeat(1_000))
+        assertTrue(query.toByteArray(Charsets.UTF_8).size <= EmbeddingGemma2TextPolicy.MAX_SAFE_FORMATTED_INPUT_BYTES)
+        assertTrue(document.startsWith("title: "))
+        assertTrue(
+            document.toByteArray(Charsets.UTF_8).size <=
+                EmbeddingGemma2TextPolicy.MAX_SAFE_FORMATTED_INPUT_BYTES,
+        )
+        assertTrue(document.substringAfter(" | text: ").toByteArray(Charsets.UTF_8).size >= 500)
+        assertEquals(2, EmbeddingGemma2TextPolicy.POLICY_VERSION)
     }
 
     @Test

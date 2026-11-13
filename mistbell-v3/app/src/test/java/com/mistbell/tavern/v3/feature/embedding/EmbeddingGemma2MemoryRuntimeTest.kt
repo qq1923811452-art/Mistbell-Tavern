@@ -12,6 +12,7 @@ class EmbeddingGemma2MemoryRuntimeTest {
     @Test
     fun snapshotIdentityInvalidatesOnModelOrPolicyChanges() {
         val model = EmbeddingGemma2TextPolicy.MODEL_ID
+        assertEquals(2, EmbeddingGemma2TextPolicy.POLICY_VERSION)
         val original = EmbeddingGemma2MemoryRuntime.snapshotIdentity(model, "a".repeat(64), 1)
         org.junit.Assert.assertNotEquals(model, original)
         org.junit.Assert.assertNotEquals(
@@ -56,9 +57,9 @@ class EmbeddingGemma2MemoryRuntimeTest {
             val queryVector = runtime.embed("Who left the tavern?")
             val passageVector = runtime.embedPassage("Mira left at midnight.")
 
-            assertEquals("task: search query | text: Who left the tavern?", formattedInputs[0])
+            assertEquals("task: search result | query: Who left the tavern?", formattedInputs[0])
             assertEquals(
-                "task: search result | title: none | text: Mira left at midnight.",
+                "title: none | text: Mira left at midnight.",
                 formattedInputs[1],
             )
             assertEquals(EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS, queryVector.size)
