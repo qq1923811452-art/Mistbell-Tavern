@@ -70,6 +70,7 @@ internal static class EraGameStore
 		}
 
 		var gameDir = ResolveGameDir(target);
+		NormalizeCsvFileNames(gameDir);
 		EnsureLazyLoadingConfig(gameDir);
 		prefs?.Edit()?.PutString(PrefLastGame, gameDir)?.PutString(PrefLastVersion, version)?.Apply();
 		return gameDir;
@@ -98,6 +99,7 @@ internal static class EraGameStore
 		Extract(zipPath, target);
 		NormalizeTopLevelDirs(target);
 		var gameDir = ResolveGameDir(target);
+		NormalizeCsvFileNames(gameDir);
 		EnsureLazyLoadingConfig(gameDir);
 		prefs?.Edit()?.PutString(PrefLastGame, gameDir)?.PutString(PrefLastVersion, version)?.Apply();
 		return gameDir;
@@ -108,6 +110,56 @@ internal static class EraGameStore
 	/// 缺 cfg ⇒ 每次启动全量解析 16601 个 ERB（实测 171 秒），且从不写缓存。
 	/// 这里按 erb/ 下的实际目录生成 cfg，让首次加载后能写出 lazyloading*.bin 供下次复用。
 	/// </summary>
+	// 引擎用 File.Exists 按字面名加载这些 CSV；Android 私有目录区分大小写，
+	// 包里若是小写（cflag.csv）就会整张表读不到，进而报「没有 xx 的定义」。
+	private static readonly string[] ExpectedCsvNames =
+	{
+		"ABL.CSV", "BASE.CSV", "CFLAG.CSV", "CSTR.CSV", "DAY.CSV", "EQUIP.CSV", "EX.CSV",
+		"EXP.CSV", "FLAG.CSV", "GAMEBASE.CSV", "GLOBAL.CSV", "GLOBALS.CSV", "ITEM.CSV",
+		"MARK.CSV", "MONEY.CSV", "PALAM.CSV", "SAVESTR.CSV", "SOURCE.CSV", "STAIN.CSV",
+		"STR.CSV", "STRNAME.CSV", "TALENT.CSV", "TCVAR.CSV", "TEQUIP.CSV", "TFLAG.CSV",
+		"TIME.CSV", "TRAIN.CSV", "TSTR.CSV", "VariableSize.CSV",
+	};
+
+	private static void NormalizeCsvFileNames(string gameDir)
+	{
+		try
+		{
+			if (!TryFindChild(gameDir, "csv", out var csvDir))
+				return;
+			var files = Directory.GetFiles(csvDir);
+			int renamed = 0;
+			foreach (var expected in ExpectedCsvNames)
+			{
+				var exact = Path.Combine(csvDir, expected);
+				if (File.Exists(exact))
+					continue;
+				foreach (var file in files)
+				{
+					if (!string.Equals(Path.GetFileName(file), expected, StringComparison.OrdinalIgnoreCase))
+						continue;
+					try
+					{
+						File.Move(file, exact);
+						renamed++;
+						EraBootstrap.Trace("csv renamed: " + Path.GetFileName(file) + " -> " + expected);
+					}
+					catch (Exception ex)
+					{
+						EraBootstrap.Trace("csv rename failed: " + ex.Message);
+					}
+					break;
+				}
+			}
+			if (renamed > 0)
+				EraBootstrap.Trace("csv renamed total: " + renamed);
+		}
+		catch (Exception ex)
+		{
+			EraBootstrap.Trace("csv normalize failed: " + ex.Message);
+		}
+	}
+
 	private static void EnsureLazyLoadingConfig(string gameDir)
 	{
 		try
