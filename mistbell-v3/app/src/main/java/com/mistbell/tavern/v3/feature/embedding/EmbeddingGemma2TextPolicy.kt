@@ -1,5 +1,17 @@
 package com.mistbell.tavern.v3.feature.embedding
 
+/** Official EmbeddingGemma 2 task instructions exposed for callers that need more than retrieval. */
+enum class EmbeddingTaskType {
+    RETRIEVAL_QUERY,
+    RETRIEVAL_DOCUMENT,
+    SEMANTIC_SIMILARITY,
+    CLASSIFICATION,
+    CLUSTERING,
+    FACT_CHECKING,
+    QUESTION_ANSWERING,
+    CODE_RETRIEVAL,
+}
+
 /**
  * Task formatting for EmbeddingGemma 2's asymmetric retrieval objective.
  *
@@ -13,6 +25,12 @@ object EmbeddingGemma2TextPolicy {
     const val MAX_EMBED_CHARS = 2_000
     const val MAX_SAFE_FORMATTED_INPUT_BYTES = 2_048
     private const val SEARCH_QUERY_PREFIX = "task: search result | query: "
+    private const val SIMILARITY_PREFIX = "task: sentence similarity | query: "
+    private const val CLASSIFICATION_PREFIX = "task: classification | query: "
+    private const val CLUSTERING_PREFIX = "task: clustering | query: "
+    private const val FACT_CHECKING_PREFIX = "task: fact checking | query: "
+    private const val QUESTION_ANSWERING_PREFIX = "task: question answering | query: "
+    private const val CODE_RETRIEVAL_PREFIX = "task: code retrieval | query: "
 
     // Android 8 (API 26) has no Character.toString(int); size UTF-8 bytes from code points directly.
     private const val UTF8_ONE_BYTE_MAX = 0x7F
@@ -116,6 +134,37 @@ object EmbeddingGemma2TextPolicy {
         val safeText = truncateUtf8(text.trim(), contentBudget, MAX_EMBED_CHARS)
         require(safeText.isNotBlank()) { "Document text is too long to fit the safe model input budget." }
         return taskPrefix + safeText
+    }
+
+    fun formatTask(
+        text: String,
+        task: EmbeddingTaskType,
+        title: String? = null,
+    ): String =
+        when (task) {
+            EmbeddingTaskType.RETRIEVAL_QUERY -> formatSearchQuery(text)
+            EmbeddingTaskType.RETRIEVAL_DOCUMENT -> formatDocument(text, title)
+            EmbeddingTaskType.SEMANTIC_SIMILARITY -> formatTaskQuery(SIMILARITY_PREFIX, text)
+            EmbeddingTaskType.CLASSIFICATION -> formatTaskQuery(CLASSIFICATION_PREFIX, text)
+            EmbeddingTaskType.CLUSTERING -> formatTaskQuery(CLUSTERING_PREFIX, text)
+            EmbeddingTaskType.FACT_CHECKING -> formatTaskQuery(FACT_CHECKING_PREFIX, text)
+            EmbeddingTaskType.QUESTION_ANSWERING -> formatTaskQuery(QUESTION_ANSWERING_PREFIX, text)
+            EmbeddingTaskType.CODE_RETRIEVAL -> formatTaskQuery(CODE_RETRIEVAL_PREFIX, text)
+        }
+
+    private fun formatTaskQuery(
+        prefix: String,
+        text: String,
+    ): String {
+        require(text.isNotBlank()) { "Embedding task text must not be blank." }
+        val boundedText =
+            truncateUtf8(
+                text.trim(),
+                MAX_SAFE_FORMATTED_INPUT_BYTES - prefix.toByteArray(Charsets.UTF_8).size,
+                maxChars = MAX_EMBED_CHARS,
+            )
+        require(boundedText.isNotBlank()) { "Embedding task text is too long for the safe input budget." }
+        return prefix + boundedText
     }
 
     /**

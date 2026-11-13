@@ -32,6 +32,48 @@ class EmbeddingGemma2RuntimeAdapter(
         const val MAX_FORMATTED_INPUT_BYTES = EmbeddingGemma2TextPolicy.MAX_SAFE_FORMATTED_INPUT_BYTES
         const val BATCH_SIZE = 8
 
+        private fun isUsableCache(
+            entry: EmbeddingVectorCache.Entry?,
+            dimensions: Int,
+        ): Boolean =
+            entry != null &&
+                entry.vector.size == dimensions &&
+                entry.status.modelId == EmbeddingGemma2TextPolicy.MODEL_ID &&
+                entry.policyVersion == EmbeddingGemma2TextPolicy.POLICY_VERSION &&
+                !entry.status.runtimeId.isNullOrBlank() &&
+                entry.status.backendEvidence != BackendEvidence.NOT_AVAILABLE &&
+                (
+                    entry.status.phase == InferencePhase.READY ||
+                        entry.status.phase == InferencePhase.RUNNING ||
+                        entry.status.phase == InferencePhase.FALLBACK
+                )
+
+        private fun nativeCacheKey(
+            formatted: String,
+            modelProfileId: String,
+        ): String =
+            EmbeddingVectorCache.key(
+                formatted,
+                EmbeddingGemma2TextPolicy.MODEL_ID,
+                EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS,
+                EmbeddingGemma2TextPolicy.POLICY_VERSION,
+                modelProfileId,
+            )
+
+        private fun cachedNativeEntry(
+            formatted: String,
+            modelProfileId: String,
+        ): EmbeddingVectorCache.Entry? {
+            val nativeKey = nativeCacheKey(formatted, modelProfileId)
+            val native = EmbeddingVectorCache.get(nativeKey)
+            return if (isUsableCache(native, EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS)) {
+                native
+            } else {
+                if (native != null) EmbeddingVectorCache.remove(nativeKey)
+                null
+            }
+        }
+
         /** Returns a cached query result without acquiring or initializing a native engine. */
         fun cachedQuery(
             query: String,
@@ -49,26 +91,37 @@ class EmbeddingGemma2RuntimeAdapter(
                     EmbeddingGemma2TextPolicy.POLICY_VERSION,
                     modelProfileId,
                 )
-            val cached = EmbeddingVectorCache.get(key) ?: return null
-            val usable =
-                cached.vector.size == outputDimensions &&
-                    cached.status.modelId == EmbeddingGemma2TextPolicy.MODEL_ID &&
-                    cached.policyVersion == EmbeddingGemma2TextPolicy.POLICY_VERSION &&
-                    !cached.status.runtimeId.isNullOrBlank() &&
-                    cached.status.backendEvidence != BackendEvidence.NOT_AVAILABLE &&
-                    (
-                        cached.status.phase == InferencePhase.READY || cached.status.phase == InferencePhase.RUNNING ||
-                            cached.status.phase == InferencePhase.FALLBACK
-                    )
-            if (!usable) {
-                EmbeddingVectorCache.remove(key)
-                return null
+            val cached = EmbeddingVectorCache.get(key)
+            if (isUsableCache(cached, outputDimensions)) {
+                onDiagnostic(
+                    "embedding.cache.hit",
+                    "modelId=${EmbeddingGemma2TextPolicy.MODEL_ID}; dimensions=$outputDimensions; " +
+                        "engineInitializationSkipped=true",
+                )
+                return EmbeddingBatch(
+                    listOf(cached!!.vector),
+                    cached.status.copy(lastExecutionMillis = null, isCachedResult = true),
+                )
             }
-            onDiagnostic(
-                "embedding.cache.hit",
-                "modelId=${EmbeddingGemma2TextPolicy.MODEL_ID}; dimensions=$outputDimensions; engineInitializationSkipped=true",
-            )
-            return EmbeddingBatch(listOf(cached.vector), cached.status.copy(lastExecutionMillis = null, isCachedResult = true))
+            if (cached != null) EmbeddingVectorCache.remove(key)
+            if (outputDimensions < EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS) {
+                val native = cachedNativeEntry(formatted, modelProfileId)
+                if (native != null) {
+                    val vector = EmbeddingGemma2TextPolicy.truncateAndNormalize(native.vector, outputDimensions)
+                    EmbeddingVectorCache.put(key, vector, native.status, EmbeddingGemma2TextPolicy.POLICY_VERSION)
+                    onDiagnostic(
+                        "embedding.cache.hit",
+                        "modelId=${EmbeddingGemma2TextPolicy.MODEL_ID}; dimensions=$outputDimensions; " +
+                            "parentDimensions=${EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS}; " +
+                            "engineInitializationSkipped=true",
+                    )
+                    return EmbeddingBatch(
+                        listOf(vector),
+                        native.status.copy(lastExecutionMillis = null, isCachedResult = true),
+                    )
+                }
+            }
+            return null
         }
     }
 
@@ -106,6 +159,19 @@ class EmbeddingGemma2RuntimeAdapter(
         }
         return inferAndValidate(texts) { text, index ->
             EmbeddingGemma2TextPolicy.formatDocument(text, titles?.getOrNull(index))
+        }
+    }
+
+    suspend fun embedByTask(
+        texts: List<String>,
+        task: EmbeddingTaskType,
+        titles: List<String?>? = null,
+    ): EmbeddingBatch {
+        if (titles != null && titles.size != texts.size) {
+            throw EmbeddingOutputException("Task title count must match input count.")
+        }
+        return inferAndValidate(texts) { text, index ->
+            EmbeddingGemma2TextPolicy.formatTask(text, task, titles?.getOrNull(index))
         }
     }
 
@@ -165,27 +231,27 @@ class EmbeddingGemma2RuntimeAdapter(
                     engine.cacheProfileId,
                 )
             val cached = EmbeddingVectorCache.get(key)
-            val usableCached =
-                cached?.takeIf {
-                    it.vector.size == model.dimensions &&
-                        it.status.modelId == model.modelId &&
-                        it.policyVersion == EmbeddingGemma2TextPolicy.POLICY_VERSION &&
-                        !it.status.runtimeId.isNullOrBlank() &&
-                        it.status.backendEvidence != BackendEvidence.NOT_AVAILABLE &&
-                        (
-                            it.status.phase == InferencePhase.READY ||
-                                it.status.phase == InferencePhase.RUNNING ||
-                                it.status.phase == InferencePhase.FALLBACK
-                        )
-                }
-            if (usableCached != null) {
+            if (isUsableCache(cached, model.dimensions)) {
                 onDiagnostic("embedding.cache.hit", "modelId=${model.modelId}; dimensions=${model.dimensions}")
-                output[index] = usableCached.vector
-                cachedStatuses += usableCached.status.copy(isCachedResult = true)
+                output[index] = cached!!.vector
+                cachedStatuses += cached.status.copy(isCachedResult = true)
             } else {
                 if (cached != null) EmbeddingVectorCache.remove(key)
-                onDiagnostic("embedding.cache.miss", "modelId=${model.modelId}; dimensions=${model.dimensions}")
-                pendingByKey.getOrPut(key) { mutableListOf() }.add(index)
+                val native = nativeCacheEntry(formatted)
+                if (native != null) {
+                    val vector = EmbeddingGemma2TextPolicy.truncateAndNormalize(native.vector, model.dimensions)
+                    EmbeddingVectorCache.put(key, vector, native.status, EmbeddingGemma2TextPolicy.POLICY_VERSION)
+                    onDiagnostic(
+                        "embedding.cache.hit",
+                        "modelId=${model.modelId}; dimensions=${model.dimensions}; " +
+                            "parentDimensions=${EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS}",
+                    )
+                    output[index] = vector
+                    cachedStatuses += native.status.copy(isCachedResult = true)
+                } else {
+                    onDiagnostic("embedding.cache.miss", "modelId=${model.modelId}; dimensions=${model.dimensions}")
+                    pendingByKey.getOrPut(key) { mutableListOf() }.add(index)
+                }
             }
         }
 
@@ -193,13 +259,24 @@ class EmbeddingGemma2RuntimeAdapter(
         for (batch in pendingByKey.entries.toList().chunked(BATCH_SIZE)) {
             val raw = engine.infer(batch.map { (_, indexes) -> formattedInputs[indexes.first()] })
             validateRawBatch(raw, batch.size)
-            val normalized =
-                raw.vectors.map {
-                    EmbeddingGemma2TextPolicy.truncateAndNormalize(it, outputDimensions)
-                }
             batch.forEachIndexed { resultIndex, (key, indexes) ->
-                val vector = normalized[resultIndex]
-                EmbeddingVectorCache.put(key, vector, raw.status, EmbeddingGemma2TextPolicy.POLICY_VERSION)
+                val formatted = formattedInputs[indexes.first()]
+                val nativeKey = nativeCacheKey(formatted, engine.cacheProfileId)
+                val nativeVector =
+                    EmbeddingGemma2TextPolicy.truncateAndNormalize(
+                        raw.vectors[resultIndex],
+                        EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS,
+                    )
+                EmbeddingVectorCache.put(nativeKey, nativeVector, raw.status, EmbeddingGemma2TextPolicy.POLICY_VERSION)
+                val vector =
+                    if (outputDimensions == EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS) {
+                        nativeVector
+                    } else {
+                        EmbeddingGemma2TextPolicy.truncateAndNormalize(nativeVector, outputDimensions)
+                    }
+                if (key != nativeKey) {
+                    EmbeddingVectorCache.put(key, vector, raw.status, EmbeddingGemma2TextPolicy.POLICY_VERSION)
+                }
                 indexes.forEach { originalIndex -> output[originalIndex] = vector }
             }
             lastStatus = raw.status
@@ -216,6 +293,13 @@ class EmbeddingGemma2RuntimeAdapter(
             status = status,
         )
     }
+
+    private fun nativeCacheEntry(formatted: String): EmbeddingVectorCache.Entry? =
+        if (outputDimensions >= EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS) {
+            null
+        } else {
+            cachedNativeEntry(formatted, engine.cacheProfileId)
+        }
 
     private fun validateRawBatch(
         raw: EmbeddingBatch,

@@ -669,6 +669,10 @@ fun ChatScreen(
                     observer,
                     effectiveMaxTokens(),
                     memoryQuery = plan.userText,
+                    character = selectedCharacter?.card,
+                    worldbookEntries = worldbookSession.entries,
+                    worldbookBudget =
+                        settings.getInt("worldbook_max_chars", 4_000).coerceIn(4_000, 64_000),
                 ).also { call ->
                     activeCall = call
                     if (!ownsRequest()) call.cancel()
@@ -1659,6 +1663,12 @@ fun ChatScreen(
                                         observer,
                                         requestMaxTokens,
                                         memoryQuery = userText,
+                                        character = selectedCharacter?.card,
+                                        worldbookEntries = requestWorldbookEntries,
+                                        worldbookBudget =
+                                            settings
+                                                .getInt("worldbook_max_chars", 4_000)
+                                                .coerceIn(4_000, 64_000),
                                     ).also { call ->
                                         activeCall = call
                                         if (!ownsSendRequest()) call.cancel()

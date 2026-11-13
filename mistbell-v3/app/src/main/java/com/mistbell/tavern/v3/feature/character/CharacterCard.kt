@@ -24,6 +24,8 @@ data class CharacterCard(
     val avatarFileName: String? = null,
     /** File name of the standing portrait (立绘); null renders the gradient placeholder. */
     val portraitFileName: String? = null,
+    /** Explicit character red lines; empty means the guard extracts them from prompt text. */
+    val redlines: List<String> = emptyList(),
 ) {
     init {
         require(name.isNotBlank()) { "Character name is required." }

@@ -29,6 +29,7 @@ class TemporalFactExtractionPipeline(
     private val memoryTextStore: MemoryTextPersistence,
     /** Manual revisions are re-applied to the projection so extraction never restores edited values. */
     private val overrideStore: MemoryOverridePersistence? = null,
+    private val similarityEmbedder: (suspend (List<String>) -> List<List<Float>>)? = null,
     private val clockMillis: () -> Long = System::currentTimeMillis,
 ) {
     fun extractAndPersist(
@@ -104,7 +105,17 @@ class TemporalFactExtractionPipeline(
                         observedAtEpochMillis = input.turnObservedAtEpochMillis[fact.sourceTurnId] ?: observedAt,
                     )
                 }
-            TemporalFactLedger.apply(existing, observations)
+            val aligned =
+                similarityEmbedder?.let { embedder ->
+                    kotlinx.coroutines.runBlocking {
+                        MemorySemanticDeduplicator.deduplicateObservations(
+                            observations = observations,
+                            existingCurrent = existing.filter(TemporalMemoryFact::isCurrent),
+                            embedSimilarity = embedder,
+                        )
+                    }
+                } ?: observations
+            TemporalFactLedger.apply(existing, aligned)
         }
 
     companion object {

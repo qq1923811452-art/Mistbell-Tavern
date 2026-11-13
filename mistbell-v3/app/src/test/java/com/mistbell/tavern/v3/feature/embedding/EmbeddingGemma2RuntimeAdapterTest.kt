@@ -6,6 +6,7 @@ import com.mistbell.tavern.v3.core.inference.InferencePhase
 import com.mistbell.tavern.v3.core.inference.InferenceRuntimeStatus
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -411,5 +412,71 @@ class EmbeddingGemma2RuntimeAdapterTest {
             assertThrows(EmbeddingOutputException::class.java) {
                 runBlocking { adapter.embedDocuments(listOf("a", "b"), listOf("only one")) }
             }
+        }
+
+    @Test
+    fun embedByTaskAppliesTheRequestedOfficialPrefix(): Unit =
+        runBlocking {
+            EmbeddingVectorCache.clear()
+            val inputs = mutableListOf<List<String>>()
+            val adapter =
+                EmbeddingGemma2RuntimeAdapter(
+                    engine =
+                        engine { formatted ->
+                            inputs += formatted
+                            EmbeddingBatch(
+                                formatted.map { List(EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS) { 1f } },
+                                rawStatus,
+                            )
+                        },
+                )
+            adapter.embedByTask(listOf("hello"), EmbeddingTaskType.SEMANTIC_SIMILARITY)
+            assertEquals("task: sentence similarity | query: hello", inputs.single().single())
+        }
+
+    @Test
+    fun reusesNative768CacheWhenTheRequestedDimensionChanges(): Unit =
+        runBlocking {
+            EmbeddingVectorCache.clear()
+            var calls = 0
+            val fake =
+                engine { inputs ->
+                    calls++
+                    EmbeddingBatch(
+                        inputs.map { List(EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS) { 1f } },
+                        rawStatus,
+                    )
+                }
+            val low = EmbeddingGemma2RuntimeAdapter(engine = fake, outputDimensions = 128)
+            low.embedDocuments(listOf("shared text"))
+            assertEquals(1, calls)
+
+            val mid = EmbeddingGemma2RuntimeAdapter(engine = fake, outputDimensions = 256)
+            val result = mid.embedDocuments(listOf("shared text"))
+            assertEquals(1, calls)
+            assertEquals(256, result.vectors.single().size)
+        }
+
+    @Test
+    fun cachedQueryCanDeriveASmallerVectorFromTheNative768Entry(): Unit =
+        runBlocking {
+            EmbeddingVectorCache.clear()
+            val query = "cached query"
+            val formatted = EmbeddingGemma2TextPolicy.formatSearchQuery(query)
+            EmbeddingVectorCache.put(
+                EmbeddingVectorCache.key(
+                    formatted,
+                    EmbeddingGemma2TextPolicy.MODEL_ID,
+                    EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS,
+                    EmbeddingGemma2TextPolicy.POLICY_VERSION,
+                    EmbeddingGemma2TextPolicy.MODEL_ID,
+                ),
+                List(EmbeddingGemma2TextPolicy.NATIVE_DIMENSIONS) { 1f },
+                rawStatus,
+                EmbeddingGemma2TextPolicy.POLICY_VERSION,
+            )
+            val cached = EmbeddingGemma2RuntimeAdapter.cachedQuery(query, outputDimensions = 128)
+            assertNotNull(cached)
+            assertEquals(128, cached!!.vectors.single().size)
         }
 }

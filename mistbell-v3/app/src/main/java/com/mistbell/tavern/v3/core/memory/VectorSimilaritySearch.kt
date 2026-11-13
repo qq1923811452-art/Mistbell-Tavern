@@ -46,8 +46,17 @@ object VectorSimilaritySearch {
             "Minimum similarity must be finite and between -1 and 1."
         }
 
-        val scorer = Scorer(snapshot, query.toFloatArray())
+        val queryArray = query.toFloatArray()
+        val scorer = Scorer(snapshot, queryArray)
         require(scorer.queryNorm > 0.0) { "Query vector must not be a zero vector." }
+
+        // A negative threshold asks for an exhaustive ranking; only filter with finite scores.
+        if (snapshot.dimensions > COARSE_DIMENSIONS && snapshot.records.size > COARSE_SHORTLIST_MIN &&
+            minimumScore >= 0.0
+        ) {
+            val shortlist = coarseShortlist(snapshot, queryArray, limit)
+            if (shortlist != null) return refineShortlist(snapshot, scorer, shortlist, limit, minimumScore)
+        }
 
         // Bounded selection: keeping only the best `limit` hits avoids ordering every record.
         val best = PriorityQueue(limit, WORST_FIRST)
@@ -57,6 +66,95 @@ object VectorSimilaritySearch {
             offer(best, snapshot.records[index], score, limit)
         }
         return best.sortedWith(BEST_FIRST).take(limit)
+    }
+
+    /** Stage 2: exact full-dimension scoring over the coarse shortlist. */
+    private fun refineShortlist(
+        snapshot: VectorSnapshot,
+        scorer: Scorer,
+        shortlist: IntArray,
+        limit: Int,
+        minimumScore: Double,
+    ): List<VectorSearchHit> {
+        val refined = PriorityQueue(limit, WORST_FIRST)
+        for (index in shortlist) {
+            val score = scorer.score(index)
+            if (score.isNaN() || score < minimumScore) continue
+            offer(refined, snapshot.records[index], score, limit)
+        }
+        return refined.sortedWith(BEST_FIRST).take(limit)
+    }
+
+    /** Returns coarse candidate indexes, or null when the query has no 128d direction. */
+    private fun coarseShortlist(
+        snapshot: VectorSnapshot,
+        query: FloatArray,
+        limit: Int,
+    ): IntArray? {
+        val queryPrefixNorm = prefixNorm(query, COARSE_DIMENSIONS)
+        if (queryPrefixNorm == 0.0) return null
+        val capacity =
+            minOf(
+                snapshot.records.size,
+                maxOf(COARSE_SHORTLIST_MIN, limit * COARSE_SHORTLIST_MULTIPLIER),
+            )
+        val best = PriorityQueue<CoarseCandidate>(capacity, WORST_FIRST_COARSE)
+        snapshot.records.forEachIndexed { index, record ->
+            val score = coarseScore(record.values, query, queryPrefixNorm)
+            if (!score.isNaN()) {
+                offerCoarse(best, CoarseCandidate(index, score, record.id), capacity)
+            }
+        }
+        return best.sortedWith(BEST_FIRST_COARSE).map(CoarseCandidate::index).toIntArray()
+    }
+
+    private fun coarseScore(
+        values: List<Float>,
+        query: FloatArray,
+        queryNorm: Double,
+    ): Double =
+        if (values is QuantizedVectorView && values.isQuantized) {
+            val recordNorm = values.prefixByteNorm(COARSE_DIMENSIONS)
+            if (recordNorm == 0.0) {
+                Double.NaN
+            } else {
+                (values.dotPrefix(query, COARSE_DIMENSIONS) / (queryNorm * recordNorm)).coerceIn(-1.0, 1.0)
+            }
+        } else {
+            var dot = 0.0
+            var squared = 0.0
+            for (index in 0 until COARSE_DIMENSIONS) {
+                val value = values[index].toDouble()
+                dot += value * query[index]
+                squared += value * value
+            }
+            val recordNorm = sqrt(squared)
+            if (recordNorm == 0.0) Double.NaN else (dot / (queryNorm * recordNorm)).coerceIn(-1.0, 1.0)
+        }
+
+    private fun offerCoarse(
+        best: PriorityQueue<CoarseCandidate>,
+        candidate: CoarseCandidate,
+        capacity: Int,
+    ) {
+        if (best.size < capacity) {
+            best.add(candidate)
+        } else if (BEST_FIRST_COARSE.compare(candidate, best.peek()) < 0) {
+            best.poll()
+            best.add(candidate)
+        }
+    }
+
+    private fun prefixNorm(
+        query: FloatArray,
+        dimensions: Int,
+    ): Double {
+        var squared = 0.0
+        for (index in 0 until dimensions) {
+            val value = query[index].toDouble()
+            squared += value * value
+        }
+        return sqrt(squared)
     }
 
     private fun offer(
@@ -145,6 +243,9 @@ object VectorSimilaritySearch {
         return sqrt(squared)
     }
 
+    const val COARSE_DIMENSIONS = 128
+    const val COARSE_SHORTLIST_MIN = 32
+    private const val COARSE_SHORTLIST_MULTIPLIER = 4
     const val DEFAULT_RESULT_LIMIT = 5
     const val MAX_RESULT_LIMIT = 100
     const val DEFAULT_MINIMUM_SCORE = 0.35
@@ -154,4 +255,16 @@ object VectorSimilaritySearch {
 
     /** Inverse of [BEST_FIRST]: the queue head is always the hit that would be evicted next. */
     private val WORST_FIRST = compareBy<VectorSearchHit> { it.score }.thenByDescending { it.id }
+
+    private val BEST_FIRST_COARSE =
+        compareByDescending<CoarseCandidate> { it.score }.thenBy { it.id }
+
+    private val WORST_FIRST_COARSE =
+        compareBy<CoarseCandidate> { it.score }.thenByDescending { it.id }
 }
+
+private data class CoarseCandidate(
+    val index: Int,
+    val score: Double,
+    val id: String,
+)

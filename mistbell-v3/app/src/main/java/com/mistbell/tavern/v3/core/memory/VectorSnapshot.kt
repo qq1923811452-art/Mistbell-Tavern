@@ -38,6 +38,18 @@ internal interface QuantizedVectorView {
      * dominant cost of the previous path. Returns 0.0 for a stored zero vector.
      */
     fun byteNorm(): Double
+
+    /** Dot product of the first [prefixDimensions] stored bytes with the same query prefix. */
+    fun dotPrefix(
+        query: FloatArray,
+        prefixDimensions: Int,
+    ): Double
+
+    /**
+     * Byte-space norm of the first [prefixDimensions] values. The 128-dimension MRL prefix used by
+     * coarse retrieval is cached, so repeated searches do not rescan the mapped bytes.
+     */
+    fun prefixByteNorm(prefixDimensions: Int): Double
 }
 
 private class MappedVectorValues(
@@ -53,6 +65,9 @@ private class MappedVectorValues(
     /** Cached byte-space magnitude. A lost race recomputes the same value, so plain double is safe. */
     @Volatile
     private var cachedByteNorm: Double = Double.NaN
+
+    @Volatile
+    private var cachedPrefix128Norm: Double = Double.NaN
 
     override fun dot(query: FloatArray): Double {
         require(!legacyFloat32) { "Legacy float32 vectors cannot be scored from quantized bytes." }
@@ -76,6 +91,38 @@ private class MappedVectorValues(
         }
         val computed = kotlin.math.sqrt(squared)
         cachedByteNorm = computed
+        return computed
+    }
+
+    override fun dotPrefix(
+        query: FloatArray,
+        prefixDimensions: Int,
+    ): Double {
+        require(!legacyFloat32) { "Legacy float32 vectors cannot be scored from quantized bytes." }
+        require(prefixDimensions in 1..size && query.size >= prefixDimensions) {
+            "Prefix dimension is outside the mapped vector."
+        }
+        var dot = 0.0
+        for (index in 0 until prefixDimensions) {
+            dot += query[index].toDouble() * buffer.get(start + index).toDouble()
+        }
+        return dot
+    }
+
+    override fun prefixByteNorm(prefixDimensions: Int): Double {
+        require(!legacyFloat32) { "Legacy float32 vectors do not use byte-space norms." }
+        require(prefixDimensions in 1..size) { "Prefix dimension is outside the mapped vector." }
+        if (prefixDimensions == VectorSimilaritySearch.COARSE_DIMENSIONS) {
+            val cached = cachedPrefix128Norm
+            if (!cached.isNaN()) return cached
+        }
+        var squared = 0.0
+        for (index in 0 until prefixDimensions) {
+            val value = buffer.get(start + index).toInt()
+            squared += (value * value).toDouble()
+        }
+        val computed = kotlin.math.sqrt(squared)
+        if (prefixDimensions == VectorSimilaritySearch.COARSE_DIMENSIONS) cachedPrefix128Norm = computed
         return computed
     }
 
