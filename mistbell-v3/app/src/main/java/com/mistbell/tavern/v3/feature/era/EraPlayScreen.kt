@@ -43,6 +43,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.mistbell.tavern.v3.feature.era.engine.EraCommandParser
 import com.mistbell.tavern.v3.feature.era.engine.EraEngineSession
 import com.mistbell.tavern.v3.feature.era.engine.EraLine
 import com.mistbell.tavern.v3.feature.era.engine.EwpButton
@@ -95,8 +96,10 @@ internal fun EraPlayScreen(
             modifier = Modifier.fillMaxWidth().weight(1f).padding(horizontal = 16.dp, vertical = 8.dp),
         )
         state.error?.let { message -> EraErrorBanner(message) }
+        val fallback = rememberFallbackCommands(state.input, state.lines)
         EraInputPanel(
             input = state.input,
+            fallback = fallback,
             onSend = { value, via -> session.submit(value, via) },
         )
     }
@@ -183,9 +186,24 @@ private fun EraErrorBanner(message: String) {
     )
 }
 
+/** 引擎没给按钮时，从文本尾部认出 `[n] ...` 选项，避免「只能打字」的退步体验。 */
+@Composable
+private fun rememberFallbackCommands(
+    input: EwpInputRequest?,
+    lines: List<EraLine>,
+): List<EwpButton> =
+    remember(input?.requestId, lines.size) {
+        if (input == null || input.buttons.isNotEmpty()) {
+            emptyList()
+        } else {
+            EraCommandParser.tailCommands(lines)
+        }
+    }
+
 @Composable
 private fun EraInputPanel(
     input: EwpInputRequest?,
+    fallback: List<EwpButton>,
     onSend: (String, String) -> Unit,
 ) {
     Column(
@@ -201,13 +219,14 @@ private fun EraInputPanel(
             Text(text = "等待引擎…", color = TavernPalette.TextTertiary, fontSize = 12.sp)
             return@Column
         }
-        if (input.buttons.isNotEmpty()) {
-            EraButtonList(input = input, onSend = onSend)
+        val options = input.buttons.ifEmpty { fallback }
+        if (options.isNotEmpty()) {
+            EraButtonList(buttons = options, onSend = onSend)
             Spacer(modifier = Modifier.height(10.dp))
         }
-        if (input.needsValue) {
+        if (input.needsValue || options.isEmpty()) {
             EraValueInput(input = input, onSend = onSend)
-        } else {
+        } else if (!input.needsValue) {
             TavernPill(
                 label = "继续",
                 onClick = { onSend("", "enter") },
@@ -221,7 +240,7 @@ private fun EraInputPanel(
 
 @Composable
 private fun EraButtonList(
-    input: EwpInputRequest,
+    buttons: List<EwpButton>,
     onSend: (String, String) -> Unit,
 ) {
     Column(
@@ -232,7 +251,7 @@ private fun EraButtonList(
                 .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        input.buttons.forEach { button -> EraButtonRow(button = button, onSend = onSend) }
+        buttons.forEach { button -> EraButtonRow(button = button, onSend = onSend) }
     }
 }
 
