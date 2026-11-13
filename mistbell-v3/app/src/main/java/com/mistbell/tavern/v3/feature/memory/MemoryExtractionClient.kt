@@ -22,6 +22,29 @@ import java.util.Locale
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
+private val THINK_BLOCK_REGEX =
+    Regex("<think>.*?</think>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
+
+/** Removes closed reasoning blocks so their braces cannot break JSON extraction. */
+internal fun stripThinkingBlocks(text: String): String = text.replace(THINK_BLOCK_REGEX, "")
+
+private val TURN_ALIAS_PATTERN = Regex("^[tT]?(\\d+)$")
+
+/** Accepts the real turn ID or its 1-based short alias (`t1` / `1`) and maps back to the ID. */
+private fun resolveSourceTurnId(
+    raw: String,
+    turnIdsInOrder: List<String>,
+): String? =
+    if (raw in turnIdsInOrder) {
+        raw
+    } else {
+        TURN_ALIAS_PATTERN.matchEntire(raw)
+            ?.groupValues
+            ?.get(1)
+            ?.toIntOrNull()
+            ?.let { turnIdsInOrder.getOrNull(it - 1) }
+    }
+
 fun interface MemoryCredentialResolver {
     fun resolve(handle: String): String?
 }
@@ -107,7 +130,7 @@ fun interface MemoryExtractionObserver {
 class MemoryExtractionClient(
     private val providers: ProviderProfileSet,
     private val credentials: MemoryCredentialResolver,
-    client: OkHttpClient = OkHttpClient(),
+    client: OkHttpClient = SHARED_HTTP_CLIENT,
     readTimeoutMillis: Long = DEFAULT_READ_TIMEOUT_MILLIS,
     private val onDiagnostic: (String, String) -> Unit = { _, _ -> },
 ) : MemoryFactExtractor {
@@ -158,6 +181,7 @@ class MemoryExtractionClient(
             JSONObject()
                 .put("model", profile.modelId)
                 .put("stream", false)
+                .put("temperature", MEMORY_EXTRACTION_TEMPERATURE)
                 .put("messages", messages)
                 .toString()
                 .toRequestBody(JSON_MEDIA_TYPE)
@@ -219,10 +243,11 @@ class MemoryExtractionClient(
 
     private fun buildMessages(input: MemoryExtractionInput): JSONArray {
         val turnsJson = JSONArray()
-        input.turns.sortedBy(EligibleConversationTurn::ordinal).forEach { turn ->
+        input.turns.sortedBy(EligibleConversationTurn::ordinal).forEachIndexed { index, turn ->
             turnsJson.put(
                 JSONObject()
                     .put("turn_id", turn.id)
+                    .put("alias", "t${index + 1}")
                     .put("text", input.textByTurnId.getValue(turn.id)),
             )
         }
@@ -231,8 +256,9 @@ class MemoryExtractionClient(
             Extract only durable, explicit facts useful for future conversations.
             Return exactly one JSON object with a "facts" array. Each fact must have string fields
             "subject", "predicate", "value", and "source_turn_id". source_turn_id must be one of the
-            supplied turn IDs. Do not infer uncertain details, invent facts, include secrets, or
-            repeat transient small talk. Return {"facts":[]} when nothing qualifies.
+            supplied turn IDs or the short alias (t1, t2, ...) printed next to each turn. Do not infer
+            uncertain details, invent facts, include secrets, or repeat transient small talk.
+            Return {"facts":[]} when nothing qualifies.
             Write atomic facts: subject is a short entity name, predicate is a short relation,
             value is a concise object. Do not put a full sentence, question, or yes/no answer
             into predicate or value. Skip transient states and assistant suggestions.
@@ -353,7 +379,7 @@ class MemoryExtractionClient(
                 val parsed =
                     parseFacts(
                         normalizeJsonContent(content),
-                        input.turns.map(EligibleConversationTurn::id).toSet(),
+                        input.turns.sortedBy(EligibleConversationTurn::ordinal).map(EligibleConversationTurn::id),
                     )
                 report("memory.extraction.response_parsed", "facts=${parsed.facts.size}")
                 MemoryExtractionOutcome.Success(parsed)
@@ -371,7 +397,7 @@ class MemoryExtractionClient(
      * system prompt. Strip only the envelope; field and source-turn validation stays strict.
      */
     private fun normalizeJsonContent(content: String): String {
-        val trimmed = content.trim()
+        val trimmed = stripThinkingBlocks(content).trim()
         val unfenced =
             if (trimmed.startsWith("```")) {
                 trimmed.replaceFirst(Regex("^```[A-Za-z0-9_-]*\\s*"), "")
@@ -399,7 +425,7 @@ class MemoryExtractionClient(
 
     private fun parseFacts(
         content: String,
-        allowedTurnIds: Set<String>,
+        turnIdsInOrder: List<String>,
     ): MemoryExtractionResult {
         require(content.length <= MAX_RESPONSE_BYTES) { "Memory response is too large." }
         val factsJson =
@@ -412,12 +438,12 @@ class MemoryExtractionClient(
                 val subject = fact.optString("subject").trim()
                 val predicate = fact.optString("predicate").trim()
                 val value = fact.optString("value").trim()
-                val sourceTurnId = fact.optString("source_turn_id").trim()
+                val sourceTurnId = resolveSourceTurnId(fact.optString("source_turn_id").trim(), turnIdsInOrder)
                 // A single hallucinated source turn must not discard every valid fact in the batch.
                 if (subject.isBlank() || subject.length > MAX_FIELD_CHARS) return@mapNotNull null
                 if (predicate.isBlank() || predicate.length > MAX_FIELD_CHARS) return@mapNotNull null
                 if (value.isBlank() || value.length > MAX_FIELD_CHARS) return@mapNotNull null
-                if (sourceTurnId !in allowedTurnIds) return@mapNotNull null
+                if (sourceTurnId == null) return@mapNotNull null
                 ExtractedFactDraft(subject, predicate, value, sourceTurnId)
             }
         require(facts.isNotEmpty() || factsJson.length() == 0) { "No valid facts in the response." }
@@ -426,6 +452,8 @@ class MemoryExtractionClient(
 
     companion object {
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
+        private val SHARED_HTTP_CLIENT = OkHttpClient()
+        private const val MEMORY_EXTRACTION_TEMPERATURE = 0.1
         private val LOOPBACK_HOSTS = setOf("localhost", "127.0.0.1", "::1")
         private const val RESPONSE_READ_CHUNK_BYTES = 8_192L
         private const val MAX_RESPONSE_BYTES = 256 * 1024L

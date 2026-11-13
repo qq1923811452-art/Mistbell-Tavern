@@ -5,6 +5,7 @@ import com.mistbell.tavern.v3.feature.memory.MemoryExtractionInput
 import com.mistbell.tavern.v3.feature.memory.MemoryExtractionJob
 import com.mistbell.tavern.v3.feature.memory.MemoryExtractionQueueRunner
 import com.mistbell.tavern.v3.feature.memory.formatMemoryExtractionTurn
+import com.mistbell.tavern.v3.feature.memory.stripThinkingBlocks
 
 /**
  * Rebuilds a queued extraction batch from durable chat history.
@@ -44,8 +45,17 @@ class MemoryExtractionBatchInputFactory {
             require(assistant.content.isNotBlank()) { "A queued assistant reply is empty." }
 
             turns += EligibleConversationTurn(id = turnId, ordinal = (index + 1).toLong())
-            textByTurnId[turnId] = formatMemoryExtractionTurn(user.content, assistant.content)
-            observedAtByTurnId[turnId] = user.createdAtEpochMillis
+            val userText = stripThinkingBlocks(user.content)
+            val assistantText = stripThinkingBlocks(assistant.content)
+            val labelledAssistant =
+                assistant.speakerName
+                    ?.takeIf(String::isNotBlank)
+                    ?.let { name -> GroupPromptAssembler.labelAssistantContent(name, assistantText) }
+                    ?: assistantText
+            textByTurnId[turnId] = formatMemoryExtractionTurn(userText, labelledAssistant)
+            // A zero timestamp would sort the fact as ancient and lose later updates.
+            observedAtByTurnId[turnId] =
+                user.createdAtEpochMillis.takeIf { it > 0L } ?: (index + 1).toLong()
         }
 
         return MemoryExtractionInput(

@@ -137,6 +137,26 @@ class VectorMemoryPromptComposerTest {
     }
 
     @Test
+    fun truncatesASingleMemoryThatExceedsTheWholeBudgetInsteadOfDroppingIt() {
+        val oversized = "a".repeat(VectorMemoryPromptComposer.MAX_MEMORY_SECTION_CHARS + 200)
+        val result =
+            VectorMemoryPromptComposer.compose(
+                history,
+                VectorMemoryContextResult.Ready(listOf(RetrievedMemory("m1", oversized, 0.9))),
+            )
+        val section =
+            result.last().content
+                .substringAfter(VectorMemoryPromptComposer.MEMORY_SECTION_HEADER)
+                .substringBefore("What did I say?")
+                .trim()
+        assertTrue(section.startsWith("1. a"))
+        assertEquals(
+            VectorMemoryPromptComposer.MAX_MEMORY_SECTION_CHARS,
+            section.count { it == 'a' },
+        )
+    }
+
+    @Test
     fun filtersAllMemoriesWhenNoneHaveUsableText() {
         assertSame(history, VectorMemoryPromptComposer.compose(history, VectorMemoryContextResult.Ready(emptyList())))
         assertSame(

@@ -130,6 +130,7 @@ fun ChatScreen(
         }
     }
     var busy by remember { mutableStateOf(false) }
+    var activeCall by remember { mutableStateOf<okhttp3.Call?>(null) }
     val requestGeneration = remember { java.util.concurrent.atomic.AtomicLong(0L) }
     var memoryBaseUrl by remember(settings) {
         mutableStateOf(settings.getString("memory_api_base_url", "https://api.odys.work/v1") ?: "https://api.odys.work/v1")
@@ -653,13 +654,24 @@ fun ChatScreen(
                     indexRebuildCoordinator = memoryOperationsCoordinator.createIndexRebuildCoordinator(),
                     setStatus = { status = it },
                     setMemoryStatusNotice = { memoryStatusNotice = it },
+                    onRequestMessages = { finalMessages ->
+                        mainHandler.post {
+                            if (ownsRequest() && memoryConversationId == requestConversationId) {
+                                lastPromptMessages = finalMessages
+                                savePromptSnapshot(requestConversationId, finalMessages)
+                            }
+                        }
+                    },
                 ).stream(
                     configuration.client,
                     messages,
                     observer,
                     effectiveMaxTokens(),
                     memoryQuery = plan.userText,
-                )
+                ).also { call ->
+                    activeCall = call
+                    if (!ownsRequest()) call.cancel()
+                }
             } catch (error: Exception) {
                 if (ownsRequest()) {
                     busy = false
@@ -1191,9 +1203,21 @@ fun ChatScreen(
                         showSessionList = true
                     }
                 },
-                onOpenCharacterPicker = { showCharacterPicker = true },
+                onOpenCharacterPicker = {
+                    if (busy) {
+                        status = "生成中，请先停止再操作。"
+                    } else {
+                        showCharacterPicker = true
+                    }
+                },
                 onOpenPrompt = { showPromptPreview = true },
-                onOpenSettings = { showSessionSettings = true },
+                onOpenSettings = {
+                    if (busy) {
+                        status = "生成中，请先停止再操作。"
+                    } else {
+                        showSessionSettings = true
+                    }
+                },
             )
         },
     ) { padding ->
@@ -1237,6 +1261,14 @@ fun ChatScreen(
                     }
                 },
             )
+            if (status.isNotBlank()) {
+                Text(
+                    text = status,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                )
+            }
             if (usageSummary.isNotBlank()) {
                 Text(
                     text = usageSummary,
@@ -1256,7 +1288,7 @@ fun ChatScreen(
                 )
                 val sendButtonState =
                     when {
-                        busy -> SendButtonState.Sending
+                        busy -> SendButtonState.Streaming
                         !historyReady || historyLoadFailed || !worldbookSession.ready -> SendButtonState.Disabled
                         chatUiState.draft.isBlank() -> SendButtonState.Idle
                         else -> SendButtonState.Ready
@@ -1266,7 +1298,29 @@ fun ChatScreen(
                     modifier = Modifier.align(Alignment.CenterEnd).padding(end = 2.dp),
                     onClick = {
                         if (busy) {
-                            status = "生成中，请稍候。"
+                            activeCall?.cancel()
+                            activeCall = null
+                            requestGeneration.incrementAndGet()
+                            busy = false
+                            status = "已停止生成。"
+                            val pendingIndex =
+                                history.indexOfLast {
+                                    it.role == "assistant" &&
+                                        it.deliveryState == PersistedChatMessage.DeliveryState.PENDING
+                                }
+                            if (pendingIndex >= 0) {
+                                val pending = history[pendingIndex]
+                                history[pendingIndex] =
+                                    pending.copy(
+                                        deliveryState =
+                                            if (pending.content.isBlank()) {
+                                                PersistedChatMessage.DeliveryState.FAILED
+                                            } else {
+                                                PersistedChatMessage.DeliveryState.COMPLETE
+                                            },
+                                    )
+                            }
+                            persistHistory()
                             return@TavernSendButton
                         }
                         coroutineScope.launch {
@@ -1305,7 +1359,18 @@ fun ChatScreen(
                             val currentSession = sessions.firstOrNull { it.id == memoryConversationId }
                             val groupMembers =
                                 currentSession?.participants
-                                    ?.map { GroupPromptAssembler.Member(it.id, it.name, "") }
+                                    ?.map { participant ->
+                                        val card =
+                                            characterCards
+                                                .firstOrNull { it.id == participant.id }
+                                                ?.card
+                                        val brief =
+                                            card?.description.orEmpty()
+                                                .ifBlank { card?.personality.orEmpty() }
+                                                .trim()
+                                                .take(GROUP_MEMBER_BRIEF_CHARS)
+                                        GroupPromptAssembler.Member(participant.id, participant.name, brief)
+                                    }
                                     .orEmpty()
                             val isGroupTurn =
                                 currentSession?.kind == SessionKind.GROUP &&
@@ -1324,7 +1389,11 @@ fun ChatScreen(
                                         members = groupMembers,
                                         history = historyBeforeTurn,
                                         draft = userText,
-                                        lastSpeakerId = lastGroupSpeakerId,
+                                        lastSpeakerId =
+                                            lastGroupSpeakerId
+                                                ?: historyBeforeTurn.lastOrNull {
+                                                    it.role == "assistant" && !it.speakerId.isNullOrBlank()
+                                                }?.speakerId,
                                     )
                                 } else {
                                     null
@@ -1336,7 +1405,7 @@ fun ChatScreen(
                                 setBusy = { busy = it },
                                 setMemoryStatusNotice = { memoryStatusNotice = it },
                                 setStatus = { status = it },
-                            ).start(openingMessage, userText)
+                            ).start(openingMessage, userText, selectedCharacter?.card?.name)
                             diagnosticStore.info("chat.send.started", "conversation=${requestConversationId.take(8)}")
                             val requestMaxTokens = effectiveMaxTokens()
                             diagnosticStore.info(
@@ -1348,6 +1417,21 @@ fun ChatScreen(
                                     "host=${ChatRequestDiagnostics.endpointHost(baseUrl)}",
                             )
                             val assistantMessageId = history.lastOrNull { it.role == "assistant" }?.id.orEmpty()
+
+                            fun failPendingAssistant(message: String) {
+                                busy = false
+                                status = message
+                                val index = history.indexOfFirst { it.id == assistantMessageId }
+                                if (index >= 0) {
+                                    val line = history[index]
+                                    history[index] =
+                                        line.copy(
+                                            content = line.content.ifBlank { message },
+                                            deliveryState = PersistedChatMessage.DeliveryState.FAILED,
+                                        )
+                                }
+                                persistHistory()
+                            }
                             val requestHistory = history.toList()
                             diagnosticStore.info("chat.send.prepare.begin", "history=${requestHistory.size}")
                             val messages =
@@ -1382,15 +1466,16 @@ fun ChatScreen(
                                     }
                                 } catch (error: Exception) {
                                     if (ownsSendRequest()) {
-                                        busy = false
-                                        status = "提示词准备失败：${error.message ?: error.javaClass.simpleName}"
+                                        failPendingAssistant(
+                                            "提示词准备失败：" +
+                                                (error.message ?: error.javaClass.simpleName),
+                                        )
                                     }
                                     return@launch
                                 }
                             if (messages == null) {
                                 if (ownsSendRequest()) {
-                                    busy = false
-                                    status = "提示词准备超时，请重试。"
+                                    failPendingAssistant("提示词准备超时，请重试。")
                                 }
                                 return@launch
                             }
@@ -1493,13 +1578,26 @@ fun ChatScreen(
                                         indexRebuildCoordinator = memoryOperationsCoordinator.createIndexRebuildCoordinator(),
                                         setStatus = { status = it },
                                         setMemoryStatusNotice = { memoryStatusNotice = it },
+                                        onRequestMessages = { finalMessages ->
+                                            mainHandler.post {
+                                                if (ownsSendRequest() &&
+                                                    memoryConversationId == requestConversationId
+                                                ) {
+                                                    lastPromptMessages = finalMessages
+                                                    savePromptSnapshot(requestConversationId, finalMessages)
+                                                }
+                                            }
+                                        },
                                     ).stream(
                                         client,
                                         messages,
                                         observer,
                                         requestMaxTokens,
                                         memoryQuery = userText,
-                                    )
+                                    ).also { call ->
+                                        activeCall = call
+                                        if (!ownsSendRequest()) call.cancel()
+                                    }
                                 },
                                 ordinaryStream = {
                                     client.stream(
@@ -1510,7 +1608,10 @@ fun ChatScreen(
                                             stream = chatGenerationPreferences.streamEnabled,
                                             thinkingEnabled = chatGenerationPreferences.thinkingEnabled,
                                         ),
-                                    )
+                                    ).also { call ->
+                                        activeCall = call
+                                        if (!ownsSendRequest()) call.cancel()
+                                    }
                                 },
                             )
                         }
@@ -1523,3 +1624,5 @@ fun ChatScreen(
 
 private const val NANOS_PER_MILLI = 1_000_000
 private const val PROMPT_PREPARE_TIMEOUT_MS = 30_000L
+
+private const val GROUP_MEMBER_BRIEF_CHARS = 120

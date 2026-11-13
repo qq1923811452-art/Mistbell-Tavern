@@ -38,7 +38,10 @@ internal class ChatStreamObserverCoordinator(
             }
 
             override fun onDelta(text: String) {
-                updateAssistant { line -> line.copy(content = line.content + text) }
+                updateAssistant { line ->
+                    val remaining = PersistedChatMessage.MAX_MESSAGE_CHARS - line.content.length
+                    if (remaining <= 0) line else line.copy(content = line.content + text.take(remaining))
+                }
             }
 
             override fun onReasoningDelta(text: String) {

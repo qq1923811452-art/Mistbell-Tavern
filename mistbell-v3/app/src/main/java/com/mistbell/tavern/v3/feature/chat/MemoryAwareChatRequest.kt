@@ -19,6 +19,7 @@ class MemoryAwareChatRequest(
     private val memoryContext: VectorMemoryContextService,
     private val onMemoryStatus: (String) -> Unit = {},
     private val diagnosticStore: DiagnosticLogStore? = null,
+    private val onRequestMessages: (List<PromptMessage>) -> Unit = {},
 ) {
     suspend fun stream(
         messages: List<PromptMessage>,
@@ -76,6 +77,7 @@ class MemoryAwareChatRequest(
             },
         )
         val requestMessages = VectorMemoryPromptComposer.compose(messages, memoryResult)
+        onRequestMessages(requestMessages)
         return chatClient.stream(requestMessages, observer, options)
     }
 }

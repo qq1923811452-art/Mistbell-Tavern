@@ -3,6 +3,8 @@ package com.mistbell.tavern.v3.feature.chat
 import android.content.SharedPreferences
 import com.mistbell.tavern.v3.core.diagnostics.DiagnosticLogStore
 import com.mistbell.tavern.v3.feature.character.CharacterCard
+import com.mistbell.tavern.v3.feature.memory.stripThinkingBlocks
+import com.mistbell.tavern.v3.feature.worldbook.ActivatedWorldBookEntry
 import com.mistbell.tavern.v3.feature.worldbook.WorldBookActivationState
 import com.mistbell.tavern.v3.feature.worldbook.WorldBookEntry
 
@@ -37,7 +39,8 @@ internal class ChatSendMessageCoordinator(
         historyScopeId: String,
         invalidateHistoryWindow: Boolean = false,
     ): ChatSendMessagePreparation {
-        val completedLines = if (historyIsComplete) history else history.dropLast(2)
+        val charName = selectedCard?.name
+        val completedLines = completedLinesWithoutThinkingBlocks(history, historyIsComplete)
         val completeHistory =
             completedLines.mapNotNull { line ->
                 if (line.content.isBlank()) {
@@ -80,11 +83,12 @@ internal class ChatSendMessageCoordinator(
         val assemblyStarted = System.nanoTime()
         val messages =
             ChatPromptAssemblyCoordinator().assemble(
-                characterDefinition = characterDefinition,
+                characterDefinition = characterDefinition?.let { MacroEngine.resolve(it, charName) },
                 contextWindow = contextWindow,
-                activatedWorldbook = activationReport.activatedEntries.map { it.entry },
+                activatedWorldbook =
+                    resolveWorldbookContent(activationReport.activatedEntries, charName),
                 latestUserMessage = userText,
-                postHistoryInstructions = postHistoryInstructions,
+                postHistoryInstructions = postHistoryInstructions?.let { MacroEngine.resolve(it, charName) },
                 cardSystemInstructions = selectedCard?.systemPrompt,
             )
         val assemblyMs = (System.nanoTime() - assemblyStarted) / NANOS_PER_MILLI
@@ -94,6 +98,23 @@ internal class ChatSendMessageCoordinator(
         )
         return ChatSendMessagePreparation(messages = messages)
     }
+
+    /** Closed reasoning blocks must not consume the prompt window. */
+    private fun completedLinesWithoutThinkingBlocks(
+        history: List<ChatLine>,
+        historyIsComplete: Boolean,
+    ): List<ChatLine> =
+        (if (historyIsComplete) history else history.dropLast(2)).map { line ->
+            line.copy(content = stripThinkingBlocks(line.content))
+        }
+
+    private fun resolveWorldbookContent(
+        entries: List<ActivatedWorldBookEntry>,
+        charName: String?,
+    ): List<WorldBookEntry> =
+        entries.map { activated ->
+            activated.entry.copy(content = MacroEngine.resolve(activated.entry.content, charName))
+        }
 }
 
 private const val NANOS_PER_MILLI = 1_000_000

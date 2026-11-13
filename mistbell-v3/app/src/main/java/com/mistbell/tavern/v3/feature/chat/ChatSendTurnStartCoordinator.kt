@@ -12,8 +12,9 @@ internal class ChatSendTurnStartCoordinator(
     fun start(
         openingMessage: String,
         userText: String,
+        charName: String? = null,
     ) {
-        ChatTurnHistoryCoordinator().appendPendingTurn(history, openingMessage, userText)
+        ChatTurnHistoryCoordinator().appendPendingTurn(history, openingMessage, userText, charName)
         persistHistory()
         clearDraft()
         setBusy(true)

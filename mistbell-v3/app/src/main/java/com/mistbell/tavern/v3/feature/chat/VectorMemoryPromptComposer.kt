@@ -43,10 +43,35 @@ object VectorMemoryPromptComposer {
     }
 
     private fun List<RetrievedMemory>.takeWhileWithBudget(): List<RetrievedMemory> {
-        var used = 0
-        return takeWhile { memory ->
-            used += memory.text.length
-            used <= MAX_MEMORY_SECTION_CHARS
+        val usable =
+            mapNotNull { memory ->
+                val text = memory.text.trim()
+                if (text.isEmpty()) null else memory.copy(text = text)
+            }
+        val first = usable.firstOrNull()
+        return if (first != null && first.text.length > MAX_MEMORY_SECTION_CHARS) {
+            // A single oversized memory is more useful truncated than dropped entirely.
+            val end = truncationEnd(first.text, MAX_MEMORY_SECTION_CHARS)
+            if (end > 0) listOf(first.copy(text = first.text.substring(0, end))) else emptyList()
+        } else {
+            var used = 0
+            usable.takeWhile { memory ->
+                used += memory.text.length
+                used <= MAX_MEMORY_SECTION_CHARS
+            }
+        }
+    }
+
+    /** Never leave half of a UTF-16 surrogate pair at the truncation boundary. */
+    private fun truncationEnd(
+        text: String,
+        budget: Int,
+    ): Int {
+        val proposedEnd = minOf(text.length, budget)
+        return if (proposedEnd in 1 until text.length && Character.isHighSurrogate(text[proposedEnd - 1])) {
+            proposedEnd - 1
+        } else {
+            proposedEnd
         }
     }
 

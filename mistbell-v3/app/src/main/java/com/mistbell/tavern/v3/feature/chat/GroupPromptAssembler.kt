@@ -34,7 +34,15 @@ object GroupPromptAssembler {
     fun systemBlock(
         members: List<Member>,
         speakerName: String,
-    ): String {
+    ): String = stableBlock(members) + "\n\n" + speakerInstruction(speakerName)
+
+    /**
+     * The fixed part of the group system block: rules and the full member list.
+     *
+     * It contains no per-turn text, so callers can keep it in the system message and preserve a
+     * byte-identical prefix across turns for provider prompt caching.
+     */
+    fun stableBlock(members: List<Member>): String {
         val renderedMembers =
             members.mapNotNull { member ->
                 val name = singleLine(member.name)
@@ -48,9 +56,13 @@ object GroupPromptAssembler {
                     if (brief.isEmpty()) "- $name" else "- $name：$brief"
                 }
             }
+        return listOf(RULES, "$MEMBER_HEADER\n$memberList").joinToString("\n\n")
+    }
+
+    /** The per-turn speaker line, which must stay out of the cached system prefix. */
+    fun speakerInstruction(speakerName: String): String {
         val speaker = singleLine(speakerName)
-        val speakerLine = if (speaker.isEmpty()) GENERIC_SPEAKER_LINE else "本轮由「$speaker」回复。"
-        return listOf(RULES, "$MEMBER_HEADER\n$memberList", speakerLine).joinToString("\n\n")
+        return if (speaker.isEmpty()) GENERIC_SPEAKER_LINE else "本轮由「$speaker」回复。"
     }
 
     /**

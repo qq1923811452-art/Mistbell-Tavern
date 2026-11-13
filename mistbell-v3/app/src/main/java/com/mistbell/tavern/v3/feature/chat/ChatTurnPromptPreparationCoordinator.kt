@@ -95,17 +95,22 @@ internal class ChatTurnPromptPreparationCoordinator(
             completed
                 .filter { it.role == "assistant" && it.content.isNotBlank() }
                 .map { it.speakerName }
-        val block = GroupPromptAssembler.systemBlock(context.members, context.speakerName)
+        val stableBlock = GroupPromptAssembler.stableBlock(context.members)
+        val speakerLine = GroupPromptAssembler.speakerInstruction(context.speakerName)
         val pinnedMessages = historyPlanner.exportState()?.pinnedMessageCount ?: 0
         val pinnedAssistants =
             completed.filter { it.content.isNotBlank() }.take(pinnedMessages)
                 .count { it.role == "assistant" }
         val labelled = GroupPromptAssembler.labelHistoryAssistantMessages(messages, assistantNames, pinnedAssistants)
-        return labelled.map { message ->
-            if (message.role == PromptRole.SYSTEM) {
-                message.copy(content = message.content + "\n\n" + block)
-            } else {
-                message
+        val lastUserIndex = labelled.indexOfLast { it.role == PromptRole.USER }
+        return labelled.mapIndexed { index, message ->
+            when {
+                message.role == PromptRole.SYSTEM ->
+                    // Fixed member list stays byte-identical so the provider prefix cache holds.
+                    message.copy(content = message.content + "\n\n" + stableBlock)
+                index == lastUserIndex ->
+                    message.copy(content = message.content.trimEnd() + "\n\n" + speakerLine)
+                else -> message
             }
         }
     }

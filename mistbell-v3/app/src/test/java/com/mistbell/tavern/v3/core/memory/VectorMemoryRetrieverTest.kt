@@ -350,6 +350,29 @@ class VectorMemoryRetrieverTest {
     }
 
     @Test
+    fun keywordOnlyFallbackRanksByMatchesAndHonorsBudgetWithoutVectors() {
+        val specific = MemoryTextRecord("specific", "北京旅行计划")
+        val generic = MemoryTextRecord("generic", "北京旅行")
+
+        val ranked =
+            VectorMemoryRetriever.retrieveKeywordOnly(
+                texts = listOf(generic, specific),
+                queryText = "北京旅行",
+            )
+        assertEquals(2, ranked.size)
+        assertEquals(MemoryRetrievalSource.KEYWORD, ranked[0].source)
+        assertEquals(0.0, ranked[0].similarity, 0.0)
+
+        val budgeted =
+            VectorMemoryRetriever.retrieveKeywordOnly(
+                texts = listOf(specific),
+                queryText = "北京旅行",
+                maxCharacters = 2,
+            )
+        assertEquals("北京", budgeted.single().text)
+    }
+
+    @Test
     fun rejectsDuplicateTextIdsAndInvalidBudgets() {
         assertTrue(
             runCatching {

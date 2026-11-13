@@ -1,7 +1,6 @@
 package com.mistbell.tavern.v3.feature.image
 
 import android.content.Context
-import android.graphics.BitmapFactory
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -34,6 +33,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import com.mistbell.tavern.v3.feature.character.decodeCharacterArt
 import com.mistbell.tavern.v3.ui.tavern.rememberTavernListState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -113,9 +113,10 @@ fun ImageGenerationScreen(onBack: () -> Unit) {
                     val selected = images.firstOrNull { it.id == previewId } ?: images.firstOrNull()
                     val bitmap =
                         selected?.let {
-                            BitmapFactory.decodeFile(
-                                File(context.filesDir, "generated-images/${it.fileName}").absolutePath,
-                            )?.asImageBitmap()
+                            val file = File(context.filesDir, "generated-images/${it.fileName}")
+                            runCatching { decodeCharacterArt(file.readBytes(), PREVIEW_MAX_DIMENSION) }
+                                .getOrNull()
+                                ?.asImageBitmap()
                         }
                     images to bitmap
                 }
@@ -371,3 +372,5 @@ private fun downloadExplicitlySelectedImage(url: String): ByteArray {
         return buffer.readByteArray()
     }
 }
+
+private const val PREVIEW_MAX_DIMENSION = 1024

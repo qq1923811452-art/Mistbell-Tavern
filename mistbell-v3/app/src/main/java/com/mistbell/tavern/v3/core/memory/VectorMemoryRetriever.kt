@@ -42,6 +42,16 @@ data class RetrievedMemory(
 object VectorMemoryRetriever {
     private val wordRegex = Regex("[\\p{L}\\p{N}]+")
 
+    /**
+     * Common Chinese function words and question fillers. They are dropped only when a query has
+     * more than two tokens, and an all-stopword query keeps its original tokens.
+     */
+    private val KEYWORD_STOPWORDS =
+        setOf(
+            "的", "了", "是", "在", "我", "你", "他", "她", "它", "们", "这", "那", "有", "和", "就", "都",
+            "什么", "怎么", "可以", "我们", "你们", "他们", "这个", "那个",
+        )
+
     fun retrieve(
         snapshot: VectorSnapshot,
         queryVector: List<Float>,
@@ -174,6 +184,75 @@ object VectorMemoryRetriever {
         return result
     }
 
+    /**
+     * Pure keyword fallback for callers without a usable vector snapshot or query vector.
+     *
+     * Ranking mirrors the keyword half of [retrieve]; similarity stays 0.0 because no vector ran.
+     */
+    fun retrieveKeywordOnly(
+        texts: List<MemoryTextRecord>,
+        queryText: String,
+        limit: Int = VectorSimilaritySearch.DEFAULT_RESULT_LIMIT,
+        maxCharacters: Int = DEFAULT_MAX_CHARACTERS,
+    ): List<RetrievedMemory> {
+        require(maxCharacters in 1..MAX_CHARACTERS) {
+            "Memory character budget must be between 1 and $MAX_CHARACTERS."
+        }
+        require(limit >= 1) { "Result limit must be at least 1." }
+        require(texts.map(MemoryTextRecord::id).distinct().size == texts.size) {
+            "Memory text IDs must be unique."
+        }
+        val queryTerms = tokenizeQuery(queryText)
+        if (queryTerms.isEmpty() || texts.isEmpty()) return emptyList()
+
+        val ranked =
+            texts.asSequence()
+                .map { record -> record to countMatchedQueryTerms(record.text, queryTerms) }
+                .filter { it.second > 0 }
+                .sortedWith(
+                    compareByDescending<Pair<MemoryTextRecord, Int>> { it.second }
+                        .thenBy { it.first.id },
+                )
+                .take(VectorSimilaritySearch.MAX_RESULT_LIMIT)
+
+        var usedCharacters = 0
+        val result = mutableListOf<RetrievedMemory>()
+        val seenHashes = mutableSetOf<String>()
+        for ((record, _) in ranked) {
+            if (result.size >= limit) break
+            if (!seenHashes.add(record.sourceTextSha256)) continue
+            val normalizedText = record.text.trim()
+            if (normalizedText.isEmpty()) continue
+            val remaining = maxCharacters - usedCharacters
+            if (remaining <= 0) break
+            val end = safeTruncationEnd(normalizedText, remaining)
+            if (end <= 0) continue
+            val selectedText = normalizedText.substring(0, end)
+            result +=
+                RetrievedMemory(
+                    id = record.id,
+                    text = selectedText,
+                    similarity = 0.0,
+                    source = MemoryRetrievalSource.KEYWORD,
+                )
+            usedCharacters += selectedText.length
+        }
+        return result
+    }
+
+    /** Never leave half of a UTF-16 surrogate pair at the truncation boundary. */
+    private fun safeTruncationEnd(
+        text: String,
+        budget: Int,
+    ): Int {
+        val proposedEnd = minOf(text.length, budget)
+        return if (proposedEnd in 1 until text.length && Character.isHighSurrogate(text[proposedEnd - 1])) {
+            proposedEnd - 1
+        } else {
+            proposedEnd
+        }
+    }
+
     const val DEFAULT_MAX_CHARACTERS = 6_000
     const val MAX_CHARACTERS = 100_000
     const val DEFAULT_RRF_CONSTANT = 60
@@ -223,7 +302,9 @@ object VectorMemoryRetriever {
             flushHan()
             flushOther()
         }
-        return tokens.take(MAX_KEYWORD_QUERY_TERMS).toSet()
+        val bounded = tokens.take(MAX_KEYWORD_QUERY_TERMS).toSet()
+        if (bounded.size <= 2) return bounded
+        return (bounded - KEYWORD_STOPWORDS).ifEmpty { bounded }
     }
 
     /** Tokenize each bounded candidate once; only count terms actually present in the query. */

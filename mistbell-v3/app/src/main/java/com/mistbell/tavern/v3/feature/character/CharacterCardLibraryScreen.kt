@@ -210,7 +210,7 @@ fun CharacterCardLibraryScreen(onBack: () -> Unit) {
     ) { padding ->
         if (showEditor) {
             LazyColumn(
-                state = rememberTavernListState("character_library"),
+                state = rememberTavernListState("card_editor"),
                 modifier = Modifier.fillMaxSize().padding(padding).imePadding(),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -377,7 +377,7 @@ fun CharacterCardLibraryScreen(onBack: () -> Unit) {
             }
         } else {
             LazyColumn(
-                state = rememberTavernListState("card_editor"),
+                state = rememberTavernListState("character_library"),
                 modifier = Modifier.fillMaxSize().padding(padding),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),

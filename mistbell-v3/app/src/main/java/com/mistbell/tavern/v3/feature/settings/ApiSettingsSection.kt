@@ -55,7 +55,8 @@ fun ApiSettingsSection(onStatus: (String) -> Unit) {
             initial = profile,
             onDismiss = { showDialog = false },
             onConfirm = { updated, apiKey ->
-                var handle = updated.handle
+                val previousHandle = updated.handle
+                var handle = previousHandle
                 if (apiKey.isNotBlank()) {
                     handle = runCatching { credentialStore.save(apiKey) }.getOrNull()
                 }
@@ -76,6 +77,10 @@ fun ApiSettingsSection(onStatus: (String) -> Unit) {
                 prefs.edit()
                     .putString("chat_credential_handle", handle)
                     .apply()
+                if (handle != null && previousHandle != null && previousHandle != handle) {
+                    // A rotated key must not leave the previous ciphertext reachable.
+                    runCatching { credentialStore.delete(previousHandle) }
+                }
                 profile = updated.copy(handle = handle)
                 showDialog = false
                 onStatus(

@@ -105,7 +105,7 @@ class ChatClientConfigurationException(message: String) : IllegalStateException(
 class OpenAiCompatibleChatClient(
     private val providers: ProviderProfileSet,
     private val credentials: CredentialResolver,
-    client: OkHttpClient = OkHttpClient(),
+    client: OkHttpClient = SHARED_HTTP_CLIENT,
 ) {
     private val httpClient =
         client.newBuilder()
@@ -206,9 +206,11 @@ class OpenAiCompatibleChatClient(
             "endpoint=$endpoint; stream=${options.stream}; maxTokens=${options.maxTokens}; " +
                 PromptCacheDiagnostics.describe(messages, 0),
         )
+        val endpointUrl =
+            if (baseUrl.endsWith("/chat/completions")) baseUrl else "$baseUrl/chat/completions"
         val requestBuilder =
             Request.Builder()
-                .url("$baseUrl/chat/completions")
+                .url(endpointUrl)
                 .header("Accept", if (options.stream) "text/event-stream" else "application/json")
                 .header("Content-Type", "application/json")
                 .post(body)
@@ -317,6 +319,7 @@ class OpenAiCompatibleChatClient(
                             val source = responseBody.source()
                             var sawDone = false
                             var sawSseEvent = false
+                            var collectingNonSseJson = false
                             val nonSseBody = StringBuilder()
                             var finishReason: String? = null
                             var completionChars = 0L
@@ -326,7 +329,11 @@ class OpenAiCompatibleChatClient(
                                     "Streaming event exceeds the line limit."
                                 }
                                 if (line.isBlank() || line.startsWith(":") || !line.startsWith("data:")) {
-                                    if (line.trimStart().startsWith("{")) nonSseBody.appendLine(line)
+                                    if (line.trimStart().startsWith("{")) collectingNonSseJson = true
+                                    if (collectingNonSseJson) {
+                                        val remaining = MAX_NON_SSE_BODY_CHARS - nonSseBody.length
+                                        if (remaining > 0) nonSseBody.append(line.take(remaining)).append('\n')
+                                    }
                                     continue
                                 }
                                 sawSseEvent = true
@@ -448,6 +455,7 @@ class OpenAiCompatibleChatClient(
 
     companion object {
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
+        private val SHARED_HTTP_CLIENT = OkHttpClient()
         private val LOOPBACK_HOSTS = setOf("localhost", "127.0.0.1", "::1")
 
         /** Fields owned by the client; a provider template must never override them. */
@@ -465,6 +473,7 @@ class OpenAiCompatibleChatClient(
         const val READ_TIMEOUT_SECONDS = 180L
         const val MAX_RESPONSE_BYTES = 8L * 1024 * 1024
         const val MAX_SSE_LINE_CHARS = 1_000_000
+        const val MAX_NON_SSE_BODY_CHARS = 64 * 1024
         const val READ_CHUNK_BYTES = 8 * 1024
         private const val NANOS_PER_MILLI = 1_000_000L
     }

@@ -365,6 +365,25 @@ fun WorldBookLibraryScreen(onBack: () -> Unit) {
             },
             confirmButton = {
                 TextButton(onClick = {
+                    val entryPosition =
+                        insertPosition.takeIf {
+                            it in
+                                setOf(
+                                    WorldBookPlacement.POSITION_BEFORE_PROMPT,
+                                    WorldBookPlacement.POSITION_DEPTH,
+                                    WorldBookPlacement.POSITION_AFTER_PROMPT,
+                                    WorldBookPlacement.POSITION_AN_BEFORE,
+                                    WorldBookPlacement.POSITION_AN_AFTER,
+                                    WorldBookPlacement.POSITION_EM_BEFORE,
+                                    WorldBookPlacement.POSITION_EM_AFTER,
+                                )
+                        } ?: WorldBookPlacement.POSITION_BEFORE_PROMPT
+                    val entryDepth =
+                        if (entryPosition == WorldBookPlacement.POSITION_DEPTH) {
+                            depthText.toIntOrNull()?.coerceIn(0, 10) ?: 0
+                        } else {
+                            0
+                        }
                     val entry =
                         WorldBookEntry(
                             id = editingEntryId ?: UUID.randomUUID().toString(),
@@ -378,20 +397,8 @@ fun WorldBookLibraryScreen(onBack: () -> Unit) {
                             disable = disabled,
                             secondaryKeys = secondaryKeys.split(',').map(String::trim).filter(String::isNotEmpty),
                             order = orderText.toIntOrNull()?.coerceIn(0, 999999) ?: 0,
-                            insertPosition =
-                                insertPosition.takeIf {
-                                    it in
-                                        setOf(
-                                            WorldBookPlacement.POSITION_BEFORE_PROMPT,
-                                            WorldBookPlacement.POSITION_DEPTH,
-                                            WorldBookPlacement.POSITION_AFTER_PROMPT,
-                                            WorldBookPlacement.POSITION_AN_BEFORE,
-                                            WorldBookPlacement.POSITION_AN_AFTER,
-                                            WorldBookPlacement.POSITION_EM_BEFORE,
-                                            WorldBookPlacement.POSITION_EM_AFTER,
-                                        )
-                                } ?: WorldBookPlacement.POSITION_BEFORE_PROMPT,
-                            depth = depthText.toIntOrNull()?.coerceIn(0, 10) ?: 0,
+                            insertPosition = entryPosition,
+                            depth = entryDepth,
                             probability = (probabilityText.toIntOrNull() ?: 100).coerceIn(0, 100) / 100.0,
                             depthRole =
                                 depthRole.takeIf {

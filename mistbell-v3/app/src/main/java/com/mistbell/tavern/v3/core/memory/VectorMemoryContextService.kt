@@ -86,15 +86,12 @@ class VectorMemoryContextService(
 
         val snapshot =
             when (val loaded = snapshots.loadSnapshot()) {
-                VectorSnapshotReadResult.Missing -> return VectorMemoryContextResult.Unavailable(
-                    VectorMemoryContextResult.Reason.SNAPSHOT_MISSING,
-                )
-                is VectorSnapshotReadResult.Corrupt -> return VectorMemoryContextResult.Unavailable(
-                    VectorMemoryContextResult.Reason.SNAPSHOT_CORRUPT,
-                )
-                is VectorSnapshotReadResult.Incompatible -> return VectorMemoryContextResult.Unavailable(
-                    VectorMemoryContextResult.Reason.SNAPSHOT_INCOMPATIBLE,
-                )
+                VectorSnapshotReadResult.Missing ->
+                    return keywordFallback(query, VectorMemoryContextResult.Reason.SNAPSHOT_MISSING)
+                is VectorSnapshotReadResult.Corrupt ->
+                    return keywordFallback(query, VectorMemoryContextResult.Reason.SNAPSHOT_CORRUPT)
+                is VectorSnapshotReadResult.Incompatible ->
+                    return keywordFallback(query, VectorMemoryContextResult.Reason.SNAPSHOT_INCOMPATIBLE)
                 is VectorSnapshotReadResult.Loaded -> loaded.snapshot
             }
 
@@ -105,9 +102,7 @@ class VectorMemoryContextService(
                     identifiedRuntime.dimensions != snapshot.dimensions
             )
         ) {
-            return VectorMemoryContextResult.Unavailable(
-                VectorMemoryContextResult.Reason.SNAPSHOT_INCOMPATIBLE,
-            )
+            return keywordFallback(query, VectorMemoryContextResult.Reason.SNAPSHOT_INCOMPATIBLE)
         }
 
         val queryVector =
@@ -116,18 +111,14 @@ class VectorMemoryContextService(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
-                return VectorMemoryContextResult.Unavailable(
-                    VectorMemoryContextResult.Reason.EMBEDDING_FAILED,
-                )
+                return keywordFallback(query, VectorMemoryContextResult.Reason.EMBEDDING_FAILED)
             }
         if (queryVector.size != snapshot.dimensions ||
             queryVector.isEmpty() ||
             queryVector.any { !it.isFinite() } ||
             queryVector.all { it == 0f }
         ) {
-            return VectorMemoryContextResult.Unavailable(
-                VectorMemoryContextResult.Reason.INVALID_QUERY_VECTOR,
-            )
+            return keywordFallback(query, VectorMemoryContextResult.Reason.INVALID_QUERY_VECTOR)
         }
 
         val texts =
@@ -160,6 +151,35 @@ class VectorMemoryContextService(
             }
         return if (retrieved.isEmpty()) {
             VectorMemoryContextResult.NoRelevantMemories
+        } else {
+            VectorMemoryContextResult.Ready(retrieved)
+        }
+    }
+
+    /**
+     * Keyword-only retrieval keeps memory recall working when no usable vector snapshot or query
+     * vector exists. Empty hits or unreadable source text keep the original failure reason.
+     */
+    private fun keywordFallback(
+        query: String,
+        reason: VectorMemoryContextResult.Reason,
+    ): VectorMemoryContextResult {
+        val retrieved =
+            try {
+                val texts = textProvider.loadMemoryTexts()
+                VectorMemoryRetriever.retrieveKeywordOnly(
+                    texts = texts,
+                    queryText = query,
+                    limit = resultLimit,
+                    maxCharacters = maxCharacters,
+                )
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                return VectorMemoryContextResult.Unavailable(reason)
+            }
+        return if (retrieved.isEmpty()) {
+            VectorMemoryContextResult.Unavailable(reason)
         } else {
             VectorMemoryContextResult.Ready(retrieved)
         }

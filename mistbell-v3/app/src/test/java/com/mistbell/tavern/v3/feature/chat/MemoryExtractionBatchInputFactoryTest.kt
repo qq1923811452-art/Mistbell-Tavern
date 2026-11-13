@@ -30,6 +30,35 @@ class MemoryExtractionBatchInputFactoryTest {
         assertEquals("User: first question\nAssistant: first answer", input.textByTurnId.getValue("user-1"))
     }
 
+    @Test fun stripsThinkingLabelsGroupSpeakerAndBackfillsZeroTimestamp() {
+        val history =
+            listOf(
+                PersistedChatMessage(
+                    id = "user-1",
+                    role = "user",
+                    content = "<think>plan</think>question",
+                    createdAtEpochMillis = 0L,
+                    deliveryState = PersistedChatMessage.DeliveryState.COMPLETE,
+                ),
+                PersistedChatMessage(
+                    id = "assistant-1",
+                    role = "assistant",
+                    content = "<think>hidden</think>answer",
+                    createdAtEpochMillis = 0L,
+                    deliveryState = PersistedChatMessage.DeliveryState.COMPLETE,
+                    speakerName = "Luna",
+                ),
+            )
+
+        val input = factory.create(job(listOf("user-1")), history)
+
+        assertEquals(
+            "User: question\nAssistant: [Luna] answer",
+            input.textByTurnId.getValue("user-1"),
+        )
+        assertEquals(1L, input.turnObservedAtEpochMillis.getValue("user-1"))
+    }
+
     @Test fun missingQueuedTurnFailsClosed() {
         assertThrows(IllegalArgumentException::class.java) {
             factory.create(job(listOf("missing")), listOf(message("other", "user", "text")))

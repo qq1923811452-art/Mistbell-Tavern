@@ -129,4 +129,17 @@ class SessionArchiveCodecTest {
         assertNull(result.archive)
         assertEquals("第 1 行超过导入长度上限。", result.error)
     }
+
+    @Test fun ignoresSillyTavernHeaderAndClampsActiveVariant() {
+        val raw =
+            listOf(
+                """{"user_name":"User","character_name":"Luna"}""",
+                """{"role":"assistant","mes":"hi","variants":["a","b"],"active_variant":5}""",
+            ).joinToString("\n")
+        val imported = SessionArchiveCodec.importAny(raw)
+        assertNotNull(imported)
+        assertEquals(1, imported!!.messages.size)
+        assertEquals("hi", imported.messages.single().content)
+        assertEquals(1, imported.messages.single().activeVariant)
+    }
 }

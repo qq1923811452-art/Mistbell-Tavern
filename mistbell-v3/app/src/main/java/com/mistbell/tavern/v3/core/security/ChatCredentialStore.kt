@@ -54,7 +54,7 @@ class ChatCredentialStore(context: Context) : CredentialResolver {
     }
 
     @Synchronized
-    fun contains(handle: String): Boolean = isValidHandle(handle) && preferences.contains(handle)
+    fun contains(handle: String): Boolean = resolve(handle) != null
 
     private fun encrypt(plainText: ByteArray): ByteArray {
         val cipher = Cipher.getInstance(TRANSFORMATION)

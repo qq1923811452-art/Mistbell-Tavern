@@ -27,6 +27,15 @@ class ChatTurnHistoryCoordinatorTest {
     }
 
     @Test
+    fun resolvesOpeningMessageMacrosWithCharacterName() {
+        val history = mutableListOf<ChatLine>()
+
+        ChatTurnHistoryCoordinator().appendPendingTurn(history, "{{char}} 对 <user> 说", "你好", "露娜")
+
+        assertEquals("露娜 对 你 说", history.first().content)
+    }
+
+    @Test
     fun continuesAfterExistingHistoryEvenWhenTheClockWouldCollide() {
         val future = System.currentTimeMillis() + 60_000L
         val history = mutableListOf(existingLine("a0", future))

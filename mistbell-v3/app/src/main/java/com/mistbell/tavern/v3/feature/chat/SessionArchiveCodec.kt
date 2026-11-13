@@ -177,6 +177,7 @@ object SessionArchiveCodec {
                 return@forEachIndexed
             }
             if (messages.size >= MAX_IMPORT_MESSAGES) throw IllegalArgumentException("Too many messages.")
+            if (isSillyTavernHeader(item)) return@forEachIndexed
             messages += parseMessage(item, messages.size)
         }
         // An exported header-only archive is a valid empty session. Reject non-empty
@@ -221,6 +222,13 @@ object SessionArchiveCodec {
                 }
             }
 
+    /** SillyTavern writes a leading `{"user_name":...,"character_name":...}` metadata record. */
+    private fun isSillyTavernHeader(item: JSONObject): Boolean =
+        !item.has("mes") &&
+            !item.has("content") &&
+            !item.has("role") &&
+            (item.has("user_name") || item.has("character_name"))
+
     private fun parseMessage(
         item: JSONObject,
         index: Int,
@@ -240,18 +248,22 @@ object SessionArchiveCodec {
             runCatching {
                 PersistedChatMessage.DeliveryState.valueOf(item.optString("delivery_state", "COMPLETE"))
             }.getOrDefault(PersistedChatMessage.DeliveryState.COMPLETE)
+        val variants =
+            item.optJSONArray("variants")?.let { array ->
+                (0 until array.length()).mapNotNull { i ->
+                    array.optString(i, "").takeIf(String::isNotEmpty)
+                }
+            }.orEmpty()
+        val activeVariant =
+            item.optInt("active_variant", 0)
+                .coerceIn(0, (variants.size - 1).coerceAtLeast(0))
         return PersistedChatMessage(
             id = item.optString("id", "").ifBlank { "imported-" + index + "-" + UUID.randomUUID() },
             role = role, content = content, createdAtEpochMillis = timestamp, deliveryState = state,
             speakerId = item.optString("speaker_id", "").takeIf(String::isNotBlank),
             speakerName = item.optString("speaker_name", "").takeIf(String::isNotBlank),
-            variants =
-                item.optJSONArray("variants")?.let { array ->
-                    (0 until array.length()).mapNotNull { i ->
-                        array.optString(i, "").takeIf(String::isNotEmpty)
-                    }
-                }.orEmpty(),
-            activeVariant = item.optInt("active_variant", 0),
+            variants = variants,
+            activeVariant = activeVariant,
         )
     }
 
