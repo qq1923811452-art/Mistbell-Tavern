@@ -95,7 +95,9 @@ internal fun EraPlayScreen(
             lines = state.lines,
             modifier = Modifier.fillMaxWidth().weight(1f).padding(horizontal = 16.dp, vertical = 8.dp),
         )
-        state.error?.let { message -> EraErrorBanner(message) }
+        state.error?.let { message ->
+            EraErrorBanner(message = message, onRetry = { session.retry(game) })
+        }
         val fallback = rememberFallbackCommands(state.input, state.lines)
         EraInputPanel(
             input = state.input,
@@ -151,7 +153,11 @@ private fun EraGameLog(
 ) {
     val listState = rememberLazyListState()
     LaunchedEffect(lines.size) {
-        if (lines.isNotEmpty()) listState.scrollToItem(lines.lastIndex)
+        if (lines.isEmpty()) return@LaunchedEffect
+        val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
+        // 用户往上翻看历史时不要把他拽回底部
+        val nearBottom = lastVisible < 0 || lastVisible >= lines.size - 2
+        if (nearBottom) listState.scrollToItem(lines.lastIndex)
     }
     LazyColumn(
         modifier = modifier,
@@ -162,6 +168,7 @@ private fun EraGameLog(
             Text(
                 text = line.text,
                 color = if (line.text.startsWith("【系统】")) TavernPalette.TextTertiary else TavernPalette.TextPrimary,
+                fontFamily = FontFamily.Monospace,
                 fontSize = ERA_TEXT_SIZE,
                 lineHeight = ERA_LINE_HEIGHT,
             )
@@ -170,20 +177,34 @@ private fun EraGameLog(
 }
 
 @Composable
-private fun EraErrorBanner(message: String) {
-    Text(
-        text = message,
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 6.dp)
-                .clip(TavernShape.Card)
-                .background(TavernPalette.Danger.copy(alpha = 0.14f))
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-        color = TavernPalette.Danger,
-        fontSize = 12.sp,
-        lineHeight = 17.sp,
-    )
+private fun EraErrorBanner(
+    message: String,
+    onRetry: () -> Unit,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            text = message,
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .clip(TavernShape.Card)
+                    .background(TavernPalette.Danger.copy(alpha = 0.14f))
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+            color = TavernPalette.Danger,
+            fontSize = 12.sp,
+            lineHeight = 17.sp,
+        )
+        TavernPill(
+            label = "重试",
+            onClick = onRetry,
+            modifier = Modifier.fillMaxWidth().height(ERA_BUTTON_HEIGHT),
+            filled = true,
+            contentDescription = "重新启动引擎",
+        )
+    }
 }
 
 /** 引擎没给按钮时，从文本尾部认出 `[n] ...` 选项，避免「只能打字」的退步体验。 */

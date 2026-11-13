@@ -59,6 +59,7 @@ internal class EraEngineSession(
     val state: StateFlow<EraGameState> = _state.asStateFlow()
 
     private var serviceBound = false
+    private var started = false
     private var pendingPort = 0
     private var request: EwpInputRequest? = null
     private var reading: Job? = null
@@ -94,6 +95,8 @@ internal class EraEngineSession(
         }
 
     fun start(game: EraGameInstall) {
+        if (started) return
+        started = true
         scope.launch {
             try {
                 _state.update { it.copy(statusText = "正在打包 ${game.name}…") }
@@ -117,7 +120,23 @@ internal class EraEngineSession(
         client.send(EwpCommand.submit(current.requestId, value, via))
     }
 
+    /** 用户点「重试」：拆掉当前绑定，重新走一遍打包 → 绑定 → 握手。 */
+    fun retry(game: EraGameInstall) {
+        started = false
+        request = null
+        reading?.cancel()
+        runCatching { client.send(EwpCommand.quit()) }
+        client.close()
+        if (serviceBound) {
+            runCatching { appContext.unbindService(connection) }
+            serviceBound = false
+        }
+        _state.value = EraGameState(statusText = "正在重启引擎…")
+        start(game)
+    }
+
     fun stop() {
+        started = false
         request = null
         runCatching { client.send(EwpCommand.quit()) }
         client.close()
