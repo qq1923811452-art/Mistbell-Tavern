@@ -16,7 +16,7 @@ object MacroEngine {
     private val RANDOM_MACRO =
         Regex("\\{\\{random::(.*?)\\}\\}", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
     private val ROLL_MACRO = Regex("\\{\\{roll::([^}]*)\\}\\}", RegexOption.IGNORE_CASE)
-    private val ROLL_PATTERN = Regex("^(?:(\\d{1,2})d)?(\\d{1,4})$", RegexOption.IGNORE_CASE)
+    private val ROLL_PATTERN = Regex("^(?:(\\d{1,2})?d)?(\\d{1,4})$", RegexOption.IGNORE_CASE)
 
     fun resolve(
         text: String,
