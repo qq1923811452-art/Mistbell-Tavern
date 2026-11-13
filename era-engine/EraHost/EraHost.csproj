@@ -6,9 +6,8 @@
     引擎源码在构建期由 CI 拉取到 era-engine/upstream（不入库），本工程以相对路径引用。
   -->
   <PropertyGroup>
-    <TargetFramework>net8.0-android</TargetFramework>
-    <!-- SkiaSharp 3.119.2 的 Android 原生资产只面向 API 34+；显式钉住平台版本 -->
-    <TargetPlatformVersion>34.0</TargetPlatformVersion>
+    <!-- SkiaSharp 3.119.2 的 Android 原生资产只面向 API 34+；TFM 里显式钉住平台版本 -->
+    <TargetFramework>net8.0-android34.0</TargetFramework>
     <OutputType>Exe</OutputType>
     <RootNamespace>Mistbell.Era.Host</RootNamespace>
     <AssemblyName>MistbellEra</AssemblyName>
