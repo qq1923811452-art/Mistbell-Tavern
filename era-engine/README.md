@@ -64,6 +64,21 @@ starting, running, stopped, error}`，`data.detail` 为附加说明。
 > 注意：`android` workload 只支持 linux-x64 / win / mac，本机若是 arm64 无法编译，
 > 必须在 CI（x64 runner）上出包。
 
+## 为什么不是单包（AAR 探针结论）
+
+试过把同一套源码按 `AndroidApplication=false` 发布成 AAR：产出的 `MistbellEra.aar` 只有
+`res/values/strings.xml` 与 `.net/__res_name_case_map.txt`（156 字节），**不含运行时、程序集与
+`MonoRuntimeProvider`**。
+
+即使按「从 APK 重组 AAR」的做法手工搬，也过不去 AGP 这一关：.NET 8 的程序集在 APK 根目录
+`assemblies/assemblies.blob`（外加 `lib/<abi>/libxamarin-app.so`），而 Gradle 只能打
+`lib/ assets/ res/ META-INF/` 四个顶层目录，**生成不了根级 `assemblies/`**；`libxamarin-app.so`
+又是按 applicationId 生成并带校验的，跨包名直接搬会失败。
+
+真要单包，只能在 Gradle 产出 APK 之后做后处理（解包塞 `assemblies/`、改二进制 manifest 加
+provider、对齐、重签），等于自养一个打包器。结论：**两包（引擎组件 + 应用）是当前工具链下的正解**，
+两者用同一 dev keystore 签名，更新可直接覆盖。
+
 ## 许可
 
 引擎源码沿用 Emuera 许可（zlib 式，允许商用，但修改需注明、保留声明）。
