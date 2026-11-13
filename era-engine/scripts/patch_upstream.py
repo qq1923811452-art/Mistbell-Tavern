@@ -1,23 +1,26 @@
-"""给上游 EwpHost 打一个幂等补丁：新增 `sys.click` 命令（手指点击 → 引擎鼠标点击）。
+"""给上游 EwpHost / ConstantData 打幂等补丁。
 
-上游 EWP 只有 input.submit（文本/按钮/Enter），没有鼠标事件；eraTW 的
-「按 Enter 键或点击鼠标继续」这类等待需要真正的鼠标点击才能推进。
+1. sys.click：手指点击 → 引擎鼠标事件；等待的不是鼠标时退化为 Enter。
+2. sys.enter：直接按 Enter（eraTW 的「按 Enter 键或点击鼠标继续」用得上）。
+3. ConstantData：名字表写入与查询都 Trim（包里 `0, 口調` 这种空格会让整张表查不到）。
 
 用法：python3 patch_upstream.py <upstream 根目录>
 """
 
+import re
 import sys
 from pathlib import Path
 
-CASE_ANCHOR = '                default:\n                    EmitResult(false, "protocol_violation", "unknown or missing \\"t\\"");\n'
-CASE_INSERT = (
-    '                case "sys.click":\n'
-    '                    Dispatch(() => DoClick(root.Clone()));\n'
-    '                    break;\n'
-)
+CLICK_CASE = '''                case "sys.click":
+                    Dispatch(() => DoClick(root.Clone()));
+                    break;
+                case "sys.enter":
+                    Dispatch(() => DoEnter());
+                    break;
+'''
 
-METHOD_ANCHOR = '    private void Dispatch(Action action)\n'
-METHOD_INSERT = '''    /// <summary>手指点击 → 引擎鼠标事件。坐标与 EWP 的 render 逻辑像素一致（左上原点）。</summary>
+CLICK_METHOD = '''    // MISTBELL_PATCH_BLOCK_BEGIN
+    /// <summary>手指点击 → 引擎鼠标事件；不是鼠标等待时退化为 Enter，避免卡在"点击继续"。</summary>
     private void DoClick(JsonElement root)
     {
         var console = GameConsole;
@@ -33,8 +36,20 @@ METHOD_INSERT = '''    /// <summary>手指点击 → 引擎鼠标事件。坐标
             ye.TryGetInt32(out y);
         try
         {
-            console.MouseDown(new Point(x, y), 0);
-            EmitResult(true, null, "click " + x + "," + y);
+            if (console.IsWaintingInputWithMouse)
+            {
+                console.MouseDown(new Point(x, y), 0);
+                EmitResult(true, null, "click " + x + "," + y);
+            }
+            else if (console.IsWaitInputState)
+            {
+                console.PressEnterKey(false, "", false);
+                EmitResult(true, null, "click->enter");
+            }
+            else
+            {
+                EmitResult(false, "not_waiting", "console is not waiting input");
+            }
         }
         catch (Exception ex)
         {
@@ -42,47 +57,130 @@ METHOD_INSERT = '''    /// <summary>手指点击 → 引擎鼠标事件。坐标
         }
     }
 
+    /// <summary>直接按 Enter：用于"按 Enter 键或点击鼠标继续"这类等待。</summary>
+    private void DoEnter()
+    {
+        var console = GameConsole;
+        if (console == null)
+        {
+            EmitResult(false, "internal", "console not ready");
+            return;
+        }
+        try
+        {
+            console.PressEnterKey(false, "", false);
+            EmitResult(true, null, "enter");
+        }
+        catch (Exception ex)
+        {
+            EmitResult(false, "enter_failed", ex.Message);
+        }
+    }
+    // MISTBELL_PATCH_BLOCK_END
+
 '''
 
+CONSTDATA_WRITE_OLD = "\t\t\t\ttarget[index] = ros[dest[1]].ToString();"
+CONSTDATA_WRITE_NEW = "\t\t\t\ttarget[index] = ros[dest[1]].ToString().NormalizeKey();"
+CONSTDATA_LOOKUP_OLD = "if (!namearray.TryGetValue(tokens[1], out index))"
+CONSTDATA_LOOKUP_NEW = "if (!NameTable.TryLookup(namearray, tokens[1], out index))"
 
-CONSTDATA_ANCHOR_WRITE = "\t\t\t\ttarget[index] = ros[dest[1]].ToString();"
-CONSTDATA_WRITE = "\t\t\t\ttarget[index] = ros[dest[1]].ToString().Trim();"
+NAME_HELPER_BLOCK = """// MISTBELL_NAME_BLOCK_BEGIN
+internal static class NameTable
+{
+    internal static string NormalizeKey(this string raw)
+    {
+        if (string.IsNullOrEmpty(raw))
+            return string.Empty;
+        // 全角空格/不换行空格都不算语义空格；再做 NFKC 把全角字母数字折成半角。
+        return raw.Trim(' ', '\\t', '\\u3000', '\\u00A0').Normalize(System.Text.NormalizationForm.FormKC).Trim();
+    }
 
-CONSTDATA_ANCHOR_LOOKUP = "if (!namearray.TryGetValue(tokens[1], out index))"
-CONSTDATA_LOOKUP = "if (!namearray.TryGetValue(tokens[1].Trim(), out index))"
+    internal static bool TryLookup(System.Collections.Generic.Dictionary<string, int> table, string raw, out int index)
+    {
+        index = 0;
+        if (table == null)
+            return false;
+        var key = raw.NormalizeKey();
+        if (table.TryGetValue(key, out index))
+            return true;
+        if (table.TryGetValue(raw, out index))
+            return true;
+        foreach (var pair in table)
+        {
+            if (string.Equals(pair.Key.NormalizeKey(), key, System.StringComparison.Ordinal))
+            {
+                index = pair.Value;
+                return true;
+            }
+        }
+        index = 0;
+        return false;
+    }
+}
+// MISTBELL_NAME_BLOCK_END
+
+"""
 
 
-def patch_constantdata(path: Path) -> bool:
-    """名字表的写入与查表都补 Trim。
+def patch_name_helper(path: Path) -> bool:
+    text = path.read_text(encoding="utf-8")
+    block_re = re.compile(r"// MISTBELL_NAME_BLOCK_BEGIN.*?// MISTBELL_NAME_BLOCK_END\n\n", re.S)
+    if block_re.search(text):
+        new_text = block_re.sub(lambda _m: NAME_HELPER_BLOCK.strip() + "\n\n", text, count=1)
+        if new_text != text:
+            path.write_text(new_text, encoding="utf-8")
+            return True
+        return False
+    anchor = "namespace MinorShift.Emuera.Runtime.Script.Loader;"
+    if anchor in text:
+        text = text.replace(anchor, anchor + "\n\n" + NAME_HELPER_BLOCK.strip(), 1)
+        path.write_text(text, encoding="utf-8")
+        return True
+    raise SystemExit("namespace anchor missing in " + str(path))
 
-    引擎原本两边都不 Trim：包里写成 `0, 口調` / `フラグ, 口調, 0` 时，
-    表里键带空格、查表带空格，逐字符不等 → 每个名字每条都报「没有定义」。
-    """
+
+def patch_ewphost(path: Path) -> bool:
     text = path.read_text(encoding="utf-8")
     changed = False
-    if CONSTDATA_WRITE not in text and CONSTDATA_ANCHOR_WRITE in text:
-        text = text.replace(CONSTDATA_ANCHOR_WRITE, CONSTDATA_WRITE, 1)
+
+    if CLICK_CASE not in text:
+        old_case = '                case "sys.click":\n                    Dispatch(() => DoClick(root.Clone()));\n                    break;\n'
+        if old_case in text:
+            text = text.replace(old_case, "", 1)
+            changed = True
+        anchor = '                default:\n                    EmitResult(false, "protocol_violation", "unknown or missing \\"t\\"");\n'
+        if anchor not in text:
+            raise SystemExit("case anchor missing in " + str(path))
+        text = text.replace(anchor, CLICK_CASE + anchor, 1)
         changed = True
-    if CONSTDATA_LOOKUP not in text and CONSTDATA_ANCHOR_LOOKUP in text:
-        text = text.replace(CONSTDATA_ANCHOR_LOOKUP, CONSTDATA_LOOKUP, 1)
+
+    block_re = re.compile(r"    // MISTBELL_PATCH_BLOCK_BEGIN.*?// MISTBELL_PATCH_BLOCK_END\n\n", re.S)
+    if block_re.search(text):
+        new_text = block_re.sub(CLICK_METHOD, text, count=1)
+        if new_text != text:
+            text = new_text
+            changed = True
+    else:
+        anchor = "    private void Dispatch(Action action)\n"
+        if anchor not in text:
+            raise SystemExit("method anchor missing in " + str(path))
+        text = text.replace(anchor, CLICK_METHOD + anchor, 1)
         changed = True
+
     if changed:
         path.write_text(text, encoding="utf-8")
     return changed
 
 
-def patch(path: Path) -> bool:
+def patch_constantdata(path: Path) -> bool:
     text = path.read_text(encoding="utf-8")
     changed = False
-    if 'case "sys.click"' not in text:
-        if CASE_ANCHOR not in text:
-            raise SystemExit("anchor for case not found: " + str(path))
-        text = text.replace(CASE_ANCHOR, CASE_INSERT + CASE_ANCHOR, 1)
+    if CONSTDATA_WRITE_NEW not in text and CONSTDATA_WRITE_OLD in text:
+        text = text.replace(CONSTDATA_WRITE_OLD, CONSTDATA_WRITE_NEW, 1)
         changed = True
-    if "private void DoClick(JsonElement root)" not in text:
-        if METHOD_ANCHOR not in text:
-            raise SystemExit("anchor for method not found: " + str(path))
-        text = text.replace(METHOD_ANCHOR, METHOD_INSERT + METHOD_ANCHOR, 1)
+    if CONSTDATA_LOOKUP_NEW not in text and CONSTDATA_LOOKUP_OLD in text:
+        text = text.replace(CONSTDATA_LOOKUP_OLD, CONSTDATA_LOOKUP_NEW, 1)
         changed = True
     if changed:
         path.write_text(text, encoding="utf-8")
@@ -91,16 +189,15 @@ def patch(path: Path) -> bool:
 
 def main() -> int:
     root = Path(sys.argv[1] if len(sys.argv) > 1 else "era-engine/upstream")
-    target = root / "Emuera/UI/Ewp/EwpHost.cs"
-    if not target.is_file():
-        raise SystemExit("EwpHost.cs not found: " + str(target))
-    changed = patch(target)
-    print(("patched " if changed else "already patched ") + str(target))
+    ewphost = root / "Emuera/UI/Ewp/EwpHost.cs"
+    if not ewphost.is_file():
+        raise SystemExit("EwpHost.cs not found: " + str(ewphost))
+    print(("patched " if patch_ewphost(ewphost) else "already patched ") + str(ewphost))
 
     constdata = root / "Emuera/Runtime/Script/Data/ConstantData.cs"
     if constdata.is_file():
-        changed2 = patch_constantdata(constdata)
-        print(("patched " if changed2 else "already patched ") + str(constdata))
+        print(("patched " if patch_constantdata(constdata) else "already patched ") + str(constdata))
+        print(("patched " if patch_name_helper(constdata) else "already patched ") + "NameTable helper")
     return 0
 
 

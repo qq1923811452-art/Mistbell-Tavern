@@ -117,6 +117,11 @@ internal class EraEngineSession(
             }
     }
 
+    /** 没有输入请求时也能推进「按 Enter 继续」这类等待。 */
+    fun pressEnter() {
+        client.send(EwpCommand.enter())
+    }
+
     /** 把界面上的相对坐标换算成引擎 render 像素后发送点击。 */
     fun clickNormalized(
         fractionX: Float,
@@ -266,10 +271,9 @@ internal class EraEngineSession(
         id: Long,
         text: String,
     ) {
-        // eraTW 首次加载会刷几十条字符卡警告，留着会冲掉正文；只计数，正片从标题页开始。
-        if (text.startsWith("警告") || text.startsWith("警告Lv")) {
+        // 警告照常显示（用户要求可见）；只额外计数，便于判断问题规模。
+        if (text.startsWith("警告")) {
             _state.update { it.copy(warningCount = it.warningCount + 1) }
-            return
         }
         _state.update { current ->
             val next = current.lines + EraLine(id, text)

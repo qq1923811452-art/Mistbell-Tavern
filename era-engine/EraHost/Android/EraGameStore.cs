@@ -6,6 +6,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Text;
+using System.Globalization;
 using Microsoft.Win32.SafeHandles;
 
 namespace Mistbell.Era.Host;
@@ -198,7 +199,7 @@ internal static class EraGameStore
 					continue;
 				if (int.TryParse(tokens[0].Trim(), out var index))
 					maxIndex = Math.Max(maxIndex, index);
-				names.Add(tokens[1].Trim());
+				names.Add(NormalizeName(tokens[1]));
 			}
 			EraBootstrap.Trace("cflag table: " + names.Count + " names, max index " + maxIndex
 				+ ", file " + new FileInfo(cflagPath).Length + " bytes");
@@ -224,11 +225,12 @@ internal static class EraGameStore
 					if (!string.Equals(key, "フラグ", StringComparison.Ordinal)
 						&& !string.Equals(key, "CFLAG", StringComparison.OrdinalIgnoreCase))
 						continue;
-					var name = tokens[1].Trim();
+					var rawName = tokens[1];
+					var name = NormalizeName(rawName);
 					if (name.Length == 0 || int.TryParse(name, out _))
 						continue;
 					if (!names.Contains(name))
-						missing.Add(name);
+						missing.Add(rawName.Trim());
 				}
 			}
 
@@ -316,6 +318,12 @@ internal static class EraGameStore
 	}
 
 	/// <summary>CSV 可能是 GBK(CHINESE_HANS) 或 UTF-8；按内容猜，回写保持原编码。</summary>
+	/// <summary>与引擎补丁一致的键归一化：去全角空格 + NFKC。</summary>
+	private static string NormalizeName(string raw) =>
+		string.IsNullOrEmpty(raw)
+			? string.Empty
+			: raw.Trim(' ', '\t', '\u3000', '\u00A0').Normalize(NormalizationForm.FormKC).Trim();
+
 	private static (Encoding Encoding, string Text) ReadTextAuto(string path)
 	{
 		var bytes = File.ReadAllBytes(path);

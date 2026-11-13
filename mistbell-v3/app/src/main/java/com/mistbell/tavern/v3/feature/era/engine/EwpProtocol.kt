@@ -140,6 +140,9 @@ internal object EwpCommand {
 
     fun quit(): String = JSONObject().put("t", "sys.quit").toString()
 
+    /** 直接按 Enter（对应引擎的 sys.enter，用于"按 Enter 继续"）。 */
+    fun enter(): String = JSONObject().put("t", "sys.enter").toString()
+
     /** 手指点击 → 引擎鼠标点击（需要上游安装 sys.click 补丁）。 */
     fun click(
         x: Int,

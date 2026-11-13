@@ -126,6 +126,7 @@ internal fun EraPlayScreen(
             input = state.input,
             fallback = fallback,
             onSend = { value, via -> session.submit(value, via) },
+            onContinue = { session.pressEnter() },
         )
     }
 }
@@ -283,6 +284,7 @@ private fun EraInputPanel(
     input: EwpInputRequest?,
     fallback: List<EwpButton>,
     onSend: (String, String) -> Unit,
+    onContinue: () -> Unit,
 ) {
     Column(
         modifier =
@@ -294,7 +296,25 @@ private fun EraInputPanel(
                 .padding(horizontal = 14.dp, vertical = 12.dp),
     ) {
         if (input == null) {
-            Text(text = "等待引擎…", color = TavernPalette.TextTertiary, fontSize = 12.sp)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text(
+                    text = "等待引擎…",
+                    modifier = Modifier.weight(1f),
+                    color = TavernPalette.TextTertiary,
+                    fontSize = 12.sp,
+                )
+                TavernPill(
+                    label = "继续",
+                    onClick = onContinue,
+                    modifier = Modifier.height(ERA_BUTTON_HEIGHT),
+                    filled = true,
+                    contentDescription = "按 Enter 继续",
+                )
+            }
             return@Column
         }
         val options = input.buttons.ifEmpty { fallback }
