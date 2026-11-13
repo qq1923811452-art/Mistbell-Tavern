@@ -146,15 +146,24 @@ class BackupValidatorTest {
                 BackupEntry("data/mistbell-v3-chat.db", 2, hash),
                 BackupEntry("data/mistbell-v3-sessions.db", 3, hash),
                 BackupEntry("data/memory/mistbell-v3-vectors.bin", 4, hash),
+                BackupEntry("data/memory/mistbell-v3-memory-extraction-queue.bin", 5, hash),
+                BackupEntry("data/memory/mistbell-v3-memory-extraction-queue.bin.scopes.json", 6, hash),
                 BackupEntry(
-                    "data/memory/mistbell-v3-memory-texts-0123456789abcdef01234567.bin",
-                    5,
+                    "data/memory/mistbell-v3-memory-overrides-0123456789abcdef01234567.json",
+                    7,
                     hash,
                 ),
-                BackupEntry("data/worldbooks/role.json", 6, hash),
-                BackupEntry("data/worldbooks/nested/role.json", 7, hash),
-                BackupEntry("data/characters/hero.json", 8, hash),
-                BackupEntry("data/generated-images/generated/hero.png", 9, hash),
+                BackupEntry(
+                    "data/memory/mistbell-v3-memory-texts-0123456789abcdef01234567.bin",
+                    8,
+                    hash,
+                ),
+                BackupEntry("data/worldbooks/role.json", 9, hash),
+                BackupEntry("data/worldbooks/nested/role.json", 10, hash),
+                BackupEntry("data/characters/hero.json", 11, hash),
+                BackupEntry("data/characters/art/${"a".repeat(64)}-avatar.img", 12, hash),
+                BackupEntry("data/characters/art/${"b".repeat(64)}-portrait.img", 13, hash),
+                BackupEntry("data/generated-images/generated/hero.png", 14, hash),
             )
         BackupValidator.validateManifest(manifest(entries))
     }

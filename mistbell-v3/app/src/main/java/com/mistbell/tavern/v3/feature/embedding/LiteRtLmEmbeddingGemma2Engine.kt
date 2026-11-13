@@ -44,7 +44,11 @@ class LiteRtLmEmbeddingGemma2Engine(
     private val allowDiagnosticAlternateBackendProbe: Boolean = false,
 ) : EmbeddingGemma2InferenceEngine, AutoCloseable {
     private val appContext = context.applicationContext
-    private val cacheDirectory = File(appContext.cacheDir, "litertlm-embeddinggemma2")
+    private val cacheDirectory =
+        File(
+            File(appContext.cacheDir, "litertlm-embeddinggemma2"),
+            modelCacheDirectoryName(modelFile),
+        )
     private val lock = ReentrantLock()
     private var npuEvidenceVerified = false
     internal var lastNpuEvidenceResult: NpuEvidenceStore.WriteResult? = null
@@ -101,6 +105,8 @@ class LiteRtLmEmbeddingGemma2Engine(
                 add("GPU skipped: " + availability.gpuReason)
             }
         }
+
+    fun isUsable(): Boolean = lock.withLock { engine != null && selectedBackend != InferenceBackend.UNKNOWN }
 
     suspend fun initialize() =
         withContext(Dispatchers.IO) {
@@ -627,5 +633,14 @@ class LiteRtLmEmbeddingGemma2Engine(
 
     companion object {
         const val RUNTIME_ID = "litert-lm-embeddinggemma2-android"
+        private const val CACHE_KEY_BYTES = 12
+
+        internal fun modelCacheDirectoryName(modelFile: File): String {
+            val identity = "${modelFile.canonicalPath}|${modelFile.length()}|${modelFile.lastModified()}"
+            return java.security.MessageDigest.getInstance("SHA-256")
+                .digest(identity.toByteArray(Charsets.UTF_8))
+                .take(CACHE_KEY_BYTES)
+                .joinToString("") { "%02x".format(it) }
+        }
     }
 }

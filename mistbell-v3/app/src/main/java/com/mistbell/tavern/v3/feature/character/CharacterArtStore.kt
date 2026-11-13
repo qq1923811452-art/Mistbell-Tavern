@@ -120,6 +120,10 @@ object CharacterArtMemory {
         cache.remove(fileName)
     }
 
+    fun clear() {
+        cache.evictAll()
+    }
+
     private val MISS = ByteArray(0)
 }
 

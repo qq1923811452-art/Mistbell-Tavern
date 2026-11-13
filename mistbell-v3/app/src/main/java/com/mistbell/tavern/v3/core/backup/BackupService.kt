@@ -2,7 +2,13 @@ package com.mistbell.tavern.v3.core.backup
 
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
+import com.mistbell.tavern.v3.core.storage.MemoryTextMemoryCache
+import com.mistbell.tavern.v3.core.storage.VectorSnapshotMemoryCache
+import com.mistbell.tavern.v3.feature.character.CharacterArtMemory
+import com.mistbell.tavern.v3.feature.character.CharacterLibraryRevision
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
@@ -95,6 +101,11 @@ class BackupService(
                     }
                     throw failure
                 }
+                VectorSnapshotMemoryCache.clear()
+                MemoryTextMemoryCache.clear()
+                CharacterArtMemory.clear()
+                // Compose state must be observed on the main thread; restore runs on an IO worker.
+                Handler(Looper.getMainLooper()).post { CharacterLibraryRevision.bump() }
                 log("backup.restore", started, entryCount, archiveHash)
                 BackupPreview(extracted.manifest, extracted.archiveBytes, archiveHash)
             } finally {
@@ -171,28 +182,15 @@ class BackupService(
         val json = JSONObject(file.readText(Charsets.UTF_8))
         val preferences = appContext.getSharedPreferences(BackupSource.SETTINGS_PREFERENCES, Context.MODE_PRIVATE)
         val previous = preferences.all
+        // Decode and validate the complete payload before clearing or writing any preferences.
+        val restored = BackupPreferenceCodec.decode(json, previous)
         val editor = preferences.edit().clear()
         // Credentials are deliberately absent from the archive; preserve the device's current
         // credentials instead of clearing them as a side effect of restoring ordinary settings.
         previous.filterKeys(::isCredentialKey).forEach { (key, value) ->
             putPreferenceValue(editor, key, value)
         }
-        val iterator = json.keys()
-        while (iterator.hasNext()) {
-            val key = iterator.next()
-            if (isCredentialKey(key)) continue
-            when (val value = json.get(key)) {
-                is String -> editor.putString(key, value)
-                is Boolean -> editor.putBoolean(key, value)
-                is Int -> editor.putInt(key, value)
-                is Long -> editor.putLong(key, value)
-                is Double -> editor.putFloat(key, value.toFloat())
-                is org.json.JSONArray -> {
-                    val values = (0 until value.length()).map { value.getString(it) }.toSet()
-                    editor.putStringSet(key, values)
-                }
-            }
-        }
+        restored.forEach { (key, value) -> putPreferenceValue(editor, key, value) }
         if (!editor.commit()) {
             val commitFailure = IOException("Settings restore could not be committed.")
             runCatching { restorePreferences(preferences, previous) }
@@ -217,14 +215,7 @@ class BackupService(
         }
     }
 
-    private fun isCredentialKey(key: String): Boolean {
-        val sensitiveParts =
-            listOf(
-                "credential", "secret", "apikey", "api_key", "api-key", "password",
-                "token", "keystore", "privatekey", "private_key",
-            )
-        return sensitiveParts.any { part -> key.contains(part, ignoreCase = true) }
-    }
+    private fun isCredentialKey(key: String): Boolean = isBackupCredentialKey(key)
 
     private fun restorePreferences(
         preferences: android.content.SharedPreferences,

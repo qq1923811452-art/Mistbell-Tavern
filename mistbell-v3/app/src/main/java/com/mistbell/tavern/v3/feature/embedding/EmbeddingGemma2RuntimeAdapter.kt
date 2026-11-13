@@ -29,7 +29,7 @@ class EmbeddingGemma2RuntimeAdapter(
 ) : LocalEmbeddingRuntime {
     companion object {
         const val MAX_CONFIGURED_BATCH_SIZE = 256
-        const val MAX_FORMATTED_INPUT_BYTES = 4096
+        const val MAX_FORMATTED_INPUT_BYTES = EmbeddingGemma2TextPolicy.MAX_SAFE_FORMATTED_INPUT_BYTES
         const val BATCH_SIZE = 8
 
         /** Returns a cached query result without acquiring or initializing a native engine. */
@@ -40,7 +40,7 @@ class EmbeddingGemma2RuntimeAdapter(
             onDiagnostic: (String, String) -> Unit = { event, detail -> EmbeddingVectorCache.log(event, detail) },
         ): EmbeddingBatch? {
             if (query.isBlank() || outputDimensions !in EmbeddingGemma2TextPolicy.supportedDimensions) return null
-            val formatted = EmbeddingGemma2TextPolicy.formatSearchQuery(EmbeddingGemma2TextPolicy.truncateInput(query))
+            val formatted = EmbeddingGemma2TextPolicy.formatSearchQuery(query)
             val key =
                 EmbeddingVectorCache.key(
                     formatted,
@@ -130,10 +130,18 @@ class EmbeddingGemma2RuntimeAdapter(
         val formattedInputs =
             texts.mapIndexed { index, original ->
                 val bounded = EmbeddingGemma2TextPolicy.truncateInput(original)
-                if (bounded.length < original.length) {
-                    onDiagnostic("embedding.input.truncated", "originalLength=${original.length}; truncatedLength=${bounded.length}")
+                val formatted = formatter(bounded, index)
+                val safeFormatted = EmbeddingGemma2TextPolicy.truncateFormattedInput(formatted)
+                // The formatter may already enforce the budget, so also compare the surviving
+                // payload with the input: a shortened payload means content was dropped.
+                val payloadDropped = !safeFormatted.endsWith(bounded.trim())
+                if (safeFormatted.length < formatted.length || bounded.length < original.length || payloadDropped) {
+                    onDiagnostic(
+                        "embedding.input.truncated",
+                        "originalLength=${original.length}; truncatedLength=${safeFormatted.length}",
+                    )
                 }
-                formatter(bounded, index)
+                safeFormatted
             }
         formattedInputs.forEachIndexed { index, formatted ->
             if (formatted.toByteArray(Charsets.UTF_8).size > MAX_FORMATTED_INPUT_BYTES) {

@@ -73,7 +73,7 @@ object WorldBookParser {
                 depth = placement.depth,
                 probability = probabilityOf(node, extensions),
                 depthRole = roleOf(nullableInt(node, extensions, "role")),
-                sticky = node.optBoolean("sticky", false),
+                sticky = WorldBookStickyValue.isPositive(node.opt("sticky")),
                 cooldown = node.optInt("cooldown", 0).coerceAtLeast(0),
                 delay = node.optInt("delay", 0).coerceAtLeast(0),
                 groupName = node.optString("group"),
@@ -166,12 +166,22 @@ object WorldBookParser {
         when (raw) {
             is JSONArray ->
                 (0 until raw.length()).mapNotNull { index ->
-                    (raw.opt(index) as? String)?.takeIf(String::isNotBlank)
+                    (raw.opt(index) as? String)?.trim()?.takeIf(String::isNotEmpty)
                 }
-            is String -> listOf(raw).filter(String::isNotBlank)
+            is String -> raw.split(',').map(String::trim).filter(String::isNotEmpty)
             else -> emptyList()
         }
 
     private const val MAX_DEPTH = 10
     private val UUID_PATTERN = Regex("^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$")
+}
+
+private object WorldBookStickyValue {
+    fun isPositive(raw: Any?): Boolean =
+        when (raw) {
+            is Boolean -> raw
+            is Number -> raw.toDouble() > 0.0
+            is String -> raw.equals("true", ignoreCase = true) || raw.toDoubleOrNull()?.let { it > 0.0 } == true
+            else -> false
+        }
 }

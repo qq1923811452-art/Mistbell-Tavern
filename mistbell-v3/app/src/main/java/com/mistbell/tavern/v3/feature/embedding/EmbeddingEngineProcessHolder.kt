@@ -44,9 +44,19 @@ object EmbeddingEngineProcessHolder : ComponentCallbacks2 {
         val key = EngineKey(modelFile.canonicalPath, modelFile.length(), modelFile.lastModified(), npuModelCompatible)
         mutex.lock()
         try {
+            val existing = synchronized(stateLock) { current?.takeIf { it.key == key } }
+            val reusable =
+                existing?.let { entry -> withContext(Dispatchers.IO) { entry.engine.isUsable() } }
+                    ?: false
+            if (reusable && existing != null) return existing.engine
+            if (existing != null) {
+                synchronized(stateLock) {
+                    if (current === existing) current = null
+                }
+                runCatching { existing.engine.close() }
+            }
             val modelChanged =
                 synchronized(stateLock) {
-                    current?.takeIf { it.key == key }?.let { return it.engine }
                     val changed = lastRequestedKey != null && lastRequestedKey != key
                     lastRequestedKey = key
                     changed
