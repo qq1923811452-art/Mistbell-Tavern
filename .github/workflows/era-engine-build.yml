@@ -76,7 +76,8 @@ jobs:
         run: |
           set -e
           dotnet publish era-engine/EraHost/EraHost.csproj \
-            -c Release -f net8.0-android34.0 \
+            -c Release -f net8.0-android34.0 -r android-arm64 \
+            -p:AndroidSupportedAbis="arm64-v8a" \
             -p:AndroidPackageFormat=apk \
             -p:AndroidKeyStore=false \
             -p:CheckEolWorkloads=false \
