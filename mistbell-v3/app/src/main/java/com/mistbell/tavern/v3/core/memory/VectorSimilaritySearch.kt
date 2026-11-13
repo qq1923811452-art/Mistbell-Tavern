@@ -50,7 +50,10 @@ object VectorSimilaritySearch {
         val scorer = Scorer(snapshot, queryArray)
         require(scorer.queryNorm > 0.0) { "Query vector must not be a zero vector." }
 
-        if (snapshot.dimensions > COARSE_DIMENSIONS && snapshot.records.size > COARSE_SHORTLIST_MIN) {
+        // A negative threshold asks for an exhaustive ranking; only filter with finite scores.
+        if (snapshot.dimensions > COARSE_DIMENSIONS && snapshot.records.size > COARSE_SHORTLIST_MIN &&
+            minimumScore >= 0.0
+        ) {
             val shortlist = coarseShortlist(snapshot, queryArray, limit)
             if (shortlist != null) return refineShortlist(snapshot, scorer, shortlist, limit, minimumScore)
         }

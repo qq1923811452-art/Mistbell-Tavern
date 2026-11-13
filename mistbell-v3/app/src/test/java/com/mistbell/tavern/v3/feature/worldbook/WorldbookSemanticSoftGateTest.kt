@@ -12,7 +12,7 @@ class WorldbookSemanticSoftGateTest {
             var calls = 0
             val candidates =
                 listOf(
-                    entry("a", "alpha"),
+                    entry("a-unique", "alpha-unique"),
                     entry("constant", "constant", constant = true),
                     entry("disabled", "disabled", disable = true),
                     entry("empty", ""),
@@ -28,7 +28,7 @@ class WorldbookSemanticSoftGateTest {
                     remainingBudget = 100,
                 )
 
-            assertEquals(listOf("a"), selected.map(WorldBookEntry::id))
+            assertEquals(listOf("a-unique"), selected.map(WorldBookEntry::id))
             assertEquals(1, calls)
         }
 

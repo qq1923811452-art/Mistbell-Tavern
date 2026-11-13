@@ -42,7 +42,7 @@ class CharacterRedlineOocGuardTest {
     fun skipsClaimsBelowThresholdAndCachesEvidence() =
         runBlocking {
             var documentCalls = 0
-            val card = CharacterCard(name = "Luna", redlines = listOf("绝对不能伤害人类"))
+            val card = CharacterCard(name = "ThresholdLuna", redlines = listOf("绝对不能背叛盟友"))
             val embed: suspend (List<String>, EmbeddingTaskType, List<String?>?) -> List<List<Float>> =
                 { _, task, _ ->
                     if (task == EmbeddingTaskType.RETRIEVAL_DOCUMENT) {
