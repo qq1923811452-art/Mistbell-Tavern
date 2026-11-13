@@ -22,12 +22,14 @@ import com.mistbell.tavern.v3.feature.memory.TemporalFactTextSyncResult
 import com.mistbell.tavern.v3.feature.memory.TemporalFactTextSynchronizer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.Call
 import java.io.File
 
 /**
  * Owns the existing local embedding runtime initialization, memory-store maintenance,
  * and memory-aware chat stream selection.
  */
+@Suppress("LongParameterList")
 internal class ChatMemoryRuntimeCoordinator(
     private val context: Context,
     private val mainHandler: Handler,
@@ -37,15 +39,16 @@ internal class ChatMemoryRuntimeCoordinator(
     private val indexRebuildCoordinator: ChatMemoryIndexRebuildCoordinator,
     private val setStatus: (String) -> Unit,
     private val setMemoryStatusNotice: (String) -> Unit,
+    private val onRequestMessages: (List<PromptMessage>) -> Unit = {},
 ) {
-    @Suppress("LongMethod", "CyclomaticComplexMethod", "NestedBlockDepth")
+    @Suppress("LongMethod", "CyclomaticComplexMethod", "NestedBlockDepth", "ReturnCount")
     suspend fun stream(
         client: OpenAiCompatibleChatClient,
         messages: List<PromptMessage>,
         observer: ChatStreamObserver,
         maxTokens: Int,
         memoryQuery: String? = null,
-    ) {
+    ): Call {
         val generationSwitches = context.getSharedPreferences("mistbell-v3-settings", Context.MODE_PRIVATE)
         val streamEnabled = generationSwitches.getBoolean("chat_stream_enabled", true)
         val thinkingEnabled = generationSwitches.getBoolean("chat_thinking_enabled", false)
@@ -92,7 +95,7 @@ internal class ChatMemoryRuntimeCoordinator(
                     "当前 EmbeddingGemma 2 原生最高支持 768 维；所选 $configuredDimensions 维暂不可用于本地记忆，继续普通聊天。"
                 },
             )
-            client.stream(
+            return client.stream(
                 messages,
                 observer,
                 ChatGenerationOptions(
@@ -230,12 +233,11 @@ internal class ChatMemoryRuntimeCoordinator(
             }
             if (effectiveTextUnavailable) {
                 setMemoryStatusNotice(indexMaintenanceMessage)
-                client.stream(
+                return client.stream(
                     messages,
                     observer,
                     ChatGenerationOptions(maxTokens = maxTokens, stream = streamEnabled, thinkingEnabled = thinkingEnabled),
                 )
-                return
             }
             when (
                 val existingSnapshot =
@@ -319,7 +321,7 @@ internal class ChatMemoryRuntimeCoordinator(
                     "证据=${backendStatus.backendEvidence}。配置状态不等于芯片级 NPU 实测。" +
                     if (indexMaintenanceMessage.isBlank()) "" else " $indexMaintenanceMessage",
             )
-            MemoryAwareChatRequest(
+            return MemoryAwareChatRequest(
                 chatClient = client,
                 memoryContext = memoryContext,
                 diagnosticStore = diagnosticStore,
@@ -333,6 +335,7 @@ internal class ChatMemoryRuntimeCoordinator(
                         setStatus(notice)
                     }
                 },
+                onRequestMessages = onRequestMessages,
             ).stream(
                 messages,
                 observer,

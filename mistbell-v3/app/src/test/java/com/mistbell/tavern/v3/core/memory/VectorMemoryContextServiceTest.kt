@@ -125,6 +125,49 @@ class VectorMemoryContextServiceTest {
             )
         }
 
+    @Test
+    fun fallsBackToKeywordRetrievalWhenSnapshotIsMissing() =
+        runBlocking {
+            var embedded = false
+            val service =
+                service(
+                    snapshotResult = VectorSnapshotReadResult.Missing,
+                    embedding =
+                        QueryEmbeddingProvider {
+                            embedded = true
+                            listOf(1f, 0f)
+                        },
+                    texts = MemoryTextProvider { listOf(text) },
+                )
+
+            val result = service.retrieveForQuery("concise answers")
+
+            assertTrue(result is VectorMemoryContextResult.Ready)
+            val memory = (result as VectorMemoryContextResult.Ready).memories.single()
+            assertEquals(MemoryRetrievalSource.KEYWORD, memory.source)
+            assertEquals(0.0, memory.similarity, 0.0)
+            assertTrue(!embedded)
+        }
+
+    @Test
+    fun fallsBackToKeywordRetrievalWhenEmbeddingThrows() =
+        runBlocking {
+            val service =
+                service(
+                    snapshotResult = VectorSnapshotReadResult.Loaded(snapshot),
+                    embedding = QueryEmbeddingProvider { error("local runtime unavailable") },
+                    texts = MemoryTextProvider { listOf(text) },
+                )
+
+            val result = service.retrieveForQuery("concise answers")
+
+            assertTrue(result is VectorMemoryContextResult.Ready)
+            assertEquals(
+                MemoryRetrievalSource.KEYWORD,
+                (result as VectorMemoryContextResult.Ready).memories.single().source,
+            )
+        }
+
     private fun service(
         snapshotResult: VectorSnapshotReadResult,
         embedding: QueryEmbeddingProvider,

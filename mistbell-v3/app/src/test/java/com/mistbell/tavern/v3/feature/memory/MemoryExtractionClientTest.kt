@@ -96,7 +96,9 @@ class MemoryExtractionClientTest {
             requireNotNull(request)
             assertEquals("/v1/chat/completions", request.path)
             assertEquals("Bearer memory-secret", request.getHeader("Authorization"))
-            assertTrue(request.body.readUtf8().contains("\"model\":\"memory-model\""))
+            val body = request.body.readUtf8()
+            assertTrue(body.contains("\"model\":\"memory-model\""))
+            assertTrue(body.contains("\"temperature\":0.1"))
         } finally {
             server.shutdown()
         }
@@ -126,6 +128,35 @@ class MemoryExtractionClientTest {
             val outcome = execute(clientFor(server))
             assertTrue(outcome is MemoryExtractionOutcome.Success)
             assertEquals("tea", (outcome as MemoryExtractionOutcome.Success).result.facts.single().value)
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun stripsThinkBlocksBeforeParsingAndResolvesShortTurnAliases() {
+        val server = MockWebServer()
+        val content =
+            "<think>{\"facts\":[{\"subject\":\"user\",\"predicate\":\"likes\"," +
+                "\"value\":\"tea\",\"source_turn_id\":\"invented\"}]}</think>\n" +
+                """{"facts":[{"subject":"user","predicate":"likes","value":"tea","source_turn_id":"t1"}]}"""
+        val envelope =
+            org.json.JSONObject()
+                .put(
+                    "choices",
+                    org.json.JSONArray().put(
+                        org.json.JSONObject().put("message", org.json.JSONObject().put("content", content)),
+                    ),
+                )
+        server.enqueue(MockResponse().setResponseCode(200).setBody(envelope.toString()))
+        server.start()
+        try {
+            val outcome = execute(clientFor(server))
+            assertTrue(outcome is MemoryExtractionOutcome.Success)
+            assertEquals(
+                "turn-1",
+                (outcome as MemoryExtractionOutcome.Success).result.facts.single().sourceTurnId,
+            )
         } finally {
             server.shutdown()
         }

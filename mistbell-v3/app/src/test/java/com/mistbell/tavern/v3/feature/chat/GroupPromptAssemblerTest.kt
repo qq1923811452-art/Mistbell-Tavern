@@ -47,6 +47,22 @@ class GroupPromptAssemblerTest {
     }
 
     @Test
+    fun stableBlockOmitsThePerTurnSpeakerLine() {
+        val members =
+            listOf(
+                member(id = "luna", name = "露娜", brief = "冷静的剑士"),
+                member(id = "bob", name = "Bob", brief = ""),
+            )
+
+        val stable = GroupPromptAssembler.stableBlock(members)
+
+        assertTrue(stable.contains("- 露娜：冷静的剑士"))
+        assertTrue(stable.contains("- Bob"))
+        assertFalse(stable.contains("本轮由"))
+        assertEquals("本轮由「Bob」回复。", GroupPromptAssembler.speakerInstruction("Bob"))
+    }
+
+    @Test
     fun systemBlockListsEveryMemberInOrder() {
         val block =
             GroupPromptAssembler.systemBlock(

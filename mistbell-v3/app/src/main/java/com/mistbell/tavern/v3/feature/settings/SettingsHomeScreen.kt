@@ -70,6 +70,7 @@ fun SettingsHomeScreen(
     onOpenWorldBook: () -> Unit,
     onOpenLicenses: () -> Unit,
 ) {
+    var apiStatus by remember { mutableStateOf("") }
     Column(
         Modifier
             .fillMaxSize()
@@ -84,7 +85,15 @@ fun SettingsHomeScreen(
         )
 
         SettingsGroup("AI 连接") {
-            ApiSettingsSection(onStatus = {})
+            ApiSettingsSection(onStatus = { apiStatus = it })
+            if (apiStatus.isNotBlank()) {
+                Text(
+                    text = apiStatus,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                )
+            }
             SettingsDivider()
             SettingsRow("Embedding API", "本地向量、模型与 NPU 诊断", onOpenEmbedding)
         }

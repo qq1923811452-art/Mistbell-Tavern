@@ -10,6 +10,7 @@ internal class ChatTurnHistoryCoordinator {
         history: MutableList<ChatLine>,
         openingMessage: String,
         userText: String,
+        charName: String? = null,
     ) {
         // Chat history is persisted and reloaded ordered by (createdAt, id). IDs are random UUIDs,
         // so two messages created in the same millisecond can swap places after a restart. Keep
@@ -25,7 +26,7 @@ internal class ChatTurnHistoryCoordinator {
                 ChatLine(
                     id = UUID.randomUUID().toString(),
                     role = "assistant",
-                    content = openingMessage,
+                    content = MacroEngine.resolve(openingMessage, charName),
                     createdAtEpochMillis = nextTimestamp,
                     deliveryState = PersistedChatMessage.DeliveryState.COMPLETE,
                 )

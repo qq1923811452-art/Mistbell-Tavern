@@ -32,13 +32,21 @@ class ChatConnectionTester(
             if (apiKey.isBlank()) {
                 return@withContext Result(false, "请先填写 API Key。")
             }
+            val validation = EndpointPolicy.validateBaseUrl(baseUrl)
+            val normalizedBaseUrl = validation.normalizedBaseUrl
+            if (!validation.isAllowed || normalizedBaseUrl == null) {
+                return@withContext Result(
+                    false,
+                    "连接失败：${validation.reason ?: "地址不安全。"}",
+                )
+            }
             val started = System.nanoTime()
             runCatching {
                 val endpoint =
-                    if (baseUrl.trimEnd('/').endsWith("/chat/completions")) {
-                        baseUrl.trimEnd('/')
+                    if (normalizedBaseUrl.endsWith("/chat/completions")) {
+                        normalizedBaseUrl
                     } else {
-                        baseUrl.trimEnd('/') + "/chat/completions"
+                        normalizedBaseUrl + "/chat/completions"
                     }
                 val body =
                     JSONObject()
