@@ -58,7 +58,8 @@ internal static class EraBootstrap
 		}
 		catch (Exception ex)
 		{
-			Trace("FATAL " + ex.GetType().Name + ": " + ex.Message);
+			LastError = "FATAL " + ex.GetType().Name + ": " + ex.Message;
+			Trace(LastError);
 			Trace(ex.StackTrace ?? "");
 			return 1;
 		}
