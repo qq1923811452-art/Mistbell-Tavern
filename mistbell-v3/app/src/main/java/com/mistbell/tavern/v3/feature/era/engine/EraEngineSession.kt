@@ -12,6 +12,7 @@ import android.os.Looper
 import android.os.Message
 import android.os.Messenger
 import android.os.ParcelFileDescriptor
+import com.mistbell.tavern.v3.BuildConfig
 import com.mistbell.tavern.v3.feature.era.EraGameInstall
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -168,7 +169,10 @@ internal class EraEngineSession(
         port: Int,
     ) {
         val messenger = Messenger(handler)
-        val descriptor = ParcelFileDescriptor.open(zip, ParcelFileDescriptor.MODE_READ_ONLY)
+        // 单包时两个组件同 UID，直接给路径最省事；跨应用才需要 fd（部分 ROM 禁止跨应用传 fd）。
+        val merged = BuildConfig.ERA_MERGED
+        val descriptor =
+            if (merged) null else ParcelFileDescriptor.open(zip, ParcelFileDescriptor.MODE_READ_ONLY)
         val intent =
             Intent().apply {
                 component = EraEngineContract.componentFor(appContext)
@@ -176,7 +180,11 @@ internal class EraEngineSession(
                 putExtra(EraEngineContract.EXTRA_PORT, port)
                 putExtra(EraEngineContract.EXTRA_GAME_NAME, game.name)
                 putExtra(EraEngineContract.EXTRA_PACK_VERSION, packager.versionKey(game))
-                putExtra(EraEngineContract.EXTRA_ZIP_FD, descriptor)
+                if (merged) {
+                    putExtra(EraEngineContract.EXTRA_ZIP_PATH, zip.absolutePath)
+                } else if (descriptor != null) {
+                    putExtra(EraEngineContract.EXTRA_ZIP_FD, descriptor)
+                }
             }
         val target = EraEngineContract.componentFor(appContext)
         val installed =
@@ -190,7 +198,7 @@ internal class EraEngineSession(
             }.exceptionOrNull()
         bound = bound && bindError == null
         // Binder 已把 fd dup 给引擎进程，本地这份可以立刻关掉，避免每次进游戏漏一个 fd。
-        runCatching { descriptor.close() }
+        runCatching { descriptor?.close() }
         if (!installed) {
             fail("引擎组件未安装（${target.packageName}）")
         } else if (bindError != null) {

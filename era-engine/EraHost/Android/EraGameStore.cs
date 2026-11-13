@@ -72,6 +72,32 @@ internal static class EraGameStore
 		return gameDir;
 	}
 
+	/// <summary>同一 APK 内的调用方直接给路径：不解 FD，避开部分 ROM 的跨应用 FD 限制。</summary>
+	public static string InstallFromPath(Context ctx, string zipPath, string displayName, string version)
+	{
+		if (string.IsNullOrEmpty(zipPath) || !File.Exists(zipPath))
+			throw new FileNotFoundException("game zip not found: " + zipPath);
+
+		var name = Sanitize(string.IsNullOrWhiteSpace(displayName) ? "era" : displayName);
+		var root = GamesRoot(ctx);
+		Directory.CreateDirectory(root);
+		var target = Path.Combine(root, name);
+
+		var prefs = ctx.GetSharedPreferences(PrefsName, FileCreationMode.Private);
+		var lastVersion = prefs?.GetString(PrefLastVersion, null);
+		var lastDir = prefs?.GetString(PrefLastGame, null);
+		if (!string.IsNullOrEmpty(version) && version == lastVersion
+			&& !string.IsNullOrEmpty(lastDir) && Directory.Exists(lastDir))
+		{
+			return lastDir;
+		}
+
+		Extract(zipPath, target);
+		var gameDir = ResolveGameDir(target);
+		prefs?.Edit()?.PutString(PrefLastGame, gameDir)?.PutString(PrefLastVersion, version)?.Apply();
+		return gameDir;
+	}
+
 	private static void Extract(string zipPath, string target)
 	{
 		var encoding = NeedsLegacyEncoding(zipPath) ? Encoding.GetEncoding(932) : new UTF8Encoding(false);

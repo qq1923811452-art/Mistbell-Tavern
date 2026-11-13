@@ -31,6 +31,7 @@ public sealed class EraEngineService : Service
 		var port = intent?.GetIntExtra("port", 0) ?? 0;
 		var gameName = intent?.GetStringExtra("gameName");
 		var packVersion = intent?.GetStringExtra("packVersion");
+		var zipPath = intent?.GetStringExtra("zipPath");
 		var zipFd = intent?.GetParcelableExtra("zipFd") as ParcelFileDescriptor;
 
 		if (inbound == null)
@@ -42,7 +43,7 @@ public sealed class EraEngineService : Service
 		if (!alreadyRunning)
 		{
 			lock (gate) { running = true; }
-			worker = new Thread(() => Work(gameName, packVersion, port, zipFd))
+			worker = new Thread(() => Work(gameName, packVersion, port, zipFd, zipPath))
 			{
 				IsBackground = true,
 				Name = "era-engine",
@@ -73,7 +74,7 @@ public sealed class EraEngineService : Service
 		}
 	}
 
-	private void Work(string gameName, string packVersion, int port, ParcelFileDescriptor zipFd)
+	private void Work(string gameName, string packVersion, int port, ParcelFileDescriptor zipFd, string zipPath)
 	{
 		try
 		{
@@ -87,6 +88,12 @@ public sealed class EraEngineService : Service
 			{
 				SendStatus("importing", null);
 				gameDir = EraGameStore.Install(this, zipFd, gameName, packVersion);
+				SendStatus("imported", gameDir);
+			}
+			else if (!string.IsNullOrEmpty(zipPath))
+			{
+				SendStatus("importing", null);
+				gameDir = EraGameStore.InstallFromPath(this, zipPath, gameName, packVersion);
 				SendStatus("imported", gameDir);
 			}
 			else

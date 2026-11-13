@@ -23,6 +23,7 @@ internal object EraEngineContract {
     const val EXTRA_GAME_NAME = "gameName"
     const val EXTRA_PACK_VERSION = "packVersion"
     const val EXTRA_ZIP_FD = "zipFd"
+    const val EXTRA_ZIP_PATH = "zipPath"
 
     const val MSG_STATUS = 1
     const val MSG_STOP = 2
