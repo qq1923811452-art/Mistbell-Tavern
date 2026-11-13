@@ -42,6 +42,7 @@ import com.mistbell.tavern.v3.core.security.ChatCredentialStore
 import com.mistbell.tavern.v3.core.storage.AtomicMemoryOverrideStore
 import com.mistbell.tavern.v3.core.storage.AtomicMemoryTextStore
 import com.mistbell.tavern.v3.core.storage.AtomicTemporalFactStore
+import com.mistbell.tavern.v3.core.storage.AtomicVectorSnapshotStore
 import com.mistbell.tavern.v3.core.storage.MemoryScopeFileNames
 import com.mistbell.tavern.v3.core.storage.MemoryScopeId
 import com.mistbell.tavern.v3.core.storage.MemoryScopeMigration
@@ -752,22 +753,35 @@ fun ChatScreen(
         val card =
             characterCards.firstOrNull { it.id == selectedCharacterId }?.card
                 ?: return@LaunchedEffect
-        val greeting = card.firstMessage.trim()
-        if (greeting.isEmpty()) return@LaunchedEffect
-        val content = greeting.replace("{{char}}", card.name).replace("{{user}}", "你")
+        val primary = MacroEngine.resolve(card.firstMessage.trim(), card.name)
+        if (primary.isEmpty()) return@LaunchedEffect
+        val alternates =
+            card.alternateGreetings
+                .map { greeting -> MacroEngine.resolve(greeting.trim(), card.name) }
+                .filter(String::isNotEmpty)
+        val variants =
+            (listOf(primary) + alternates)
+                .distinct()
+                .take(PersistedChatMessage.MAX_VARIANTS)
+        val greetingVariants = variants.takeIf { it.size > 1 }.orEmpty()
         history.add(
             ChatLine(
                 id = UUID.randomUUID().toString(),
                 role = "assistant",
-                content = content,
+                content = primary,
                 createdAtEpochMillis = System.currentTimeMillis(),
                 deliveryState = PersistedChatMessage.DeliveryState.COMPLETE,
                 speakerId = selectedCharacterId.takeIf(String::isNotBlank),
                 speakerName = card.name,
+                variants = greetingVariants,
+                activeVariant = 0,
             ),
         )
         persistHistory()
-        diagnosticStore.info("chat.greeting.inserted", "chars=${content.length}")
+        diagnosticStore.info(
+            "chat.greeting.inserted",
+            "chars=${primary.length}; variants=${variants.size}",
+        )
     }
 
     LaunchedEffect(memoryConversationId) {
@@ -856,6 +870,7 @@ fun ChatScreen(
                 }
             },
             onDeleteSession = { id ->
+                val deletedSessionKind = sessions.firstOrNull { it.id == id }?.kind
                 historyDeletionGuard.begin(id)
                 coroutineScope.launch {
                     try {
@@ -888,6 +903,28 @@ fun ChatScreen(
                         }
                         if (isCurrent && memoryConversationId == id) history.clear()
                         sessionStore.delete(id)
+                        settings.edit()
+                            .remove("chat_last_prompt_$id")
+                            .remove("chat_usage_$id")
+                            .remove("memory_extraction_last_success_turn_id_$id")
+                            .apply()
+                        if (deletedSessionKind == SessionKind.GROUP) {
+                            val scopeId = MemoryScopeId.forRoleAndConversation(activeMemoryRoleId, id)
+                            val memoryFiles =
+                                listOf(
+                                    AtomicMemoryTextStore.DEFAULT_FILE_NAME,
+                                    AtomicTemporalFactStore.DEFAULT_FILE_NAME,
+                                    AtomicVectorSnapshotStore.DEFAULT_FILE_NAME,
+                                    AtomicMemoryOverrideStore.DEFAULT_FILE_NAME,
+                                )
+                            withContext(Dispatchers.IO) {
+                                memoryFiles.forEach { defaultName ->
+                                    val scoped = MemoryScopeFileNames.forScope(defaultName, scopeId)
+                                    File(context.filesDir, scoped).delete()
+                                    File(context.filesDir, "$scoped.bak").delete()
+                                }
+                            }
+                        }
                         sessions = sessionStore.list()
                         diagnosticStore.info("chat.session.deleted", "remaining=${sessions.size}")
                         if (id == memoryConversationId) {
@@ -1062,6 +1099,7 @@ fun ChatScreen(
             selectedCharacterId = selectedCharacterId,
             messageCount = history.size,
             memorySummary = memorySummary,
+            conversationId = memoryConversationId,
             onOpenMemory = {
                 showSessionSettings = false
                 memoryScreenState = SessionMemoryUiState.Loading
@@ -1149,6 +1187,13 @@ fun ChatScreen(
     }
 
     messageEditTarget?.let { target ->
+        val editIndex = history.indexOfFirst { line -> line.id == target.messageId }
+        val nextAssistant =
+            if (target.isUser && editIndex >= 0) {
+                history.getOrNull(editIndex + 1)?.takeIf { it.role == "assistant" }
+            } else {
+                null
+            }
         ChatMessageEditDialog(
             initial = target.content,
             onDismiss = { messageEditTarget = null },
@@ -1161,6 +1206,19 @@ fun ChatScreen(
                     diagnosticStore.info("chat.message.edited", "role=${if (target.isUser) "user" else "assistant"}")
                 }
             },
+            onConfirmAndRegenerate =
+                nextAssistant?.let { assistant ->
+                    { updated: String ->
+                        messageEditTarget = null
+                        val index = history.indexOfFirst { line -> line.id == target.messageId }
+                        if (!busy && index >= 0 && updated.isNotBlank()) {
+                            history[index] = history[index].withEditedContent(updated)
+                            persistHistory()
+                            diagnosticStore.info("chat.message.edited", "role=user")
+                            regenerateReply(assistant.id)
+                        }
+                    }
+                },
         )
     }
 
@@ -1408,9 +1466,16 @@ fun ChatScreen(
                             ).start(openingMessage, userText, selectedCharacter?.card?.name)
                             diagnosticStore.info("chat.send.started", "conversation=${requestConversationId.take(8)}")
                             val requestMaxTokens = effectiveMaxTokens()
+                            val requestTemperature =
+                                runCatching {
+                                    settings.getFloat(CHAT_TEMPERATURE_KEY, DEFAULT_CHAT_TEMPERATURE)
+                                }
+                                    .getOrDefault(DEFAULT_CHAT_TEMPERATURE)
+                                    .toDouble()
+                                    .coerceIn(MIN_CHAT_TEMPERATURE, MAX_CHAT_TEMPERATURE)
                             diagnosticStore.info(
                                 "chat.request.options",
-                                "maxTokens=$requestMaxTokens; " +
+                                "maxTokens=$requestMaxTokens; temperature=$requestTemperature; " +
                                     "stream=${chatGenerationPreferences.streamEnabled}; " +
                                     "thinking=${chatGenerationPreferences.thinkingEnabled}; " +
                                     "model=${ChatRequestDiagnostics.modelLabel(modelId)}; " +
@@ -1604,6 +1669,7 @@ fun ChatScreen(
                                         messages,
                                         observer,
                                         ChatGenerationOptions(
+                                            temperature = requestTemperature,
                                             maxTokens = requestMaxTokens,
                                             stream = chatGenerationPreferences.streamEnabled,
                                             thinkingEnabled = chatGenerationPreferences.thinkingEnabled,
@@ -1626,3 +1692,8 @@ private const val NANOS_PER_MILLI = 1_000_000
 private const val PROMPT_PREPARE_TIMEOUT_MS = 30_000L
 
 private const val GROUP_MEMBER_BRIEF_CHARS = 120
+
+private const val CHAT_TEMPERATURE_KEY = "chat_temperature"
+private const val DEFAULT_CHAT_TEMPERATURE = 0.7f
+private const val MIN_CHAT_TEMPERATURE = 0.0
+private const val MAX_CHAT_TEMPERATURE = 2.0

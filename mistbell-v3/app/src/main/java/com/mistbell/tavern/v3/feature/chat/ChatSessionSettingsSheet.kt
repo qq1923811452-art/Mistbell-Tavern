@@ -2,6 +2,7 @@
 
 package com.mistbell.tavern.v3.feature.chat
 
+import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -23,12 +24,18 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -65,6 +72,7 @@ internal fun ChatSessionSettingsSheet(
     selectedCharacterId: String,
     messageCount: Int,
     memorySummary: String?,
+    conversationId: String,
     onOpenMemory: () -> Unit,
     worldbooks: List<Pair<String, String>>,
     selectedWorldbookId: String,
@@ -77,6 +85,15 @@ internal fun ChatSessionSettingsSheet(
     onDismiss: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val context = LocalContext.current
+    val preferences =
+        remember(context) {
+            context.getSharedPreferences("mistbell-v3-settings", Context.MODE_PRIVATE)
+        }
+    var authorNote by remember(conversationId) {
+        mutableStateOf(preferences.getString("$AUTHOR_NOTE_KEY_PREFIX$conversationId", "").orEmpty())
+    }
+    var authorNoteSaved by remember(conversationId) { mutableStateOf(false) }
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
@@ -147,6 +164,47 @@ internal fun ChatSessionSettingsSheet(
                                     onClick = { onSelectWorldbook(id) },
                                 )
                             }
+                        }
+                    }
+                }
+                item {
+                    TavernSectionLabel("作者注释", modifier = Modifier.padding(top = 18.dp))
+                    TavernGlassCard(Modifier.fillMaxWidth().padding(top = 10.dp)) {
+                        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp)) {
+                            Text(
+                                text = "本会话附加指令（Author's Note）",
+                                color = TavernPalette.TextPrimary,
+                                fontSize = 14.sp,
+                            )
+                            Text(
+                                text = "仅本会话生效，注入在当轮提示词尾部。",
+                                color = TavernPalette.TextTertiary,
+                                fontSize = 12.sp,
+                                modifier = Modifier.padding(top = 2.dp),
+                            )
+                            OutlinedTextField(
+                                value = authorNote,
+                                onValueChange = {
+                                    authorNote = it
+                                    authorNoteSaved = false
+                                },
+                                modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                                minLines = 3,
+                                maxLines = 8,
+                                placeholder = { Text("例如：保持克制，多描写动作与场景。") },
+                            )
+                            TavernPill(
+                                label = if (authorNoteSaved) "已保存" else "保存附加指令",
+                                filled = true,
+                                onClick = {
+                                    preferences
+                                        .edit()
+                                        .putString("$AUTHOR_NOTE_KEY_PREFIX$conversationId", authorNote.trim())
+                                        .apply()
+                                    authorNoteSaved = true
+                                },
+                                modifier = Modifier.padding(top = 10.dp),
+                            )
                         }
                     }
                 }
@@ -254,3 +312,5 @@ private fun WorldbookChoice(
 private fun SheetDivider() {
     Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp).height(1.dp).background(TavernPalette.Border))
 }
+
+private const val AUTHOR_NOTE_KEY_PREFIX = "chat_author_note_"

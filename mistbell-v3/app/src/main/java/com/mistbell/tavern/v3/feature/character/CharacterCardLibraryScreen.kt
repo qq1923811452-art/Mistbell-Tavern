@@ -43,7 +43,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
-private const val MAX_CHARACTER_CARD_BYTES = 5 * 1024 * 1024
 private const val MAX_CHARACTER_ART_BYTES = 8 * 1024 * 1024
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -106,7 +105,7 @@ fun CharacterCardLibraryScreen(onBack: () -> Unit) {
             if (uri != null) {
                 scope.launch {
                     runCatching {
-                        val raw =
+                        val bytes =
                             withContext(Dispatchers.IO) {
                                 context.contentResolver.openInputStream(uri)?.use { input ->
                                     val output = java.io.ByteArrayOutputStream()
@@ -114,17 +113,40 @@ fun CharacterCardLibraryScreen(onBack: () -> Unit) {
                                     while (true) {
                                         val count = input.read(buffer)
                                         if (count < 0) break
-                                        require(output.size() + count <= MAX_CHARACTER_CARD_BYTES) {
-                                            "角色卡 JSON 超过 5 MiB 限制。"
+                                        require(output.size() + count <= MAX_CHARACTER_ART_BYTES) {
+                                            "角色卡文件超过 8 MiB 限制。"
                                         }
                                         output.write(buffer, 0, count)
                                     }
-                                    output.toByteArray().toString(Charsets.UTF_8)
+                                    output.toByteArray()
                                 } ?: throw IllegalStateException("无法读取所选文件。")
                             }
+                        val png = PngCharacterCardCodec.isPng(bytes)
+                        val raw =
+                            if (png) {
+                                PngCharacterCardCodec.extractCardJson(bytes)
+                                    ?: throw IllegalArgumentException("PNG 中未找到 chara/ccv3 角色卡数据。")
+                            } else {
+                                bytes.toString(Charsets.UTF_8)
+                            }
                         val card = LegacyCharacterCardImporter.import(raw)
-                        withContext(Dispatchers.IO) { store.save(null, card) }
-                        card
+                        val stored = withContext(Dispatchers.IO) { store.save(null, card) }
+                        if (!png) {
+                            stored.card
+                        } else {
+                            withContext(Dispatchers.IO) {
+                                val avatar = artStore.save(CharacterArtKind.Avatar, card.name, bytes)
+                                val portrait = artStore.save(CharacterArtKind.Portrait, card.name, bytes)
+                                store
+                                    .save(
+                                        stored.id,
+                                        card.copy(
+                                            avatarFileName = avatar,
+                                            portraitFileName = portrait,
+                                        ),
+                                    ).card
+                            }
+                        }
                     }.onSuccess {
                         refresh()
                         CharacterLibraryRevision.bump()
@@ -178,13 +200,21 @@ fun CharacterCardLibraryScreen(onBack: () -> Unit) {
                                 } ?: error("无法读取所选图片。")
                             }
                         val (item, kind) = target
+                        val previousFileName =
+                            when (kind) {
+                                CharacterArtKind.Avatar -> item.card.avatarFileName
+                                CharacterArtKind.Portrait -> item.card.portraitFileName
+                            }
                         val fileName = withContext(Dispatchers.IO) { artStore.save(kind, item.card.name, bytes) }
                         val updated =
                             when (kind) {
                                 CharacterArtKind.Avatar -> item.card.copy(avatarFileName = fileName)
                                 CharacterArtKind.Portrait -> item.card.copy(portraitFileName = fileName)
                             }
-                        withContext(Dispatchers.IO) { store.save(item.id, updated) }
+                        withContext(Dispatchers.IO) {
+                            store.save(item.id, updated)
+                            orphanedArtNames(store.list(), listOf(previousFileName)).forEach { artStore.delete(it) }
+                        }
                     }.onSuccess {
                         refresh()
                         CharacterLibraryRevision.bump()
@@ -388,8 +418,8 @@ fun CharacterCardLibraryScreen(onBack: () -> Unit) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                         Button(onClick = { beginEdit(null) }, modifier = Modifier.weight(1f)) { Text("新建角色") }
                         Button(onClick = {
-                            importLauncher.launch(arrayOf("application/json", "text/json", "*/*"))
-                        }, modifier = Modifier.weight(1f)) { Text("导入 JSON") }
+                            importLauncher.launch(arrayOf("application/json", "text/json", "image/png", "*/*"))
+                        }, modifier = Modifier.weight(1f)) { Text("导入 JSON / PNG") }
                     }
                 }
                 if (cards.isEmpty()) {
@@ -459,12 +489,19 @@ fun CharacterCardLibraryScreen(onBack: () -> Unit) {
                 TextButton(onClick = {
                     deleteTarget = null
                     scope.launch {
-                        runCatching { withContext(Dispatchers.IO) { store.delete(target.id) } }
-                            .onSuccess {
-                                refresh()
-                                CharacterLibraryRevision.bump()
-                                status = "已删除角色：${target.card.name}"
+                        runCatching {
+                            withContext(Dispatchers.IO) {
+                                require(store.delete(target.id)) { "角色卡删除失败。" }
+                                orphanedArtNames(
+                                    store.list(),
+                                    listOf(target.card.avatarFileName, target.card.portraitFileName),
+                                ).forEach { artStore.delete(it) }
                             }
+                        }.onSuccess {
+                            refresh()
+                            CharacterLibraryRevision.bump()
+                            status = "已删除角色：${target.card.name}"
+                        }
                             .onFailure { status = "删除失败：${it.message ?: it::class.java.simpleName}" }
                     }
                 }) { Text("删除") }
@@ -473,3 +510,11 @@ fun CharacterCardLibraryScreen(onBack: () -> Unit) {
         )
     }
 }
+
+private fun orphanedArtNames(
+    remaining: List<StoredCharacterCard>,
+    candidates: List<String?>,
+): List<String> =
+    candidates.filterNotNull().distinct().filter { name ->
+        remaining.none { it.card.avatarFileName == name || it.card.portraitFileName == name }
+    }

@@ -40,6 +40,7 @@ internal class ChatSendMessageCoordinator(
         invalidateHistoryWindow: Boolean = false,
     ): ChatSendMessagePreparation {
         val charName = selectedCard?.name
+        val mergedPostHistory = resolvedPostHistory(postHistoryInstructions, authorNote(historyScopeId), charName)
         val completedLines = completedLinesWithoutThinkingBlocks(history, historyIsComplete)
         val completeHistory =
             completedLines.mapNotNull { line ->
@@ -88,7 +89,7 @@ internal class ChatSendMessageCoordinator(
                 activatedWorldbook =
                     resolveWorldbookContent(activationReport.activatedEntries, charName),
                 latestUserMessage = userText,
-                postHistoryInstructions = postHistoryInstructions?.let { MacroEngine.resolve(it, charName) },
+                postHistoryInstructions = mergedPostHistory,
                 cardSystemInstructions = selectedCard?.systemPrompt,
             )
         val assemblyMs = (System.nanoTime() - assemblyStarted) / NANOS_PER_MILLI
@@ -98,6 +99,24 @@ internal class ChatSendMessageCoordinator(
         )
         return ChatSendMessagePreparation(messages = messages)
     }
+
+    private fun authorNote(historyScopeId: String): String? =
+        settings
+            .getString("$AUTHOR_NOTE_KEY_PREFIX$historyScopeId", null)
+            ?.trim()
+            ?.takeIf(String::isNotEmpty)
+
+    private fun resolvedPostHistory(
+        characterInstructions: String?,
+        authorNote: String?,
+        charName: String?,
+    ): String? =
+        listOfNotNull(
+            characterInstructions?.trim()?.takeIf(String::isNotEmpty),
+            authorNote,
+        ).joinToString("\n")
+            .takeIf(String::isNotEmpty)
+            ?.let { MacroEngine.resolve(it, charName) }
 
     /** Closed reasoning blocks must not consume the prompt window. */
     private fun completedLinesWithoutThinkingBlocks(
@@ -118,3 +137,5 @@ internal class ChatSendMessageCoordinator(
 }
 
 private const val NANOS_PER_MILLI = 1_000_000
+
+private const val AUTHOR_NOTE_KEY_PREFIX = "chat_author_note_"

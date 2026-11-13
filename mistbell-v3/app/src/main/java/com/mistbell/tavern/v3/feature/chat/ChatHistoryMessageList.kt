@@ -5,6 +5,7 @@ package com.mistbell.tavern.v3.feature.chat
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -27,7 +28,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -179,6 +183,12 @@ private fun ChatBubble(
     onMessageLongPress: (ChatLine) -> Unit,
 ) {
     val isUser = line.role == ROLE_USER
+    val rawText = messageText(line = line, busy = busy)
+    val (thinking, body) = if (isUser) null to rawText else ChatMessageRichText.splitThinking(rawText)
+    val thinkingText = thinking?.takeIf(String::isNotBlank)
+    var thinkingExpanded by remember(line.id, body.isEmpty(), busy) {
+        mutableStateOf(!isUser && body.isEmpty() && busy)
+    }
     val shape = bubbleShape(isUser)
     Column(
         modifier =
@@ -195,8 +205,24 @@ private fun ChatBubble(
                 }
                 .padding(horizontal = BUBBLE_PADDING_HORIZONTAL, vertical = BUBBLE_PADDING_VERTICAL),
     ) {
+        if (thinkingText != null) {
+            Text(
+                text = if (thinkingExpanded) THINKING_EXPANDED_LABEL else THINKING_COLLAPSED_LABEL,
+                style = MaterialTheme.typography.labelSmall,
+                color = THINKING_LABEL_COLOR,
+                modifier = Modifier.clickable { thinkingExpanded = !thinkingExpanded },
+            )
+            if (thinkingExpanded) {
+                Text(
+                    text = thinkingText,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = THINKING_TEXT_COLOR,
+                    modifier = Modifier.padding(top = THINKING_TEXT_GAP),
+                )
+            }
+        }
         Text(
-            text = messageText(line = line, busy = busy),
+            text = ChatMessageRichText.formatMarkdown(body),
             style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp, lineHeight = 23.sp),
             color = BUBBLE_TEXT_COLOR,
         )
@@ -343,3 +369,8 @@ private val ASSISTANT_AVATAR_TEXT_COLOR = Color(0xFFF4E9FF)
 private val USER_AVATAR_COLOR = Color(0xFF7A5A3C)
 private val USER_AVATAR_TEXT_COLOR = Color(0xFFFFF2E0)
 private val VARIANT_SURFACE_COLOR = Color(0xB32A1B3D)
+private const val THINKING_COLLAPSED_LABEL = "思考过程 ▸"
+private const val THINKING_EXPANDED_LABEL = "思考过程 ▾"
+private val THINKING_LABEL_COLOR = Color(0xFFD8B4FE)
+private val THINKING_TEXT_COLOR = Color(0xB3F7F0E6)
+private val THINKING_TEXT_GAP = 4.dp

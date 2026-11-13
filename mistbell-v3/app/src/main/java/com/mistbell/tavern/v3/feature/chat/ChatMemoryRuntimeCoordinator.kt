@@ -52,6 +52,11 @@ internal class ChatMemoryRuntimeCoordinator(
         val generationSwitches = context.getSharedPreferences("mistbell-v3-settings", Context.MODE_PRIVATE)
         val streamEnabled = generationSwitches.getBoolean("chat_stream_enabled", true)
         val thinkingEnabled = generationSwitches.getBoolean("chat_thinking_enabled", false)
+        val temperature =
+            runCatching { generationSwitches.getFloat(CHAT_TEMPERATURE_KEY, DEFAULT_CHAT_TEMPERATURE) }
+                .getOrDefault(DEFAULT_CHAT_TEMPERATURE)
+                .toDouble()
+                .coerceIn(MIN_CHAT_TEMPERATURE, MAX_CHAT_TEMPERATURE)
         val embeddingSettings = context.getSharedPreferences("mistbell-v3-settings", Context.MODE_PRIVATE)
         val modelAssets =
             EmbeddingGemma2ModelAssetManager(
@@ -99,6 +104,7 @@ internal class ChatMemoryRuntimeCoordinator(
                 messages,
                 observer,
                 ChatGenerationOptions(
+                    temperature = temperature,
                     maxTokens = maxTokens,
                     stream = streamEnabled,
                     thinkingEnabled = thinkingEnabled,
@@ -236,7 +242,12 @@ internal class ChatMemoryRuntimeCoordinator(
                 return client.stream(
                     messages,
                     observer,
-                    ChatGenerationOptions(maxTokens = maxTokens, stream = streamEnabled, thinkingEnabled = thinkingEnabled),
+                    ChatGenerationOptions(
+                        temperature = temperature,
+                        maxTokens = maxTokens,
+                        stream = streamEnabled,
+                        thinkingEnabled = thinkingEnabled,
+                    ),
                 )
             }
             when (
@@ -340,6 +351,7 @@ internal class ChatMemoryRuntimeCoordinator(
                 messages,
                 observer,
                 ChatGenerationOptions(
+                    temperature = temperature,
                     maxTokens = maxTokens,
                     stream = streamEnabled,
                     thinkingEnabled = thinkingEnabled,
@@ -349,3 +361,8 @@ internal class ChatMemoryRuntimeCoordinator(
         }
     }
 }
+
+private const val CHAT_TEMPERATURE_KEY = "chat_temperature"
+private const val DEFAULT_CHAT_TEMPERATURE = 0.7f
+private const val MIN_CHAT_TEMPERATURE = 0.0
+private const val MAX_CHAT_TEMPERATURE = 2.0
