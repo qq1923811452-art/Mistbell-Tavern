@@ -1,6 +1,7 @@
 using Android.Content;
 using Android.OS;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
@@ -69,6 +70,7 @@ internal static class EraGameStore
 		}
 
 		var gameDir = ResolveGameDir(target);
+		EnsureLazyLoadingConfig(gameDir);
 		prefs?.Edit()?.PutString(PrefLastGame, gameDir)?.PutString(PrefLastVersion, version)?.Apply();
 		return gameDir;
 	}
@@ -96,8 +98,46 @@ internal static class EraGameStore
 		Extract(zipPath, target);
 		NormalizeTopLevelDirs(target);
 		var gameDir = ResolveGameDir(target);
+		EnsureLazyLoadingConfig(gameDir);
 		prefs?.Edit()?.PutString(PrefLastGame, gameDir)?.PutString(PrefLastVersion, version)?.Apply();
 		return gameDir;
+	}
+
+	/// <summary>
+	/// 引擎的懒加载只有在 lazyloading.cfg 存在时才启用：
+	/// 缺 cfg ⇒ 每次启动全量解析 16601 个 ERB（实测 171 秒），且从不写缓存。
+	/// 这里按 erb/ 下的实际目录生成 cfg，让首次加载后能写出 lazyloading*.bin 供下次复用。
+	/// </summary>
+	private static void EnsureLazyLoadingConfig(string gameDir)
+	{
+		try
+		{
+			var cfg = Path.Combine(gameDir, "lazyloading.cfg");
+			if (File.Exists(cfg))
+				return;
+			if (!TryFindChild(gameDir, "erb", out var erbDir))
+				return;
+
+			var dirs = new List<string> { erbDir };
+			dirs.AddRange(Directory.GetDirectories(erbDir, "*", SearchOption.AllDirectories));
+			var lines = new List<string>(dirs.Count);
+			foreach (var dir in dirs)
+			{
+				var rel = Path.GetRelativePath(gameDir, dir);
+				if (rel == ".")
+					continue;
+				lines.Add(rel + Path.DirectorySeparatorChar);
+			}
+			if (lines.Count == 0)
+				return;
+			lines.Sort(StringComparer.Ordinal);
+			File.WriteAllLines(cfg, lines, new UTF8Encoding(false));
+			EraBootstrap.Trace("lazyloading.cfg generated: " + lines.Count + " folders");
+		}
+		catch (Exception ex)
+		{
+			EraBootstrap.Trace("lazyloading.cfg failed: " + ex.Message);
+		}
 	}
 
 	private static void Extract(string zipPath, string target)

@@ -61,6 +61,9 @@ jobs:
           git fetch --depth 1 origin "$ERA_UPSTREAM_SHA"
           git checkout -q FETCH_HEAD
 
+      - name: Patch upstream (sys.click support)
+        run: python3 era-engine/scripts/patch_upstream.py era-engine/upstream
+
       - name: Install Android workload
         run: |
           echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"

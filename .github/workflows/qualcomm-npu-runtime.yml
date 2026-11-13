@@ -264,6 +264,9 @@ jobs:
       - name: Install Android workload for engine
         run: dotnet workload install android --skip-manifest-update
 
+      - name: Patch upstream (sys.click support)
+        run: python3 era-engine/scripts/patch_upstream.py era-engine/upstream
+
       - name: Publish arm64 engine APK
         run: |
           set -e
