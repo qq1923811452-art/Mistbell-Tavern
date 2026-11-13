@@ -63,6 +63,7 @@ internal class EraEngineSession(
     private var pendingPort = 0
     private var request: EwpInputRequest? = null
     private var reading: Job? = null
+    private var sessionJob: Job? = null
 
     private val handler =
         Handler(Looper.getMainLooper()) { message: Message ->
@@ -97,18 +98,27 @@ internal class EraEngineSession(
     fun start(game: EraGameInstall) {
         if (started) return
         started = true
-        scope.launch {
-            try {
-                _state.update { it.copy(statusText = "正在打包 ${game.name}…") }
-                val zip = packager.pack(game)
-                pendingPort = pickPort()
-                _state.update { it.copy(statusText = "正在唤起引擎…") }
-                bindEngine(game, zip, pendingPort)
-            } catch (error: Exception) {
-                fail(error.message ?: "启动引擎失败")
+        sessionJob =
+            scope.launch {
+                try {
+                    _state.update { it.copy(statusText = "正在打包 ${game.name}…") }
+                    val zip = packGame(game)
+                    pendingPort = pickPort()
+                    _state.update { it.copy(statusText = "正在唤起引擎…") }
+                    bindEngine(game, zip, pendingPort)
+                } catch (error: Exception) {
+                    fail(error.message ?: "启动引擎失败")
+                }
             }
-        }
     }
+
+    private fun packGame(game: EraGameInstall): File =
+        packager.pack(
+            game = game,
+            onProgress = { done, total ->
+                _state.update { it.copy(statusText = "正在打包 $done/$total 个文件…") }
+            },
+        )
 
     fun submit(
         value: String,
@@ -122,6 +132,8 @@ internal class EraEngineSession(
 
     /** 用户点「重试」：拆掉当前绑定，重新走一遍打包 → 绑定 → 握手。 */
     fun retry(game: EraGameInstall) {
+        sessionJob?.cancel()
+        sessionJob = null
         started = false
         request = null
         reading?.cancel()
@@ -136,6 +148,8 @@ internal class EraEngineSession(
     }
 
     fun stop() {
+        sessionJob?.cancel()
+        sessionJob = null
         started = false
         request = null
         runCatching { client.send(EwpCommand.quit()) }

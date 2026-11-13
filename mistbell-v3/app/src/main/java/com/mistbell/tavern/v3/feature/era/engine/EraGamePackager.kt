@@ -18,26 +18,40 @@ internal class EraGamePackager(
 ) {
     fun versionKey(game: EraGameInstall): String = "${game.importedAtEpochMillis}-${game.fileCount}"
 
-    fun pack(game: EraGameInstall): File {
+    fun pack(
+        game: EraGameInstall,
+        onProgress: (done: Int, total: Int) -> Unit = { _, _ -> },
+    ): File {
         val key = versionKey(game).hashCode().toUInt().toString(HEX_RADIX)
         val zip = File(cacheDir, "era-pack-$key.zip")
         if (zip.isFile && zip.length() > 0L) return zip
 
-        val temp = File(cacheDir, "${zip.name}.part")
-        val files =
-            game.directory
-                .walkTopDown()
-                .filter { it.isFile && it.length() >= 0 }
-                .sortedBy { it.path }
-        ZipOutputStream(BufferedOutputStream(temp.outputStream(), BUFFER_SIZE)).use { output ->
-            output.setLevel(Deflater.NO_COMPRESSION)
-            files.forEach { file -> writeEntry(output, game.directory, file) }
+        // 唯一临时名：并发或重试时两份打包不会互相踩；清理也只删成品，不碰 .part。
+        val temp = File(cacheDir, "${zip.name}.${System.nanoTime()}.part")
+        try {
+            val files =
+                game.directory
+                    .walkTopDown()
+                    .filter { it.isFile }
+                    .sortedBy { it.path }
+                    .toList()
+            ZipOutputStream(BufferedOutputStream(temp.outputStream(), BUFFER_SIZE)).use { output ->
+                output.setLevel(Deflater.NO_COMPRESSION)
+                files.forEachIndexed { index, file ->
+                    writeEntry(output, game.directory, file)
+                    if (index % PROGRESS_STEP == 0 || index == files.lastIndex) {
+                        onProgress(index + 1, files.size)
+                    }
+                }
+            }
+            if (!temp.renameTo(zip) && !(zip.isFile && zip.length() > 0L)) {
+                // 另一个任务可能已经产出了同名成品，那种情况直接复用
+                error("无法保存打包结果：${zip.name}")
+            }
+        } finally {
+            if (temp.exists()) temp.delete()
         }
-        if (!temp.renameTo(zip)) {
-            temp.copyTo(zip, overwrite = true)
-            temp.delete()
-        }
-        cacheDir.listFiles { file -> file.name.startsWith("era-pack-") && file != zip }
+        cacheDir.listFiles { file -> file.name.startsWith("era-pack-") && file.name.endsWith(".zip") && file != zip }
             ?.forEach { stale -> stale.delete() }
         return zip
     }
@@ -57,5 +71,6 @@ internal class EraGamePackager(
     private companion object {
         const val BUFFER_SIZE = 64 * 1024
         const val HEX_RADIX = 16
+        const val PROGRESS_STEP = 500
     }
 }
