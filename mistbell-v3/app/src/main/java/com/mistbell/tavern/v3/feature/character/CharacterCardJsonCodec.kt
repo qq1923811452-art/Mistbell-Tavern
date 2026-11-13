@@ -27,6 +27,7 @@ object CharacterCardJsonCodec {
                 characterBookJson = book,
                 avatarFileName = data.optString("avatar_file", "").trim().takeIf(String::isNotEmpty),
                 portraitFileName = data.optString("portrait_file", "").trim().takeIf(String::isNotEmpty),
+                redlines = data.optStringList("redlines"),
             ).takeIf { it.name.isNotBlank() }
         } catch (_: JSONException) {
             null
@@ -52,6 +53,7 @@ object CharacterCardJsonCodec {
                 .put("creator", card.creator)
         card.avatarFileName?.takeIf(String::isNotBlank)?.let { data.put("avatar_file", it) }
         card.portraitFileName?.takeIf(String::isNotBlank)?.let { data.put("portrait_file", it) }
+        if (card.redlines.isNotEmpty()) data.put("redlines", JSONArray(card.redlines))
         card.characterBookJson?.let { raw ->
             runCatching { JSONObject(raw) }.getOrNull()?.let { data.put("character_book", it) }
         }

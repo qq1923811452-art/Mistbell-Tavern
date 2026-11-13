@@ -144,20 +144,24 @@ object VectorMemoryRetriever {
 
         var usedCharacters = 0
         val result = mutableListOf<RetrievedMemory>()
+        val seenSceneGroups = mutableSetOf<String>()
         for (candidate in candidatesByHash.values.sortedWith(
             compareByDescending<RankedCandidate> { it.rrfScore }.thenBy { it.source.id },
         )) {
             if (result.size >= limit) break
+            val sceneGroup = sceneGroupKey(candidate.source)
+            if (sceneGroup != null && !seenSceneGroups.add(sceneGroup)) continue
             val normalizedText = candidate.source.text.trim()
             if (normalizedText.isEmpty()) continue
+            val selectedSourceText = if (sceneGroup != null) compactSceneText(normalizedText) else normalizedText
             val remaining = maxCharacters - usedCharacters
             if (remaining <= 0) break
             val end =
-                minOf(normalizedText.length, remaining).let { proposedEnd ->
+                minOf(selectedSourceText.length, remaining).let { proposedEnd ->
                     // Do not split a UTF-16 surrogate pair when truncating to the remaining budget.
-                    if (proposedEnd < normalizedText.length &&
+                    if (proposedEnd < selectedSourceText.length &&
                         proposedEnd > 0 &&
-                        Character.isHighSurrogate(normalizedText[proposedEnd - 1])
+                        Character.isHighSurrogate(selectedSourceText[proposedEnd - 1])
                     ) {
                         proposedEnd - 1
                     } else {
@@ -165,7 +169,7 @@ object VectorMemoryRetriever {
                     }
                 }
             if (end <= 0) continue
-            val selectedText = normalizedText.substring(0, end)
+            val selectedText = selectedSourceText.substring(0, end)
             val source =
                 when {
                     candidate.hasVectorMatch && candidate.hasKeywordMatch -> MemoryRetrievalSource.HYBRID
@@ -215,19 +219,26 @@ object VectorMemoryRetriever {
                 )
                 .take(VectorSimilaritySearch.MAX_RESULT_LIMIT)
 
+        return buildKeywordResults(ranked, limit, maxCharacters)
+    }
+
+    private fun buildKeywordResults(
+        ranked: Sequence<Pair<MemoryTextRecord, Int>>,
+        limit: Int,
+        maxCharacters: Int,
+    ): List<RetrievedMemory> {
         var usedCharacters = 0
         val result = mutableListOf<RetrievedMemory>()
         val seenHashes = mutableSetOf<String>()
+        val seenSceneGroups = mutableSetOf<String>()
         for ((record, _) in ranked) {
             if (result.size >= limit) break
-            if (!seenHashes.add(record.sourceTextSha256)) continue
-            val normalizedText = record.text.trim()
-            if (normalizedText.isEmpty()) continue
+            val selectedSourceText = keywordCandidateText(record, seenHashes, seenSceneGroups) ?: continue
             val remaining = maxCharacters - usedCharacters
             if (remaining <= 0) break
-            val end = safeTruncationEnd(normalizedText, remaining)
+            val end = safeTruncationEnd(selectedSourceText, remaining)
             if (end <= 0) continue
-            val selectedText = normalizedText.substring(0, end)
+            val selectedText = selectedSourceText.substring(0, end)
             result +=
                 RetrievedMemory(
                     id = record.id,
@@ -239,6 +250,35 @@ object VectorMemoryRetriever {
         }
         return result
     }
+
+    private fun keywordCandidateText(
+        record: MemoryTextRecord,
+        seenHashes: MutableSet<String>,
+        seenSceneGroups: MutableSet<String>,
+    ): String? =
+        if (!seenHashes.add(record.sourceTextSha256)) {
+            null
+        } else {
+            val sceneGroup = sceneGroupKey(record)
+            val sceneAllowed = sceneGroup == null || seenSceneGroups.add(sceneGroup)
+            val normalizedText = record.text.trim()
+            when {
+                !sceneAllowed || normalizedText.isEmpty() -> null
+                sceneGroup != null -> compactSceneText(normalizedText)
+                else -> normalizedText
+            }
+        }
+
+    private fun sceneGroupKey(record: MemoryTextRecord): String? =
+        if (record.id.startsWith(SCENE_ID_PREFIX)) {
+            record.id.substringBeforeLast(SCENE_CHUNK_MARKER, record.id)
+        } else {
+            null
+        }
+
+    /** Keep the compact scene summary when injecting; the raw fragment stays in the index only. */
+    private fun compactSceneText(text: String): String =
+        if (text.contains(SCENE_FRAGMENT_SEPARATOR)) text.substringBefore(SCENE_FRAGMENT_SEPARATOR).trim() else text
 
     /** Never leave half of a UTF-16 surrogate pair at the truncation boundary. */
     private fun safeTruncationEnd(
@@ -259,6 +299,9 @@ object VectorMemoryRetriever {
     const val MAX_RRF_CONSTANT = 1_000
     const val DEFAULT_VECTOR_WEIGHT = 1.0
     const val DEFAULT_KEYWORD_WEIGHT = 1.0
+    private const val SCENE_ID_PREFIX = "scene:"
+    private const val SCENE_CHUNK_MARKER = ":chunk:"
+    private const val SCENE_FRAGMENT_SEPARATOR = "\n[片段] "
     const val MAX_KEYWORD_QUERY_TERMS = 64
     const val MAX_KEYWORD_SCAN_CHARACTERS = 20_000
 
@@ -348,12 +391,12 @@ object VectorMemoryRetriever {
         }
         return text.substring(0, end)
     }
-
-    private fun isHan(character: Char): Boolean =
-        character in '\u3400'..'\u4DBF' ||
-            character in '\u4E00'..'\u9FFF' ||
-            character in '\uF900'..'\uFAFF'
 }
+
+private fun isHan(character: Char): Boolean =
+    character in '\u3400'..'\u4DBF' ||
+        character in '\u4E00'..'\u9FFF' ||
+        character in '\uF900'..'\uFAFF'
 
 private fun sha256Text(text: String): String =
     MessageDigest.getInstance("SHA-256")

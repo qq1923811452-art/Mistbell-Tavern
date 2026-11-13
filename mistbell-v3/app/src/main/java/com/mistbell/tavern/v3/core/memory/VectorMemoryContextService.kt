@@ -78,6 +78,9 @@ class VectorMemoryContextService(
     }
 
     suspend fun retrieveForQuery(query: String): VectorMemoryContextResult {
+        if (!RetrievalIntentGate.shouldTriggerRetrieval(query)) {
+            return VectorMemoryContextResult.NoRelevantMemories
+        }
         if (query.isBlank()) {
             return VectorMemoryContextResult.Unavailable(
                 VectorMemoryContextResult.Reason.INVALID_QUERY_VECTOR,

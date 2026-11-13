@@ -2,9 +2,13 @@ package com.mistbell.tavern.v3.feature.chat
 
 import android.content.Context
 import com.mistbell.tavern.v3.core.diagnostics.DiagnosticLogStore
+import com.mistbell.tavern.v3.core.memory.MacroDialogueTurn
+import com.mistbell.tavern.v3.core.memory.MacroSceneChunker
 import com.mistbell.tavern.v3.core.model.ProviderKind
 import com.mistbell.tavern.v3.core.model.ProviderProfileSet
 import com.mistbell.tavern.v3.core.security.AndroidKeystoreMemoryCredentialStore
+import com.mistbell.tavern.v3.core.storage.AtomicMemoryTextStore
+import com.mistbell.tavern.v3.core.storage.MemoryScopeFileNames
 import com.mistbell.tavern.v3.feature.memory.MemoryExtractionInput
 import com.mistbell.tavern.v3.feature.memory.MemoryExtractionJob
 import com.mistbell.tavern.v3.feature.memory.MemoryExtractionJobRepository
@@ -83,6 +87,7 @@ internal class ChatMemoryExtractionSchedulingCoordinator(
                             // A newer save or deletion supersedes this immutable UI-thread snapshot.
                             if (snapshotRevision != historySaveRevision.get()) return@withLock 0
                             historyStore.save(historySnapshot)
+                            persistMacroScenes(pending, conversationId)
                             val repository =
                                 MemoryExtractionJobRepository(
                                     MemoryExtractionJobStore(context.applicationContext),
@@ -139,6 +144,37 @@ internal class ChatMemoryExtractionSchedulingCoordinator(
                 } else {
                     "记忆整理队列已检查；已有任务不会重复入队。"
                 },
+            )
+        }
+    }
+
+    private fun persistMacroScenes(
+        pending: List<Pair<ChatLine, ChatLine>>,
+        conversationId: String,
+    ) {
+        val scenes =
+            MacroSceneChunker.chunkDialogueTurns(
+                conversationId = conversationId,
+                turns =
+                    pending.map { (user, assistant) ->
+                        MacroDialogueTurn(user.id, user.content, assistant.content)
+                    },
+            )
+        if (scenes.isEmpty()) return
+        runCatching {
+            val memoryTextStore =
+                AtomicMemoryTextStore(
+                    context.applicationContext,
+                    MemoryScopeFileNames.forScope(AtomicMemoryTextStore.DEFAULT_FILE_NAME, conversationId),
+                )
+            memoryTextStore.update { existing ->
+                val groupPrefixes = scenes.map { it.id.substringBeforeLast(":chunk:") + ":" }.toSet()
+                existing.filterNot { record -> groupPrefixes.any(record.id::startsWith) } + scenes
+            }
+        }.onFailure { error ->
+            diagnosticStore.warn(
+                "memory.scene.persist_failed",
+                "reason=${error::class.java.simpleName}",
             )
         }
     }

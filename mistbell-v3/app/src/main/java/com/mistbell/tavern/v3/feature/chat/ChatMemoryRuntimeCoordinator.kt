@@ -12,14 +12,19 @@ import com.mistbell.tavern.v3.core.storage.MemoryScopeFileNames
 import com.mistbell.tavern.v3.core.storage.MemoryTextLoadResult
 import com.mistbell.tavern.v3.core.storage.PersistedVectorSnapshotProvider
 import com.mistbell.tavern.v3.core.storage.VectorSnapshotLoadResult
+import com.mistbell.tavern.v3.feature.character.CharacterCard
+import com.mistbell.tavern.v3.feature.character.CharacterRedlineOocGuard
 import com.mistbell.tavern.v3.feature.embedding.EmbeddingEngineProcessHolder
 import com.mistbell.tavern.v3.feature.embedding.EmbeddingGemma2MemoryRuntime
 import com.mistbell.tavern.v3.feature.embedding.EmbeddingGemma2ModelAssetManager
 import com.mistbell.tavern.v3.feature.embedding.EmbeddingGemma2RuntimeAdapter
 import com.mistbell.tavern.v3.feature.embedding.EmbeddingGemma2TextPolicy
+import com.mistbell.tavern.v3.feature.embedding.EmbeddingTaskType
 import com.mistbell.tavern.v3.feature.memory.TemporalFactExtractionPipeline
 import com.mistbell.tavern.v3.feature.memory.TemporalFactTextSyncResult
 import com.mistbell.tavern.v3.feature.memory.TemporalFactTextSynchronizer
+import com.mistbell.tavern.v3.feature.worldbook.WorldBookEntry
+import com.mistbell.tavern.v3.feature.worldbook.WorldbookSemanticSoftGate
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Call
@@ -48,6 +53,9 @@ internal class ChatMemoryRuntimeCoordinator(
         observer: ChatStreamObserver,
         maxTokens: Int,
         memoryQuery: String? = null,
+        character: CharacterCard? = null,
+        worldbookEntries: List<WorldBookEntry> = emptyList(),
+        worldbookBudget: Int = 0,
     ): Call {
         val generationSwitches = context.getSharedPreferences("mistbell-v3-settings", Context.MODE_PRIVATE)
         val streamEnabled = generationSwitches.getBoolean("chat_stream_enabled", true)
@@ -327,6 +335,17 @@ internal class ChatMemoryRuntimeCoordinator(
                     embeddings = memoryRuntime,
                     textProvider = memoryTextStore,
                 )
+            val augmentedMessages =
+                runCatching {
+                    augmentRequestMessages(
+                        adapter = adapter,
+                        messages = messages,
+                        userText = memoryQuery,
+                        character = character,
+                        worldbookEntries = worldbookEntries,
+                        worldbookBudget = worldbookBudget,
+                    )
+                }.getOrDefault(messages)
             setStatus(
                 "本地记忆检索已接入；后端=${backendStatus.backend}（配置=${backendStatus.acceleratorName}），" +
                     "证据=${backendStatus.backendEvidence}。配置状态不等于芯片级 NPU 实测。" +
@@ -348,7 +367,7 @@ internal class ChatMemoryRuntimeCoordinator(
                 },
                 onRequestMessages = onRequestMessages,
             ).stream(
-                messages,
+                augmentedMessages,
                 observer,
                 ChatGenerationOptions(
                     temperature = temperature,
@@ -358,6 +377,64 @@ internal class ChatMemoryRuntimeCoordinator(
                 ),
                 memoryQuery = memoryQuery,
             )
+        }
+    }
+
+    private suspend fun augmentRequestMessages(
+        adapter: EmbeddingGemma2RuntimeAdapter,
+        messages: List<PromptMessage>,
+        userText: String?,
+        character: CharacterCard?,
+        worldbookEntries: List<WorldBookEntry>,
+        worldbookBudget: Int,
+    ): List<PromptMessage> {
+        val text = userText?.trim().orEmpty()
+        val lastUserIndex = messages.indexOfLast { it.role == PromptRole.USER }
+        if (text.isEmpty() || lastUserIndex < 0) return messages
+        val sections = mutableListOf<String>()
+        if (character != null) {
+            val previousReply = messages.lastOrNull { it.role == PromptRole.ASSISTANT }?.content
+            CharacterRedlineOocGuard.evaluate(character, text, previousReply) { texts, task, titles ->
+                adapter.embedByTask(texts, task, titles).vectors
+            }?.let(sections::add)
+        }
+        if (worldbookEntries.isNotEmpty() && worldbookBudget > 0) {
+            val queryVector =
+                adapter
+                    .embedByTask(listOf(text), EmbeddingTaskType.RETRIEVAL_QUERY)
+                    .vectors
+                    .firstOrNull()
+            if (queryVector != null) {
+                val activatedContents = messages.map { it.content }
+                val candidates =
+                    worldbookEntries.filter { entry ->
+                        entry.content.isNotBlank() && activatedContents.none { it.contains(entry.content) }
+                    }
+                val selected =
+                    WorldbookSemanticSoftGate.select(
+                        candidates = candidates,
+                        queryVector = queryVector,
+                        embedDocuments = { documents ->
+                            adapter.embedByTask(documents, EmbeddingTaskType.RETRIEVAL_DOCUMENT).vectors
+                        },
+                        remainingBudget = worldbookBudget,
+                    )
+                if (selected.isNotEmpty()) {
+                    sections += "[补充世界书设定]\n" + selected.joinToString("\n") { it.content }
+                }
+            }
+        }
+        val suffix = sections.joinToString("\n\n")
+        return if (sections.isEmpty()) {
+            messages
+        } else {
+            messages.mapIndexed { index, message ->
+                if (index == lastUserIndex) {
+                    message.copy(content = message.content.trimEnd() + "\n\n" + suffix)
+                } else {
+                    message
+                }
+            }
         }
     }
 }

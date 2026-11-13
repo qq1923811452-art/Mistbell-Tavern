@@ -107,4 +107,31 @@ class EmbeddingGemma2TextPolicyTest {
             }.isFailure,
         )
     }
+
+    @Test
+    fun formatTaskUsesOfficialInstructionForEveryTask() {
+        assertEquals(
+            "task: search result | query: q",
+            EmbeddingGemma2TextPolicy.formatTask("q", EmbeddingTaskType.RETRIEVAL_QUERY),
+        )
+        assertEquals(
+            "title: T | text: body",
+            EmbeddingGemma2TextPolicy.formatTask("body", EmbeddingTaskType.RETRIEVAL_DOCUMENT, "T"),
+        )
+        val expected =
+            mapOf(
+                EmbeddingTaskType.SEMANTIC_SIMILARITY to "task: sentence similarity | query: q",
+                EmbeddingTaskType.CLASSIFICATION to "task: classification | query: q",
+                EmbeddingTaskType.CLUSTERING to "task: clustering | query: q",
+                EmbeddingTaskType.FACT_CHECKING to "task: fact checking | query: q",
+                EmbeddingTaskType.QUESTION_ANSWERING to "task: question answering | query: q",
+                EmbeddingTaskType.CODE_RETRIEVAL to "task: code retrieval | query: q",
+            )
+        expected.forEach { (task, formatted) ->
+            assertEquals(formatted, EmbeddingGemma2TextPolicy.formatTask("q", task))
+        }
+        val long = EmbeddingGemma2TextPolicy.formatTask("中".repeat(2_000), EmbeddingTaskType.CLASSIFICATION)
+        assertTrue(long.toByteArray(Charsets.UTF_8).size <= EmbeddingGemma2TextPolicy.MAX_SAFE_FORMATTED_INPUT_BYTES)
+        assertTrue(long.startsWith("task: classification | query: "))
+    }
 }
