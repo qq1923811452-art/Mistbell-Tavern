@@ -100,6 +100,7 @@ private val ERA_ENTRY_BRUSH = Brush.linearGradient(listOf(ERA_ENTRY_BG_TOP, ERA_
  * Entry to the Gensokyo / eraTW adaptation. It sits above the session actions because it is a
  * different way to start a story, not another session mutation.
  */
+@Suppress("LongMethod")
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun EraGameEntry(

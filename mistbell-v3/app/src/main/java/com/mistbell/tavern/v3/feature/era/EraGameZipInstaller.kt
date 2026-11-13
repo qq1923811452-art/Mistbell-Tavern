@@ -4,6 +4,7 @@ import java.io.File
 import java.io.IOException
 import java.nio.charset.Charset
 import java.util.UUID
+import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 
 /**
@@ -13,7 +14,7 @@ import java.util.zip.ZipFile
  * truth. The installer still guards against path traversal, zip bombs, and accidental loss of the
  * player's `sav/` folder when a pack is updated.
  */
-@Suppress("TooGenericExceptionCaught")
+@Suppress("TooGenericExceptionCaught", "TooManyFunctions")
 class EraGameZipInstaller(
     private val gamesRoot: File,
 ) {
@@ -91,32 +92,47 @@ class EraGameZipInstaller(
             while (entries.hasMoreElements()) {
                 val entry = entries.nextElement()
                 val entryName = normalizeEntryName(entry.name)
-                if (entryName == null || entry.isDirectory) continue
-                if (entryName.startsWith("__MACOSX/") || entryName.endsWith(".DS_Store")) continue
-
-                val outputFile = File(root, entryName)
-                check(outputFile.canonicalPath.startsWith(rootPrefix)) { "ZIP 包含非法路径" }
-                outputFile.parentFile?.mkdirs()
-
-                zip.getInputStream(entry).use { input ->
-                    outputFile.outputStream().buffered().use { output ->
-                        val buffer = ByteArray(BUFFER_SIZE)
-                        while (true) {
-                            val read = input.read(buffer)
-                            if (read < 0) break
-                            totalBytes += read
-                            check(totalBytes <= MAX_TOTAL_BYTES) { "ZIP 解压后超过大小上限" }
-                            output.write(buffer, 0, read)
-                        }
-                    }
+                if (entryName != null && !entry.isDirectory && !isIgnored(entryName)) {
+                    totalBytes = extractEntry(zip, entry, root, rootPrefix, entryName, totalBytes)
+                    fileCount++
+                    check(fileCount <= MAX_ENTRIES) { "ZIP 文件数量超过上限" }
                 }
-                fileCount++
-                check(fileCount <= MAX_ENTRIES) { "ZIP 文件数量超过上限" }
             }
         }
         return fileCount
     }
 
+    @Suppress("LongParameterList")
+    private fun extractEntry(
+        zip: ZipFile,
+        entry: ZipEntry,
+        root: File,
+        rootPrefix: String,
+        entryName: String,
+        initialBytes: Long,
+    ): Long {
+        val outputFile = File(root, entryName)
+        check(outputFile.canonicalPath.startsWith(rootPrefix)) { "ZIP 包含非法路径" }
+        outputFile.parentFile?.mkdirs()
+        var totalBytes = initialBytes
+        zip.getInputStream(entry).use { input ->
+            outputFile.outputStream().buffered().use { output ->
+                val buffer = ByteArray(BUFFER_SIZE)
+                var read = input.read(buffer)
+                while (read >= 0) {
+                    totalBytes += read
+                    check(totalBytes <= MAX_TOTAL_BYTES) { "ZIP 解压后超过大小上限" }
+                    output.write(buffer, 0, read)
+                    read = input.read(buffer)
+                }
+            }
+        }
+        return totalBytes
+    }
+
+    private fun isIgnored(entryName: String): Boolean {
+        return entryName.startsWith("__MACOSX/") || entryName.endsWith(".DS_Store")
+    }
 
     /**
      * A lot of Windows ZIPs contain one top-level folder (`eraTW/erb`, `eraTW/csv`, ...). The
@@ -124,29 +140,35 @@ class EraGameZipInstaller(
      * game root. Archives with several top-level entries are left alone.
      */
     private fun unwrapSingleGameRoot(staging: File) {
-        val children =
+        val root =
             staging.listFiles()
                 ?.filterNot { it.name == "__MACOSX" || it.name == ".DS_Store" }
+                ?.singleOrNull()
+                ?.takeIf { it.isDirectory }
                 ?: return
-        val root = children.singleOrNull()?.takeIf { it.isDirectory } ?: return
-        val looksLikeGame =
-            File(root, "erb").isDirectory ||
-                File(root, "csv").isDirectory ||
-                File(root, "emuera.config").isFile
-        if (!looksLikeGame) return
-        root.listFiles()?.forEach { child ->
-            val destination = File(staging, child.name)
-            destination.deleteRecursively()
-            if (!child.renameTo(destination)) {
-                child.copyRecursively(destination, overwrite = true)
-                child.deleteRecursively()
+        if (looksLikeGameRoot(root)) {
+            root.listFiles()?.forEach { child ->
+                val destination = File(staging, child.name)
+                destination.deleteRecursively()
+                if (!child.renameTo(destination)) {
+                    child.copyRecursively(destination, overwrite = true)
+                    child.deleteRecursively()
+                }
             }
+            root.deleteRecursively()
         }
-        root.deleteRecursively()
+    }
+
+    private fun looksLikeGameRoot(root: File): Boolean {
+        return File(root, "erb").isDirectory ||
+            File(root, "csv").isDirectory ||
+            File(root, "emuera.config").isFile
     }
 
     private fun openZip(zipFile: File): ZipFile =
-        runCatching { ZipFile(zipFile, Charset.forName("MS932")) }.getOrElse { ZipFile(zipFile) }
+        runCatching {
+            ZipFile(zipFile, Charset.forName("MS932"))
+        }.getOrElse { ZipFile(zipFile) }
 
     private fun normalizeEntryName(rawName: String): String? {
         val unified = rawName.replace('\\', '/')
@@ -211,7 +233,12 @@ class EraGameZipInstaller(
 
     private fun sanitizeDisplayName(rawName: String): String {
         val trimmed = rawName.trim()
-        val withoutExtension = if (trimmed.endsWith(".zip", ignoreCase = true)) trimmed.dropLast(4) else trimmed
+        val withoutExtension =
+            if (trimmed.endsWith(ZIP_SUFFIX, ignoreCase = true)) {
+                trimmed.dropLast(ZIP_SUFFIX.length)
+            } else {
+                trimmed
+            }
         val cleaned = withoutExtension.replace(INVALID_NAME_CHARS, "_").trim().trim('.')
         return cleaned.take(MAX_NAME_LENGTH).ifBlank { DEFAULT_GAME_NAME }
     }
@@ -222,6 +249,7 @@ class EraGameZipInstaller(
         const val BUFFER_SIZE = 64 * 1024
         const val MAX_ENTRIES = 60_000
         const val MAX_TOTAL_BYTES = 1_500_000_000L
+        const val ZIP_SUFFIX = ".zip"
         val INVALID_NAME_CHARS = Regex("[\\\\/:*?\"<>|\\p{Cntrl}]")
         val DRIVE_PATTERN = Regex("^[A-Za-z]:")
         val SAVE_FILE = Regex("^save.*\\.sav$", RegexOption.IGNORE_CASE)

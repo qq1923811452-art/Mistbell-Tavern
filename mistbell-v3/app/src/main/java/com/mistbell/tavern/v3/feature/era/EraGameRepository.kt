@@ -20,13 +20,16 @@ class EraGameRepository(context: Context) {
     fun current(): EraGameInstall? {
         val directoryName = preferences.getString(KEY_DIRECTORY_NAME, null) ?: return null
         val directory = File(gamesRoot, directoryName)
-        if (!directory.isDirectory) return null
-        return EraGameInstall(
-            name = preferences.getString(KEY_DISPLAY_NAME, null) ?: directoryName,
-            directory = directory,
-            importedAtEpochMillis = preferences.getLong(KEY_IMPORTED_AT, 0L),
-            fileCount = preferences.getInt(KEY_FILE_COUNT, 0),
-        )
+        return if (directory.isDirectory) {
+            EraGameInstall(
+                name = preferences.getString(KEY_DISPLAY_NAME, null) ?: directoryName,
+                directory = directory,
+                importedAtEpochMillis = preferences.getLong(KEY_IMPORTED_AT, 0L),
+                fileCount = preferences.getInt(KEY_FILE_COUNT, 0),
+            )
+        } else {
+            null
+        }
     }
 
     fun importZip(
