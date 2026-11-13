@@ -42,6 +42,7 @@ internal data class EraGameState(
     val lines: List<EraLine> = emptyList(),
     val input: EwpInputRequest? = null,
     val error: String? = null,
+    val detail: String? = null,
 )
 
 /**
@@ -69,8 +70,9 @@ internal class EraEngineSession(
     private val handler =
         Handler(Looper.getMainLooper()) { message: Message ->
             if (message.what == EraEngineContract.MSG_STATUS) {
-                message.data?.getString("state")?.let(::onEngineStatus)
-                message.data?.getString("detail")?.let { detail -> onEngineDetail(detail) }
+                val state = message.data?.getString("state")
+                val detail = message.data?.getString("detail")
+                state?.let { onEngineStatus(it, detail) }
             }
             true
         }
@@ -268,20 +270,27 @@ internal class EraEngineSession(
         }
     }
 
-    private fun onEngineStatus(state: String) {
+    private fun onEngineStatus(
+        state: String,
+        detail: String? = null,
+    ) {
+        _state.update { it.copy(detail = detail ?: it.detail) }
+        if (detail != null && detail.startsWith("no_game_installed")) {
+            fail("引擎里没有游戏包，请重新导入 ZIP")
+            return
+        }
         when (state) {
             EraEngineContract.STATE_IMPORTING -> _state.update { it.copy(statusText = "引擎正在解包游戏…") }
             EraEngineContract.STATE_IMPORTED -> _state.update { it.copy(statusText = "游戏包已就位") }
             EraEngineContract.STATE_STARTING -> _state.update { it.copy(statusText = "引擎正在启动…") }
             EraEngineContract.STATE_RUNNING -> _state.update { it.copy(statusText = "引擎运行中") }
-            EraEngineContract.STATE_STOPPED -> _state.update { it.copy(statusText = "引擎已停止") }
+            EraEngineContract.STATE_STOPPED ->
+                _state.update {
+                    it.copy(statusText = "引擎已停止" + (detail?.let { d -> "（$d）" } ?: ""))
+                }
             EraEngineContract.STATE_ERROR -> fail("引擎启动失败")
             else -> Unit
         }
-    }
-
-    private fun onEngineDetail(detail: String) {
-        if (detail.startsWith("no_game_installed")) fail("引擎里没有游戏包，请重新导入 ZIP")
     }
 
     private fun fail(message: String) {

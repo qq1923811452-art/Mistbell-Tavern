@@ -107,12 +107,16 @@ public sealed class EraEngineService : Service
 				return;
 			}
 
+			EraBootstrap.InitLog(this);
 			SendStatus("starting", gameDir);
 			var code = EraBootstrap.Run(gameDir, port);
+			EraBootstrap.Trace("engine exit code " + code);
 			SendStatus("stopped", "exit=" + code);
 		}
 		catch (Exception ex)
 		{
+			EraBootstrap.InitLog(this);
+			EraBootstrap.Trace("engine failed: " + ex);
 			Log.Error(Tag, "engine failed: " + ex);
 			SendStatus("error", ex.GetType().Name + ": " + ex.Message);
 		}

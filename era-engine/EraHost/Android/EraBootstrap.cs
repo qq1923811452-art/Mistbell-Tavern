@@ -21,12 +21,52 @@ namespace Mistbell.Era.Host;
 internal static class EraBootstrap
 {
 	private const string Tag = "EraEngine";
+	private static string logPath;
+
+	/// <summary>把启动过程写到外部私有目录，便于在没有 logcat 时远程排查。</summary>
+	public static void InitLog(Android.Content.Context ctx)
+	{
+		try
+		{
+			var dir = ctx.GetExternalFilesDir(null)?.AbsolutePath ?? ctx.FilesDir?.AbsolutePath;
+			if (!string.IsNullOrEmpty(dir))
+				logPath = Path.Combine(dir, "era-engine.log");
+		}
+		catch { }
+	}
+
+	public static void Trace(string line)
+	{
+		Log.Info(Tag, line);
+		if (logPath == null)
+			return;
+		try
+		{
+			File.AppendAllText(logPath, DateTime.Now.ToString("HH:mm:ss.fff") + " " + line + "\n");
+		}
+		catch { }
+	}
 
 	public static int Run(string gameDir, int port)
 	{
+		try
+		{
+			return RunInner(gameDir, port);
+		}
+		catch (Exception ex)
+		{
+			Trace("FATAL " + ex.GetType().Name + ": " + ex.Message);
+			Trace(ex.StackTrace ?? "");
+			return 1;
+		}
+	}
+
+	private static int RunInner(string gameDir, int port)
+	{
+		Trace("run: dir=" + gameDir + " port=" + port);
 		if (string.IsNullOrEmpty(gameDir) || !Directory.Exists(gameDir))
 		{
-			Log.Error(Tag, "game directory missing: " + gameDir);
+			Trace("game directory missing: " + gameDir);
 			return 2;
 		}
 
@@ -47,22 +87,26 @@ internal static class EraBootstrap
 
 		if (!Directory.Exists(Program.CsvDir) || !Directory.Exists(Program.ErbDir))
 		{
-			Log.Error(Tag, "missing_game_data csv=" + Program.CsvDir + " erb=" + Program.ErbDir);
+			Trace("missing_game_data csv=" + Program.CsvDir + " erb=" + Program.ErbDir);
 			return 2;
 		}
 
+		Trace("loading config");
 		ConfigData.Instance.LoadConfig();
 		JSONConfig.Load();
 		Lang.LoadLanguageFiles();
 		Lang.SetLanguage();
 
+		Trace("loading fonts from " + Program.FontDir);
 		LoadFonts();
 
 		EwpOut.InitIO(deferWriter: true, msgpack: false);
 		InitPlatformInterop();
 
-		Log.Info(Tag, "engine starting, port=" + port + ", dir=" + gameDir);
-		return EraHeadlessHost.Run();
+		Trace("entering headless host");
+		var code = EraHeadlessHost.Run();
+		Trace("headless host returned " + code);
+		return code;
 	}
 
 	private static void SegmentCulture()

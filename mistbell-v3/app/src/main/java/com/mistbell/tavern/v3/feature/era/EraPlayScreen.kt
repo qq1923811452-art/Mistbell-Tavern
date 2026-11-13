@@ -91,7 +91,13 @@ internal fun EraPlayScreen(
                 .statusBarsPadding()
                 .navigationBarsPadding(),
     ) {
-        EraPlayTopBar(name = game.name, status = state.statusText, onBack = onBack, onOpenSetup = onOpenSetup)
+        EraPlayTopBar(
+            name = game.name,
+            status = state.statusText,
+            detail = state.detail,
+            onBack = onBack,
+            onOpenSetup = onOpenSetup,
+        )
         EraGameLog(
             lines = state.lines,
             modifier = Modifier.fillMaxWidth().weight(1f).padding(horizontal = 16.dp, vertical = 8.dp),
@@ -112,6 +118,7 @@ internal fun EraPlayScreen(
 private fun EraPlayTopBar(
     name: String,
     status: String,
+    detail: String?,
     onBack: () -> Unit,
     onOpenSetup: () -> Unit,
 ) {
@@ -134,8 +141,16 @@ private fun EraPlayTopBar(
                 text = if (BuildConfig.ERA_MERGED) "单包 · $status" else "两包 · $status",
                 color = TavernPalette.TextTertiary,
                 fontSize = 11.sp,
-                maxLines = 1,
+                maxLines = 2,
             )
+            if (!detail.isNullOrBlank()) {
+                Text(
+                    text = detail,
+                    color = TavernPalette.TextTertiary,
+                    fontSize = 10.sp,
+                    maxLines = 2,
+                )
+            }
         }
         Text(
             text = "设置",
