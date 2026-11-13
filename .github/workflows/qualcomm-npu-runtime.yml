@@ -20,6 +20,11 @@ jobs:
     name: Build and package SM8650 HTP V75 dependencies
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    env:
+      MISTBELL_DEV_KEYSTORE: ${{ github.workspace }}/.github/keys/mistbell-dev.jks
+      MISTBELL_DEV_KEYSTORE_PASSWORD: mistbelldev
+      MISTBELL_DEV_KEY_ALIAS: mistbell-dev
+      MISTBELL_DEV_KEY_PASSWORD: mistbelldev
     steps:
       - name: Checkout Mistbell source
         uses: actions/checkout@v4

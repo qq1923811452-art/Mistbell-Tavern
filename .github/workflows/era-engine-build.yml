@@ -99,16 +99,12 @@ jobs:
           set -e
           APK="${{ steps.apk.outputs.path }}"
           mkdir -p out
-          PASS=$(openssl rand -hex 16)
-          keytool -genkeypair -v -keystore out/dev.keystore -storepass "$PASS" -keypass "$PASS" \
-            -alias erahost -keyalg RSA -keysize 2048 -validity 10000 \
-            -dname "CN=Mistbell Era Host CI, OU=Build, O=Mistbell, L=-, S=-, C=-"
           BT=$(ls -d "$ANDROID_SDK_ROOT"/build-tools/* | sort -V | tail -1)
-          "$BT/apksigner" sign --ks out/dev.keystore --ks-pass "pass:$PASS" \
-            --key-pass "pass:$PASS" --ks-key-alias erahost \
-            --out "out/mistbell-era-engine.apk" "$APK"
-          "$BT/apksigner" verify --print-certs "out/mistbell-era-engine.apk"
-          rm -f out/dev.keystore
+          "$BT/apksigner" sign --ks .github/keys/mistbell-dev.jks \
+            --ks-pass pass:mistbelldev --key-pass pass:mistbelldev \
+            --ks-key-alias mistbell-dev \
+            --out out/mistbell-era-engine.apk "$APK"
+          "$BT/apksigner" verify --print-certs out/mistbell-era-engine.apk
           sha256sum out/mistbell-era-engine.apk
 
       - name: Upload APK

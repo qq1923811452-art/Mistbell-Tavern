@@ -74,9 +74,31 @@ android {
         }
     }
 
+    // CI 用仓库内固定的 dev keystore 签名，保证多次构建可覆盖安装（debug key 每次随机会逼用户卸载）。
+    // 本地不设 MISTBELL_DEV_KEYSTORE 时行为不变，仍是默认 debug 签名。
+    val devKeystorePath = System.getenv("MISTBELL_DEV_KEYSTORE")
+    if (!devKeystorePath.isNullOrBlank()) {
+        signingConfigs {
+            create("mistbellDev") {
+                storeFile = file(devKeystorePath)
+                storePassword = System.getenv("MISTBELL_DEV_KEYSTORE_PASSWORD") ?: "mistbelldev"
+                keyAlias = System.getenv("MISTBELL_DEV_KEY_ALIAS") ?: "mistbell-dev"
+                keyPassword = System.getenv("MISTBELL_DEV_KEY_PASSWORD") ?: "mistbelldev"
+            }
+        }
+    }
+
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+
+    if (!devKeystorePath.isNullOrBlank()) {
+        buildTypes {
+            getByName("debug") {
+                signingConfig = signingConfigs.getByName("mistbellDev")
+            }
+        }
     }
 
     compileOptions {
