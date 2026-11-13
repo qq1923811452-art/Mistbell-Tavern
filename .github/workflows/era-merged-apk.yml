@@ -81,7 +81,7 @@ jobs:
         run: |
           set -e
           chmod +x ./gradlew
-          ./gradlew -p mistbell-v3 :app:assembleDebug -PeraMerged=true --no-daemon --no-parallel
+          ./gradlew -p mistbell-v3 :app:assembleDebug -PeraMerged=true -PabiFilter=arm64-v8a --no-daemon --no-parallel
 
       - name: Merge engine into the app APK
         run: |

@@ -77,6 +77,16 @@ android {
                 abiFilters += setOf("arm64-v8a")
             }
         }
+        // 设备测试包手动收窄 ABI：真机只有 arm64，四份运行时纯属浪费体积。
+        providers.gradleProperty("abiFilter").orNull
+            ?.split(",")
+            ?.map(String::trim)
+            ?.filter(String::isNotEmpty)
+            ?.let { abis ->
+                ndk {
+                    abiFilters += abis
+                }
+            }
     }
 
     // CI 用仓库内固定的 dev keystore 签名，保证多次构建可覆盖安装（debug key 每次随机会逼用户卸载）。
