@@ -1,0 +1,4 @@
+# 构建期由 CI 拉取的 Emuera 上游源码，不入库
+upstream/
+bin/
+obj/
