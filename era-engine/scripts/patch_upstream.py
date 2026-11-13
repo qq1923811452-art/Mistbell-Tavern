@@ -45,6 +45,32 @@ METHOD_INSERT = '''    /// <summary>手指点击 → 引擎鼠标事件。坐标
 '''
 
 
+CONSTDATA_ANCHOR_WRITE = "\t\t\t\ttarget[index] = ros[dest[1]].ToString();"
+CONSTDATA_WRITE = "\t\t\t\ttarget[index] = ros[dest[1]].ToString().Trim();"
+
+CONSTDATA_ANCHOR_LOOKUP = "if (!namearray.TryGetValue(tokens[1], out index))"
+CONSTDATA_LOOKUP = "if (!namearray.TryGetValue(tokens[1].Trim(), out index))"
+
+
+def patch_constantdata(path: Path) -> bool:
+    """名字表的写入与查表都补 Trim。
+
+    引擎原本两边都不 Trim：包里写成 `0, 口調` / `フラグ, 口調, 0` 时，
+    表里键带空格、查表带空格，逐字符不等 → 每个名字每条都报「没有定义」。
+    """
+    text = path.read_text(encoding="utf-8")
+    changed = False
+    if CONSTDATA_WRITE not in text and CONSTDATA_ANCHOR_WRITE in text:
+        text = text.replace(CONSTDATA_ANCHOR_WRITE, CONSTDATA_WRITE, 1)
+        changed = True
+    if CONSTDATA_LOOKUP not in text and CONSTDATA_ANCHOR_LOOKUP in text:
+        text = text.replace(CONSTDATA_ANCHOR_LOOKUP, CONSTDATA_LOOKUP, 1)
+        changed = True
+    if changed:
+        path.write_text(text, encoding="utf-8")
+    return changed
+
+
 def patch(path: Path) -> bool:
     text = path.read_text(encoding="utf-8")
     changed = False
@@ -70,6 +96,11 @@ def main() -> int:
         raise SystemExit("EwpHost.cs not found: " + str(target))
     changed = patch(target)
     print(("patched " if changed else "already patched ") + str(target))
+
+    constdata = root / "Emuera/Runtime/Script/Data/ConstantData.cs"
+    if constdata.is_file():
+        changed2 = patch_constantdata(constdata)
+        print(("patched " if changed2 else "already patched ") + str(constdata))
     return 0
 
 
