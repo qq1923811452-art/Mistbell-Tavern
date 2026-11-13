@@ -242,3 +242,77 @@ jobs:
             mistbell-v3/app/src/main/assets/native-runtime/LITERT_LM_LICENSE.txt
           if-no-files-found: error
           retention-days: 7
+
+      # ── 单包：把 .NET 引擎注进 NPU APK 的同一套流程 ─────────────────────────
+      # 产物是「一个 APK 同时含 NPU 运行时 + Emuera 引擎」，供真机直接覆盖安装。
+      - name: Setup .NET 8 for merged package
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+          dotnet-quality: "ga"
+
+      - name: Fetch era engine sources
+        run: |
+          set -e
+          rm -rf era-engine/upstream
+          git init era-engine/upstream
+          cd era-engine/upstream
+          git remote add origin https://github.com/KuroPeach/SkiaX-android-CI.git
+          git fetch --depth 1 origin 07bc3c054fce12d5fa0464597a7bb4c4a98847f2
+          git checkout -q FETCH_HEAD
+
+      - name: Install Android workload for engine
+        run: dotnet workload install android --skip-manifest-update
+
+      - name: Publish arm64 engine APK
+        run: |
+          set -e
+          dotnet publish era-engine/EraHost/EraHost.csproj \
+            -c Release -f net8.0-android34.0 -r android-arm64 \
+            -p:AndroidPackageFormat=apk \
+            -p:AndroidKeyStore=false \
+            -p:CheckEolWorkloads=false \
+            -p:RunAOTCompilation=false \
+            -v minimal
+
+      - name: Build app with merged manifest and NPU payload
+        shell: bash
+        env:
+          QUALCOMM_QAIRT_ROOT: ${{ steps.runtime.outputs.qairt_root }}
+          QUALCOMM_QAIRT_VERSION: ${{ steps.runtime.outputs.qairt_version }}
+          LITERT_QUALCOMM_DISPATCH_SO: ${{ steps.runtime.outputs.dispatch_so }}
+        run: |
+          set -euo pipefail
+          ./gradlew -p mistbell-v3 :app:assembleDebug \
+            -PenableQualcommNpuRuntime=true -PeraMerged=true -PabiFilter=arm64-v8a \
+            --no-daemon --no-parallel
+
+      - name: Merge engine into the NPU APK
+        run: |
+          set -e
+          ENGINE=$(find era-engine/EraHost/bin/Release/net8.0-android34.0 -name '*.apk' | head -1)
+          APP=$(find mistbell-v3/app/build/outputs/apk/debug -name '*.apk' | head -1)
+          echo "ENGINE=$ENGINE"
+          echo "APP=$APP"
+          python3 era-engine/scripts/merge_apks.py "$APP" "$ENGINE" build-artifacts/merged-unsigned.apk
+
+      - name: Align and sign the merged NPU package
+        run: |
+          set -e
+          BT=$(ls -d "$ANDROID_SDK_ROOT"/build-tools/* | sort -V | tail -1)
+          "$BT/zipalign" -P 16 -f 4 build-artifacts/merged-unsigned.apk build-artifacts/merged-aligned.apk
+          "$BT/apksigner" sign --ks "$MISTBELL_DEV_KEYSTORE" \
+            --ks-pass "pass:$MISTBELL_DEV_KEYSTORE_PASSWORD" \
+            --key-pass "pass:$MISTBELL_DEV_KEY_PASSWORD" \
+            --ks-key-alias "$MISTBELL_DEV_KEY_ALIAS" \
+            --out build-artifacts/mistbell-era-npu-merged.apk build-artifacts/merged-aligned.apk
+          "$BT/apksigner" verify --print-certs build-artifacts/mistbell-era-npu-merged.apk
+          ls -la build-artifacts/mistbell-era-npu-merged.apk
+          sha256sum build-artifacts/mistbell-era-npu-merged.apk
+
+      - name: Upload merged NPU APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: mistbell-era-npu-merged-${{ github.run_number }}
+          path: build-artifacts/mistbell-era-npu-merged.apk
+          retention-days: 14
