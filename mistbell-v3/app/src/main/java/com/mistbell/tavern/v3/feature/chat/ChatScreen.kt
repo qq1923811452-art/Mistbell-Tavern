@@ -86,6 +86,7 @@ internal val CHAT_EMBEDDING_DIMENSION_OPTIONS = listOf(128, 256, 512, 768, 1024,
 fun ChatScreen(
     onBack: () -> Unit,
     onSessionListVisibilityChange: (Boolean) -> Unit = {},
+    onOpenEraGame: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
@@ -989,6 +990,7 @@ fun ChatScreen(
                 }
                 showSessionList = false
             },
+            onOpenEraGame = onOpenEraGame,
         )
         return
     }

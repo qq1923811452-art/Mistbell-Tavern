@@ -2,23 +2,39 @@
 
 package com.mistbell.tavern.v3.feature.sessions.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.mistbell.tavern.v3.ui.tavern.TavernGlyph
 import com.mistbell.tavern.v3.ui.tavern.TavernGlyphName
 import com.mistbell.tavern.v3.ui.tavern.TavernPageHeader
 import com.mistbell.tavern.v3.ui.tavern.TavernPalette
 import com.mistbell.tavern.v3.ui.tavern.TavernPill
+import com.mistbell.tavern.v3.ui.tavern.TavernShape
 
 /**
  * Palette aliases kept for the session list files. The real definitions live in
@@ -68,8 +84,96 @@ private val HEADER_HORIZONTAL_PADDING = 20.dp
 private val HEADER_TOP_PADDING = 10.dp
 private val HEADER_BOTTOM_PADDING = 14.dp
 private val HEADER_ACTION_TOP_GAP = 14.dp
+private val HEADER_ENTRY_TOP_GAP = 12.dp
 private val HEADER_ACTION_SPACING = 10.dp
 private val HEADER_ACTION_HEIGHT = 46.dp
+private val ERA_ENTRY_BADGE_SIZE = 44.dp
+private val ERA_ENTRY_BADGE_BG = Color(0x2EFFCE8A)
+private val ERA_ENTRY_BADGE_BORDER = Color(0x66FFCE8A)
+private val ERA_ENTRY_BORDER = Color(0x38FFCE8A)
+private val ERA_ENTRY_BG_TOP = Color(0xE62C1830)
+private val ERA_ENTRY_BG_BOTTOM = Color(0xE6150E22)
+private val ERA_ENTRY_BRUSH = Brush.linearGradient(listOf(ERA_ENTRY_BG_TOP, ERA_ENTRY_BG_BOTTOM))
+
+/**
+ * Entry to the Gensokyo / eraTW adaptation. It sits above the session actions because it is a
+ * different way to start a story, not another session mutation.
+ */
+@Composable
+internal fun EraGameEntry(onClick: () -> Unit) {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clip(TavernShape.Card)
+                .background(ERA_ENTRY_BRUSH)
+                .border(1.dp, ERA_ENTRY_BORDER, TavernShape.Card)
+                .clickable(
+                    role = Role.Button,
+                    onClickLabel = "进入幻想乡",
+                    onClick = onClick,
+                )
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Box(
+            modifier =
+                Modifier
+                    .size(ERA_ENTRY_BADGE_SIZE)
+                    .clip(CircleShape)
+                    .background(ERA_ENTRY_BADGE_BG)
+                    .border(1.dp, ERA_ENTRY_BADGE_BORDER, CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = "乡",
+                color = TavernPalette.Gold,
+                fontFamily = FontFamily.Serif,
+                fontWeight = FontWeight.Bold,
+                fontSize = 21.sp,
+            )
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    text = "幻想乡",
+                    color = TavernPalette.TextPrimary,
+                    fontFamily = FontFamily.Serif,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    letterSpacing = 0.5.sp,
+                )
+                Text(
+                    text = "eraTW",
+                    color = TavernPalette.Gold,
+                    fontSize = 10.sp,
+                    letterSpacing = 0.8.sp,
+                    modifier =
+                        Modifier
+                            .clip(CircleShape)
+                            .background(ERA_ENTRY_BADGE_BG)
+                            .padding(horizontal = 7.dp, vertical = 2.dp),
+                )
+            }
+            Text(
+                text = "东方角色扮演 · 引擎适配中",
+                modifier = Modifier.padding(top = 2.dp),
+                color = TavernPalette.TextSecondary,
+                fontSize = 12.sp,
+                maxLines = 1,
+            )
+        }
+        TavernGlyph(
+            name = TavernGlyphName.Chevron,
+            modifier = Modifier.size(16.dp),
+            tint = TavernPalette.GoldDim,
+        )
+    }
+}
 
 /**
  * Session list header.
@@ -83,6 +187,7 @@ internal fun SessionListHeader(
     showGroupAction: Boolean,
     onCreateSession: () -> Unit,
     onOpenGroupDialog: () -> Unit,
+    onOpenEraGame: () -> Unit,
 ) {
     Column(
         modifier =
@@ -97,6 +202,8 @@ internal fun SessionListHeader(
                 ),
     ) {
         TavernPageHeader(title = "会话", subtitle = "继续你的故事")
+        Spacer(modifier = Modifier.height(HEADER_ENTRY_TOP_GAP))
+        EraGameEntry(onClick = onOpenEraGame)
         Spacer(modifier = Modifier.height(HEADER_ACTION_TOP_GAP))
         Row(
             modifier = Modifier.fillMaxWidth().height(HEADER_ACTION_HEIGHT),

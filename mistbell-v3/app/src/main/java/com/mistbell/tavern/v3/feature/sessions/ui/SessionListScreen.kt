@@ -69,6 +69,7 @@ fun SessionListScreen(
     onTogglePin: (id: String, pinned: Boolean) -> Unit,
     characters: List<GroupCandidate> = emptyList(),
     onCreateGroup: (participantIds: List<String>) -> Unit = {},
+    onOpenEraGame: () -> Unit = {},
 ) {
     var renameTarget by remember { mutableStateOf<ChatSession?>(null) }
     var deleteTarget by remember { mutableStateOf<ChatSession?>(null) }
@@ -93,6 +94,7 @@ fun SessionListScreen(
                         showGroupAction = characters.isNotEmpty(),
                         onCreateSession = onCreateSession,
                         onOpenGroupDialog = { showGroupDialog = true },
+                        onOpenEraGame = onOpenEraGame,
                     )
                 },
             ) { innerPadding ->

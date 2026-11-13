@@ -42,6 +42,7 @@ import com.mistbell.tavern.v3.feature.embedding.EmbeddingGemma2RuntimeAdapter
 import com.mistbell.tavern.v3.feature.embedding.EmbeddingRuntimeStatusSnapshot
 import com.mistbell.tavern.v3.feature.embedding.LiteRtLmEmbeddingGemma2Engine
 import com.mistbell.tavern.v3.feature.embedding.NpuEvidenceStore
+import com.mistbell.tavern.v3.feature.era.EraGameScreen
 import com.mistbell.tavern.v3.feature.image.ImageGenerationScreen
 import com.mistbell.tavern.v3.feature.settings.LocalModelScreen
 import com.mistbell.tavern.v3.feature.settings.MemorySettingsScreen
@@ -80,6 +81,7 @@ class MainActivity : ComponentActivity() {
     private var allowCustomModel by mutableStateOf(false)
     private var showCharacterLibrary by mutableStateOf(false)
     private var showWorldBookLibrary by mutableStateOf(false)
+    private var showEraGame by mutableStateOf(false)
     private val embeddingDimensionOptions = listOf(128, 256, 512, 768, 1024, 1536, 2048)
     private var selectedEmbeddingDimensions by mutableStateOf(768)
     private var qualcommModelSelected by mutableStateOf(false)
@@ -308,7 +310,7 @@ class MainActivity : ComponentActivity() {
             BackHandler(
                 enabled =
                     showLicenses || showImageGeneration || showCharacterLibrary ||
-                        showWorldBookLibrary || showLocalModel || showMemorySettings,
+                        showWorldBookLibrary || showLocalModel || showMemorySettings || showEraGame,
             ) {
                 when {
                     showLicenses -> showLicenses = false
@@ -317,6 +319,7 @@ class MainActivity : ComponentActivity() {
                     showWorldBookLibrary -> showWorldBookLibrary = false
                     showMemorySettings -> showMemorySettings = false
                     showLocalModel -> showLocalModel = false
+                    showEraGame -> showEraGame = false
                 }
             }
             TavernTheme {
@@ -363,6 +366,8 @@ class MainActivity : ComponentActivity() {
                             onExportLogs = { exportDiagnostics.launch("mistbell-diagnostics.txt") },
                             onBack = { showLocalModel = false },
                         )
+                    } else if (showEraGame) {
+                        EraGameScreen(onBack = { showEraGame = false })
                     } else {
                         Column(Modifier.fillMaxSize()) {
                             Box(Modifier.weight(1f)) {
@@ -374,6 +379,7 @@ class MainActivity : ComponentActivity() {
                                                 onSessionListVisibilityChange = { visible ->
                                                     sessionListVisible = visible
                                                 },
+                                                onOpenEraGame = { showEraGame = true },
                                             )
                                         }
                                     TavernTab.SETTINGS ->
