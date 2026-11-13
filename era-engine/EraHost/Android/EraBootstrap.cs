@@ -3,6 +3,7 @@ using MinorShift.Emuera;
 using MinorShift.Emuera.Runtime.Config;
 using MinorShift.Emuera.Runtime.Config.JSON;
 using MinorShift.Emuera.Runtime.Utils;
+using MinorShift.Emuera.Runtime.Utils.EvilMask;
 using MinorShift.Emuera.UI;
 using MinorShift.Emuera.UI.Ewp;
 using SkiaSharp;
@@ -33,6 +34,8 @@ internal static class EraBootstrap
 		try { Directory.SetCurrentDirectory(gameDir); } catch (Exception ex) { Log.Warn(Tag, "chdir failed: " + ex.Message); }
 
 		SegmentCulture();
+		// eraTW 的 csv/erb 大量是 Shift-JIS（CP932），必须先注册代码页提供程序。
+		System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
 
 		try { Console.OutputEncoding = new System.Text.UTF8Encoding(false); } catch { }
 
@@ -114,7 +117,7 @@ internal static class EraBootstrap
 	{
 		try
 		{
-			var tf = FontFactory.GetFallbackTypefaceForChar(' ', fontName) ?? SKTypeface.Default;
+			var tf = FontFactory.GetFallbackTypefaceForChar(' ') ?? SKTypeface.Default;
 			using var font = new SKFont(tf, fontSize);
 			using var paint = new SKPaint { Typeface = tf, TextSize = fontSize };
 			var metrics = font.Metrics;
