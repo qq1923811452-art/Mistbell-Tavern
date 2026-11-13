@@ -103,6 +103,7 @@ internal static class EraBootstrap
 		Lang.LoadLanguageFiles();
 		Lang.SetLanguage();
 
+		ApplyAndroidOverrides();
 		Trace("loading fonts from " + Program.FontDir);
 		LoadFonts();
 
@@ -122,6 +123,61 @@ internal static class EraBootstrap
 	}
 
 	/// <summary>游戏包 font/ 目录里的字体优先注册；缺字体时内核会退回内置 BIZ UDGothic。</summary>
+	/// <summary>
+	/// 包里的 emuera.config 是给 Windows 配的（1800x973 横屏、字体黑体、TEXTRENDERER），
+	/// 在 Android 上要按手机实际能力改三处，否则图像层被禁用、字体全部走回退、布局按横屏算。
+	/// </summary>
+	private static void ApplyAndroidOverrides()
+	{
+		try
+		{
+			Trace("overrides: drawing=" + Config.TextDrawingMode + " win=" + Config.WindowX + "x" + Config.WindowY + " font=" + Config.FontName);
+			Config.TextDrawingMode = TextDrawingMode.SKIASHARP;
+			if (Config.WindowX <= 0 || Config.WindowY <= 0 || Config.WindowX > Config.WindowY)
+			{
+				Config.WindowX = 900;
+				Config.WindowY = 1600;
+			}
+			if (RegisterEmbeddedFont())
+				Config.FontName = FallbackFontName;
+			Trace("overrides applied: drawing=" + Config.TextDrawingMode + " win=" + Config.WindowX + "x" + Config.WindowY + " font=" + Config.FontName);
+		}
+		catch (Exception ex)
+		{
+			Trace("overrides failed: " + ex.Message);
+		}
+	}
+
+	private const string FallbackFontName = "BIZ UDGothic";
+
+	private static bool RegisterEmbeddedFont()
+	{
+		try
+		{
+			var assembly = typeof(EraBootstrap).Assembly;
+			using var stream = assembly.GetManifestResourceStream("MinorShift.Emuera.Properties.fonts.BIZUDGothic-Regular.ttf");
+			if (stream == null)
+			{
+				Trace("embedded font missing");
+				return false;
+			}
+			var path = Path.Combine(Path.GetTempPath(), "BIZUDGothic-Regular.ttf");
+			if (!File.Exists(path))
+			{
+				using var file = new FileStream(path, FileMode.Create, FileAccess.Write);
+				stream.CopyTo(file);
+			}
+			GlobalStatic.Pfc.AddFontFile(path);
+			Trace("embedded font registered: " + path);
+			return GlobalStatic.Pfc.Contains(FallbackFontName);
+		}
+		catch (Exception ex)
+		{
+			Trace("embedded font failed: " + ex.Message);
+			return false;
+		}
+	}
+
 	private static void LoadFonts()
 	{
 		try
