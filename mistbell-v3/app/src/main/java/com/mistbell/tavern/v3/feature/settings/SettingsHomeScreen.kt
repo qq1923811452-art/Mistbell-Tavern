@@ -2,6 +2,7 @@
 
 package com.mistbell.tavern.v3.feature.settings
 
+import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -31,6 +32,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.mistbell.tavern.v3.ui.tavern.TavernGlassCard
@@ -40,8 +42,15 @@ import com.mistbell.tavern.v3.ui.tavern.TavernPalette
 import com.mistbell.tavern.v3.ui.tavern.TavernSectionLabel
 import com.mistbell.tavern.v3.ui.tavern.TavernShape
 import com.mistbell.tavern.v3.ui.tavern.rememberTavernScrollState
+import java.util.Locale
+import kotlin.math.roundToInt
 
 private const val SWITCH_TRACK_ALPHA = 0.45f
+private const val CHAT_TEMPERATURE_KEY = "chat_temperature"
+private const val DEFAULT_CHAT_TEMPERATURE = 0.7f
+private const val TEMPERATURE_DECIMALS = 10f
+private const val TEMPERATURE_MIN = 0f
+private const val TEMPERATURE_MAX = 2f
 private const val TEXT_FIELD_WIDTH = 150
 
 /**
@@ -71,6 +80,14 @@ fun SettingsHomeScreen(
     onOpenLicenses: () -> Unit,
 ) {
     var apiStatus by remember { mutableStateOf("") }
+    val context = LocalContext.current
+    val preferences =
+        remember(context) {
+            context.getSharedPreferences("mistbell-v3-settings", Context.MODE_PRIVATE)
+        }
+    var temperature by remember {
+        mutableStateOf(preferences.getFloat(CHAT_TEMPERATURE_KEY, DEFAULT_CHAT_TEMPERATURE))
+    }
     Column(
         Modifier
             .fillMaxSize()
@@ -99,6 +116,15 @@ fun SettingsHomeScreen(
         }
         SettingsGroup("对话设置") {
             MaxOutputTokensRow(maxOutputTokens, onMaxOutputTokensChange)
+            SettingsDivider()
+            TemperatureSettingRow(
+                value = temperature,
+                onChange = { newValue ->
+                    val rounded = (newValue * TEMPERATURE_DECIMALS).roundToInt() / TEMPERATURE_DECIMALS
+                    temperature = rounded
+                    preferences.edit().putFloat(CHAT_TEMPERATURE_KEY, rounded).apply()
+                },
+            )
             SettingsDivider()
             ContextLengthRow(contextTokens, onContextTokensChange)
             SettingsDivider()
@@ -382,6 +408,53 @@ private fun MaxOutputTokensRow(
             colors = fieldColors,
             shape = TavernShape.CardSmall,
             modifier = Modifier.padding(start = 12.dp).width(TEXT_FIELD_WIDTH.dp),
+        )
+    }
+}
+
+@Suppress("FunctionNaming")
+@Composable
+private fun TemperatureSettingRow(
+    value: Float,
+    onChange: (Float) -> Unit,
+) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f).padding(end = 12.dp)) {
+                Text(
+                    text = "采样温度（Temperature）",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = TavernPalette.TextPrimary,
+                )
+                Text(
+                    text = "越高越随机；0.0–2.0，保留 1 位小数",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TavernPalette.TextTertiary,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
+            Text(
+                text = String.format(Locale.US, "%.1f", value),
+                style = MaterialTheme.typography.bodyLarge,
+                color = TavernPalette.Purple,
+            )
+        }
+        Slider(
+            value = value,
+            onValueChange = onChange,
+            valueRange = TEMPERATURE_MIN..TEMPERATURE_MAX,
+            steps = 19,
+            colors =
+                SliderDefaults.colors(
+                    thumbColor = TavernPalette.Purple,
+                    activeTrackColor = TavernPalette.Purple,
+                    inactiveTrackColor = TavernPalette.Border,
+                ),
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
         )
     }
 }

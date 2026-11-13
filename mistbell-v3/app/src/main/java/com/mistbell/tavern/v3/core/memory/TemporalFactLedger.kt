@@ -61,6 +61,15 @@ object TemporalFactLedger {
     const val MAX_FACTS = 50_000
     private const val MAX_FIELD_CHARS = 2_000
 
+    /** Predicates whose different values coexist instead of superseding each other. */
+    private val ADDITIVE_PREDICATES =
+        setOf(
+            "has_item", "owns", "visited", "skill", "ability", "event", "experienced",
+            "promised", "boundary", "goal", "told_user", "note", "trait",
+            "持有", "拥有", "去过", "技能", "事件", "经历",
+            "承诺", "边界", "目标", "特征", "备注",
+        )
+
     fun apply(
         existing: List<TemporalMemoryFact>,
         observations: List<TemporalFactObservation>,
@@ -108,7 +117,10 @@ object TemporalFactLedger {
             val predicateKey = key(observation.conversationId, observation.subject, observation.predicate)
             val currentIndices = currentByPredicate[predicateKey].orEmpty()
             val currentForPredicate = currentIndices.mapNotNull(facts::getOrNull).filter(TemporalMemoryFact::isCurrent)
-            if (currentForPredicate.any { it.validFromEpochMillis >= observation.observedAtEpochMillis }) {
+            val additive = normalize(observation.predicate) in ADDITIVE_PREDICATES
+            if (!additive &&
+                currentForPredicate.any { it.validFromEpochMillis >= observation.observedAtEpochMillis }
+            ) {
                 // A delayed/backdated or same-millisecond extraction must not overwrite a current observation.
                 continue
             }
@@ -117,17 +129,10 @@ object TemporalFactLedger {
                 // Same current fact: do not create another active duplicate for another turn.
                 continue
             }
-
-            currentIndices.forEach { index ->
-                val fact = facts[index]
-                if (fact.isCurrent) {
-                    facts[index] =
-                        fact.copy(
-                            validUntilEpochMillis = maxOf(fact.validFromEpochMillis, observation.observedAtEpochMillis),
-                        )
-                }
+            if (!additive) {
+                closeCurrentFacts(facts, currentIndices, observation.observedAtEpochMillis)
+                currentByPredicate.remove(predicateKey)
             }
-            currentByPredicate.remove(predicateKey)
 
             facts +=
                 TemporalMemoryFact(
@@ -145,6 +150,22 @@ object TemporalFactLedger {
             require(facts.size <= MAX_FACTS) { "Temporal fact ledger exceeds the size limit." }
         }
         return facts.sortedWith(compareBy<TemporalMemoryFact> { it.validFromEpochMillis }.thenBy { it.id })
+    }
+
+    private fun closeCurrentFacts(
+        facts: MutableList<TemporalMemoryFact>,
+        indices: List<Int>,
+        observedAtEpochMillis: Long,
+    ) {
+        indices.forEach { index ->
+            val fact = facts[index]
+            if (fact.isCurrent) {
+                facts[index] =
+                    fact.copy(
+                        validUntilEpochMillis = maxOf(fact.validFromEpochMillis, observedAtEpochMillis),
+                    )
+            }
+        }
     }
 
     fun stableId(observation: TemporalFactObservation): String {

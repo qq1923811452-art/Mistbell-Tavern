@@ -262,6 +262,9 @@ class MemoryExtractionClient(
             Write atomic facts: subject is a short entity name, predicate is a short relation,
             value is a concise object. Do not put a full sentence, question, or yes/no answer
             into predicate or value. Skip transient states and assistant suggestions.
+            Use single-valued predicates for mutable state (name, location, role, likes, prefers).
+            Use multi-valued predicates for collections: has_item, owns, visited, skill, ability,
+            event, experienced, promised, boundary, goal, told_user, note, trait.
             Return the JSON object directly as the message content, without Markdown code
             fences, prefixes, or commentary.
             """.trimIndent()

@@ -146,6 +146,7 @@ internal fun ChatMessageEditDialog(
     initial: String,
     onDismiss: () -> Unit,
     onConfirm: (String) -> Unit,
+    onConfirmAndRegenerate: ((String) -> Unit)? = null,
 ) {
     var draft by remember(initial) { mutableStateOf(initial) }
     AlertDialog(
@@ -161,10 +162,18 @@ internal fun ChatMessageEditDialog(
             )
         },
         confirmButton = {
-            TextButton(
-                onClick = { onConfirm(draft) },
-                enabled = draft.isNotBlank(),
-            ) { Text("保存") }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(
+                    onClick = { onConfirm(draft) },
+                    enabled = draft.isNotBlank(),
+                ) { Text("保存") }
+                if (onConfirmAndRegenerate != null) {
+                    TextButton(
+                        onClick = { onConfirmAndRegenerate.invoke(draft) },
+                        enabled = draft.isNotBlank(),
+                    ) { Text("保存并重生成") }
+                }
+            }
         },
         dismissButton = {
             androidx.compose.material3.TextButton(onClick = onDismiss) { Text("取消") }

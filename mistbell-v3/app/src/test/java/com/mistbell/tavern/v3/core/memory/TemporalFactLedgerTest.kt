@@ -144,6 +144,46 @@ class TemporalFactLedgerTest {
         assertTrue(facts.all { it.validUntilEpochMillis == null || it.validUntilEpochMillis >= it.validFromEpochMillis })
     }
 
+    @Test
+    fun additivePredicateKeepsEveryDistinctCurrentValue() {
+        val sword = observation(turn = "turn-1", predicate = "has_item", value = "sword", at = 100L)
+        val shield = observation(turn = "turn-2", predicate = "has_item", value = "shield", at = 200L)
+
+        val facts = TemporalFactLedger.apply(TemporalFactLedger.apply(emptyList(), listOf(sword)), listOf(shield))
+
+        assertEquals(2, facts.size)
+        assertTrue(facts.all(TemporalMemoryFact::isCurrent))
+        assertEquals(setOf("sword", "shield"), facts.map { it.value }.toSet())
+
+        val potion = observation(turn = "turn-3", predicate = "has_item", value = "potion", at = 100L)
+        val map = observation(turn = "turn-4", predicate = "has_item", value = "map", at = 100L)
+        val sameMoment = TemporalFactLedger.apply(facts, listOf(potion, map))
+        assertEquals(4, sameMoment.size)
+        assertTrue(sameMoment.all(TemporalMemoryFact::isCurrent))
+    }
+
+    @Test
+    fun additivePredicateStillSkipsDuplicateCurrentValue() {
+        val first = observation(turn = "turn-1", predicate = "has_item", value = "sword", at = 100L)
+        val repeated = observation(turn = "turn-2", predicate = "has_item", value = "SWORD", at = 200L)
+
+        val facts = TemporalFactLedger.apply(TemporalFactLedger.apply(emptyList(), listOf(first)), listOf(repeated))
+
+        assertEquals(1, facts.size)
+        assertEquals("turn-1", facts.single().sourceTurnId)
+    }
+
+    @Test
+    fun chineseAdditivePredicateKeepsMultipleSkills() {
+        val sword = observation(turn = "turn-1", predicate = "技能", value = "剑术", at = 100L)
+        val shield = observation(turn = "turn-2", predicate = "技能", value = "盾术", at = 200L)
+
+        val facts = TemporalFactLedger.apply(TemporalFactLedger.apply(emptyList(), listOf(sword)), listOf(shield))
+
+        assertEquals(2, facts.size)
+        assertTrue(facts.all(TemporalMemoryFact::isCurrent))
+    }
+
     private fun observation(
         turn: String,
         conversation: String = "conversation-1",
