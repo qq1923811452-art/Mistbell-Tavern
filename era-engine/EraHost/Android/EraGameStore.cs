@@ -4,6 +4,7 @@ using System;
 using System.IO;
 using System.IO.Compression;
 using System.Text;
+using Microsoft.Win32.SafeHandles;
 
 namespace Mistbell.Era.Host;
 
@@ -49,7 +50,11 @@ internal static class EraGameStore
 		}
 
 		var tempZip = Path.Combine(ctx.CacheDir!.AbsolutePath, "era-import.zip");
-		using (var input = new ParcelFileDescriptor.AutoCloseInputStream(fd))
+		// Java 的 AutoCloseInputStream 在 .NET 侧不是 Stream；干脆拿底层 fd 自己包 FileStream。
+		int rawFd;
+		using (var cloned = fd.Dup())
+			rawFd = cloned.DetachFd();
+		using (var input = new FileStream(new SafeFileHandle((IntPtr)rawFd, ownsHandle: true), FileAccess.Read))
 		using (var output = File.Create(tempZip))
 			input.CopyTo(output);
 
