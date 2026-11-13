@@ -90,7 +90,7 @@ jobs:
           set -e
           DIR=era-engine/EraHost/bin/Release/net8.0-android34.0
           ls -la "$DIR" || true
-          APK=$(find "$DIR" -maxdepth 1 -name '*.apk' ! -name '*-Signed.apk' | head -1)
+          APK=$(find "$DIR" -maxdepth 2 -name '*.apk' ! -name '*-Signed.apk' | head -1)
           test -n "$APK" || { echo "未找到 APK"; exit 1; }
           echo "path=$APK" >> "$GITHUB_OUTPUT"
           echo "APK: $APK"
