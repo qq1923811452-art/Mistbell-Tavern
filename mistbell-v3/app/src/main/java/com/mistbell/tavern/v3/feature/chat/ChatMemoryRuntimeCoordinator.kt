@@ -394,9 +394,14 @@ internal class ChatMemoryRuntimeCoordinator(
         val sections = mutableListOf<String>()
         if (character != null) {
             val previousReply = messages.lastOrNull { it.role == PromptRole.ASSISTANT }?.content
-            CharacterRedlineOocGuard.evaluate(character, text, previousReply) { texts, task, titles ->
-                adapter.embedByTask(texts, task, titles).vectors
-            }?.let(sections::add)
+            CharacterRedlineOocGuard.evaluate(
+                card = character,
+                latestUserMessage = text,
+                previousAssistantReply = previousReply,
+                embed = { texts, task, titles ->
+                    adapter.embedByTask(texts, task, titles).vectors
+                },
+            )?.let(sections::add)
         }
         if (worldbookEntries.isNotEmpty() && worldbookBudget > 0) {
             val queryVector =
