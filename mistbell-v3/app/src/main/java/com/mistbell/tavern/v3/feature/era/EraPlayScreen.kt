@@ -43,6 +43,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.mistbell.tavern.v3.BuildConfig
 import com.mistbell.tavern.v3.feature.era.engine.EraCommandParser
 import com.mistbell.tavern.v3.feature.era.engine.EraEngineSession
 import com.mistbell.tavern.v3.feature.era.engine.EraLine
@@ -129,7 +130,12 @@ private fun EraPlayTopBar(
                 fontSize = 16.sp,
                 maxLines = 1,
             )
-            Text(text = status, color = TavernPalette.TextTertiary, fontSize = 11.sp, maxLines = 1)
+            Text(
+                text = if (BuildConfig.ERA_MERGED) "单包 · $status" else "两包 · $status",
+                color = TavernPalette.TextTertiary,
+                fontSize = 11.sp,
+                maxLines = 1,
+            )
         }
         Text(
             text = "设置",

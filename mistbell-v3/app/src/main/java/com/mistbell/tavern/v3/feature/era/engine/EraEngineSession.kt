@@ -178,14 +178,25 @@ internal class EraEngineSession(
                 putExtra(EraEngineContract.EXTRA_PACK_VERSION, packager.versionKey(game))
                 putExtra(EraEngineContract.EXTRA_ZIP_FD, descriptor)
             }
-        val bound =
+        val target = EraEngineContract.componentFor(appContext)
+        val installed =
             runCatching {
-                appContext.bindService(intent, connection, Context.BIND_AUTO_CREATE)
-            }.getOrDefault(false)
+                appContext.packageManager.getPackageInfo(target.packageName, 0)
+            }.isSuccess
+        var bound = false
+        val bindError =
+            runCatching {
+                bound = appContext.bindService(intent, connection, Context.BIND_AUTO_CREATE)
+            }.exceptionOrNull()
+        bound = bound && bindError == null
         // Binder 已把 fd dup 给引擎进程，本地这份可以立刻关掉，避免每次进游戏漏一个 fd。
         runCatching { descriptor.close() }
-        if (!bound) {
-            fail("没有找到引擎组件（com.mistbell.era），请先安装引擎 APK")
+        if (!installed) {
+            fail("引擎组件未安装（${target.packageName}）")
+        } else if (bindError != null) {
+            fail("绑定引擎被拒：${bindError.javaClass.simpleName} ${bindError.message ?: ""}".trim())
+        } else if (!bound) {
+            fail("引擎组件存在但绑定失败（${target.flattenToShortString()}）")
         }
     }
 

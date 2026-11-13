@@ -12,7 +12,7 @@ namespace Mistbell.Era.Host;
 /// 客户端 bind 时带「ZIP 文件描述符 + 端口 + 包名」，服务解包后在本进程里跑 EWP，
 /// 前端连 127.0.0.1:port 读事件、回输入。解绑即停。
 /// </summary>
-[Service(Name = "com.mistbell.era.EraEngineService", Exported = true, Permission = "com.mistbell.era.permission.CONTROL")]
+[Service(Name = "com.mistbell.era.EraEngineService", Exported = true)]
 public sealed class EraEngineService : Service
 {
 	private const string Tag = "EraEngine";
