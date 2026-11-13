@@ -46,14 +46,29 @@ jobs:
           git fetch --depth 1 origin "$ERACORE_SHA"
           git checkout -q FETCH_HEAD
           git rev-parse HEAD
-          ls
+          # 仓库根的 global.json 把 SDK 钉在 8.0；EraCore 需要 .NET 10，这里就近覆盖
+          cat > global.json <<'JSON'
+          {
+            "sdk": {
+              "version": "10.0.100",
+              "rollForward": "latestFeature",
+              "allowPrerelease": true
+            }
+          }
+          JSON
+          cat global.json
 
       - name: Show toolchain
+        working-directory: era-core-src
         run: |
           dotnet --version
-          dotnet workload list || true
+          case "$(dotnet --version)" in
+            10.*) echo "OK: .NET 10" ;;
+            *) echo "::error::期望 .NET 10，实际 $(dotnet --version)"; exit 1 ;;
+          esac
 
       - name: Install Android workload
+        working-directory: era-core-src
         run: |
           echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
           dotnet workload install android --skip-manifest-update
