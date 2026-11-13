@@ -23,6 +23,9 @@ internal static class EraBootstrap
 	private const string Tag = "EraEngine";
 	private static string logPath;
 
+	/// <summary>最近一次失败的结构化说明，随退出码一起回传前端。</summary>
+	public static string LastError { get; private set; } = string.Empty;
+
 	/// <summary>把启动过程写到外部私有目录，便于在没有 logcat 时远程排查。</summary>
 	public static void InitLog(Android.Content.Context ctx)
 	{
@@ -66,7 +69,8 @@ internal static class EraBootstrap
 		Trace("run: dir=" + gameDir + " port=" + port);
 		if (string.IsNullOrEmpty(gameDir) || !Directory.Exists(gameDir))
 		{
-			Trace("game directory missing: " + gameDir);
+			LastError = "game dir missing: " + gameDir;
+			Trace(LastError);
 			return 2;
 		}
 
@@ -87,7 +91,8 @@ internal static class EraBootstrap
 
 		if (!Directory.Exists(Program.CsvDir) || !Directory.Exists(Program.ErbDir))
 		{
-			Trace("missing_game_data csv=" + Program.CsvDir + " erb=" + Program.ErbDir);
+			LastError = "missing csv/erb; " + EraGameStore.DescribeLayout(gameDir);
+			Trace("missing_game_data " + LastError);
 			return 2;
 		}
 

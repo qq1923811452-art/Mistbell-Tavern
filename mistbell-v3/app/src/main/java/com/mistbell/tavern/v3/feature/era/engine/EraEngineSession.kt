@@ -43,6 +43,7 @@ internal data class EraGameState(
     val input: EwpInputRequest? = null,
     val error: String? = null,
     val detail: String? = null,
+    val warningCount: Int = 0,
 )
 
 /**
@@ -254,6 +255,11 @@ internal class EraEngineSession(
         id: Long,
         text: String,
     ) {
+        // eraTW 首次加载会刷几十条字符卡警告，留着会冲掉正文；只计数，正片从标题页开始。
+        if (text.startsWith("警告") || text.startsWith("警告Lv")) {
+            _state.update { it.copy(warningCount = it.warningCount + 1) }
+            return
+        }
         _state.update { current ->
             val next = current.lines + EraLine(id, text)
             current.copy(lines = if (next.size > MAX_LINES) next.takeLast(MAX_LINES) else next)

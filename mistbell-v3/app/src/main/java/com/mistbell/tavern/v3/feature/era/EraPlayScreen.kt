@@ -79,6 +79,7 @@ internal fun EraPlayScreen(
     val context = LocalContext.current
     val session = remember(game.directory) { EraEngineSession(context) }
     val state by session.state.collectAsStateWithLifecycle()
+    var logLines by remember { mutableStateOf<List<String>?>(null) }
 
     LaunchedEffect(game.directory) { session.start(game) }
     DisposableEffect(session) { onDispose { session.stop() } }
@@ -94,9 +95,10 @@ internal fun EraPlayScreen(
         EraPlayTopBar(
             name = game.name,
             status = state.statusText,
-            detail = state.detail,
+            detail = state.detail ?: state.warningCount.takeIf { it > 0 }?.let { "已过滤 $it 条引擎警告" },
             onBack = onBack,
             onOpenSetup = onOpenSetup,
+            onOpenLog = { logLines = readEngineLog(context) },
         )
         EraGameLog(
             lines = state.lines,
@@ -104,6 +106,9 @@ internal fun EraPlayScreen(
         )
         state.error?.let { message ->
             EraErrorBanner(message = message, onRetry = { session.retry(game) })
+        }
+        logLines?.let { lines ->
+            EraLogDialog(lines = lines, onDismiss = { logLines = null })
         }
         val fallback = rememberFallbackCommands(state.input, state.lines)
         EraInputPanel(
@@ -114,6 +119,7 @@ internal fun EraPlayScreen(
     }
 }
 
+@Suppress("LongParameterList")
 @Composable
 private fun EraPlayTopBar(
     name: String,
@@ -121,6 +127,7 @@ private fun EraPlayTopBar(
     detail: String?,
     onBack: () -> Unit,
     onOpenSetup: () -> Unit,
+    onOpenLog: () -> Unit,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
@@ -152,6 +159,16 @@ private fun EraPlayTopBar(
                 )
             }
         }
+        Text(
+            text = "日志",
+            color = TavernPalette.TextSecondary,
+            fontSize = 12.sp,
+            modifier =
+                Modifier
+                    .clip(TavernShape.Pill)
+                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                    .clickable(onClick = onOpenLog),
+        )
         Text(
             text = "设置",
             color = ERA_GOLD_TEXT,

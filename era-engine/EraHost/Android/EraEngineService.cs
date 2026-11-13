@@ -110,8 +110,11 @@ public sealed class EraEngineService : Service
 			EraBootstrap.InitLog(this);
 			SendStatus("starting", gameDir);
 			var code = EraBootstrap.Run(gameDir, port);
-			EraBootstrap.Trace("engine exit code " + code);
-			SendStatus("stopped", "exit=" + code);
+			EraBootstrap.Trace("engine exit code " + code + " " + EraBootstrap.LastError);
+			var detail = "exit=" + code;
+			if (!string.IsNullOrEmpty(EraBootstrap.LastError))
+				detail += " " + EraBootstrap.LastError;
+			SendStatus("stopped", detail);
 		}
 		catch (Exception ex)
 		{

@@ -93,6 +93,7 @@ internal static class EraGameStore
 		}
 
 		Extract(zipPath, target);
+		NormalizeTopLevelDirs(target);
 		var gameDir = ResolveGameDir(target);
 		prefs?.Edit()?.PutString(PrefLastGame, gameDir)?.PutString(PrefLastVersion, version)?.Apply();
 		return gameDir;
@@ -167,27 +168,92 @@ internal static class EraGameStore
 		if (HasGameData(target))
 			return target;
 
-		var dirs = Directory.GetDirectories(target);
-		if (dirs.Length == 1 && HasGameData(dirs[0]))
-			return dirs[0];
-
-		foreach (var dir in dirs)
+		// 有的包会套两层目录（eraTW/<game>/csv），限制在两层内查找。
+		foreach (var first in Directory.GetDirectories(target))
 		{
-			if (HasGameData(dir))
-				return dir;
+			if (HasGameData(first))
+				return first;
+			foreach (var second in Directory.GetDirectories(first))
+			{
+				if (HasGameData(second))
+					return second;
+			}
 		}
 		return target;
 	}
 
-	private static bool HasGameData(string dir)
+	/// <summary>era 系目录名在 Windows 上大小写不敏感，Android 私有目录区分大小写；统一成小写。</summary>
+	private static readonly string[] KnownDirs = { "csv", "erb", "sav", "font", "sound", "resources", "dat", "debug" };
+
+	private static void NormalizeTopLevelDirs(string root)
 	{
 		try
 		{
-			return Directory.Exists(Path.Combine(dir, "csv")) || Directory.Exists(Path.Combine(dir, "erb"));
+			foreach (var dir in Directory.GetDirectories(root))
+			{
+				var name = Path.GetFileName(dir);
+				foreach (var expected in KnownDirs)
+				{
+					if (!string.Equals(name, expected, StringComparison.OrdinalIgnoreCase) || name == expected)
+						continue;
+					var target = Path.Combine(root, expected);
+					if (Directory.Exists(target))
+						continue;
+					try { Directory.Move(dir, target); } catch { }
+					break;
+				}
+			}
 		}
-		catch
+		catch { }
+	}
+
+	/// <summary>只在根目录下按大小写不敏感找同名子目录。</summary>
+	private static bool TryFindChild(string parent, string name, out string found)
+	{
+		found = null;
+		try
 		{
-			return false;
+			var exact = Path.Combine(parent, name);
+			if (Directory.Exists(exact))
+			{
+				found = exact;
+				return true;
+			}
+			foreach (var dir in Directory.GetDirectories(parent))
+			{
+				if (string.Equals(Path.GetFileName(dir), name, StringComparison.OrdinalIgnoreCase))
+				{
+					found = dir;
+					return true;
+				}
+			}
+		}
+		catch { }
+		return false;
+	}
+
+	private static bool HasGameData(string dir) => TryFindChild(dir, "csv", out _) || TryFindChild(dir, "erb", out _);
+
+	/// <summary>把根目录前两层的目录名拼成一段说明，失败时回传前端。</summary>
+	public static string DescribeLayout(string root)
+	{
+		try
+		{
+			var first = Directory.GetDirectories(root).Select(Path.GetFileName).Take(12).ToArray();
+			var builder = new StringBuilder();
+			builder.Append("dirs=").Append(string.Join(",", first));
+			foreach (var dir in Directory.GetDirectories(root).Take(4))
+			{
+				var name = Path.GetFileName(dir);
+				var second = Directory.GetDirectories(dir).Select(Path.GetFileName).Take(6).ToArray();
+				if (second.Length > 0)
+					builder.Append(" | ").Append(name).Append("/{").Append(string.Join(",", second)).Append('}');
+			}
+			return builder.ToString();
+		}
+		catch (Exception ex)
+		{
+			return "layout error: " + ex.Message;
 		}
 	}
 
