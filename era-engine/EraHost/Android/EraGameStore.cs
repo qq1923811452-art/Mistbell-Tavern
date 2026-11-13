@@ -71,6 +71,7 @@ internal static class EraGameStore
 
 		var gameDir = ResolveGameDir(target);
 		NormalizeCsvFileNames(gameDir);
+		RepairMissingCflags(gameDir);
 		EnsureLazyLoadingConfig(gameDir);
 		prefs?.Edit()?.PutString(PrefLastGame, gameDir)?.PutString(PrefLastVersion, version)?.Apply();
 		return gameDir;
@@ -100,6 +101,7 @@ internal static class EraGameStore
 		NormalizeTopLevelDirs(target);
 		var gameDir = ResolveGameDir(target);
 		NormalizeCsvFileNames(gameDir);
+		RepairMissingCflags(gameDir);
 		EnsureLazyLoadingConfig(gameDir);
 		prefs?.Edit()?.PutString(PrefLastGame, gameDir)?.PutString(PrefLastVersion, version)?.Apply();
 		return gameDir;
@@ -157,6 +159,101 @@ internal static class EraGameStore
 		catch (Exception ex)
 		{
 			EraBootstrap.Trace("csv normalize failed: " + ex.Message);
+		}
+	}
+
+	/// <summary>
+	/// 包里 Chara/*.csv 引用了 CFLAG.CSV 中不存在的 flag 名时，引擎会把赋值丢掉并报警告。
+	/// 这里按「索引,名字」追加缺失项（沿用原文件编码），让这些 flag 真正生效而不是被忽略。
+	/// </summary>
+	private static void RepairMissingCflags(string gameDir)
+	{
+		try
+		{
+			if (!TryFindChild(gameDir, "csv", out var csvDir))
+				return;
+			var cflagPath = Path.Combine(csvDir, "CFLAG.CSV");
+			if (!File.Exists(cflagPath))
+				return;
+
+			var (encoding, text) = ReadTextAuto(cflagPath);
+			var names = new HashSet<string>(StringComparer.Ordinal);
+			var maxIndex = -1;
+			foreach (var line in text.Split('\n'))
+			{
+				var tokens = line.Trim().Split(',');
+				if (tokens.Length < 2)
+					continue;
+				if (int.TryParse(tokens[0].Trim(), out var index))
+					maxIndex = Math.Max(maxIndex, index);
+				names.Add(tokens[1].Trim());
+			}
+			if (names.Count == 0)
+			{
+				EraBootstrap.Trace("cflag repair skipped: empty name table");
+				return;
+			}
+
+			var missing = new SortedSet<string>(StringComparer.Ordinal);
+			foreach (var file in Directory.GetFiles(gameDir, "*.csv", SearchOption.AllDirectories))
+			{
+				var normalized = file.Replace('\\', '/');
+				if (normalized.IndexOf("/Chara/", StringComparison.OrdinalIgnoreCase) < 0)
+					continue;
+				var (_, body) = ReadTextAuto(file);
+				foreach (var line in body.Split('\n'))
+				{
+					var tokens = line.Trim().Split(',');
+					if (tokens.Length < 2)
+						continue;
+					var key = tokens[0].Trim();
+					if (!string.Equals(key, "フラグ", StringComparison.Ordinal)
+						&& !string.Equals(key, "CFLAG", StringComparison.OrdinalIgnoreCase))
+						continue;
+					var name = tokens[1].Trim();
+					if (name.Length == 0 || int.TryParse(name, out _))
+						continue;
+					if (!names.Contains(name))
+						missing.Add(name);
+				}
+			}
+
+			if (missing.Count == 0)
+			{
+				EraBootstrap.Trace("cflag repair: nothing missing");
+				return;
+			}
+
+			var builder = new StringBuilder(text);
+			if (!text.EndsWith("\n", StringComparison.Ordinal))
+				builder.Append('\n');
+			foreach (var name in missing)
+			{
+				maxIndex++;
+				builder.Append(maxIndex).Append(',').Append(name).Append('\n');
+			}
+			File.WriteAllText(cflagPath, builder.ToString(), encoding);
+			EraBootstrap.Trace("cflag repair appended " + missing.Count + ": " + string.Join(",", missing));
+		}
+		catch (Exception ex)
+		{
+			EraBootstrap.Trace("cflag repair failed: " + ex.Message);
+		}
+	}
+
+	/// <summary>CSV 可能是 GBK(CHINESE_HANS) 或 UTF-8；按内容猜，回写保持原编码。</summary>
+	private static (Encoding Encoding, string Text) ReadTextAuto(string path)
+	{
+		var bytes = File.ReadAllBytes(path);
+		try
+		{
+			var utf8 = new UTF8Encoding(false, true);
+			return (utf8, utf8.GetString(bytes));
+		}
+		catch
+		{
+			var gbk = Encoding.GetEncoding(936);
+			return (gbk, gbk.GetString(bytes));
 		}
 	}
 
