@@ -50,6 +50,7 @@ internal static class EraGameStore
 		{
 			// 已有安装也要跑一遍；这些修复是幂等的，老用户不该因为「版本没变」错过。
 			NormalizeCsvFileNames(lastDir);
+			NormalizeCsvWhitespace(lastDir);
 			RepairMissingCflags(lastDir);
 			EnsureLazyLoadingConfig(lastDir);
 			return lastDir;
@@ -75,6 +76,7 @@ internal static class EraGameStore
 
 		var gameDir = ResolveGameDir(target);
 		NormalizeCsvFileNames(gameDir);
+		NormalizeCsvWhitespace(gameDir);
 		RepairMissingCflags(gameDir);
 		EnsureLazyLoadingConfig(gameDir);
 		prefs?.Edit()?.PutString(PrefLastGame, gameDir)?.PutString(PrefLastVersion, version)?.Apply();
@@ -100,6 +102,7 @@ internal static class EraGameStore
 		{
 			// 已有安装也要跑一遍；这些修复是幂等的，老用户不该因为「版本没变」错过。
 			NormalizeCsvFileNames(lastDir);
+			NormalizeCsvWhitespace(lastDir);
 			RepairMissingCflags(lastDir);
 			EnsureLazyLoadingConfig(lastDir);
 			return lastDir;
@@ -109,6 +112,7 @@ internal static class EraGameStore
 		NormalizeTopLevelDirs(target);
 		var gameDir = ResolveGameDir(target);
 		NormalizeCsvFileNames(gameDir);
+		NormalizeCsvWhitespace(gameDir);
 		RepairMissingCflags(gameDir);
 		EnsureLazyLoadingConfig(gameDir);
 		prefs?.Edit()?.PutString(PrefLastGame, gameDir)?.PutString(PrefLastVersion, version)?.Apply();
@@ -196,6 +200,8 @@ internal static class EraGameStore
 					maxIndex = Math.Max(maxIndex, index);
 				names.Add(tokens[1].Trim());
 			}
+			EraBootstrap.Trace("cflag table: " + names.Count + " names, max index " + maxIndex
+				+ ", file " + new FileInfo(cflagPath).Length + " bytes");
 			if (names.Count == 0)
 			{
 				EraBootstrap.Trace("cflag repair skipped: empty name table");
@@ -246,6 +252,66 @@ internal static class EraGameStore
 		catch (Exception ex)
 		{
 			EraBootstrap.Trace("cflag repair failed: " + ex.Message);
+		}
+	}
+
+	/// <summary>
+	/// 引擎建名字表时<b>不 Trim</b> 字段，查表时字段也不 Trim：
+	/// 包里若写成 `0, 口調`（逗号后带空格），表里的键是 " 口調"，Chara 里查 "口調" 就全部落空。
+	/// 这里把常量表每行按逗号切分后逐字段 trim，仅在确有变化时回写。
+	/// </summary>
+	private static void NormalizeCsvWhitespace(string gameDir)
+	{
+		try
+		{
+			if (!TryFindChild(gameDir, "csv", out var csvDir))
+				return;
+			int changedFiles = 0, changedLines = 0;
+			foreach (var expected in ExpectedCsvNames)
+			{
+				var path = Path.Combine(csvDir, expected);
+				if (!File.Exists(path))
+					continue;
+				var (encoding, text) = ReadTextAuto(path);
+				var newline = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+				var lines = text.Replace("\r\n", "\n").Split('\n');
+				var dirty = false;
+				for (int i = 0; i < lines.Length; i++)
+				{
+					var line = lines[i];
+					var trimmed = line.Trim();
+					if (trimmed.Length == 0 || trimmed.StartsWith(";", StringComparison.Ordinal))
+					{
+						if (line != line.TrimEnd())
+						{
+							lines[i] = line.TrimEnd();
+							dirty = true;
+							changedLines++;
+						}
+						continue;
+					}
+					var parts = line.Split(',');
+					var rebuilt = string.Join(",", parts.Select(p => p.Trim()));
+					if (rebuilt != line)
+					{
+						lines[i] = rebuilt;
+						dirty = true;
+						changedLines++;
+					}
+				}
+				if (!dirty)
+					continue;
+				File.WriteAllText(path, string.Join(newline, lines), encoding);
+				changedFiles++;
+			}
+			if (changedFiles > 0)
+				EraBootstrap.Trace("csv whitespace normalized: " + changedFiles + " files, " + changedLines + " lines");
+			else
+				EraBootstrap.Trace("csv whitespace: clean");
+		}
+		catch (Exception ex)
+		{
+			EraBootstrap.Trace("csv whitespace failed: " + ex.Message);
 		}
 	}
 
