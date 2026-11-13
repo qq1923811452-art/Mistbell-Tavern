@@ -20,10 +20,16 @@ def is_signature(name: str) -> bool:
     return upper.startswith("META-INF/") and upper.endswith(SIGNATURE_SUFFIXES)
 
 
-def copy_entry(source: zipfile.ZipFile, target: zipfile.ZipFile, info: zipfile.ZipInfo) -> None:
+def copy_entry(
+    source: zipfile.ZipFile,
+    target: zipfile.ZipFile,
+    info: zipfile.ZipInfo,
+    force_stored: bool = False,
+) -> None:
     data = source.read(info.filename)
     clone = zipfile.ZipInfo(info.filename, date_time=info.date_time)
-    clone.compress_type = info.compress_type
+    # extractNativeLibs=false 的应用要求 .so 必须未压缩，否则安装后加载失败
+    clone.compress_type = zipfile.ZIP_STORED if force_stored else info.compress_type
     clone.external_attr = info.external_attr
     target.writestr(clone, data)
 
@@ -77,7 +83,7 @@ def main(app_apk: str, engine_apk: str, out_apk: str) -> int:
             for name in injected_libs:
                 if name in existing_libs:
                     continue
-                copy_entry(engine, out, engine.getinfo(name))
+                copy_entry(engine, out, engine.getinfo(name), force_stored=True)
 
             dex_name = "classes.dex" if dex_index == 1 else f"classes{dex_index}.dex"
             data = engine.read(engine_dex)
