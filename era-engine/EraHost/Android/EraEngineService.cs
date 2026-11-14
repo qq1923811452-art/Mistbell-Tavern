@@ -28,7 +28,42 @@ public sealed class EraEngineService : Service
     {
         base.OnCreate();
         EraBootstrap.InitLog(this);
+        InstallCrashHooks();
         EraBootstrap.Trace("EraEngineService.OnCreate");
+    }
+
+    /// <summary>
+    /// :era 是独立进程，主进程的 UncaughtExceptionHandler 覆盖不到它。
+    /// 这里装上托管异常与 Java 异常的钩子，把栈写进同一份日志，
+    /// 否则进程静默消失时我们什么都拿不到。
+    /// </summary>
+    private static bool crashHooksInstalled;
+
+    private static void InstallCrashHooks()
+    {
+        if (crashHooksInstalled)
+            return;
+        crashHooksInstalled = true;
+        try
+        {
+            AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+            {
+                var ex = e.ExceptionObject as Exception;
+                EraBootstrap.Trace("AppDomain.UnhandledException: " + (ex?.ToString() ?? e.ExceptionObject?.ToString() ?? "unknown"));
+            };
+            Android.Runtime.AndroidEnvironment.UnhandledExceptionRaiser += (_, e) =>
+            {
+                EraBootstrap.Trace("Android UnhandledException: " + e.Exception);
+            };
+            TaskScheduler.UnobservedTaskException += (_, e) =>
+            {
+                EraBootstrap.Trace("UnobservedTaskException: " + e.Exception);
+            };
+        }
+        catch (Exception ex)
+        {
+            EraBootstrap.Trace("InstallCrashHooks failed: " + ex.Message);
+        }
     }
 
     public override IBinder? OnBind(Intent? intent)

@@ -81,6 +81,7 @@ jobs:
             -p:AndroidKeyStore=false \
             -p:CheckEolWorkloads=false \
             -p:TreatWarningsAsErrors=false \
+            -p:RunAOTCompilation=false \
             -v minimal
 
       - name: Build main app APK (merged manifest)
