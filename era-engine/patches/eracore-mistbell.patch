@@ -665,7 +665,7 @@ index b0d0805..ebbca66 100644
  	{
  		return method.GetStrValue(exm, arguments);
 diff --git a/EraCore.Core/Shared/Runtime/Script/Statements/Instraction.Child.cs b/EraCore.Core/Shared/Runtime/Script/Statements/Instraction.Child.cs
-index 08a6c11..7d89e02 100644
+index 08a6c11..447ac79 100644
 --- a/EraCore.Core/Shared/Runtime/Script/Statements/Instraction.Child.cs
 +++ b/EraCore.Core/Shared/Runtime/Script/Statements/Instraction.Child.cs
 @@ -647,7 +647,14 @@ internal sealed partial class FunctionIdentifier
@@ -702,7 +702,169 @@ index 08a6c11..7d89e02 100644
  			}
  			else
  				exm.Console.WaitInput(req);
-@@ -3447,7 +3458,9 @@ internal sealed partial class FunctionIdentifier
+@@ -907,10 +918,14 @@ internal sealed partial class FunctionIdentifier
+ 			#region EE_INPUT機能拡張
+ 			if (arg.CanSkip != null && GlobalStatic.Console.MesSkip)
+ 			{
+-				if (arg.Mouse!.GetIntValue(exm) == 0)
+-					GlobalStatic.VEvaluator.RESULTS = arg.Def!.GetStrValue(exm);
++				// MISTBELL_PATCH_INPUT_NRE：可跳过分支原来对 Mouse/Def 用了 null-forgiving，
++				// 省略可选参数的 INPUT/BINPUT 会直接 NullReferenceException。
++				strValue = arg.Def != null ? arg.Def.GetStrValue(exm) : "";
++				bool mouseClicked = arg.Mouse != null && arg.Mouse.GetIntValue(exm) != 0;
++				if (mouseClicked)
++					GlobalStatic.VEvaluator.RESULTS_ARRAY[1] = strValue;
+ 				else
+-					GlobalStatic.VEvaluator.RESULTS_ARRAY[1] = arg.Def!.GetStrValue(exm);
++					GlobalStatic.VEvaluator.RESULTS = strValue;
+ 			}
+ 			else
+ 				exm.Console.WaitInput(req);
+@@ -972,10 +987,14 @@ internal sealed partial class FunctionIdentifier
+ 			#region EE_INPUT機能拡張
+ 			if (arg.CanSkip != null && GlobalStatic.Console.MesSkip)
+ 			{
+-				if (arg.Mouse!.GetIntValue(exm) == 0)
+-					GlobalStatic.VEvaluator.RESULT = arg.Def!.GetIntValue(exm);
++				// MISTBELL_PATCH_INPUT_NRE：可跳过分支原来对 Mouse/Def 用了 null-forgiving，
++				// 省略可选参数的 INPUT/BINPUT 会直接 NullReferenceException。
++				intValue = arg.Def != null ? arg.Def.GetIntValue(exm) : 0;
++				bool mouseClicked = arg.Mouse != null && arg.Mouse.GetIntValue(exm) != 0;
++				if (mouseClicked)
++					GlobalStatic.VEvaluator.RESULT_ARRAY[1] = intValue;
+ 				else
+-					GlobalStatic.VEvaluator.RESULT_ARRAY[1] = arg.Def!.GetIntValue(exm);
++					GlobalStatic.VEvaluator.RESULT = intValue;
+ 			}
+ 			else
+ 				exm.Console.WaitInput(req);
+@@ -1035,10 +1054,14 @@ internal sealed partial class FunctionIdentifier
+ 			#region EE_INPUT機能拡張
+ 			if (arg.CanSkip != null && GlobalStatic.Console.MesSkip)
+ 			{
+-				if (arg.Mouse!.GetIntValue(exm) == 0)
+-					GlobalStatic.VEvaluator.RESULTS = arg.Def!.GetStrValue(exm);
++				// MISTBELL_PATCH_INPUT_NRE：可跳过分支原来对 Mouse/Def 用了 null-forgiving，
++				// 省略可选参数的 INPUT/BINPUT 会直接 NullReferenceException。
++				strValue = arg.Def != null ? arg.Def.GetStrValue(exm) : "";
++				bool mouseClicked = arg.Mouse != null && arg.Mouse.GetIntValue(exm) != 0;
++				if (mouseClicked)
++					GlobalStatic.VEvaluator.RESULTS_ARRAY[1] = strValue;
+ 				else
+-					GlobalStatic.VEvaluator.RESULTS_ARRAY[1] = arg.Def!.GetStrValue(exm);
++					GlobalStatic.VEvaluator.RESULTS = strValue;
+ 			}
+ 			else
+ 				exm.Console.WaitInput(req);
+@@ -1096,10 +1119,14 @@ internal sealed partial class FunctionIdentifier
+ 			#region EE_INPUT機能拡張
+ 			if (tinputarg.CanSkip != null && GlobalStatic.Console.MesSkip)
+ 			{
+-				if (tinputarg.Mouse!.GetIntValue(exm) == 0)
+-					GlobalStatic.VEvaluator.RESULT = tinputarg.Def!.GetIntValue(exm);
++				// MISTBELL_PATCH_INPUT_NRE：可跳过分支原来对 Mouse/Def 用了 null-forgiving，
++				// 省略可选参数的 INPUT/BINPUT 会直接 NullReferenceException。
++				intValue = tinputarg.Def != null ? tinputarg.Def.GetIntValue(exm) : 0;
++				bool mouseClicked = tinputarg.Mouse != null && tinputarg.Mouse.GetIntValue(exm) != 0;
++				if (mouseClicked)
++					GlobalStatic.VEvaluator.RESULT_ARRAY[1] = intValue;
+ 				else
+-					GlobalStatic.VEvaluator.RESULT_ARRAY[1] = tinputarg.Def!.GetIntValue(exm);
++					GlobalStatic.VEvaluator.RESULT = intValue;
+ 			}
+ 			else if (_noFocus)
+ 				exm.Console.WaitInputNoFocus(req);
+@@ -1151,10 +1178,14 @@ internal sealed partial class FunctionIdentifier
+ 			#region EE_INPUT機能拡張
+ 			if (tinputarg.CanSkip != null && GlobalStatic.Console.MesSkip)
+ 			{
+-				if (tinputarg.Mouse!.GetIntValue(exm) == 0)
+-					GlobalStatic.VEvaluator.RESULTS = tinputarg.Def!.GetStrValue(exm);
++				// MISTBELL_PATCH_INPUT_NRE：可跳过分支原来对 Mouse/Def 用了 null-forgiving，
++				// 省略可选参数的 INPUT/BINPUT 会直接 NullReferenceException。
++				strValue = tinputarg.Def != null ? tinputarg.Def.GetStrValue(exm) : "";
++				bool mouseClicked = tinputarg.Mouse != null && tinputarg.Mouse.GetIntValue(exm) != 0;
++				if (mouseClicked)
++					GlobalStatic.VEvaluator.RESULTS_ARRAY[1] = strValue;
+ 				else
+-					GlobalStatic.VEvaluator.RESULTS_ARRAY[1] = tinputarg.Def!.GetStrValue(exm);
++					GlobalStatic.VEvaluator.RESULTS = strValue;
+ 			}
+ 			else if (_noFocus)
+ 				exm.Console.WaitInputNoFocus(req);
+@@ -2253,10 +2284,14 @@ internal sealed partial class FunctionIdentifier
+ 			int count = 0;
+ 			if (arg.CanSkip != null && GlobalStatic.Console.MesSkip)
+ 			{
+-				if (arg.Mouse!.GetIntValue(exm) == 0)
+-					GlobalStatic.VEvaluator.RESULT = arg.Def!.GetIntValue(exm);
++				// MISTBELL_PATCH_INPUT_NRE：可跳过分支原来对 Mouse/Def 用了 null-forgiving，
++				// 省略可选参数的 INPUT/BINPUT 会直接 NullReferenceException。
++				intValue = arg.Def != null ? arg.Def.GetIntValue(exm) : 0;
++				bool mouseClicked = arg.Mouse != null && arg.Mouse.GetIntValue(exm) != 0;
++				if (mouseClicked)
++					GlobalStatic.VEvaluator.RESULT_ARRAY[1] = intValue;
+ 				else
+-					GlobalStatic.VEvaluator.RESULT_ARRAY[1] = arg.Def!.GetIntValue(exm);
++					GlobalStatic.VEvaluator.RESULT = intValue;
+ 			}
+ 			else
+ 			{
+@@ -2356,10 +2391,14 @@ internal sealed partial class FunctionIdentifier
+ 			int count = 0;
+ 			if (arg.CanSkip != null && GlobalStatic.Console.MesSkip)
+ 			{
+-				if (arg.Mouse!.GetIntValue(exm) == 0)
+-					GlobalStatic.VEvaluator.RESULTS = arg.Def!.GetStrValue(exm);
++				// MISTBELL_PATCH_INPUT_NRE：可跳过分支原来对 Mouse/Def 用了 null-forgiving，
++				// 省略可选参数的 INPUT/BINPUT 会直接 NullReferenceException。
++				strValue = arg.Def != null ? arg.Def.GetStrValue(exm) : "";
++				bool mouseClicked = arg.Mouse != null && arg.Mouse.GetIntValue(exm) != 0;
++				if (mouseClicked)
++					GlobalStatic.VEvaluator.RESULTS_ARRAY[1] = strValue;
+ 				else
+-					GlobalStatic.VEvaluator.RESULTS_ARRAY[1] = arg.Def!.GetStrValue(exm);
++					GlobalStatic.VEvaluator.RESULTS = strValue;
+ 			}
+ 			else
+ 			{
+@@ -2450,10 +2489,14 @@ internal sealed partial class FunctionIdentifier
+ 			int count = 0;
+ 			if (arg.CanSkip != null && GlobalStatic.Console.MesSkip)
+ 			{
+-				if (arg.Mouse!.GetIntValue(exm) == 0)
+-					GlobalStatic.VEvaluator.RESULT = arg.Def!.GetIntValue(exm);
++				// MISTBELL_PATCH_INPUT_NRE：可跳过分支原来对 Mouse/Def 用了 null-forgiving，
++				// 省略可选参数的 INPUT/BINPUT 会直接 NullReferenceException。
++				intValue = arg.Def != null ? arg.Def.GetIntValue(exm) : 0;
++				bool mouseClicked = arg.Mouse != null && arg.Mouse.GetIntValue(exm) != 0;
++				if (mouseClicked)
++					GlobalStatic.VEvaluator.RESULT_ARRAY[1] = intValue;
+ 				else
+-					GlobalStatic.VEvaluator.RESULT_ARRAY[1] = arg.Def!.GetIntValue(exm);
++					GlobalStatic.VEvaluator.RESULT = intValue;
+ 			}
+ 			else
+ 			{
+@@ -2553,10 +2596,14 @@ internal sealed partial class FunctionIdentifier
+ 			int count = 0;
+ 			if (arg.CanSkip != null && GlobalStatic.Console.MesSkip)
+ 			{
+-				if (arg.Mouse!.GetIntValue(exm) == 0)
+-					GlobalStatic.VEvaluator.RESULTS = arg.Def!.GetStrValue(exm);
++				// MISTBELL_PATCH_INPUT_NRE：可跳过分支原来对 Mouse/Def 用了 null-forgiving，
++				// 省略可选参数的 INPUT/BINPUT 会直接 NullReferenceException。
++				strValue = arg.Def != null ? arg.Def.GetStrValue(exm) : "";
++				bool mouseClicked = arg.Mouse != null && arg.Mouse.GetIntValue(exm) != 0;
++				if (mouseClicked)
++					GlobalStatic.VEvaluator.RESULTS_ARRAY[1] = strValue;
+ 				else
+-					GlobalStatic.VEvaluator.RESULTS_ARRAY[1] = arg.Def!.GetStrValue(exm);
++					GlobalStatic.VEvaluator.RESULTS = strValue;
+ 			}
+ 			else
+ 			{
+@@ -3447,7 +3494,9 @@ internal sealed partial class FunctionIdentifier
  		{
  			////BREAKのJUMP先はRENDまたはNEXT。そのジャンプ先であるREPEATかFORをiLineに代入。
  			//1.723 仕様変更。BREAKのJUMP先にはREPEAT、FOR、WHILEを記憶する。そのJUMP先が本当のJUMP先。
