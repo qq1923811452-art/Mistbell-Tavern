@@ -34,6 +34,7 @@ internal data class EraGameState(
     val statusText: String = "正在准备游戏…",
     val lines: List<TurnDisplayLine> = emptyList(),
     val bgColor: String? = null,
+    val bgImages: List<TurnBgImage> = emptyList(),
     val awaiting: TurnAwaiting? = null,
     val generation: Long = 0L,
     val revision: Long = 0L,
@@ -296,6 +297,7 @@ internal class EraEngineSession(
                     it.copy(
                         lines = s.lines,
                         bgColor = s.bgColor,
+                        bgImages = s.bgImages,
                         awaiting = s.awaiting,
                         generation = s.generation,
                         revision = s.revision,
@@ -315,6 +317,7 @@ internal class EraEngineSession(
                     }
                     val nextLines = if (t.diff != null) applyLineOps(current.lines, t.diff.lineOps) else current.lines
                     val nextBg = t.diff?.bgColor ?: current.bgColor
+                    val nextImages = t.diff?.bgImages ?: current.bgImages
                     val structuredErr = t.errorInfo?.formatChain()
                     val fullError =
                         when {
@@ -329,6 +332,7 @@ internal class EraEngineSession(
                     current.copy(
                         lines = nextLines,
                         bgColor = nextBg,
+                        bgImages = nextImages,
                         awaiting = t.awaiting,
                         generation = t.generation,
                         revision = t.revision,

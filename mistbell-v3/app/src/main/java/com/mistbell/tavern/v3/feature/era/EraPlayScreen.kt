@@ -6,9 +6,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.pm.ActivityInfo
-import android.graphics.BitmapFactory
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -41,16 +39,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.InlineTextContent
-import androidx.compose.ui.text.Placeholder
-import androidx.compose.ui.text.PlaceholderVerticalAlign
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
@@ -70,18 +64,15 @@ import com.mistbell.tavern.v3.feature.era.engine.TurnAwaiting
 import com.mistbell.tavern.v3.feature.era.engine.TurnButton
 import com.mistbell.tavern.v3.feature.era.engine.TurnButtonItem
 import com.mistbell.tavern.v3.feature.era.engine.TurnDisplayLine
-import com.mistbell.tavern.v3.feature.era.engine.TurnSegmentImage
 import com.mistbell.tavern.v3.ui.tavern.TavernGlyphName
 import com.mistbell.tavern.v3.ui.tavern.TavernIconButton
 import com.mistbell.tavern.v3.ui.tavern.TavernPalette
 import com.mistbell.tavern.v3.ui.tavern.TavernPill
 import com.mistbell.tavern.v3.ui.tavern.TavernShape
-import java.io.File
 
 private const val TAG_BUTTON = "era_btn"
 
 /** eraTW 按 1800×973 排版；图片尺寸从引擎像素换算 dp 的基准宽度。 */
-private const val ENGINE_LAYOUT_WIDTH = 1800f
 private val ERA_GOLD_TEXT = Color(0xFFFFCE8A)
 private val ERA_GOLD_BORDER = Color(0x4DFFCE8A)
 private val ERA_GOLD_SOFT = Color(0x26FFCE8A)
@@ -140,11 +131,11 @@ internal fun EraPlayScreen(
                 onOpenSetup()
             },
         )
+        EraGameLayers(images = state.bgImages, gameDir = state.gameDir)
         EraGameLog(
             lines = state.lines,
             revision = state.revision,
             generation = state.generation,
-            gameDir = state.gameDir,
             onButtonClick = { btn -> session.submitButton(btn) },
             onBackgroundTap = { session.tapLogBackground() },
             modifier = Modifier.fillMaxWidth().weight(1f).padding(horizontal = 16.dp, vertical = 8.dp),
@@ -255,7 +246,6 @@ private fun EraGameLog(
     lines: List<TurnDisplayLine>,
     revision: Long,
     generation: Long,
-    gameDir: String?,
     onButtonClick: (TurnButton) -> Unit,
     onBackgroundTap: () -> Unit,
     modifier: Modifier = Modifier,
@@ -288,7 +278,6 @@ private fun EraGameLog(
             EraRichLine(
                 line = line,
                 currentGeneration = generation,
-                gameDir = gameDir,
                 onButtonClick = onButtonClick,
                 onBackgroundTap = onBackgroundTap,
             )
@@ -301,21 +290,13 @@ private fun EraGameLog(
 private fun EraRichLine(
     line: TurnDisplayLine,
     currentGeneration: Long,
-    gameDir: String?,
     onButtonClick: (TurnButton) -> Unit,
     onBackgroundTap: () -> Unit,
 ) {
     val buttonMap = remember(line.uid) { HashMap<String, TurnButton>() }
-    // eraTW 的立绘是「行内图片段」：src 是相对游戏目录的资源名，尺寸从引擎 1800 宽换算成 dp。
-    val pxToDp = LocalConfiguration.current.screenWidthDp / ENGINE_LAYOUT_WIDTH
-    val inlineContents =
-        remember(line.uid, currentGeneration, gameDir, pxToDp) {
-            mutableMapOf<Int, InlineTextContent>()
-        }
     val annotated: AnnotatedString =
-        remember(line.uid, currentGeneration, inlineContents) {
+        remember(line.uid, currentGeneration) {
             buttonMap.clear()
-            inlineContents.clear()
             buildAnnotatedString {
                 line.entries.forEachIndexed { entryIdx, entry ->
                     val btn = entry.button
@@ -325,25 +306,7 @@ private fun EraRichLine(
                         buttonMap[tagId] = btn
                         pushStringAnnotation(tag = TAG_BUTTON, annotation = tagId)
                     }
-                    for ((segIndex, seg) in entry.segments.withIndex()) {
-                        val inlineImage = seg.image
-                        if (inlineImage != null && gameDir != null) {
-                            val contentId = entryIdx * 1000 + segIndex
-                            val widthSp = (inlineImage.width * pxToDp).sp
-                            val heightSp = (inlineImage.height * pxToDp).sp
-                            inlineContents[contentId] =
-                                InlineTextContent(
-                                    Placeholder(
-                                        width = widthSp,
-                                        height = heightSp,
-                                        placeholderVerticalAlign = PlaceholderVerticalAlign.Center,
-                                    ),
-                                ) {
-                                    EraSegmentImage(gameDir, inlineImage)
-                                }
-                            appendInlineContent(contentId, "\uFFFC")
-                            continue
-                        }
+                    for (seg in entry.segments) {
                         val segColor =
                             parseHexColor(seg.color)
                                 ?: if (isLiveButton) ERA_GOLD_TEXT else TavernPalette.TextPrimary
@@ -383,7 +346,6 @@ private fun EraRichLine(
 
     Text(
         text = annotated,
-        inlineContent = inlineContents,
         onTextLayout = { layoutResult = it },
         style =
             TextStyle(
@@ -586,22 +548,6 @@ private fun EraValueInput(
             filled = true,
             contentDescription = "发送输入",
         )
-    }
-}
-
-@Composable
-private fun EraSegmentImage(
-    gameDir: String,
-    image: TurnSegmentImage,
-) {
-    val bitmap =
-        remember(gameDir, image.src) {
-            runCatching {
-                BitmapFactory.decodeFile(File(gameDir, image.src).absolutePath)
-            }.getOrNull()
-        }
-    if (bitmap != null) {
-        Image(bitmap = bitmap.asImageBitmap(), contentDescription = null)
     }
 }
 

@@ -15,6 +15,12 @@ internal sealed interface HostWireEvent {
     data class Stopped(val code: Int, val reason: String?) : HostWireEvent
 }
 
+internal data class TurnBgImage(
+    val src: String,
+    val depth: Long,
+    val opacity: Float,
+)
+
 internal data class TurnSnapshot(
     val protocolVersion: Int,
     val generation: Long,
@@ -22,6 +28,7 @@ internal data class TurnSnapshot(
     val bgColor: String?,
     val awaiting: TurnAwaiting,
     val lines: List<TurnDisplayLine>,
+    val bgImages: List<TurnBgImage>,
 )
 
 internal data class TurnRecord(
@@ -70,6 +77,7 @@ internal data class TurnAwaiting(
 internal data class TurnDisplayDiff(
     val lineOps: List<TurnLineOp>,
     val bgColor: String?,
+    val bgImages: List<TurnBgImage>?,
 )
 
 internal sealed interface TurnLineOp {
@@ -163,6 +171,7 @@ internal object TurnWireParser {
             bgColor = obj.optString("bgColor").takeIf { it.isNotEmpty() },
             awaiting = parseAwaiting(obj.optJSONObject("awaiting")),
             lines = parseLines(obj.optJSONArray("lines")),
+            bgImages = parseBgImages(obj.optJSONArray("bgImages")),
         )
     }
 
@@ -220,7 +229,26 @@ internal object TurnWireParser {
         return TurnDisplayDiff(
             lineOps = ops,
             bgColor = obj.optString("bgColor").takeIf { it.isNotEmpty() },
+            bgImages = if (obj.has("bgImages")) parseBgImages(obj.optJSONArray("bgImages")) else null,
         )
+    }
+
+    @Suppress("LoopWithTooManyJumpStatements")
+    private fun parseBgImages(array: JSONArray?): List<TurnBgImage> {
+        if (array == null) return emptyList()
+        val result = ArrayList<TurnBgImage>(array.length())
+        for (i in 0 until array.length()) {
+            val obj = array.optJSONObject(i) ?: continue
+            val src = obj.optString("src", "")
+            if (src.isEmpty()) continue
+            result +=
+                TurnBgImage(
+                    src = src,
+                    depth = obj.optLong("depth", 0L),
+                    opacity = obj.optDouble("opacity", 1.0).toFloat(),
+                )
+        }
+        return result.sortedBy { it.depth }
     }
 
     private fun parseLines(array: JSONArray?): List<TurnDisplayLine> {

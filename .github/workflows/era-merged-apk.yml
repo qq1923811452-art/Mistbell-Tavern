@@ -13,6 +13,8 @@ on:
       - "4.0幻想乡适配"
     paths:
       - "era-engine/**"
+      - "mistbell-v3/app/src/main/java/com/mistbell/tavern/v3/feature/era/**"
+      - "mistbell-v3/app/src/test/java/com/mistbell/tavern/v3/feature/era/**"
       - ".github/workflows/era-merged-apk.yml"
       - "mistbell-v3/app/src/main/AndroidManifest.xml"
 
