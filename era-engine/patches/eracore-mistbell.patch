@@ -1,3 +1,32 @@
+diff --git a/EraCore.Core/Shared/Runtime/Script/Loader/ErbIrCache.cs b/EraCore.Core/Shared/Runtime/Script/Loader/ErbIrCache.cs
+index a9c3d18..2db4526 100644
+--- a/EraCore.Core/Shared/Runtime/Script/Loader/ErbIrCache.cs
++++ b/EraCore.Core/Shared/Runtime/Script/Loader/ErbIrCache.cs
+@@ -53,7 +53,8 @@ internal static class ErbIrCache
+ {
+ 	private const string Magic = "ERIR";
+ 	/// <summary>IR 布局版本（IR 布局演进时自增，独立于引擎版本）。v2 = issues/12 M4 firstDir 清单区。</summary>
+-	private const int FormatVersion = 2;
++	// MISTBELL_PATCH_IR_VERSION：浮点字面量/别名加载改变解析结果，旧缓存必须作废。
++	private const int FormatVersion = 3;
+ 	/// <summary>边界硬上限（design.md §8，v1 文本 IR 体积 &lt; 源总大小，估 &lt;80MB；eraTW 实测后微调）。超限即判废不生成。</summary>
+ 	internal const long MaxIrFileBytes = 200L * 1024 * 1024;
+ 
+diff --git a/EraCore.Core/Shared/Runtime/Script/Loader/ErbThreePassParser.cs b/EraCore.Core/Shared/Runtime/Script/Loader/ErbThreePassParser.cs
+index ab8bdbd..7a7cf40 100644
+--- a/EraCore.Core/Shared/Runtime/Script/Loader/ErbThreePassParser.cs
++++ b/EraCore.Core/Shared/Runtime/Script/Loader/ErbThreePassParser.cs
+@@ -439,7 +439,9 @@ internal sealed class ErbThreePassParser
+ 					}
+ 					if (pairLine == null)
+ 					{
+-						ctx.Warn(string.Format(trerror.InvalidLoopInstruction.Text, func.Function.Name), func, 2, true, false);
++						// MISTBELL_PATCH_CONTINUE：画蛇添足版允许循环外 CONTINUE；
++						// 降为告警并留空跳转，运行期按 no-op 处理（不再中止解析）。
++						ctx.Warn(string.Format(trerror.InvalidLoopInstruction.Text, func.Function.Name), func, 1, false, false);
+ 						break;
+ 					}
+ 					func.JumpTo = pairLine;
 diff --git a/EraCore.Core/Shared/Runtime/Script/Parser/LexicalAnalyzer.cs b/EraCore.Core/Shared/Runtime/Script/Parser/LexicalAnalyzer.cs
 index 7e880c0..e2dbdbe 100644
 --- a/EraCore.Core/Shared/Runtime/Script/Parser/LexicalAnalyzer.cs
@@ -114,18 +143,20 @@ index 8ec0bbd..8449cd1 100644
  		public void Add(AExpression term)
  		{
 diff --git a/EraCore.Core/Shared/Runtime/Script/Statements/Expression/OperatorMethod.cs b/EraCore.Core/Shared/Runtime/Script/Statements/Expression/OperatorMethod.cs
-index 59e1637..957f65e 100644
+index 59e1637..30f5865 100644
 --- a/EraCore.Core/Shared/Runtime/Script/Statements/Expression/OperatorMethod.cs
 +++ b/EraCore.Core/Shared/Runtime/Script/Statements/Expression/OperatorMethod.cs
-@@ -3,6 +3,7 @@ using MinorShift.Emuera.Runtime.Script.Statements.Variable;
+@@ -2,7 +2,9 @@ using MinorShift.Emuera.Runtime.Script.Statements.Function;
+ using MinorShift.Emuera.Runtime.Script.Statements.Variable;
  using MinorShift.Emuera.Runtime.Utils;
  using MinorShift.Emuera.Runtime.Utils.EvilMask;
++using System;
  using System.Collections.Generic;
 +using System.Globalization;
  using System.Text;
  using trerror = MinorShift.Emuera.Runtime.Utils.EvilMask.Lang.Error;
  
-@@ -25,9 +26,12 @@ internal static class OperatorMethodManager
+@@ -25,9 +27,12 @@ internal static class OperatorMethodManager
  	readonly static Dictionary<OperatorCode, OperatorMethod> unaryAfterDic = [];
  	readonly static Dictionary<OperatorCode, OperatorMethod> binaryIntIntDic = [];
  	readonly static Dictionary<OperatorCode, OperatorMethod> binaryStrStrDic = [];
@@ -138,7 +169,7 @@ index 59e1637..957f65e 100644
  
  	static OperatorMethodManager()
  	{
-@@ -71,9 +75,22 @@ internal static class OperatorMethodManager
+@@ -71,9 +76,22 @@ internal static class OperatorMethodManager
  		binaryStrStrDic[OperatorCode.LessEqual] = new LessEqualStrStr();
  		binaryStrStrDic[OperatorCode.NotEqual] = new NotEqualStrStr();
  
@@ -161,7 +192,7 @@ index 59e1637..957f65e 100644
  	}
  
  
-@@ -88,7 +105,17 @@ internal static class OperatorMethodManager
+@@ -88,7 +106,17 @@ internal static class OperatorMethodManager
  			if (var.Identifier.IsConst)
  				throw new CodeEE(trerror.IncrementConst.Text);
  		}
@@ -180,7 +211,7 @@ index 59e1637..957f65e 100644
  		{
  			if (op == OperatorCode.Plus)
  				return o1;
-@@ -139,7 +166,13 @@ internal static class OperatorMethodManager
+@@ -139,7 +167,13 @@ internal static class OperatorMethodManager
  	public static AExpression ReduceBinaryTerm(OperatorCode op, AExpression left, AExpression right)
  	{
  		OperatorMethod method = null!;
@@ -195,16 +226,19 @@ index 59e1637..957f65e 100644
  		{
  			if (binaryIntIntDic.TryGetValue(op, out OperatorMethod? value))
  				method = value;
-@@ -181,6 +214,8 @@ internal static class OperatorMethodManager
+@@ -181,6 +215,11 @@ internal static class OperatorMethodManager
  			method = ternaryIntIntInt;
  		else if (o1.GetOperandType() == typeof(long) && o2.GetOperandType() == typeof(string) && o3.GetOperandType() == typeof(string))
  			method = ternaryIntStrStr;
-+		else if (o1.GetOperandType() == typeof(long) && o2.IsFloat && o3.IsFloat)
++		else if (o1.GetOperandType() == typeof(long)
++			&& (o2.IsFloat || o3.IsFloat)
++			&& o2.GetOperandType() != typeof(string)
++			&& o3.GetOperandType() != typeof(string))
 +			method = ternaryIntDoubleDouble;
  		if (method != null)
  			return new FunctionMethodTerm(method, [o1, o2, o3]);
  		throw new CodeEE(trerror.InvalidTernaryOp.Text);
-@@ -203,6 +238,113 @@ internal static class OperatorMethodManager
+@@ -203,6 +242,115 @@ internal static class OperatorMethodManager
  		}
  	}
  
@@ -310,8 +344,10 @@ index 59e1637..957f65e 100644
 +	private sealed class TernaryIntDoubleDouble : OperatorMethod
 +	{
 +		public TernaryIntDoubleDouble() { CanRestructure = true; ReturnType = typeof(double); }
++		private static double Pick(ExpressionMediator exm, AExpression e)
++			=> e.IsFloat ? e.GetDoubleValue(exm) : e.GetIntValue(exm);
 +		public override double GetDoubleValue(ExpressionMediator exm, List<AExpression> a)
-+			=> a[0].GetIntValue(exm) != 0 ? a[1].GetDoubleValue(exm) : a[2].GetDoubleValue(exm);
++			=> a[0].GetIntValue(exm) != 0 ? Pick(exm, a[1]) : Pick(exm, a[2]);
 +		public override long GetIntValue(ExpressionMediator exm, List<AExpression> a) => (long)GetDoubleValue(exm, a);
 +	}
 +
@@ -520,6 +556,21 @@ index b0d0805..ebbca66 100644
  	public override string GetStrValue(ExpressionMediator exm)
  	{
  		return method.GetStrValue(exm, arguments);
+diff --git a/EraCore.Core/Shared/Runtime/Script/Statements/Instraction.Child.cs b/EraCore.Core/Shared/Runtime/Script/Statements/Instraction.Child.cs
+index 08a6c11..20c58e8 100644
+--- a/EraCore.Core/Shared/Runtime/Script/Statements/Instraction.Child.cs
++++ b/EraCore.Core/Shared/Runtime/Script/Statements/Instraction.Child.cs
+@@ -3447,7 +3447,9 @@ internal sealed partial class FunctionIdentifier
+ 		{
+ 			////BREAKのJUMP先はRENDまたはNEXT。そのジャンプ先であるREPEATかFORをiLineに代入。
+ 			//1.723 仕様変更。BREAKのJUMP先にはREPEAT、FOR、WHILEを記憶する。そのJUMP先が本当のJUMP先。
+-			InstructionLine jumpTo = (InstructionLine)func.JumpTo;
++			// MISTBELL_PATCH_CONTINUE：循环外 CONTINUE 没有目标，按 no-op 处理。
++			if (func.JumpTo is not InstructionLine jumpTo)
++				return;
+ 			InstructionLine iLine = (InstructionLine)jumpTo.JumpTo;
+ 			//WHILEとDOはカウンタがないので、即ジャンプ
+ 			if (jumpTo.FunctionCode != FunctionCode.WHILE && jumpTo.FunctionCode != FunctionCode.DO)
 diff --git a/EraCore.Core/Shared/Runtime/Utils/EncodingHandler.cs b/EraCore.Core/Shared/Runtime/Utils/EncodingHandler.cs
 index 5ea116f..3d9465c 100644
 --- a/EraCore.Core/Shared/Runtime/Utils/EncodingHandler.cs
@@ -570,7 +621,7 @@ index 794d63a..aa3ecdc 100644
  	{
  		Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 diff --git a/EraCore.Core/Shared/Runtime/Utils/SafCompat.cs b/EraCore.Core/Shared/Runtime/Utils/SafCompat.cs
-index 71bfe26..af3cced 100644
+index 71bfe26..6e0b84d 100644
 --- a/EraCore.Core/Shared/Runtime/Utils/SafCompat.cs
 +++ b/EraCore.Core/Shared/Runtime/Utils/SafCompat.cs
 @@ -25,32 +25,52 @@ internal static class SafCompat
@@ -651,7 +702,7 @@ index 71bfe26..af3cced 100644
      }
  
      /// <summary>
-@@ -103,15 +123,16 @@ internal static class SafCompat
+@@ -103,15 +123,22 @@ internal static class SafCompat
  
      internal static byte[]? ReadAllBytes(string path)
      {
@@ -659,7 +710,7 @@ index 71bfe26..af3cced 100644
 -        return Program.DirAccessor.ReadAllBytes(path);
 +        if (IsContentUri(path)) return Program.DirAccessor.ReadAllBytes(path);
 +        if (File.Exists(path)) return File.ReadAllBytes(path);
-+        return Program.DirAccessor?.ReadAllBytes(path);
++        return Program.DirAccessor?.ReadAllBytes(path) ?? File.ReadAllBytes(path);
      }
  
      internal static string[] ReadAllLines(string path)
@@ -667,9 +718,15 @@ index 71bfe26..af3cced 100644
 -        if (!IsContentUri(path)) return File.ReadAllLines(path);
 -        return EncodingHandler.ReadAllLinesFromBytes(
 -            Program.DirAccessor.ReadAllBytes(path) ?? []);
-+        if (IsContentUri(path)) return Program.DirAccessor.ReadAllLines(path);
-+        if (File.Exists(path)) return File.ReadAllLines(path);
-+        return Program.DirAccessor?.ReadAllLines(path) ?? File.ReadAllLines(path);
++        // IGameDirAccessor 没有 ReadAllLines：走 ReadAllBytes + 统一的行分割/编码探测。
++        if (IsContentUri(path))
++            return EncodingHandler.ReadAllLinesFromBytes(Program.DirAccessor.ReadAllBytes(path) ?? []);
++        if (File.Exists(path))
++            return File.ReadAllLines(path);
++        var bytes = Program.DirAccessor?.ReadAllBytes(path);
++        return bytes != null
++            ? EncodingHandler.ReadAllLinesFromBytes(bytes)
++            : File.ReadAllLines(path);
      }
  
      internal static FileAttributes GetAttributes(string path)
