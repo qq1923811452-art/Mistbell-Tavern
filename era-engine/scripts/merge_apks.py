@@ -5,11 +5,14 @@ import zipfile
 
 ABI = "arm64-v8a"
 SIGNATURE_SUFFIXES = (".SF", ".RSA", ".DSA")
+# .NET 10 把程序集打成一个 .so（libassemblies.<abi>.blob.so），不再是 assemblies/ 目录；
+# 这两个包里出现即代表引擎运行时，和主包重名时必须硬报错而不是静默跳过。
 CRITICAL_ENGINE_SOS = {
     f"lib/{ABI}/libmonodroid.so",
     f"lib/{ABI}/libmonosgen-2.0.so",
     f"lib/{ABI}/libxamarin-app.so",
     f"lib/{ABI}/libe_sqlite3.so",
+    f"lib/{ABI}/libassemblies.{ABI}.blob.so",
 }
 
 
@@ -54,8 +57,11 @@ def main(app_apk: str, engine_apk: str, out_apk: str) -> int:
         injected_libs = [n for n in engine_names if n.startswith(f"lib/{ABI}/") and n.endswith(".so")]
         engine_dex = "classes.dex"
 
-        if not injected_assemblies:
-            print("ERROR: 引擎 APK 里没有 assemblies/，无法单包", file=sys.stderr)
+        # .NET 8：assemblies/ 目录 + lib/<abi>/*.so
+        # .NET 10：程序集合并进 lib/<abi>/libassemblies.<abi>.blob.so，没有 assemblies/
+        bundled_assemblies = [n for n in injected_libs if "libassemblies." in n and n.endswith(".blob.so")]
+        if not injected_assemblies and not bundled_assemblies:
+            print("ERROR: 引擎 APK 里既没有 assemblies/ 也没有 libassemblies.*.blob.so", file=sys.stderr)
             return 2
         if engine_dex not in engine_names:
             print("ERROR: 引擎 APK 里没有 classes.dex", file=sys.stderr)
@@ -71,7 +77,7 @@ def main(app_apk: str, engine_apk: str, out_apk: str) -> int:
         if skipped:
             print(f"WARNING: 跳过已存在的共享 .so: {skipped}", file=sys.stderr)
 
-        print(f"assemblies: {len(injected_assemblies)} 项")
+        print(f"assemblies: {len(injected_assemblies)} 项，libassemblies.blob: {len(bundled_assemblies)} 项")
         print(f"native libs: {len(injected_libs)} 项（跳过共用 {len(skipped)}）")
         print(f"engine dex -> classes{'' if dex_index == 1 else dex_index}.dex")
 
