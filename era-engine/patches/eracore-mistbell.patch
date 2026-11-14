@@ -1189,3 +1189,29 @@ index d4810fe..b6c6928 100644
  							//case "pos":
  							//	{
  							//		//throw new NotImplCodeEE();
+diff --git a/EraCore.Core/UI/Game/Console/ConsolePrintManager.cs b/EraCore.Core/UI/Game/Console/ConsolePrintManager.cs
+index d3d0f7c..e4f13b3 100644
+--- a/EraCore.Core/UI/Game/Console/ConsolePrintManager.cs
++++ b/EraCore.Core/UI/Game/Console/ConsolePrintManager.cs
+@@ -689,6 +689,21 @@ internal sealed class ConsolePrintManager
+         int column = 0;
+         foreach (var btn in line.Buttons)
+         {
++            // MISTBELL_PATCH_DIV：<div> 部件的文字与按钮在 Children 里，
++            // 通用分支只取 node.Text（空串）→ 整个 div 界面在协议里变成空白，
++            // 前端表现就是「点设置后黑屏」。这里把子行拍平追加，保留按钮。
++            if (btn.StrArray.Any(n => n is ConsoleDivPart))
++            {
++                foreach (var node in btn.StrArray)
++                {
++                    if (node is not ConsoleDivPart div)
++                        continue;
++                    foreach (var childLine in div.Children)
++                        ops.AddRange(BuildPrintOpsForLine(childLine, defaultFontName));
++                }
++                continue;
++            }
++
+             var segments = new List<PrintSegment>();
+             foreach (var node in btn.StrArray)
+             {
