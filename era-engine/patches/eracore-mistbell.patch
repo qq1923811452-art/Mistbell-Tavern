@@ -140,10 +140,10 @@ index 7e880c0..527b2c4 100644
  					case '>':
  						if (endWith == LexEndWith.GreaterThan)
 diff --git a/EraCore.Core/Shared/Runtime/Script/Parser/LogicalLineParser.cs b/EraCore.Core/Shared/Runtime/Script/Parser/LogicalLineParser.cs
-index 682f04c..b2b725f 100644
+index 682f04c..157d604 100644
 --- a/EraCore.Core/Shared/Runtime/Script/Parser/LogicalLineParser.cs
 +++ b/EraCore.Core/Shared/Runtime/Script/Parser/LogicalLineParser.cs
-@@ -277,8 +277,11 @@ internal static class LogicalLineParser
+@@ -277,9 +277,20 @@ internal static class LogicalLineParser
  						}
  					}
  					break;
@@ -154,8 +154,17 @@ index 682f04c..b2b725f 100644
 +								s.Equals("DIMS", Config.Config.StringComparison) ||
 +								s.Equals("DIMF", Config.Config.StringComparison):
  					{
++						if (token.SequenceEqual("DIMF"))
++						{
++							// MISTBELL_NOT_IMPLEMENTED：浮点变量尚未实现，这里按整数接受但必须让问题可见，
++							// 否则小数会被静默截断（倍率恒为 1）。
++							ParserMediator.Warn(
++								"#DIMF 暂按整数变量处理：小数会被截断（浮点变量尚未实现）",
++								position, 1, false);
++						}
  						var wc = LexicalAnalyzer.Analyse(st, LexEndWith.EoL, LexAnalyzeFlag.AllowAssignment);
  
+ 						UserDefinedVariableData data = UserDefinedVariableData.Create(wc, token.SequenceEqual("DIMS"), true, position);
 diff --git a/EraCore.Core/Shared/Runtime/Script/Parser/Word.cs b/EraCore.Core/Shared/Runtime/Script/Parser/Word.cs
 index 450f953..4929a7e 100644
 --- a/EraCore.Core/Shared/Runtime/Script/Parser/Word.cs
@@ -665,7 +674,7 @@ index b0d0805..ebbca66 100644
  	{
  		return method.GetStrValue(exm, arguments);
 diff --git a/EraCore.Core/Shared/Runtime/Script/Statements/Instraction.Child.cs b/EraCore.Core/Shared/Runtime/Script/Statements/Instraction.Child.cs
-index 08a6c11..447ac79 100644
+index 08a6c11..74eab8f 100644
 --- a/EraCore.Core/Shared/Runtime/Script/Statements/Instraction.Child.cs
 +++ b/EraCore.Core/Shared/Runtime/Script/Statements/Instraction.Child.cs
 @@ -647,7 +647,14 @@ internal sealed partial class FunctionIdentifier
@@ -710,7 +719,7 @@ index 08a6c11..447ac79 100644
 -					GlobalStatic.VEvaluator.RESULTS = arg.Def!.GetStrValue(exm);
 +				// MISTBELL_PATCH_INPUT_NRE：可跳过分支原来对 Mouse/Def 用了 null-forgiving，
 +				// 省略可选参数的 INPUT/BINPUT 会直接 NullReferenceException。
-+				strValue = arg.Def != null ? arg.Def.GetStrValue(exm) : "";
++				string strValue = arg.Def != null ? arg.Def.GetStrValue(exm) : "";
 +				bool mouseClicked = arg.Mouse != null && arg.Mouse.GetIntValue(exm) != 0;
 +				if (mouseClicked)
 +					GlobalStatic.VEvaluator.RESULTS_ARRAY[1] = strValue;
@@ -728,7 +737,7 @@ index 08a6c11..447ac79 100644
 -					GlobalStatic.VEvaluator.RESULT = arg.Def!.GetIntValue(exm);
 +				// MISTBELL_PATCH_INPUT_NRE：可跳过分支原来对 Mouse/Def 用了 null-forgiving，
 +				// 省略可选参数的 INPUT/BINPUT 会直接 NullReferenceException。
-+				intValue = arg.Def != null ? arg.Def.GetIntValue(exm) : 0;
++				long intValue = arg.Def != null ? arg.Def.GetIntValue(exm) : 0;
 +				bool mouseClicked = arg.Mouse != null && arg.Mouse.GetIntValue(exm) != 0;
 +				if (mouseClicked)
 +					GlobalStatic.VEvaluator.RESULT_ARRAY[1] = intValue;
@@ -746,7 +755,7 @@ index 08a6c11..447ac79 100644
 -					GlobalStatic.VEvaluator.RESULTS = arg.Def!.GetStrValue(exm);
 +				// MISTBELL_PATCH_INPUT_NRE：可跳过分支原来对 Mouse/Def 用了 null-forgiving，
 +				// 省略可选参数的 INPUT/BINPUT 会直接 NullReferenceException。
-+				strValue = arg.Def != null ? arg.Def.GetStrValue(exm) : "";
++				string strValue = arg.Def != null ? arg.Def.GetStrValue(exm) : "";
 +				bool mouseClicked = arg.Mouse != null && arg.Mouse.GetIntValue(exm) != 0;
 +				if (mouseClicked)
 +					GlobalStatic.VEvaluator.RESULTS_ARRAY[1] = strValue;
@@ -764,7 +773,7 @@ index 08a6c11..447ac79 100644
 -					GlobalStatic.VEvaluator.RESULT = tinputarg.Def!.GetIntValue(exm);
 +				// MISTBELL_PATCH_INPUT_NRE：可跳过分支原来对 Mouse/Def 用了 null-forgiving，
 +				// 省略可选参数的 INPUT/BINPUT 会直接 NullReferenceException。
-+				intValue = tinputarg.Def != null ? tinputarg.Def.GetIntValue(exm) : 0;
++				long intValue = tinputarg.Def != null ? tinputarg.Def.GetIntValue(exm) : 0;
 +				bool mouseClicked = tinputarg.Mouse != null && tinputarg.Mouse.GetIntValue(exm) != 0;
 +				if (mouseClicked)
 +					GlobalStatic.VEvaluator.RESULT_ARRAY[1] = intValue;
@@ -782,7 +791,7 @@ index 08a6c11..447ac79 100644
 -					GlobalStatic.VEvaluator.RESULTS = tinputarg.Def!.GetStrValue(exm);
 +				// MISTBELL_PATCH_INPUT_NRE：可跳过分支原来对 Mouse/Def 用了 null-forgiving，
 +				// 省略可选参数的 INPUT/BINPUT 会直接 NullReferenceException。
-+				strValue = tinputarg.Def != null ? tinputarg.Def.GetStrValue(exm) : "";
++				string strValue = tinputarg.Def != null ? tinputarg.Def.GetStrValue(exm) : "";
 +				bool mouseClicked = tinputarg.Mouse != null && tinputarg.Mouse.GetIntValue(exm) != 0;
 +				if (mouseClicked)
 +					GlobalStatic.VEvaluator.RESULTS_ARRAY[1] = strValue;
@@ -800,7 +809,7 @@ index 08a6c11..447ac79 100644
 -					GlobalStatic.VEvaluator.RESULT = arg.Def!.GetIntValue(exm);
 +				// MISTBELL_PATCH_INPUT_NRE：可跳过分支原来对 Mouse/Def 用了 null-forgiving，
 +				// 省略可选参数的 INPUT/BINPUT 会直接 NullReferenceException。
-+				intValue = arg.Def != null ? arg.Def.GetIntValue(exm) : 0;
++				long intValue = arg.Def != null ? arg.Def.GetIntValue(exm) : 0;
 +				bool mouseClicked = arg.Mouse != null && arg.Mouse.GetIntValue(exm) != 0;
 +				if (mouseClicked)
 +					GlobalStatic.VEvaluator.RESULT_ARRAY[1] = intValue;
@@ -818,7 +827,7 @@ index 08a6c11..447ac79 100644
 -					GlobalStatic.VEvaluator.RESULTS = arg.Def!.GetStrValue(exm);
 +				// MISTBELL_PATCH_INPUT_NRE：可跳过分支原来对 Mouse/Def 用了 null-forgiving，
 +				// 省略可选参数的 INPUT/BINPUT 会直接 NullReferenceException。
-+				strValue = arg.Def != null ? arg.Def.GetStrValue(exm) : "";
++				string strValue = arg.Def != null ? arg.Def.GetStrValue(exm) : "";
 +				bool mouseClicked = arg.Mouse != null && arg.Mouse.GetIntValue(exm) != 0;
 +				if (mouseClicked)
 +					GlobalStatic.VEvaluator.RESULTS_ARRAY[1] = strValue;
@@ -836,7 +845,7 @@ index 08a6c11..447ac79 100644
 -					GlobalStatic.VEvaluator.RESULT = arg.Def!.GetIntValue(exm);
 +				// MISTBELL_PATCH_INPUT_NRE：可跳过分支原来对 Mouse/Def 用了 null-forgiving，
 +				// 省略可选参数的 INPUT/BINPUT 会直接 NullReferenceException。
-+				intValue = arg.Def != null ? arg.Def.GetIntValue(exm) : 0;
++				long intValue = arg.Def != null ? arg.Def.GetIntValue(exm) : 0;
 +				bool mouseClicked = arg.Mouse != null && arg.Mouse.GetIntValue(exm) != 0;
 +				if (mouseClicked)
 +					GlobalStatic.VEvaluator.RESULT_ARRAY[1] = intValue;
@@ -854,7 +863,7 @@ index 08a6c11..447ac79 100644
 -					GlobalStatic.VEvaluator.RESULTS = arg.Def!.GetStrValue(exm);
 +				// MISTBELL_PATCH_INPUT_NRE：可跳过分支原来对 Mouse/Def 用了 null-forgiving，
 +				// 省略可选参数的 INPUT/BINPUT 会直接 NullReferenceException。
-+				strValue = arg.Def != null ? arg.Def.GetStrValue(exm) : "";
++				string strValue = arg.Def != null ? arg.Def.GetStrValue(exm) : "";
 +				bool mouseClicked = arg.Mouse != null && arg.Mouse.GetIntValue(exm) != 0;
 +				if (mouseClicked)
 +					GlobalStatic.VEvaluator.RESULTS_ARRAY[1] = strValue;
