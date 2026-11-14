@@ -235,7 +235,9 @@ internal sealed class EraSessionHost : IAsyncDisposable
 
             if (pendingStart != null)
             {
+                EraBootstrap.Trace("awaiting GameHost.StartAsync...");
                 var startResult = await pendingStart.ConfigureAwait(false);
+                EraBootstrap.Trace($"GameHost.StartAsync returned: ok={startResult.Succeeded} code={startResult.ErrorCode}");
                 if (!startResult.Succeeded)
                 {
                     var errJson = JsonSerializer.Serialize(
@@ -256,7 +258,20 @@ internal sealed class EraSessionHost : IAsyncDisposable
 
             var snapshot = stream.InitialSnapshot;
             Volatile.Write(ref latestGeneration, snapshot.generation);
-            await SendLineAsync(SnapshotJsonWriter.SerializeEnvelope(snapshot)).ConfigureAwait(false);
+            EraBootstrap.Trace($"snapshot: lines={snapshot.lines.Count} gen={snapshot.generation} rev={snapshot.revision} bgImages={snapshot.bgImages?.Count ?? 0}");
+            string envelope;
+            try
+            {
+                envelope = SnapshotJsonWriter.SerializeEnvelope(snapshot);
+            }
+            catch (Exception ex)
+            {
+                EraBootstrap.Trace("snapshot serialize failed: " + ex);
+                throw;
+            }
+            EraBootstrap.Trace($"snapshot envelope bytes={envelope.Length}");
+            await SendLineAsync(envelope).ConfigureAwait(false);
+            EraBootstrap.Trace("snapshot sent");
 
             using var clientCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             var readTask = ReadClientCommandsAsync(reader, host, clientCts.Token);
