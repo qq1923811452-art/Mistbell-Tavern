@@ -46,6 +46,32 @@
 - 按钮目前是行内点击 + 底部快捷区；后期由新布局接管（协议已单独下发 `TurnButton`，无需从文本解析）
 - 自动滚屏已修，但新布局下可能改为“新内容提示条”
 
+
+### P5 立绘完全不显示（根因已确认）
+
+- EraCore 对 `SETIMAGELAYER` / `SETIMAGELAYERL` 的状态是 `PortStatus.AcceptedNoOp`：
+  **只解析参数、控制台 no-op**，不产出任何渲染数据
+- `SETCHARAIMG` 在 EraCore 里**完全没有实现**（全仓库搜不到）
+- 快照里的 `bgImages` 只由 `SETBGIMAGE` 写入，那是背景图，不是角色立绘
+- 因此前端拿不到立绘数据，画不出来与 UI 无关
+
+需要新增：引擎侧图层指令 → 快照新增 `spriteLayers`（src / x / y / scale / opacity / depth）
+→ 前端按层渲染。工作量中等，属于引擎功能补齐。
+
+### P6 打开「设置」后卡住/黑屏
+
+- 现象：点 `[设置]` 后下拉直接黑屏
+- 怀疑：魔改 UI 用 `<div>` 布局，EraCore 产出大量 `ConsoleDivPart`，前端逐行构建
+  AnnotatedString 时开销过大
+- 待办：拿该界面的 `agent.log` 与对应 ERB（`UI_Container_Framework.ERB` / `qol_option.ERB`）
+  确认单帧行数与部件数
+
+### P7 `LOCALF` 未定义
+
+- `DLC\魔法DLC\使用魔法.ERB:1263/1265/1271` 报「无法解析的标识符 LOCALF」
+- EraCore 没有 `LOCALF` 这个内建变量（只有 `LOCAL`）
+- 影响：`经验获取量 = TOINT(LOCALF)` 恒为 0
+
 ## 三、环境与构建事实
 
 | 项 | 值 |
