@@ -611,10 +611,17 @@ index 08a6c11..20c58e8 100644
  			//WHILEとDOはカウンタがないので、即ジャンプ
  			if (jumpTo.FunctionCode != FunctionCode.WHILE && jumpTo.FunctionCode != FunctionCode.DO)
 diff --git a/EraCore.Core/Shared/Runtime/Utils/EncodingHandler.cs b/EraCore.Core/Shared/Runtime/Utils/EncodingHandler.cs
-index 5ea116f..d870bc4 100644
+index 5ea116f..5e37761 100644
 --- a/EraCore.Core/Shared/Runtime/Utils/EncodingHandler.cs
 +++ b/EraCore.Core/Shared/Runtime/Utils/EncodingHandler.cs
-@@ -29,16 +29,8 @@ public static class EncodingHandler
+@@ -1,5 +1,6 @@
+ using MinorShift.Emuera.Files;
+ using System;
++using System.Buffers;
+ using System.Collections.Generic;
+ using System.IO;
+ using System.Text;
+@@ -29,16 +30,8 @@ public static class EncodingHandler
  			int bomLen = bomEnc == UTF8BOMEncoding ? 3 : 2;
  			return SplitLines(bomEnc.GetString(bytes, bomLen, bytes.Length - bomLen));
  		}
@@ -633,7 +640,7 @@ index 5ea116f..d870bc4 100644
  	}
  
  	/// <summary>
-@@ -72,7 +64,7 @@ public static class EncodingHandler
+@@ -72,46 +65,160 @@ public static class EncodingHandler
  		return lines.ToArray();
  	}
  
@@ -642,31 +649,9 @@ index 5ea116f..d870bc4 100644
  	public static Encoding DetectEncoding(byte[] bytes)
  	{
  		var bomEnc = DetectBomEncoding(bytes);
-@@ -85,8 +77,44 @@ public static class EncodingHandler
- 		}
- 		catch (DecoderFallbackException)
- 		{
--			return shiftjisEncoding;
- 		}
-+		// MISTBELL_PATCH_LANG_ENCODING：中文包（GBK）存档/图片名表/LOADTEXT 也要认。
-+		// 探测用严格解码判断「是否真的是该编码」，但返回普通编码，
-+		// 这样后续万一夹一个废字节不会抛异常打断读取。
-+		if (TryGetLanguageEncoding() is { } langEncoding)
-+		{
-+			try
-+			{
-+				var strict = Encoding.GetEncoding(
-+					langEncoding.CodePage,
-+					EncoderFallback.ReplacementFallback,
-+					DecoderFallback.ExceptionFallback);
-+				strict.GetString(bytes);
-+				return langEncoding;
-+			}
-+			catch (DecoderFallbackException)
-+			{
-+			}
-+		}
-+		return shiftjisEncoding;
+ 		if (bomEnc != null)
+ 			return bomEnc;
++		return DetectNonBomEncoding(bytes);
 +	}
 +
 +	/// <summary>
@@ -675,48 +660,86 @@ index 5ea116f..d870bc4 100644
 +	/// </summary>
 +	private static Encoding? TryGetLanguageEncoding()
 +	{
-+		try
-+		{
+ 		try
+ 		{
+-			UTF8Encoding.GetString(bytes);
+-			return UTF8Encoding;
 +			var langEncoding = LangManager.CurrentEncoding;
 +			if (langEncoding != null && langEncoding.CodePage != shiftjisEncoding.CodePage)
 +				return langEncoding;
-+		}
+ 		}
+-		catch (DecoderFallbackException)
 +		catch
-+		{
-+		}
+ 		{
+-			return shiftjisEncoding;
+ 		}
 +		return null;
  	}
  
++	private const int StreamProbeSize = 64 * 1024;
++	private static readonly UTF8Encoding StrictUtf8 = new(false, throwOnInvalidBytes: true);
++
  	public static Encoding DetectEncoding(Stream stream)
-@@ -94,24 +122,38 @@ public static class EncodingHandler
- 		var pos = stream.Position;
+ 	{
+-		var pos = stream.Position;
++		// MISTBELL_PATCH_STREAM_WINDOW：零大对象分配探测。
++		// 64KB ≤ 85KB LOH 阈值，ArrayPool 全线程复用；只做 GetCharCount 合法性验证，
++		// 不产生临时 string。非 ASCII 且未到 EOF 时按行边界截断，避免腰斩多字节字符。
++		bool canSeek = stream.CanSeek;
++		long savedPos = canSeek ? stream.Position : 0;
++		byte[] buffer = ArrayPool<byte>.Shared.Rent(StreamProbeSize);
  		try
  		{
 -			using var sr = new StreamReader(stream, UTF8Encoding, true, -1, true);
 -			sr.Peek();
 -			if (!UTF8Encoding.Equals(sr.CurrentEncoding))
-+			// MISTBELL_PATCH_STREAM_WINDOW：只读窗口探测，绝不把整条流吞进内存。
-+			// 前 64 KB 全 ASCII 时继续往后扫，避免「开头全是英文注释」被误判成 UTF-8。
-+			const int WindowSize = 64 * 1024;
-+			var buffer = new byte[WindowSize];
++			bool firstChunk = true;
 +			while (true)
  			{
 -				stream.Seek(pos, SeekOrigin.Begin);
 -				return sr.CurrentEncoding;
-+				int read = stream.Read(buffer, 0, buffer.Length);
-+				if (read <= 0)
-+					return UTF8Encoding; // 全 ASCII：UTF-8 与 ANSI 等价
-+				bool hasNonAscii = false;
-+				for (int i = 0; i < read; i++)
++				int read = stream.ReadAtLeast(buffer.AsSpan(0, StreamProbeSize), StreamProbeSize, throwOnEndOfStream: false);
++				if (read == 0)
++					return Encoding.UTF8;
++
++				var raw = buffer.AsSpan(0, read);
++				if (firstChunk)
 +				{
-+					if (buffer[i] >= 0x80)
++					if (read >= 3 && raw[0] == 0xEF && raw[1] == 0xBB && raw[2] == 0xBF)
++						return Encoding.UTF8;
++					if (read >= 2 && raw[0] == 0xFF && raw[1] == 0xFE)
++						return Encoding.Unicode;
++					if (read >= 2 && raw[0] == 0xFE && raw[1] == 0xFF)
++						return Encoding.BigEndianUnicode;
++				}
++
++				bool hitEof = read < StreamProbeSize;
++				if (!ContainsNonAscii(raw))
++				{
++					if (hitEof)
++						return Encoding.UTF8;
++					firstChunk = false;
++					continue;
++				}
++
++				if (!hitEof)
++				{
++					int lastNl = raw.LastIndexOf((byte)'\n');
++					if (lastNl >= 0)
 +					{
-+						hasNonAscii = true;
-+						break;
++						var aligned = raw.Slice(0, lastNl + 1);
++						if (ContainsNonAscii(aligned))
++							return DetectNonBomEncoding(aligned);
++						if (canSeek)
++						{
++							stream.Position -= read - (lastNl + 1);
++							firstChunk = false;
++							continue;
++						}
 +					}
 +				}
-+				if (hasNonAscii || read < buffer.Length)
-+					return read == buffer.Length ? DetectEncoding(buffer) : DetectEncoding(buffer[..read]);
++
++				return DetectNonBomEncoding(hitEof ? raw : TrimTrailingIncompleteUtf8(raw));
  			}
 -			sr.ReadToEnd();
 -			sr.Dispose();
@@ -730,9 +753,66 @@ index 5ea116f..d870bc4 100644
  		}
 +		finally
 +		{
-+			try { stream.Seek(pos, SeekOrigin.Begin); } catch { }
++			ArrayPool<byte>.Shared.Return(buffer);
++			if (canSeek)
++				stream.Position = savedPos;
 +		}
++	}
++
++	private static bool ContainsNonAscii(ReadOnlySpan<byte> span)
++	{
++		foreach (byte b in span)
++		{
++			if (b >= 0x80)
++				return true;
++		}
++		return false;
++	}
++
++	private static ReadOnlySpan<byte> TrimTrailingIncompleteUtf8(ReadOnlySpan<byte> span)
++	{
++		int len = span.Length;
++		int trimmed = 0;
++		while (len > 0 && trimmed < 3 && (span[len - 1] & 0xC0) == 0x80)
++		{
++			len--;
++			trimmed++;
++		}
++		if (len > 0 && (span[len - 1] & 0xC0) == 0xC0)
++			len--;
++		return span.Slice(0, len);
  	}
++
++	/// <summary>无 BOM 字节序列的编码判定：严格 UTF-8 → 当前语言编码 → SHIFT-JIS。</summary>
++	private static Encoding DetectNonBomEncoding(ReadOnlySpan<byte> sample)
++	{
++		try
++		{
++			StrictUtf8.GetCharCount(sample);
++			return Encoding.UTF8;
++		}
++		catch (DecoderFallbackException)
++		{
++		}
++
++		if (TryGetLanguageEncoding() is { } langEncoding)
++		{
++			try
++			{
++				var strict = Encoding.GetEncoding(
++					langEncoding.CodePage,
++					EncoderFallback.ReplacementFallback,
++					DecoderFallback.ExceptionFallback);
++				strict.GetCharCount(sample);
++				return langEncoding; // 探测过关后返回普通实例，后续读取不会因半截字节抛异常
++			}
++			catch (DecoderFallbackException)
++			{
++			}
++		}
++
++		return shiftjisEncoding;
++	}
 +
  	public static Encoding GetEncoding(int codePage)
  	{
