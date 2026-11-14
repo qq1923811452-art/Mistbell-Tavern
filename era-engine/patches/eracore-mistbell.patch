@@ -858,3 +858,35 @@ index 71bfe26..6e0b84d 100644
      }
  
      internal static FileAttributes GetAttributes(string path)
+diff --git a/EraCore.Core/Shared/UI/Game/HtmlManager.cs b/EraCore.Core/Shared/UI/Game/HtmlManager.cs
+index d4810fe..b6c6928 100644
+--- a/EraCore.Core/Shared/UI/Game/HtmlManager.cs
++++ b/EraCore.Core/Shared/UI/Game/HtmlManager.cs
+@@ -226,6 +226,9 @@ internal static class HtmlManager
+ 		public int Color = -1;
+ 		public int BColor = -1;
+ 		public string FontName = null!;
++		// MISTBELL_PATCH_HTML_SIZE：eraTW 的魔改 UI 用 <font size="N"> 指定字号。
++		// 引擎无渲染层，这里只做语法接受与数值校验，字号由前端按需使用。
++		public int Size = -1;
+ 		//public int PointX = 0;
+ 		//public bool PointXisLocked = false;
+ 	}
+@@ -1427,6 +1430,17 @@ internal static class HtmlManager
+ 									throw new CodeEE(string.Format(trerror.DuplicateAttribute.Text, tag, word.Code));
+ 								font.FontName = attrValue;
+ 								break;
++							case "size":
++								{
++									// MISTBELL_PATCH_HTML_SIZE：eraTW 魔改 UI 依赖该属性。
++									if (font.Size >= 0)
++										throw new CodeEE(string.Format(trerror.DuplicateAttribute.Text, tag, word.Code));
++									string raw = attrValue.Trim().TrimEnd('p', 'P', 'x', 'X').Trim();
++									if (!double.TryParse(raw, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double sz))
++										throw new CodeEE(string.Format(trerror.AttributeCanNotInterpretNum.Text, tag, word.Code));
++									font.Size = (int)Math.Round(sz);
++									break;
++								}
+ 							//case "pos":
+ 							//	{
+ 							//		//throw new NotImplCodeEE();
