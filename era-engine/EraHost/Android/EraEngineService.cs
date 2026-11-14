@@ -113,19 +113,22 @@ public sealed class EraEngineService : Service
                     {
                         SendStatus("importing", null);
                         gameDir = EraGameStore.Install(this, zipFd, gameName, packVersion);
-                        SendStatus("imported", gameDir);
                     }
                 }
                 else if (!string.IsNullOrEmpty(zipPath))
                 {
                     SendStatus("importing", null);
                     gameDir = EraGameStore.InstallFromPath(this, zipPath, gameName, packVersion);
-                    SendStatus("imported", gameDir);
                 }
                 else
                 {
                     gameDir = EraGameStore.LastGameDir(this);
                 }
+
+                // 无论新装还是复用，都要把最终游戏目录回报给前端：
+                // 立绘用 file(gameDir)/<src> 取图，拿不到路径就永远不显示。
+                if (!string.IsNullOrEmpty(gameDir))
+                    SendStatus("imported", gameDir);
             }
             catch (Exception ex)
             {

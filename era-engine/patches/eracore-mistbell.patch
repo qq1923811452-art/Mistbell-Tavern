@@ -572,40 +572,117 @@ index 08a6c11..20c58e8 100644
  			//WHILEとDOはカウンタがないので、即ジャンプ
  			if (jumpTo.FunctionCode != FunctionCode.WHILE && jumpTo.FunctionCode != FunctionCode.DO)
 diff --git a/EraCore.Core/Shared/Runtime/Utils/EncodingHandler.cs b/EraCore.Core/Shared/Runtime/Utils/EncodingHandler.cs
-index 5ea116f..3d9465c 100644
+index 5ea116f..4fd86e8 100644
 --- a/EraCore.Core/Shared/Runtime/Utils/EncodingHandler.cs
 +++ b/EraCore.Core/Shared/Runtime/Utils/EncodingHandler.cs
-@@ -36,6 +36,30 @@ public static class EncodingHandler
+@@ -29,16 +29,8 @@ public static class EncodingHandler
+ 			int bomLen = bomEnc == UTF8BOMEncoding ? 3 : 2;
+ 			return SplitLines(bomEnc.GetString(bytes, bomLen, bytes.Length - bomLen));
+ 		}
+-		// 无 BOM：尝试 UTF-8（严格模式，遇无效字节抛 DecoderFallbackException）
+-		try
+-		{
+-			return SplitLines(UTF8Encoding.GetString(bytes));
+-		}
+-		catch (DecoderFallbackException)
+-		{
+-			// UTF-8 失败 → 假设 SHIFT-JIS（CP 932 对绝大多数日文文件可解码）
+-			return SplitLines(shiftjisEncoding.GetString(bytes));
+-		}
++		// 无 BOM：UTF-8 严格 → 当前语言编码（严格探测）→ SHIFT-JIS
++		return SplitLines(DetectEncoding(bytes).GetString(bytes));
+ 	}
+ 
+ 	/// <summary>
+@@ -72,7 +64,7 @@ public static class EncodingHandler
+ 		return lines.ToArray();
+ 	}
+ 
+-	/// <summary>从已读取的字节判断 BOM、UTF-8 或 Shift-JIS，供 SAF 调用方避免回退到本地 File API。</summary>
++	/// <summary>从已读取的字节判断 BOM、UTF-8、语言编码或 Shift-JIS，供 SAF 调用方避免回退到本地 File API。</summary>
+ 	public static Encoding DetectEncoding(byte[] bytes)
+ 	{
+ 		var bomEnc = DetectBomEncoding(bytes);
+@@ -85,8 +77,44 @@ public static class EncodingHandler
  		}
  		catch (DecoderFallbackException)
  		{
-+			// MISTBELL_PATCH_LANG_ENCODING：先按当前语言配置的 ANSI 编码做「严格」解码。
-+			// 注意 Encoding.GetEncoding(936) 默认 ReplacementFallback 不抛异常，
-+			// 必须显式装 DecoderFallback.ExceptionFallback，否则 SJIS 兜底永远走不到。
+-			return shiftjisEncoding;
+ 		}
++		// MISTBELL_PATCH_LANG_ENCODING：中文包（GBK）存档/图片名表/LOADTEXT 也要认。
++		// 探测用严格解码判断「是否真的是该编码」，但返回普通编码，
++		// 这样后续万一夹一个废字节不会抛异常打断读取。
++		if (TryGetLanguageEncoding() is { } langEncoding)
++		{
 +			try
 +			{
-+				var langEncoding = LangManager.CurrentEncoding;
-+				if (langEncoding != null && langEncoding.CodePage != shiftjisEncoding.CodePage)
-+				{
-+					var strictLang = Encoding.GetEncoding(
-+						langEncoding.CodePage,
-+						EncoderFallback.ReplacementFallback,
-+						DecoderFallback.ExceptionFallback);
-+					try
-+					{
-+						return SplitLines(strictLang.GetString(bytes));
-+					}
-+					catch (DecoderFallbackException)
-+					{
-+					}
-+				}
++				var strict = Encoding.GetEncoding(
++					langEncoding.CodePage,
++					EncoderFallback.ReplacementFallback,
++					DecoderFallback.ExceptionFallback);
++				strict.GetString(bytes);
++				return langEncoding;
 +			}
-+			catch
++			catch (DecoderFallbackException)
 +			{
 +			}
- 			// UTF-8 失败 → 假设 SHIFT-JIS（CP 932 对绝大多数日文文件可解码）
- 			return SplitLines(shiftjisEncoding.GetString(bytes));
++		}
++		return shiftjisEncoding;
++	}
++
++	/// <summary>
++	/// 当前语言对应的 ANSI 编码；未初始化（如读取 emuera.config 之前）返回 null。
++	/// 日文（CP932）与 SJIS 兜底同码，直接返回 null 交给上层走 SJIS。
++	/// </summary>
++	private static Encoding? TryGetLanguageEncoding()
++	{
++		try
++		{
++			var langEncoding = LangManager.CurrentEncoding;
++			if (langEncoding != null && langEncoding.CodePage != shiftjisEncoding.CodePage)
++				return langEncoding;
++		}
++		catch
++		{
++		}
++		return null;
+ 	}
+ 
+ 	public static Encoding DetectEncoding(Stream stream)
+@@ -94,24 +122,21 @@ public static class EncodingHandler
+ 		var pos = stream.Position;
+ 		try
+ 		{
+-			using var sr = new StreamReader(stream, UTF8Encoding, true, -1, true);
+-			sr.Peek();
+-			if (!UTF8Encoding.Equals(sr.CurrentEncoding))
+-			{
+-				stream.Seek(pos, SeekOrigin.Begin);
+-				return sr.CurrentEncoding;
+-			}
+-			sr.ReadToEnd();
+-			sr.Dispose();
+-			stream.Seek(pos, SeekOrigin.Begin);
+-			return UTF8Encoding;
++			// 一次性读入（存档/资源表量级可接受），复用 byte[] 判定，避免两套探测逻辑分叉。
++			using var ms = new MemoryStream();
++			stream.CopyTo(ms);
++			return DetectEncoding(ms.ToArray());
  		}
+ 		catch
+ 		{
+-			stream.Seek(pos, SeekOrigin.Begin);
+ 			return shiftjisEncoding;
+ 		}
++		finally
++		{
++			try { stream.Seek(pos, SeekOrigin.Begin); } catch { }
++		}
+ 	}
++
+ 	public static Encoding GetEncoding(int codePage)
+ 	{
+ 		Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 diff --git a/EraCore.Core/Shared/Runtime/Utils/LangManager.cs b/EraCore.Core/Shared/Runtime/Utils/LangManager.cs
 index 794d63a..aa3ecdc 100644
 --- a/EraCore.Core/Shared/Runtime/Utils/LangManager.cs
