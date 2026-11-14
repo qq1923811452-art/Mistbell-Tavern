@@ -1190,10 +1190,26 @@ index d4810fe..b6c6928 100644
  							//	{
  							//		//throw new NotImplCodeEE();
 diff --git a/EraCore.Core/UI/Game/Console/ConsolePrintManager.cs b/EraCore.Core/UI/Game/Console/ConsolePrintManager.cs
-index d3d0f7c..e4f13b3 100644
+index d3d0f7c..d5151a4 100644
 --- a/EraCore.Core/UI/Game/Console/ConsolePrintManager.cs
 +++ b/EraCore.Core/UI/Game/Console/ConsolePrintManager.cs
-@@ -689,6 +689,21 @@ internal sealed class ConsolePrintManager
+@@ -460,7 +460,14 @@ internal sealed class ConsolePrintManager
+                 ConsoleDisplayLine[] dispList = _console.printBuffer.Flush(_console.stringMeasure, _state.force_temporary);
+                 AddRangeDisplayLine(dispList);
+             }
+-            AddRangeDisplayLine(HtmlManager.Html2DisplayLine(str, _console.stringMeasure, _console));
++            // MISTBELL_PATCH_HTML_PROFILE：设置界面这类整屏 <div> 的 HTML 解析耗时不明，
++            // 超过 30ms 就记一条，用于定位「点 OPTION 后卡住」到底卡在解析还是脚本。
++            var htmlSw = System.Diagnostics.Stopwatch.StartNew();
++            var parsed = HtmlManager.Html2DisplayLine(str, _console.stringMeasure, _console);
++            htmlSw.Stop();
++            if (htmlSw.ElapsedMilliseconds >= 30)
++                EmueraLog.Warn("Perf", $"HTML2DisplayLine {htmlSw.ElapsedMilliseconds}ms len={str.Length} lines={parsed.Length}");
++            AddRangeDisplayLine(parsed);
+         }
+         _console.RefreshStrings(false);
+     }
+@@ -689,6 +696,21 @@ internal sealed class ConsolePrintManager
          int column = 0;
          foreach (var btn in line.Buttons)
          {
