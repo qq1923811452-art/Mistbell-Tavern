@@ -70,8 +70,6 @@ internal sealed class EraSessionHost : IAsyncDisposable
         var host = new GameHost(options);
         gameHost = host;
 
-        // 必须在 StartAsync 前打开初始流，确保加载完成产生的首帧不丢失
-        startupStream = host.OpenStream();
         notifyStatus("starting", gameDir);
         EraBootstrap.Trace($"GameHost.StartAsync dir={gameDir} profile=eratw port={Port}");
 
@@ -90,6 +88,9 @@ internal sealed class EraSessionHost : IAsyncDisposable
             return;
         }
 
+        // 输出轴（Snapshot/OpenStream）只有在 StartAsync 成功后才可用；
+        // OpenStream 内部是「先订阅、后取快照」，所以此处打开不会漏帧。
+        startupStream = host.OpenStream();
         EraBootstrap.Trace("GameHost started successfully");
         notifyStatus("running", $"port={Port}");
         await acceptLoop.ConfigureAwait(false);
