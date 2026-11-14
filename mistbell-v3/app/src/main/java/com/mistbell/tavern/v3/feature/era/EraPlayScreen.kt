@@ -376,6 +376,39 @@ private fun EraRichLine(
 }
 
 @Composable
+private fun EraGameLayers(
+    images: List<TurnBgImage>,
+    gameDir: String?,
+) {
+    if (images.isEmpty() || gameDir == null) return
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.Bottom,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        images.forEach { layer ->
+            val bitmap =
+                remember(gameDir, layer.src) {
+                    runCatching {
+                        BitmapFactory.decodeFile(File(gameDir, layer.src).absolutePath)
+                    }.getOrNull()
+                }
+            if (bitmap != null) {
+                Image(
+                    bitmap = bitmap.asImageBitmap(),
+                    contentDescription = null,
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .alpha(layer.opacity.coerceIn(0f, 1f)),
+                    contentScale = ContentScale.Fit,
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun EraErrorBanner(
     message: String,
     onRetry: () -> Unit,
