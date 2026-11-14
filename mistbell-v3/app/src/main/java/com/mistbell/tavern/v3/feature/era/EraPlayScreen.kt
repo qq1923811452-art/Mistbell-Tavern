@@ -114,6 +114,10 @@ internal fun EraPlayScreen(
         activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         // 沉浸式：横屏后连导航栏/状态栏一起隐藏，下滑可临时唤出
         val window = activity?.window
+        // 必须让内容延伸到系统栏区域，否则部分 ROM（MIUI）仍会保留状态栏占位。
+        if (window != null) {
+            WindowCompat.setDecorFitsSystemWindows(window, false)
+        }
         val controller = window?.let { WindowCompat.getInsetsController(it, it.decorView) }
         controller?.apply {
             systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
@@ -121,6 +125,9 @@ internal fun EraPlayScreen(
         }
         onDispose {
             controller?.show(WindowInsetsCompat.Type.systemBars())
+            if (window != null) {
+                WindowCompat.setDecorFitsSystemWindows(window, true)
+            }
             activity?.requestedOrientation = previous ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         }
     }
