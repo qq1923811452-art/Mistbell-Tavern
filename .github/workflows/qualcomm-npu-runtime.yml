@@ -261,8 +261,8 @@ jobs:
           git fetch --depth 1 origin 6e14de0fa0cd83b0bb83df96fc29422e107f7af4
           git checkout -q FETCH_HEAD
 
-      - name: Patch EraCore encoding detection (GBK/CP949/CP950)
-        run: python3 era-engine/scripts/patch_eracore.py era-engine/upstream
+      - name: Apply EraCore patches (encoding / case-insensitive / float literals)
+        run: git -C era-engine/upstream apply "$GITHUB_WORKSPACE/era-engine/patches/eracore-mistbell.patch"
 
       - name: Install Android workload for engine
         run: dotnet workload install android --skip-manifest-update

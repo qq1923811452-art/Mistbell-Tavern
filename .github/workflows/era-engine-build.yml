@@ -66,8 +66,8 @@ jobs:
             *) echo "::error::期望 .NET 10，实际 $V（global.json 未生效）"; exit 1 ;;
           esac
 
-      - name: Patch EraCore encoding detection (GBK/CP949/CP950)
-        run: python3 era-engine/scripts/patch_eracore.py era-engine/upstream
+      - name: Apply EraCore patches (encoding / case-insensitive / float literals)
+        run: git -C era-engine/upstream apply "$GITHUB_WORKSPACE/era-engine/patches/eracore-mistbell.patch"
 
       - name: Install Android workload
         run: |
