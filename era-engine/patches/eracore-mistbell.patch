@@ -634,7 +634,7 @@ index b0d0805..ebbca66 100644
  	{
  		return method.GetStrValue(exm, arguments);
 diff --git a/EraCore.Core/Shared/Runtime/Script/Statements/Instraction.Child.cs b/EraCore.Core/Shared/Runtime/Script/Statements/Instraction.Child.cs
-index 08a6c11..35b02c9 100644
+index 08a6c11..7d89e02 100644
 --- a/EraCore.Core/Shared/Runtime/Script/Statements/Instraction.Child.cs
 +++ b/EraCore.Core/Shared/Runtime/Script/Statements/Instraction.Child.cs
 @@ -647,7 +647,14 @@ internal sealed partial class FunctionIdentifier
@@ -653,7 +653,25 @@ index 08a6c11..35b02c9 100644
  				if (spsetarg.AddConst)
  					spsetarg.VariableDest.ChangeValue(src, exm);
  				else
-@@ -3447,7 +3454,9 @@ internal sealed partial class FunctionIdentifier
+@@ -852,10 +859,14 @@ internal sealed partial class FunctionIdentifier
+ 			#region EE_INPUT機能拡張
+ 			if (arg.CanSkip != null && GlobalStatic.Console.MesSkip)
+ 			{
+-				if (arg.Mouse!.GetIntValue(exm) == 0)
+-					GlobalStatic.VEvaluator.RESULT = arg.Def!.GetIntValue(exm);
++				// MISTBELL_PATCH_BINPUT_NRE：可跳过路径原来对 Mouse/Def 用了 null-forgiving，
++				// TITLE.ERB 这种省略可选参数的 BINPUT 会直接 NullReferenceException。
++				long skipValue = arg.Def != null ? arg.Def.GetIntValue(exm) : 0;
++				bool mouseClicked = arg.Mouse != null && arg.Mouse.GetIntValue(exm) != 0;
++				if (mouseClicked)
++					GlobalStatic.VEvaluator.RESULT_ARRAY[1] = skipValue;
+ 				else
+-					GlobalStatic.VEvaluator.RESULT_ARRAY[1] = arg.Def!.GetIntValue(exm);
++					GlobalStatic.VEvaluator.RESULT = skipValue;
+ 			}
+ 			else
+ 				exm.Console.WaitInput(req);
+@@ -3447,7 +3458,9 @@ internal sealed partial class FunctionIdentifier
  		{
  			////BREAKのJUMP先はRENDまたはNEXT。そのジャンプ先であるREPEATかFORをiLineに代入。
  			//1.723 仕様変更。BREAKのJUMP先にはREPEAT、FOR、WHILEを記憶する。そのJUMP先が本当のJUMP先。
