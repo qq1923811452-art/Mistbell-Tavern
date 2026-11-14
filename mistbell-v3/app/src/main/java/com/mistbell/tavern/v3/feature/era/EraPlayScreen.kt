@@ -48,6 +48,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.InlineTextContent
 import androidx.compose.ui.text.Placeholder
 import androidx.compose.ui.text.PlaceholderVerticalAlign
 import androidx.compose.ui.text.SpanStyle
@@ -309,7 +310,7 @@ private fun EraRichLine(
     val pxToDp = LocalConfiguration.current.screenWidthDp / ENGINE_LAYOUT_WIDTH
     val inlineContents =
         remember(line.uid, currentGeneration, gameDir, pxToDp) {
-            mutableMapOf<String, InlineTextContent>()
+            mutableMapOf<Int, InlineTextContent>()
         }
     val annotated: AnnotatedString =
         remember(line.uid, currentGeneration, inlineContents) {
@@ -327,13 +328,15 @@ private fun EraRichLine(
                     for ((segIndex, seg) in entry.segments.withIndex()) {
                         val inlineImage = seg.image
                         if (inlineImage != null && gameDir != null) {
-                            val contentId = "img_${entryIdx}_$segIndex"
+                            val contentId = entryIdx * 1000 + segIndex
+                            val widthSp = (inlineImage.width * pxToDp).sp
+                            val heightSp = (inlineImage.height * pxToDp).sp
                             inlineContents[contentId] =
                                 InlineTextContent(
                                     Placeholder(
-                                        width = (inlineImage.width * pxToDp).dp.coerceAtLeast(1.dp),
-                                        height = (inlineImage.height * pxToDp).dp.coerceAtLeast(1.dp),
-                                        placeholderVerticalAlign = PlaceholderVerticalAlign.TextCenter,
+                                        width = widthSp,
+                                        height = heightSp,
+                                        placeholderVerticalAlign = PlaceholderVerticalAlign.Center,
                                     ),
                                 ) {
                                     EraSegmentImage(gameDir, inlineImage)
