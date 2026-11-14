@@ -5,6 +5,7 @@ using MinorShift.Emuera.Output;
 using MinorShift.Emuera.Sessions;
 using System;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -83,6 +84,7 @@ internal sealed class EraSessionHost : IAsyncDisposable
         {
             var err = $"{startResult.ErrorCode ?? "START_FAILED"}: {startResult.ErrorMessage ?? "unknown"}";
             EraBootstrap.Trace($"GameHost.StartAsync failed: {err}");
+            DumpPostMortem(host);
             notifyStatus("error", err);
             await acceptLoop.ConfigureAwait(false);
             return;
@@ -94,6 +96,46 @@ internal sealed class EraSessionHost : IAsyncDisposable
         EraBootstrap.Trace("GameHost started successfully");
         notifyStatus("running", $"port={Port}");
         await acceptLoop.ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// 启动失败时把控制台最后若干行与游戏目录里的 emuera.log 尾部写进我们的日志，
+    /// 否则只能看到兜底的「游戏初始化失败。」。
+    /// </summary>
+    private void DumpPostMortem(GameHost host)
+    {
+        try
+        {
+            var snapshot = host.Snapshot;
+            var texts = snapshot.lines
+                .Select(line => string.Concat(line.entries.SelectMany(e => e.segments).Select(seg => seg.text)))
+                .Where(text => !string.IsNullOrWhiteSpace(text))
+                .TakeLast(15);
+            foreach (var text in texts)
+                EraBootstrap.Trace("console: " + text);
+        }
+        catch (Exception ex)
+        {
+            EraBootstrap.Trace("snapshot dump failed: " + ex.Message);
+        }
+
+        try
+        {
+            var logPath = Path.Combine(gameDir, "emuera.log");
+            if (File.Exists(logPath))
+            {
+                foreach (var line in File.ReadAllLines(logPath).TakeLast(25))
+                    EraBootstrap.Trace("emuera.log: " + line);
+            }
+            else
+            {
+                EraBootstrap.Trace("emuera.log not found at " + logPath);
+            }
+        }
+        catch (Exception ex)
+        {
+            EraBootstrap.Trace("emuera.log read failed: " + ex.Message);
+        }
     }
 
     public void RebindPort(int newPort)
