@@ -1158,10 +1158,53 @@ index 71bfe26..6e0b84d 100644
  
      internal static FileAttributes GetAttributes(string path)
 diff --git a/EraCore.Core/Shared/UI/Game/HtmlManager.cs b/EraCore.Core/Shared/UI/Game/HtmlManager.cs
-index d4810fe..b6c6928 100644
+index d4810fe..d211a3a 100644
 --- a/EraCore.Core/Shared/UI/Game/HtmlManager.cs
 +++ b/EraCore.Core/Shared/UI/Game/HtmlManager.cs
-@@ -226,6 +226,9 @@ internal static class HtmlManager
+@@ -4,6 +4,7 @@ using MinorShift.Emuera.Runtime.Config;
+ using MinorShift.Emuera.Runtime.Script.Parser;
+ using MinorShift.Emuera.Runtime.Script.Statements.Expression;
+ using MinorShift.Emuera.Runtime.Utils;
++using MinorShift.Emuera.Terminal;
+ using MinorShift.Emuera.Runtime.Utils.EvilMask;
+ using System;
+ using System.Collections.Generic;
+@@ -46,18 +47,31 @@ internal static class HtmlManager
+ 	#region EM_私家版_HtmlManager機能拡張
+ 	public static int HtmlLength(string s)
+ 	{
++		// MISTBELL_PATCH_HTML_PERF：HTML_STRINGLEN 在渲染循环里对同一批字符串反复测量，
++		// 每次都要完整解析 HTML。加一个小容量缓存。
++		if (htmlLengthCache.TryGetValue(s, out int cached))
++			return cached;
+ 		ConsoleDisplayLine[] lines = Html2DisplayLine(s, GlobalStatic.Console.StrMeasure, null!);
+ 		int len = 0;
+-		if (lines.Length <= 0) return 0;
+-		foreach (var btn in lines[0].Buttons) len += btn.Width;
++		if (lines.Length > 0)
++		{
++			foreach (var btn in lines[0].Buttons) len += btn.Width;
++		}
++		if (htmlLengthCache.Count > 2048)
++			htmlLengthCache.Clear();
++		htmlLengthCache[s] = len;
+ 		return len;
+ 	}
++
++	private static readonly Dictionary<string, int> htmlLengthCache = new(256);
+ 	private static int GetSubStr(string pref, string suff, string s, ref int lmax)
+ 	{
+ 		int len = 0, i;
+ 		for (i = 0; i < s.Length; i++)
+ 		{
+-			int t = HtmlLength(pref + s[i] + suff);
++			// MISTBELL_PATCH_HTML_PERF：原来对每个字符都拼一次 HTML 再完整解析一遍（O(n²)），
++			// 设置界面这种长 HTML 行会直接卡住。样式标签本身不产生宽度，直接按字符宽度算。
++			int t = TerminalDisplayWidth.GetDisplayWidth(s[i].ToString());
+ 			if (len + t > lmax)
+ 			{
+ 				i--;
+@@ -226,6 +240,9 @@ internal static class HtmlManager
  		public int Color = -1;
  		public int BColor = -1;
  		public string FontName = null!;
@@ -1171,7 +1214,7 @@ index d4810fe..b6c6928 100644
  		//public int PointX = 0;
  		//public bool PointXisLocked = false;
  	}
-@@ -1427,6 +1430,17 @@ internal static class HtmlManager
+@@ -1427,6 +1444,17 @@ internal static class HtmlManager
  									throw new CodeEE(string.Format(trerror.DuplicateAttribute.Text, tag, word.Code));
  								font.FontName = attrValue;
  								break;
