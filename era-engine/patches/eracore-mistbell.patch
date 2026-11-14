@@ -26,6 +26,20 @@ index a9c3d18..2db4526 100644
  	/// <summary>边界硬上限（design.md §8，v1 文本 IR 体积 &lt; 源总大小，估 &lt;80MB；eraTW 实测后微调）。超限即判废不生成。</summary>
  	internal const long MaxIrFileBytes = 200L * 1024 * 1024;
  
+diff --git a/EraCore.Core/Shared/Runtime/Script/Loader/ErbLoadScheduler.cs b/EraCore.Core/Shared/Runtime/Script/Loader/ErbLoadScheduler.cs
+index d0434d7..a01971a 100644
+--- a/EraCore.Core/Shared/Runtime/Script/Loader/ErbLoadScheduler.cs
++++ b/EraCore.Core/Shared/Runtime/Script/Loader/ErbLoadScheduler.cs
+@@ -136,6 +136,9 @@ internal sealed class ErbLoadScheduler
+ 				while (nextToStart < pending.Count && running.Count < window)
+ 				{
+ 					int idx = nextToStart++; // 闭包陷阱：捕获本迭代独立副本
++					// MISTBELL_PATCH_TRACE：崩溃点定位——记录每个开始解析的文件，
++					// 进程静默消失时日志最后一行就是嫌疑文件。
++					EmueraLog.Info("ErbLoadScheduler", $"start idx={idx} merged={merged} file={pending[idx].Filename}");
+ 					running[idx] = Task.Run(() => RunGenerateWorkerAsync(idx, pending[idx].Filename, pending[idx].File, ctx, cts.Token));
+ 				}
+ 				peakActive = Math.Max(peakActive, running.Count);
 diff --git a/EraCore.Core/Shared/Runtime/Script/Loader/ErbLoadStrategy.cs b/EraCore.Core/Shared/Runtime/Script/Loader/ErbLoadStrategy.cs
 index de57d34..954892a 100644
 --- a/EraCore.Core/Shared/Runtime/Script/Loader/ErbLoadStrategy.cs
