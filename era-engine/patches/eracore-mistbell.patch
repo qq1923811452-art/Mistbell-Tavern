@@ -149,6 +149,30 @@ index 450f953..4929a7e 100644
  internal sealed class LiteralStringWord : Word
  {
  	public LiteralStringWord(string s) { code = s; }
+diff --git a/EraCore.Core/Shared/Runtime/Script/Statements/ArgumentBuilder.cs b/EraCore.Core/Shared/Runtime/Script/Statements/ArgumentBuilder.cs
+index e14c4e6..2afb98c 100644
+--- a/EraCore.Core/Shared/Runtime/Script/Statements/ArgumentBuilder.cs
++++ b/EraCore.Core/Shared/Runtime/Script/Statements/ArgumentBuilder.cs
+@@ -1093,7 +1093,8 @@ internal static partial class ArgumentParser
+ 							assignwarn(trerror.CanNotOmitRight.Text, line, 2, false);
+ 							return null!;
+ 						}
+-						if (!srcTerms[i].IsInteger)
++						// MISTBELL_FLOAT：小数源允许赋给整数变量（运行期截断）
++						if (!srcTerms[i].IsInteger && !srcTerms[i].IsFloat)
+ 						{
+ 							assignwarn(trerror.CanNotAssignStrToInt.Text, line, 2, false);
+ 							return null!;
+@@ -1110,7 +1111,8 @@ internal static partial class ArgumentParser
+ 					};
+ 					return arrayarg;
+ 				}
+-				if (!srcTerms[0].IsInteger)
++				// MISTBELL_FLOAT：小数源允许赋给整数变量（运行期截断）
++				if (!srcTerms[0].IsInteger && !srcTerms[0].IsFloat)
+ 				{
+ 					assignwarn(trerror.CanNotAssignStrToInt.Text, line, 2, false);
+ 					return null!;
 diff --git a/EraCore.Core/Shared/Runtime/Script/Statements/Expression/AExpression.cs b/EraCore.Core/Shared/Runtime/Script/Statements/Expression/AExpression.cs
 index 1a2c0ab..e2dd6e0 100644
 --- a/EraCore.Core/Shared/Runtime/Script/Statements/Expression/AExpression.cs
@@ -610,10 +634,26 @@ index b0d0805..ebbca66 100644
  	{
  		return method.GetStrValue(exm, arguments);
 diff --git a/EraCore.Core/Shared/Runtime/Script/Statements/Instraction.Child.cs b/EraCore.Core/Shared/Runtime/Script/Statements/Instraction.Child.cs
-index 08a6c11..20c58e8 100644
+index 08a6c11..35b02c9 100644
 --- a/EraCore.Core/Shared/Runtime/Script/Statements/Instraction.Child.cs
 +++ b/EraCore.Core/Shared/Runtime/Script/Statements/Instraction.Child.cs
-@@ -3447,7 +3447,9 @@ internal sealed partial class FunctionIdentifier
+@@ -647,7 +647,14 @@ internal sealed partial class FunctionIdentifier
+ 			SpSetArgument spsetarg = (SpSetArgument)func.Argument;
+ 			if (spsetarg.VariableDest.IsInteger)
+ 			{
+-				long src = spsetarg.IsConst ? spsetarg.ConstInt : spsetarg.Term.GetIntValue(exm);
++				// MISTBELL_FLOAT：小数右值按 double 运算后截断写回整数变量
++				long src;
++				if (spsetarg.IsConst)
++					src = spsetarg.ConstInt;
++				else if (spsetarg.Term.IsFloat)
++					src = (long)spsetarg.Term.GetDoubleValue(exm);
++				else
++					src = spsetarg.Term.GetIntValue(exm);
+ 				if (spsetarg.AddConst)
+ 					spsetarg.VariableDest.ChangeValue(src, exm);
+ 				else
+@@ -3447,7 +3454,9 @@ internal sealed partial class FunctionIdentifier
  		{
  			////BREAKのJUMP先はRENDまたはNEXT。そのジャンプ先であるREPEATかFORをiLineに代入。
  			//1.723 仕様変更。BREAKのJUMP先にはREPEAT、FOR、WHILEを記憶する。そのJUMP先が本当のJUMP先。
