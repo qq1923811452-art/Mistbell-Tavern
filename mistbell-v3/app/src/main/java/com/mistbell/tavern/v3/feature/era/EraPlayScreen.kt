@@ -79,6 +79,12 @@ import java.io.File
 
 private const val TAG_BUTTON = "era_btn"
 
+/**
+ * 立绘层开关。首帧渲染疑似导致主进程崩溃（引擎日志显示 start 成功后 1.6s 前端断开），
+ * 先关掉隔离验证，确认后再定位具体是解码还是布局。
+ */
+private const val ENABLE_SPRITE_LAYERS = false
+
 /** 立绘层上限：层数过多会反复解码大图，低内存设备直接闪退。 */
 private const val MAX_LAYER_IMAGES = 4
 private const val MAX_LAYER_FILE_BYTES = 64L * 1024 * 1024
@@ -145,7 +151,9 @@ internal fun EraPlayScreen(
                 onOpenSetup()
             },
         )
-        EraGameLayers(images = state.bgImages, gameDir = state.gameDir)
+        if (ENABLE_SPRITE_LAYERS) {
+            EraGameLayers(images = state.bgImages, gameDir = state.gameDir)
+        }
         EraGameLog(
             lines = state.lines,
             revision = state.revision,
