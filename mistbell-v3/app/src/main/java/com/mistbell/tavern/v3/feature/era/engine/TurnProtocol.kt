@@ -94,6 +94,14 @@ internal data class TurnDisplayEntry(
     val button: TurnButton?,
 )
 
+internal data class TurnSegmentImage(
+    val src: String,
+    val srcb: String?,
+    val width: Int,
+    val height: Int,
+    val ypos: Int,
+)
+
 internal data class TurnPrintSegment(
     val text: String,
     val color: String?,
@@ -102,6 +110,7 @@ internal data class TurnPrintSegment(
     val underline: Boolean,
     val strikeout: Boolean,
     val hasGraphic: Boolean,
+    val image: TurnSegmentImage? = null,
 )
 
 internal data class TurnButton(

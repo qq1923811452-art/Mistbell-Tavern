@@ -2,7 +2,13 @@
 
 package com.mistbell.tavern.v3.feature.era
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
+import android.content.pm.ActivityInfo
+import android.graphics.BitmapFactory
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -32,13 +38,18 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.Placeholder
+import androidx.compose.ui.text.PlaceholderVerticalAlign
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
@@ -58,13 +69,18 @@ import com.mistbell.tavern.v3.feature.era.engine.TurnAwaiting
 import com.mistbell.tavern.v3.feature.era.engine.TurnButton
 import com.mistbell.tavern.v3.feature.era.engine.TurnButtonItem
 import com.mistbell.tavern.v3.feature.era.engine.TurnDisplayLine
+import com.mistbell.tavern.v3.feature.era.engine.TurnSegmentImage
 import com.mistbell.tavern.v3.ui.tavern.TavernGlyphName
 import com.mistbell.tavern.v3.ui.tavern.TavernIconButton
 import com.mistbell.tavern.v3.ui.tavern.TavernPalette
 import com.mistbell.tavern.v3.ui.tavern.TavernPill
 import com.mistbell.tavern.v3.ui.tavern.TavernShape
+import java.io.File
 
 private const val TAG_BUTTON = "era_btn"
+
+/** eraTW 按 1800×973 排版；图片尺寸从引擎像素换算 dp 的基准宽度。 */
+private const val ENGINE_LAYOUT_WIDTH = 1800f
 private val ERA_GOLD_TEXT = Color(0xFFFFCE8A)
 private val ERA_GOLD_BORDER = Color(0x4DFFCE8A)
 private val ERA_GOLD_SOFT = Color(0x26FFCE8A)
@@ -82,6 +98,15 @@ internal fun EraPlayScreen(
     BackHandler(onBack = onBack)
     val context = LocalContext.current
     val session = remember { EraEngineManager.get(context) }
+    // eraTW 的界面是按 1800×973 横屏排的；竖屏会把菜单行挤断（[ <<< ] 被拆行）。
+    val activity = remember(context) { context.findActivity() }
+    DisposableEffect(activity) {
+        val previous = activity?.requestedOrientation
+        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        onDispose {
+            activity?.requestedOrientation = previous ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        }
+    }
     val state by session.state.collectAsStateWithLifecycle()
     var logLines by remember { mutableStateOf<List<String>?>(null) }
 
@@ -118,6 +143,7 @@ internal fun EraPlayScreen(
             lines = state.lines,
             revision = state.revision,
             generation = state.generation,
+            gameDir = state.gameDir,
             onButtonClick = { btn -> session.submitButton(btn) },
             onBackgroundTap = { session.tapLogBackground() },
             modifier = Modifier.fillMaxWidth().weight(1f).padding(horizontal = 16.dp, vertical = 8.dp),
@@ -228,17 +254,25 @@ private fun EraGameLog(
     lines: List<TurnDisplayLine>,
     revision: Long,
     generation: Long,
+    gameDir: String?,
     onButtonClick: (TurnButton) -> Unit,
     onBackgroundTap: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
     val lastUid = lines.lastOrNull()?.uid
-    LaunchedEffect(revision, lastUid) {
-        if (lines.isEmpty()) return@LaunchedEffect
-        val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
-        val nearBottom = lastVisible < 0 || lastVisible >= lines.size - 3
-        if (nearBottom) listState.scrollToItem(lines.lastIndex)
+    // 用户往上翻历史时停止自动跳底，回到底部再恢复跟随。
+    var followTail by remember { mutableStateOf(true) }
+    LaunchedEffect(listState, lines.size) {
+        snapshotFlow {
+            val info = listState.layoutInfo
+            val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: -1
+            info.totalItemsCount == 0 || lastVisible >= info.totalItemsCount - 2
+        }.collect { atBottom -> followTail = atBottom }
+    }
+    LaunchedEffect(revision, lastUid, followTail) {
+        if (lines.isEmpty() || !followTail) return@LaunchedEffect
+        listState.scrollToItem(lines.lastIndex)
     }
 
     LazyColumn(
@@ -253,6 +287,7 @@ private fun EraGameLog(
             EraRichLine(
                 line = line,
                 currentGeneration = generation,
+                gameDir = gameDir,
                 onButtonClick = onButtonClick,
                 onBackgroundTap = onBackgroundTap,
             )
@@ -265,13 +300,21 @@ private fun EraGameLog(
 private fun EraRichLine(
     line: TurnDisplayLine,
     currentGeneration: Long,
+    gameDir: String?,
     onButtonClick: (TurnButton) -> Unit,
     onBackgroundTap: () -> Unit,
 ) {
     val buttonMap = remember(line.uid) { HashMap<String, TurnButton>() }
+    // eraTW 的立绘是「行内图片段」：src 是相对游戏目录的资源名，尺寸从引擎 1800 宽换算成 dp。
+    val pxToDp = LocalConfiguration.current.screenWidthDp / ENGINE_LAYOUT_WIDTH
+    val inlineContents =
+        remember(line.uid, currentGeneration, gameDir, pxToDp) {
+            mutableMapOf<String, InlineTextContent>()
+        }
     val annotated: AnnotatedString =
-        remember(line.uid, currentGeneration) {
+        remember(line.uid, currentGeneration, inlineContents) {
             buttonMap.clear()
+            inlineContents.clear()
             buildAnnotatedString {
                 line.entries.forEachIndexed { entryIdx, entry ->
                     val btn = entry.button
@@ -281,7 +324,23 @@ private fun EraRichLine(
                         buttonMap[tagId] = btn
                         pushStringAnnotation(tag = TAG_BUTTON, annotation = tagId)
                     }
-                    for (seg in entry.segments) {
+                    for ((segIndex, seg) in entry.segments.withIndex()) {
+                        val inlineImage = seg.image
+                        if (inlineImage != null && gameDir != null) {
+                            val contentId = "img_${entryIdx}_$segIndex"
+                            inlineContents[contentId] =
+                                InlineTextContent(
+                                    Placeholder(
+                                        width = (inlineImage.width * pxToDp).dp.coerceAtLeast(1.dp),
+                                        height = (inlineImage.height * pxToDp).dp.coerceAtLeast(1.dp),
+                                        placeholderVerticalAlign = PlaceholderVerticalAlign.TextCenter,
+                                    ),
+                                ) {
+                                    EraSegmentImage(gameDir, inlineImage)
+                                }
+                            appendInlineContent(contentId, "\uFFFC")
+                            continue
+                        }
                         val segColor =
                             parseHexColor(seg.color)
                                 ?: if (isLiveButton) ERA_GOLD_TEXT else TavernPalette.TextPrimary
@@ -321,6 +380,7 @@ private fun EraRichLine(
 
     Text(
         text = annotated,
+        inlineContent = inlineContents,
         onTextLayout = { layoutResult = it },
         style =
             TextStyle(
@@ -524,6 +584,31 @@ private fun EraValueInput(
             contentDescription = "发送输入",
         )
     }
+}
+
+@Composable
+private fun EraSegmentImage(
+    gameDir: String,
+    image: TurnSegmentImage,
+) {
+    val bitmap =
+        remember(gameDir, image.src) {
+            runCatching {
+                BitmapFactory.decodeFile(File(gameDir, image.src).absolutePath)
+            }.getOrNull()
+        }
+    if (bitmap != null) {
+        Image(bitmap = bitmap.asImageBitmap(), contentDescription = null)
+    }
+}
+
+private fun Context.findActivity(): Activity? {
+    var current: Context? = this
+    while (current is ContextWrapper) {
+        if (current is Activity) return current
+        current = current.baseContext
+    }
+    return null
 }
 
 @Suppress("ReturnCount")

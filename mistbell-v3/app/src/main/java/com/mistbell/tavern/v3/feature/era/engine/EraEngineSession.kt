@@ -41,6 +41,7 @@ internal data class EraGameState(
     val error: String? = null,
     val detail: String? = null,
     val lineCount: Int = 0,
+    val gameDir: String? = null,
 ) {
     /** 抽取当前 generation 下屏幕上出现的可点击按钮，供底部大按钮条使用。 */
     @Suppress("LoopWithTooManyJumpStatements")
@@ -376,7 +377,10 @@ internal class EraEngineSession(
         }
         when (state) {
             EraEngineContract.STATE_IMPORTING -> _state.update { it.copy(statusText = "正在解包游戏…") }
-            EraEngineContract.STATE_IMPORTED -> _state.update { it.copy(statusText = "游戏包已就位") }
+            EraEngineContract.STATE_IMPORTED ->
+                _state.update {
+                    it.copy(statusText = "游戏包已就位", gameDir = detail ?: it.gameDir)
+                }
             EraEngineContract.STATE_STARTING -> _state.update { it.copy(statusText = "正在并行加载剧本…") }
             EraEngineContract.STATE_RUNNING -> _state.update { it.copy(statusText = "运行中") }
             EraEngineContract.STATE_STOPPED -> {
