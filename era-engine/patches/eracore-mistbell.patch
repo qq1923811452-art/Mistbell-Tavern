@@ -876,10 +876,18 @@ index 08a6c11..447ac79 100644
  			//WHILEとDOはカウンタがないので、即ジャンプ
  			if (jumpTo.FunctionCode != FunctionCode.WHILE && jumpTo.FunctionCode != FunctionCode.DO)
 diff --git a/EraCore.Core/Shared/Runtime/Utils/EncodingHandler.cs b/EraCore.Core/Shared/Runtime/Utils/EncodingHandler.cs
-index 5ea116f..7e0558d 100644
+index 5ea116f..e3be349 100644
 --- a/EraCore.Core/Shared/Runtime/Utils/EncodingHandler.cs
 +++ b/EraCore.Core/Shared/Runtime/Utils/EncodingHandler.cs
-@@ -29,16 +29,29 @@ public static class EncodingHandler
+@@ -1,6 +1,7 @@
+ using MinorShift.Emuera.Files;
+ using System;
+ using System.Collections.Generic;
++using System.Buffers;
+ using System.IO;
+ using System.Text;
+ 
+@@ -29,16 +30,29 @@ public static class EncodingHandler
  			int bomLen = bomEnc == UTF8BOMEncoding ? 3 : 2;
  			return SplitLines(bomEnc.GetString(bytes, bomLen, bytes.Length - bomLen));
  		}
@@ -912,7 +920,7 @@ index 5ea116f..7e0558d 100644
  	}
  
  	/// <summary>
-@@ -72,6 +85,24 @@ public static class EncodingHandler
+@@ -72,6 +86,24 @@ public static class EncodingHandler
  		return lines.ToArray();
  	}
  
@@ -937,9 +945,89 @@ index 5ea116f..7e0558d 100644
  	/// <summary>从已读取的字节判断 BOM、UTF-8 或 Shift-JIS，供 SAF 调用方避免回退到本地 File API。</summary>
  	public static Encoding DetectEncoding(byte[] bytes)
  	{
-@@ -112,6 +143,7 @@ public static class EncodingHandler
+@@ -89,29 +121,74 @@ public static class EncodingHandler
+ 		}
+ 	}
+ 
++	private const int StreamProbeSize = 64 * 1024;
++	private static readonly UTF8Encoding StrictUtf8 = new(false, throwOnInvalidBytes: true);
++
+ 	public static Encoding DetectEncoding(Stream stream)
+ 	{
+-		var pos = stream.Position;
++		// 零大对象分配：只读 64KB 窗口判断编码，绝不整条流读入内存。
++		// 存档列表会逐个打开 .sav，整读会把「打开加载画面」拖成秒级卡顿。
++		bool canSeek = stream.CanSeek;
++		long savedPos = canSeek ? stream.Position : 0;
++		byte[] buffer = ArrayPool<byte>.Shared.Rent(StreamProbeSize);
+ 		try
+ 		{
+-			using var sr = new StreamReader(stream, UTF8Encoding, true, -1, true);
+-			sr.Peek();
+-			if (!UTF8Encoding.Equals(sr.CurrentEncoding))
+-			{
+-				stream.Seek(pos, SeekOrigin.Begin);
+-				return sr.CurrentEncoding;
+-			}
+-			sr.ReadToEnd();
+-			sr.Dispose();
+-			stream.Seek(pos, SeekOrigin.Begin);
+-			return UTF8Encoding;
++			int read = stream.ReadAtLeast(buffer.AsSpan(0, StreamProbeSize), StreamProbeSize, throwOnEndOfStream: false);
++			if (read == 0)
++				return Encoding.UTF8;
++			var raw = buffer.AsSpan(0, read);
++			if (read >= 3 && raw[0] == 0xEF && raw[1] == 0xBB && raw[2] == 0xBF)
++				return Encoding.UTF8;
++			if (read >= 2 && raw[0] == 0xFF && raw[1] == 0xFE)
++				return Encoding.Unicode;
++			if (read >= 2 && raw[0] == 0xFE && raw[1] == 0xFF)
++				return Encoding.BigEndianUnicode;
++			// 截断到行边界，避免多字节字符被腰斩
++			int lastNl = raw.LastIndexOf((byte)'\n');
++			if (read == StreamProbeSize && lastNl > 0)
++				raw = raw.Slice(0, lastNl + 1);
++			return DetectNonBomEncoding(raw);
+ 		}
+ 		catch
+ 		{
+-			stream.Seek(pos, SeekOrigin.Begin);
  			return shiftjisEncoding;
  		}
++		finally
++		{
++			ArrayPool<byte>.Shared.Return(buffer);
++			if (canSeek)
++				stream.Position = savedPos;
++		}
++	}
++
++	private static Encoding DetectNonBomEncoding(ReadOnlySpan<byte> sample)
++	{
++		try
++		{
++			StrictUtf8.GetCharCount(sample);
++			return Encoding.UTF8;
++		}
++		catch (DecoderFallbackException)
++		{
++		}
++		if (TryGetLanguageEncoding() is { } langEncoding)
++		{
++			try
++			{
++				var strict = Encoding.GetEncoding(
++					langEncoding.CodePage,
++					EncoderFallback.ReplacementFallback,
++					DecoderFallback.ExceptionFallback);
++				strict.GetCharCount(sample);
++				return langEncoding;
++			}
++			catch (DecoderFallbackException)
++			{
++			}
++		}
++		return shiftjisEncoding;
  	}
 +
  	public static Encoding GetEncoding(int codePage)
