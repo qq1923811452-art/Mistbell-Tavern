@@ -78,6 +78,10 @@ import java.io.File
 
 private const val TAG_BUTTON = "era_btn"
 
+/** 立绘层上限：层数过多会反复解码大图，低内存设备直接闪退。 */
+private const val MAX_LAYER_IMAGES = 4
+private const val MAX_LAYER_BYTES = 4L * 1024 * 1024
+
 /** eraTW 按 1800×973 排版；图片尺寸从引擎像素换算 dp 的基准宽度。 */
 private val ERA_GOLD_TEXT = Color(0xFFFFCE8A)
 private val ERA_GOLD_BORDER = Color(0x4DFFCE8A)
@@ -392,11 +396,14 @@ private fun EraGameLayers(
         verticalArrangement = Arrangement.Bottom,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        images.forEach { layer ->
+        // 防御：只渲染有限的层，跳过超大文件，解码全程 try/catch——
+        // 立绘素材动辄几 MB，一次性解码多张会在低内存机子上直接闪退。
+        images.take(MAX_LAYER_IMAGES).forEach { layer ->
             val bitmap =
                 remember(gameDir, layer.src) {
                     runCatching {
-                        BitmapFactory.decodeFile(File(gameDir, layer.src).absolutePath)
+                        val file = File(gameDir, layer.src)
+                        if (!file.isFile || file.length() > MAX_LAYER_BYTES) null else BitmapFactory.decodeFile(file.absolutePath)
                     }.getOrNull()
                 }
             if (bitmap != null) {
