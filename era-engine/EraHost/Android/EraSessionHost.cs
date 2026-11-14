@@ -190,17 +190,17 @@ internal sealed class EraSessionHost : IAsyncDisposable
                 await SendLineAsync(statusJson).ConfigureAwait(false);
             }
 
-            var startResult = pendingStart != null
-                ? await pendingStart.ConfigureAwait(false)
-                : CoreSessionStartResult.Success();
-
-            if (!startResult.Succeeded)
+            if (pendingStart != null)
             {
-                var errJson = JsonSerializer.Serialize(
-                    new HostErrorMsg("error", startResult.ErrorCode ?? "INIT_FAILED", startResult.ErrorMessage ?? "start failed"),
-                    HostWireContext.Default.HostErrorMsg);
-                await SendLineAsync(errJson).ConfigureAwait(false);
-                return;
+                var startResult = await pendingStart.ConfigureAwait(false);
+                if (!startResult.Succeeded)
+                {
+                    var errJson = JsonSerializer.Serialize(
+                        new HostErrorMsg("error", startResult.ErrorCode ?? "INIT_FAILED", startResult.ErrorMessage ?? "start failed"),
+                        HostWireContext.Default.HostErrorMsg);
+                    await SendLineAsync(errJson).ConfigureAwait(false);
+                    return;
+                }
             }
 
             var host = gameHost;

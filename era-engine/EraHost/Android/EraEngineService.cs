@@ -162,7 +162,7 @@ public sealed class EraEngineService : Service
             await host.StartAsync(port, ct).ConfigureAwait(false);
             SendStatus("stopped", host.WasExplicitStopRequested ? "exit=0 user_stop" : "exit=0");
         }
-        catch (OperationCanceledException)
+        catch (System.OperationCanceledException)
         {
             SendStatus("stopped", "exit=0 cancelled");
         }

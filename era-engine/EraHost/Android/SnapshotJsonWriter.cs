@@ -23,7 +23,7 @@ internal static class SnapshotJsonWriter
     private static void WriteSnapshot(Utf8JsonWriter w, DisplaySnapshot s)
     {
         w.WriteStartObject();
-        w.WriteInt32("protocolVersion", s.protocolVersion);
+        w.WriteNumber("protocolVersion", s.protocolVersion);
         w.WriteInt64("generation", s.generation);
         w.WriteInt64("revision", s.revision);
         if (s.bgColor != null)
@@ -169,9 +169,9 @@ internal static class SnapshotJsonWriter
                 w.WriteString("srcb", seg.image.srcb);
             if (seg.image.srcm != null)
                 w.WriteString("srcm", seg.image.srcm);
-            w.WriteInt32("width", seg.image.width);
-            w.WriteInt32("height", seg.image.height);
-            w.WriteInt32("ypos", seg.image.ypos);
+            w.WriteNumber("width", seg.image.width);
+            w.WriteNumber("height", seg.image.height);
+            w.WriteNumber("ypos", seg.image.ypos);
             w.WriteEndObject();
         }
         if (seg.shape != null)
@@ -179,10 +179,10 @@ internal static class SnapshotJsonWriter
             w.WritePropertyName("shape");
             w.WriteStartObject();
             w.WriteString("type", seg.shape.type);
-            w.WriteInt32("x", seg.shape.x);
-            w.WriteInt32("y", seg.shape.y);
-            w.WriteInt32("width", seg.shape.width);
-            w.WriteInt32("height", seg.shape.height);
+            w.WriteNumber("x", seg.shape.x);
+            w.WriteNumber("y", seg.shape.y);
+            w.WriteNumber("width", seg.shape.width);
+            w.WriteNumber("height", seg.shape.height);
             w.WriteString("color", seg.shape.color);
             w.WriteEndObject();
         }
