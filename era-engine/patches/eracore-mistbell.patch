@@ -114,7 +114,7 @@ index 8ec0bbd..8449cd1 100644
  		public void Add(AExpression term)
  		{
 diff --git a/EraCore.Core/Shared/Runtime/Script/Statements/Expression/OperatorMethod.cs b/EraCore.Core/Shared/Runtime/Script/Statements/Expression/OperatorMethod.cs
-index 59e1637..d3c4fa6 100644
+index 59e1637..957f65e 100644
 --- a/EraCore.Core/Shared/Runtime/Script/Statements/Expression/OperatorMethod.cs
 +++ b/EraCore.Core/Shared/Runtime/Script/Statements/Expression/OperatorMethod.cs
 @@ -3,6 +3,7 @@ using MinorShift.Emuera.Runtime.Script.Statements.Variable;
@@ -125,7 +125,7 @@ index 59e1637..d3c4fa6 100644
  using System.Text;
  using trerror = MinorShift.Emuera.Runtime.Utils.EvilMask.Lang.Error;
  
-@@ -25,6 +26,8 @@ internal static class OperatorMethodManager
+@@ -25,9 +26,12 @@ internal static class OperatorMethodManager
  	readonly static Dictionary<OperatorCode, OperatorMethod> unaryAfterDic = [];
  	readonly static Dictionary<OperatorCode, OperatorMethod> binaryIntIntDic = [];
  	readonly static Dictionary<OperatorCode, OperatorMethod> binaryStrStrDic = [];
@@ -134,7 +134,11 @@ index 59e1637..d3c4fa6 100644
  	readonly static OperatorMethod binaryMultIntStr;
  	readonly static OperatorMethod ternaryIntIntInt;
  	readonly static OperatorMethod ternaryIntStrStr;
-@@ -71,6 +74,18 @@ internal static class OperatorMethodManager
++	readonly static OperatorMethod ternaryIntDoubleDouble;
+ 
+ 	static OperatorMethodManager()
+ 	{
+@@ -71,9 +75,22 @@ internal static class OperatorMethodManager
  		binaryStrStrDic[OperatorCode.LessEqual] = new LessEqualStrStr();
  		binaryStrStrDic[OperatorCode.NotEqual] = new NotEqualStrStr();
  
@@ -153,24 +157,30 @@ index 59e1637..d3c4fa6 100644
  		binaryMultIntStr = new MultStrInt();
  		ternaryIntIntInt = new TernaryIntIntInt();
  		ternaryIntStrStr = new TernaryIntStrStr();
-@@ -88,7 +103,15 @@ internal static class OperatorMethodManager
++		ternaryIntDoubleDouble = new TernaryIntDoubleDouble();
+ 	}
+ 
+ 
+@@ -88,7 +105,17 @@ internal static class OperatorMethodManager
  			if (var.Identifier.IsConst)
  				throw new CodeEE(trerror.IncrementConst.Text);
  		}
 -		if (o1.GetOperandType() == typeof(long))
 +		if (o1.IsFloat)
 +		{
-+			// MISTBELL_FLOAT：-0.7 / +1.2
++			// MISTBELL_FLOAT：-0.7 / +1.2 / !LOCALF
 +			if (op == OperatorCode.Plus)
 +				return o1;
 +			if (op == OperatorCode.Minus)
 +				return new FunctionMethodTerm(new MinusDoubleUnary(), [o1]);
++			if (op == OperatorCode.Not)
++				return new FunctionMethodTerm(new NotDoubleUnary(), [o1]);
 +		}
 +		else if (o1.GetOperandType() == typeof(long))
  		{
  			if (op == OperatorCode.Plus)
  				return o1;
-@@ -139,7 +162,13 @@ internal static class OperatorMethodManager
+@@ -139,7 +166,13 @@ internal static class OperatorMethodManager
  	public static AExpression ReduceBinaryTerm(OperatorCode op, AExpression left, AExpression right)
  	{
  		OperatorMethod method = null!;
@@ -185,7 +195,16 @@ index 59e1637..d3c4fa6 100644
  		{
  			if (binaryIntIntDic.TryGetValue(op, out OperatorMethod? value))
  				method = value;
-@@ -203,6 +232,99 @@ internal static class OperatorMethodManager
+@@ -181,6 +214,8 @@ internal static class OperatorMethodManager
+ 			method = ternaryIntIntInt;
+ 		else if (o1.GetOperandType() == typeof(long) && o2.GetOperandType() == typeof(string) && o3.GetOperandType() == typeof(string))
+ 			method = ternaryIntStrStr;
++		else if (o1.GetOperandType() == typeof(long) && o2.IsFloat && o3.IsFloat)
++			method = ternaryIntDoubleDouble;
+ 		if (method != null)
+ 			return new FunctionMethodTerm(method, [o1, o2, o3]);
+ 		throw new CodeEE(trerror.InvalidTernaryOp.Text);
+@@ -203,6 +238,113 @@ internal static class OperatorMethodManager
  		}
  	}
  
@@ -273,6 +292,12 @@ index 59e1637..d3c4fa6 100644
 +		public override long GetIntValue(ExpressionMediator exm, List<AExpression> a) => D(exm, a[0]) != D(exm, a[1]) ? 1 : 0;
 +	}
 +
++	private sealed class NotDoubleUnary : OperatorMethod
++	{
++		public NotDoubleUnary() { CanRestructure = true; ReturnType = typeof(long); }
++		public override long GetIntValue(ExpressionMediator exm, List<AExpression> a) => a[0].GetDoubleValue(exm) == 0.0 ? 1 : 0;
++	}
++
 +	private sealed class MinusDoubleUnary : OperatorMethod
 +	{
 +		public MinusDoubleUnary() { CanRestructure = true; ReturnType = typeof(double); }
@@ -280,6 +305,14 @@ index 59e1637..d3c4fa6 100644
 +		public override long GetIntValue(ExpressionMediator exm, List<AExpression> a) => (long)GetDoubleValue(exm, a);
 +		public override string GetStrValue(ExpressionMediator exm, List<AExpression> a)
 +			=> GetDoubleValue(exm, a).ToString(CultureInfo.InvariantCulture);
++	}
++
++	private sealed class TernaryIntDoubleDouble : OperatorMethod
++	{
++		public TernaryIntDoubleDouble() { CanRestructure = true; ReturnType = typeof(double); }
++		public override double GetDoubleValue(ExpressionMediator exm, List<AExpression> a)
++			=> a[0].GetIntValue(exm) != 0 ? a[1].GetDoubleValue(exm) : a[2].GetDoubleValue(exm);
++		public override long GetIntValue(ExpressionMediator exm, List<AExpression> a) => (long)GetDoubleValue(exm, a);
 +	}
 +
  	private sealed class PlusStrStr : OperatorMethod
@@ -537,10 +570,10 @@ index 794d63a..aa3ecdc 100644
  	{
  		Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 diff --git a/EraCore.Core/Shared/Runtime/Utils/SafCompat.cs b/EraCore.Core/Shared/Runtime/Utils/SafCompat.cs
-index 71bfe26..0b93787 100644
+index 71bfe26..af3cced 100644
 --- a/EraCore.Core/Shared/Runtime/Utils/SafCompat.cs
 +++ b/EraCore.Core/Shared/Runtime/Utils/SafCompat.cs
-@@ -25,22 +25,31 @@ internal static class SafCompat
+@@ -25,32 +25,52 @@ internal static class SafCompat
          return acc;
      }
  
@@ -578,7 +611,34 @@ index 71bfe26..0b93787 100644
      }
  
      internal static string ReadAllText(string path, Encoding encoding)
-@@ -86,9 +95,9 @@ internal static class SafCompat
+     {
+-        if (!IsContentUri(path)) return File.ReadAllText(path, encoding);
+-        // DirAccessor 当前按字节读；编码由调用方已 Detect 时仍走文本流
+-        using var stream = OpenRead(path)
+-            ?? throw new FileNotFoundException($"SAF file not found: {path}", path);
+-        using var reader = new StreamReader(stream, encoding, detectEncodingFromByteOrderMarks: true);
+-        return reader.ReadToEnd();
++        if (IsContentUri(path))
++        {
++            using var stream = OpenRead(path)
++                ?? throw new FileNotFoundException($"SAF file not found: {path}", path);
++            using var reader = new StreamReader(stream, encoding, detectEncodingFromByteOrderMarks: true);
++            return reader.ReadToEnd();
++        }
++        if (File.Exists(path))
++            return File.ReadAllText(path, encoding);
++        // MISTBELL_PATCH_CASE_INSENSITIVE：大小写不一致时走 accessor
++        using (var resolved = Program.DirAccessor?.OpenRead(path))
++        {
++            if (resolved == null)
++                return File.ReadAllText(path, encoding);
++            using var reader = new StreamReader(resolved, encoding, detectEncodingFromByteOrderMarks: true);
++            return reader.ReadToEnd();
++        }
+     }
+ 
+     internal static void WriteAllText(string path, string contents, Encoding encoding)
+@@ -86,9 +106,9 @@ internal static class SafCompat
      /// <summary>打开只读流；不存在返回 null。</summary>
      internal static Stream? OpenRead(string path)
      {
@@ -591,3 +651,25 @@ index 71bfe26..0b93787 100644
      }
  
      /// <summary>
+@@ -103,15 +123,16 @@ internal static class SafCompat
+ 
+     internal static byte[]? ReadAllBytes(string path)
+     {
+-        if (!IsContentUri(path)) return File.ReadAllBytes(path);
+-        return Program.DirAccessor.ReadAllBytes(path);
++        if (IsContentUri(path)) return Program.DirAccessor.ReadAllBytes(path);
++        if (File.Exists(path)) return File.ReadAllBytes(path);
++        return Program.DirAccessor?.ReadAllBytes(path);
+     }
+ 
+     internal static string[] ReadAllLines(string path)
+     {
+-        if (!IsContentUri(path)) return File.ReadAllLines(path);
+-        return EncodingHandler.ReadAllLinesFromBytes(
+-            Program.DirAccessor.ReadAllBytes(path) ?? []);
++        if (IsContentUri(path)) return Program.DirAccessor.ReadAllLines(path);
++        if (File.Exists(path)) return File.ReadAllLines(path);
++        return Program.DirAccessor?.ReadAllLines(path) ?? File.ReadAllLines(path);
+     }
+ 
+     internal static FileAttributes GetAttributes(string path)
