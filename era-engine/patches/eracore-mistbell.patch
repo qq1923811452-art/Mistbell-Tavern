@@ -1,0 +1,482 @@
+diff --git a/EraCore.Core/Shared/Runtime/Script/Parser/LexicalAnalyzer.cs b/EraCore.Core/Shared/Runtime/Script/Parser/LexicalAnalyzer.cs
+index 7e880c0..e2dbdbe 100644
+--- a/EraCore.Core/Shared/Runtime/Script/Parser/LexicalAnalyzer.cs
++++ b/EraCore.Core/Shared/Runtime/Script/Parser/LexicalAnalyzer.cs
+@@ -136,6 +136,27 @@ internal static partial class LexicalAnalyzer
+ 
+ 	public static bool UseMacro = true;
+ 	#region read
++	/// <summary>
++	/// MISTBELL_FLOAT：当前 token 是否为「十进制小数」。只看 `.` 后是否紧跟数字，
++	/// 避免把 `1.` / 范围号 / 省略写法误判成小数。
++	/// </summary>
++	internal static bool IsDecimalLiteral(CharStream st)
++	{
++		// CharStream 没有 Clone：直接按其底层字符串做只读前瞻，不动 pointer。
++		var src = st.RowString;
++		int i = st.CurrentPosition;
++		if (i >= src.Length || !char.IsDigit(src[i]))
++			return false;
++		// 0x / 0b 前缀不是小数
++		if (src[i] == '0' && i + 1 < src.Length && (src[i + 1] == 'x' || src[i + 1] == 'X' || src[i + 1] == 'b' || src[i + 1] == 'B'))
++			return false;
++		while (i < src.Length && char.IsDigit(src[i]))
++			i++;
++		if (i >= src.Length || src[i] != '.')
++			return false;
++		return i + 1 < src.Length && char.IsDigit(src[i + 1]);
++	}
++
+ 	public static long ReadInt64(CharStream st, bool retZero)
+ 	{
+ 		long significand;
+@@ -870,7 +891,11 @@ internal static partial class LexicalAnalyzer
+ 					case '7':
+ 					case '8':
+ 					case '9':
+-						ret.Add(new LiteralIntegerWord(ReadInt64(st, false)));
++						// MISTBELL_FLOAT：十进制且 `.` 后紧跟数字 → 小数リテラル（EM 私家版互換）。
++						if (IsDecimalLiteral(st))
++							ret.Add(new LiteralDoubleWord(ReadDouble(st)));
++						else
++							ret.Add(new LiteralIntegerWord(ReadInt64(st, false)));
+ 						break;
+ 					case '>':
+ 						if (endWith == LexEndWith.GreaterThan)
+diff --git a/EraCore.Core/Shared/Runtime/Script/Parser/Word.cs b/EraCore.Core/Shared/Runtime/Script/Parser/Word.cs
+index 450f953..4929a7e 100644
+--- a/EraCore.Core/Shared/Runtime/Script/Parser/Word.cs
++++ b/EraCore.Core/Shared/Runtime/Script/Parser/Word.cs
+@@ -46,6 +46,19 @@ internal sealed class LiteralIntegerWord : Word
+ 	}
+ }
+ 
++/// <summary>小数リテラル（EM 私家版の浮動小数対応）。</summary>
++internal sealed class LiteralDoubleWord : Word
++{
++	public LiteralDoubleWord(double d) { code = d; }
++	readonly double code;
++	public double Double { get { return code; } }
++	public override char Type { get { return 'D'; } }
++	public override string ToString()
++	{
++		return code.ToString(System.Globalization.CultureInfo.InvariantCulture);
++	}
++}
++
+ internal sealed class LiteralStringWord : Word
+ {
+ 	public LiteralStringWord(string s) { code = s; }
+diff --git a/EraCore.Core/Shared/Runtime/Script/Statements/Expression/AExpression.cs b/EraCore.Core/Shared/Runtime/Script/Statements/Expression/AExpression.cs
+index 1a2c0ab..e2dd6e0 100644
+--- a/EraCore.Core/Shared/Runtime/Script/Statements/Expression/AExpression.cs
++++ b/EraCore.Core/Shared/Runtime/Script/Statements/Expression/AExpression.cs
+@@ -28,6 +28,19 @@ internal abstract class AExpression
+ 		else
+ 			return new SingleStrTerm("");
+ 	}
++	/// <summary>
++	/// MISTBELL_FLOAT：双精度求值入口。整数项默认退化为 (double)GetIntValue(exm)。
++	/// </summary>
++	public virtual double GetDoubleValue(ExpressionMediator exm)
++	{
++		return GetIntValue(exm);
++	}
++
++	public bool IsFloat
++	{
++		get { return type == typeof(double); }
++	}
++
+ 	public bool IsInteger
+ 	{
+ 		get { return type == typeof(long); }
+diff --git a/EraCore.Core/Shared/Runtime/Script/Statements/Expression/ExpressionParser.cs b/EraCore.Core/Shared/Runtime/Script/Statements/Expression/ExpressionParser.cs
+index 8ec0bbd..8449cd1 100644
+--- a/EraCore.Core/Shared/Runtime/Script/Statements/Expression/ExpressionParser.cs
++++ b/EraCore.Core/Shared/Runtime/Script/Statements/Expression/ExpressionParser.cs
+@@ -398,6 +398,9 @@ internal static class ExpressionParser
+ 				case '0'://LiteralIntegerWT
+ 					stack.Add((token as LiteralIntegerWord)!.Int);
+ 					break;
++				case 'D'://LiteralDoubleWT（MISTBELL_FLOAT）
++					stack.Add((token as LiteralDoubleWord)!.Double);
++					break;
+ 				case 'F'://FormattedStringWT
+ 					stack.Add(ToStrFormTerm((token as StrFormWord)!));
+ 					break;
+@@ -580,6 +583,7 @@ internal static class ExpressionParser
+ 			throw new CodeEE(trerror.UnrecognizedSyntax.Text);
+ 		}
+ 		public void Add(long i) { Add(new SingleLongTerm(i)); }
++		public void Add(double d) { Add(new SingleDoubleTerm(d)); }
+ 		public void Add(string s) { Add(new SingleStrTerm(s)); }
+ 		public void Add(AExpression term)
+ 		{
+diff --git a/EraCore.Core/Shared/Runtime/Script/Statements/Expression/OperatorMethod.cs b/EraCore.Core/Shared/Runtime/Script/Statements/Expression/OperatorMethod.cs
+index 59e1637..736d99d 100644
+--- a/EraCore.Core/Shared/Runtime/Script/Statements/Expression/OperatorMethod.cs
++++ b/EraCore.Core/Shared/Runtime/Script/Statements/Expression/OperatorMethod.cs
+@@ -25,6 +25,8 @@ internal static class OperatorMethodManager
+ 	readonly static Dictionary<OperatorCode, OperatorMethod> unaryAfterDic = [];
+ 	readonly static Dictionary<OperatorCode, OperatorMethod> binaryIntIntDic = [];
+ 	readonly static Dictionary<OperatorCode, OperatorMethod> binaryStrStrDic = [];
++	// MISTBELL_FLOAT：任一侧为 double 时走这里（整数一侧按 (double) 提升）
++	readonly static Dictionary<OperatorCode, OperatorMethod> binaryDoubleDic = [];
+ 	readonly static OperatorMethod binaryMultIntStr;
+ 	readonly static OperatorMethod ternaryIntIntInt;
+ 	readonly static OperatorMethod ternaryIntStrStr;
+@@ -71,6 +73,18 @@ internal static class OperatorMethodManager
+ 		binaryStrStrDic[OperatorCode.LessEqual] = new LessEqualStrStr();
+ 		binaryStrStrDic[OperatorCode.NotEqual] = new NotEqualStrStr();
+ 
++		binaryDoubleDic[OperatorCode.Plus] = new PlusDouble();
++		binaryDoubleDic[OperatorCode.Minus] = new MinusDouble();
++		binaryDoubleDic[OperatorCode.Mult] = new MultDouble();
++		binaryDoubleDic[OperatorCode.Div] = new DivDouble();
++		binaryDoubleDic[OperatorCode.Mod] = new ModDouble();
++		binaryDoubleDic[OperatorCode.Equal] = new EqualDouble();
++		binaryDoubleDic[OperatorCode.Greater] = new GreaterDouble();
++		binaryDoubleDic[OperatorCode.Less] = new LessDouble();
++		binaryDoubleDic[OperatorCode.GreaterEqual] = new GreaterEqualDouble();
++		binaryDoubleDic[OperatorCode.LessEqual] = new LessEqualDouble();
++		binaryDoubleDic[OperatorCode.NotEqual] = new NotEqualDouble();
++
+ 		binaryMultIntStr = new MultStrInt();
+ 		ternaryIntIntInt = new TernaryIntIntInt();
+ 		ternaryIntStrStr = new TernaryIntStrStr();
+@@ -139,7 +153,13 @@ internal static class OperatorMethodManager
+ 	public static AExpression ReduceBinaryTerm(OperatorCode op, AExpression left, AExpression right)
+ 	{
+ 		OperatorMethod method = null!;
+-		if (left.GetOperandType() == typeof(long) && right.GetOperandType() == typeof(long))
++		if ((left.IsFloat || right.IsFloat)
++			&& left.GetOperandType() != typeof(string) && right.GetOperandType() != typeof(string))
++		{
++			if (binaryDoubleDic.TryGetValue(op, out OperatorMethod? dblMethod))
++				method = dblMethod;
++		}
++		else if (left.GetOperandType() == typeof(long) && right.GetOperandType() == typeof(long))
+ 		{
+ 			if (binaryIntIntDic.TryGetValue(op, out OperatorMethod? value))
+ 				method = value;
+@@ -203,6 +223,76 @@ internal static class OperatorMethodManager
+ 		}
+ 	}
+ 
++	// ===== MISTBELL_FLOAT：double 算子（整数侧按 (double) 提升，结果恒为 double）=====
++	private abstract class DoubleBinaryBase : OperatorMethod
++	{
++		protected DoubleBinaryBase() { CanRestructure = true; ReturnType = typeof(double); }
++		protected static double D(ExpressionMediator exm, AExpression a) => a.IsFloat ? a.GetDoubleValue(exm) : a.GetIntValue(exm);
++	}
++
++	private sealed class PlusDouble : DoubleBinaryBase
++	{
++		public override double GetDoubleValue(ExpressionMediator exm, List<AExpression> a) => D(exm, a[0]) + D(exm, a[1]);
++	}
++	private sealed class MinusDouble : DoubleBinaryBase
++	{
++		public override double GetDoubleValue(ExpressionMediator exm, List<AExpression> a) => D(exm, a[0]) - D(exm, a[1]);
++	}
++	private sealed class MultDouble : DoubleBinaryBase
++	{
++		public override double GetDoubleValue(ExpressionMediator exm, List<AExpression> a) => D(exm, a[0]) * D(exm, a[1]);
++	}
++	private sealed class DivDouble : DoubleBinaryBase
++	{
++		public override double GetDoubleValue(ExpressionMediator exm, List<AExpression> a)
++		{
++			double divisor = D(exm, a[1]);
++			if (divisor == 0.0)
++				throw new CodeEE(trerror.DivideByZero.Text);
++			return D(exm, a[0]) / divisor;
++		}
++	}
++	private sealed class ModDouble : DoubleBinaryBase
++	{
++		public override double GetDoubleValue(ExpressionMediator exm, List<AExpression> a)
++		{
++			double divisor = D(exm, a[1]);
++			if (divisor == 0.0)
++				throw new CodeEE(trerror.DivideByZero.Text);
++			return D(exm, a[0]) % divisor;
++		}
++	}
++	private sealed class EqualDouble : DoubleBinaryBase
++	{
++		public override long GetIntValue(ExpressionMediator exm, List<AExpression> a) => D(exm, a[0]) == D(exm, a[1]) ? 1 : 0;
++		public override double GetDoubleValue(ExpressionMediator exm, List<AExpression> a) => GetIntValue(exm, a);
++	}
++	private sealed class GreaterDouble : DoubleBinaryBase
++	{
++		public override long GetIntValue(ExpressionMediator exm, List<AExpression> a) => D(exm, a[0]) > D(exm, a[1]) ? 1 : 0;
++		public override double GetDoubleValue(ExpressionMediator exm, List<AExpression> a) => GetIntValue(exm, a);
++	}
++	private sealed class LessDouble : DoubleBinaryBase
++	{
++		public override long GetIntValue(ExpressionMediator exm, List<AExpression> a) => D(exm, a[0]) < D(exm, a[1]) ? 1 : 0;
++		public override double GetDoubleValue(ExpressionMediator exm, List<AExpression> a) => GetIntValue(exm, a);
++	}
++	private sealed class GreaterEqualDouble : DoubleBinaryBase
++	{
++		public override long GetIntValue(ExpressionMediator exm, List<AExpression> a) => D(exm, a[0]) >= D(exm, a[1]) ? 1 : 0;
++		public override double GetDoubleValue(ExpressionMediator exm, List<AExpression> a) => GetIntValue(exm, a);
++	}
++	private sealed class LessEqualDouble : DoubleBinaryBase
++	{
++		public override long GetIntValue(ExpressionMediator exm, List<AExpression> a) => D(exm, a[0]) <= D(exm, a[1]) ? 1 : 0;
++		public override double GetDoubleValue(ExpressionMediator exm, List<AExpression> a) => GetIntValue(exm, a);
++	}
++	private sealed class NotEqualDouble : DoubleBinaryBase
++	{
++		public override long GetIntValue(ExpressionMediator exm, List<AExpression> a) => D(exm, a[0]) != D(exm, a[1]) ? 1 : 0;
++		public override double GetDoubleValue(ExpressionMediator exm, List<AExpression> a) => GetIntValue(exm, a);
++	}
++
+ 	private sealed class PlusStrStr : OperatorMethod
+ 	{
+ 		public PlusStrStr()
+diff --git a/EraCore.Core/Shared/Runtime/Script/Statements/Expression/Term.cs b/EraCore.Core/Shared/Runtime/Script/Statements/Expression/Term.cs
+index 2c55ae9..fcb01dd 100644
+--- a/EraCore.Core/Shared/Runtime/Script/Statements/Expression/Term.cs
++++ b/EraCore.Core/Shared/Runtime/Script/Statements/Expression/Term.cs
+@@ -1,5 +1,6 @@
+ ﻿using MinorShift.Emuera.Runtime.Script.Data;
+ using System;
++using System.Globalization;
+ 
+ namespace MinorShift.Emuera.Runtime.Script.Statements.Expression;
+ 
+@@ -68,6 +69,41 @@ internal sealed class SingleStrTerm : SingleTerm
+ }
+ 
+ 
++internal sealed class SingleDoubleTerm : SingleTerm
++{
++	public SingleDoubleTerm(double d)
++		: base(typeof(double))
++	{
++		dValue = d;
++	}
++	readonly double dValue;
++
++	public override long GetIntValue(ExpressionMediator exm)
++	{
++		return (long)dValue;
++	}
++	public override double GetDoubleValue(ExpressionMediator exm)
++	{
++		return dValue;
++	}
++	public override string GetStrValue(ExpressionMediator exm)
++	{
++		return dValue.ToString(CultureInfo.InvariantCulture);
++	}
++	public override SingleTerm GetValue(ExpressionMediator exm)
++	{
++		return this;
++	}
++	public double Double
++	{
++		get { return dValue; }
++	}
++	public override string ToString()
++	{
++		return dValue.ToString(CultureInfo.InvariantCulture);
++	}
++}
++
+ internal sealed class SingleLongTerm : SingleTerm
+ {
+ 	public SingleLongTerm(long i)
+diff --git a/EraCore.Core/Shared/Runtime/Script/Statements/Function/Creator.Method.Math.cs b/EraCore.Core/Shared/Runtime/Script/Statements/Function/Creator.Method.Math.cs
+index 8abbec3..c3fe79f 100644
+--- a/EraCore.Core/Shared/Runtime/Script/Statements/Function/Creator.Method.Math.cs
++++ b/EraCore.Core/Shared/Runtime/Script/Statements/Function/Creator.Method.Math.cs
+@@ -212,16 +212,22 @@ internal static partial class FunctionMethodCreator
+ 
+ 	private sealed class PowerMethod : FunctionMethod
+ 	{
++		// MISTBELL_FLOAT：EM 私家版的 POWER 支持小数底数（POWER(0.95, n)）。
++		// 返回类型改为 double，整数用法经 AExpression.GetIntValue 截断保持向后兼容。
+ 		public PowerMethod()
+ 		{
+-			ReturnType = typeof(long);
+-			argumentTypeArrayEx = [new ArgTypeList{ ArgTypes = { ArgType.Int | ArgType.DisallowVoid, ArgType.Int | ArgType.DisallowVoid } }];
++			ReturnType = typeof(double);
++			argumentTypeArrayEx = [new ArgTypeList{ ArgTypes = { ArgType.Any | ArgType.DisallowVoid, ArgType.Any | ArgType.DisallowVoid } }];
+ 			CanRestructure = true;
+ 		}
+ 		public override long GetIntValue(ExpressionMediator exm, List<AExpression> arguments)
+ 		{
+-			long x = arguments[0].GetIntValue(exm);
+-			long y = arguments[1].GetIntValue(exm);
++			return (long)GetDoubleValue(exm, arguments);
++		}
++		public override double GetDoubleValue(ExpressionMediator exm, List<AExpression> arguments)
++		{
++			double x = arguments[0].IsFloat ? arguments[0].GetDoubleValue(exm) : arguments[0].GetIntValue(exm);
++			double y = arguments[1].IsFloat ? arguments[1].GetDoubleValue(exm) : arguments[1].GetIntValue(exm);
+ 			double pow = Math.Pow(x, y);
+ 			if (double.IsNaN(pow))
+ 				throw new CodeEE(string.Format(trerror.ResultIsNaN.Text, Name));
+@@ -229,7 +235,7 @@ internal static partial class FunctionMethodCreator
+ 				throw new CodeEE(string.Format(trerror.ResultIsInfinity.Text, Name));
+ 			else if ((pow >= long.MaxValue) || (pow <= long.MinValue))
+ 				throw new CodeEE(string.Format(trerror.ResultIsOutOfTheRangeOfInt64.Text, Name, pow));
+-			return (long)pow;
++			return pow;
+ 		}
+ 	}
+ 
+@@ -536,7 +542,9 @@ internal static partial class FunctionMethodCreator
+ 		}
+ 		public override long GetIntValue(ExpressionMediator exm, List<AExpression> arguments)
+ 		{
+-			double dret = Math.Round((double)arguments[0].GetIntValue(exm), MidpointRounding.AwayFromZero);
++			// MISTBELL_FLOAT：小数参数必须按 double 取整，否则 1.4 会先被截断成 1。
++			double raw = arguments[0].IsFloat ? arguments[0].GetDoubleValue(exm) : arguments[0].GetIntValue(exm);
++			double dret = Math.Round(raw, MidpointRounding.AwayFromZero);
+ 			if ((dret >= long.MaxValue) || (dret <= long.MinValue))
+ 				throw new CodeEE(string.Format(trerror.ResultIsOutOfTheRangeOfInt64.Text, Name, dret));
+ 			return (long)dret;
+diff --git a/EraCore.Core/Shared/Runtime/Script/Statements/Function/Creator.Method.String.cs b/EraCore.Core/Shared/Runtime/Script/Statements/Function/Creator.Method.String.cs
+index b7deb34..8d0388e 100644
+--- a/EraCore.Core/Shared/Runtime/Script/Statements/Function/Creator.Method.String.cs
++++ b/EraCore.Core/Shared/Runtime/Script/Statements/Function/Creator.Method.String.cs
+@@ -299,13 +299,19 @@ internal static partial class FunctionMethodCreator
+ 		public ToIntMethod()
+ 		{
+ 			ReturnType = typeof(long);
+-			argumentTypeArrayEx = [new ArgTypeList{ ArgTypes = { ArgType.String | ArgType.DisallowVoid } }];
++			// MISTBELL_FLOAT：TOINT(变动值 * 0.7) / TOINT(LOCALF) 需要同时接受 数值、小数、字符串。
++			argumentTypeArrayEx = [new ArgTypeList{ ArgTypes = { ArgType.Any | ArgType.DisallowVoid } }];
+ 			CanRestructure = true;
+ 		}
+ 
+ 		public override long GetIntValue(ExpressionMediator exm, List<AExpression> arguments)
+ 		{
+-			string str = arguments[0].GetStrValue(exm);
++			var arg = arguments[0];
++			if (arg.IsFloat)
++				return (long)arg.GetDoubleValue(exm);
++			if (arg.GetOperandType() == typeof(long))
++				return arg.GetIntValue(exm);
++			string str = arg.GetStrValue(exm);
+ 			if (str == null || string.IsNullOrEmpty(str))
+ 				return 0;
+ 			//全角文字が入ってるなら無条件で0を返す
+diff --git a/EraCore.Core/Shared/Runtime/Script/Statements/Function/FunctionMethod.cs b/EraCore.Core/Shared/Runtime/Script/Statements/Function/FunctionMethod.cs
+index ebf0eac..95b3023 100644
+--- a/EraCore.Core/Shared/Runtime/Script/Statements/Function/FunctionMethod.cs
++++ b/EraCore.Core/Shared/Runtime/Script/Statements/Function/FunctionMethod.cs
+@@ -291,6 +291,12 @@ internal abstract class FunctionMethod
+ 	public bool HasUniqueRestructure { get; protected set; }
+ 
+ 	//実際の計算。
++	/// <summary>MISTBELL_FLOAT：默认按整数求值后提升；POWER 等覆盖为真 double。</summary>
++	public virtual double GetDoubleValue(ExpressionMediator exm, List<AExpression> arguments)
++	{
++		return GetIntValue(exm, arguments);
++	}
++
+ 	public virtual long GetIntValue(ExpressionMediator exm, List<AExpression> arguments) { throw new ExeEE(trerror.ReturnTypeDifferentOrNotImpelemnt.Text); }
+ 	public virtual string GetStrValue(ExpressionMediator exm, List<AExpression> arguments) { throw new ExeEE(trerror.ReturnTypeDifferentOrNotImpelemnt.Text); }
+ 	public virtual SingleTerm GetReturnValue(ExpressionMediator exm, List<AExpression> arguments)
+diff --git a/EraCore.Core/Shared/Runtime/Script/Statements/Function/FunctionMethodTerm.cs b/EraCore.Core/Shared/Runtime/Script/Statements/Function/FunctionMethodTerm.cs
+index b0d0805..38fd2c1 100644
+--- a/EraCore.Core/Shared/Runtime/Script/Statements/Function/FunctionMethodTerm.cs
++++ b/EraCore.Core/Shared/Runtime/Script/Statements/Function/FunctionMethodTerm.cs
+@@ -19,6 +19,11 @@ internal sealed class FunctionMethodTerm : AExpression
+ 	{
+ 		return method.GetIntValue(exm, arguments);
+ 	}
++	public override double GetDoubleValue(ExpressionMediator exm)
++	{
++		return method.GetDoubleValue(exm, arguments);
++	}
++
+ 	public override string GetStrValue(ExpressionMediator exm)
+ 	{
+ 		return method.GetStrValue(exm, arguments);
+diff --git a/EraCore.Core/Shared/Runtime/Utils/EncodingHandler.cs b/EraCore.Core/Shared/Runtime/Utils/EncodingHandler.cs
+index 5ea116f..3d9465c 100644
+--- a/EraCore.Core/Shared/Runtime/Utils/EncodingHandler.cs
++++ b/EraCore.Core/Shared/Runtime/Utils/EncodingHandler.cs
+@@ -36,6 +36,30 @@ public static class EncodingHandler
+ 		}
+ 		catch (DecoderFallbackException)
+ 		{
++			// MISTBELL_PATCH_LANG_ENCODING：先按当前语言配置的 ANSI 编码做「严格」解码。
++			// 注意 Encoding.GetEncoding(936) 默认 ReplacementFallback 不抛异常，
++			// 必须显式装 DecoderFallback.ExceptionFallback，否则 SJIS 兜底永远走不到。
++			try
++			{
++				var langEncoding = LangManager.CurrentEncoding;
++				if (langEncoding != null && langEncoding.CodePage != shiftjisEncoding.CodePage)
++				{
++					var strictLang = Encoding.GetEncoding(
++						langEncoding.CodePage,
++						EncoderFallback.ReplacementFallback,
++						DecoderFallback.ExceptionFallback);
++					try
++					{
++						return SplitLines(strictLang.GetString(bytes));
++					}
++					catch (DecoderFallbackException)
++					{
++					}
++				}
++			}
++			catch
++			{
++			}
+ 			// UTF-8 失败 → 假设 SHIFT-JIS（CP 932 对绝大多数日文文件可解码）
+ 			return SplitLines(shiftjisEncoding.GetString(bytes));
+ 		}
+diff --git a/EraCore.Core/Shared/Runtime/Utils/LangManager.cs b/EraCore.Core/Shared/Runtime/Utils/LangManager.cs
+index 794d63a..aa3ecdc 100644
+--- a/EraCore.Core/Shared/Runtime/Utils/LangManager.cs
++++ b/EraCore.Core/Shared/Runtime/Utils/LangManager.cs
+@@ -7,6 +7,9 @@ internal static class LangManager
+ {
+ 	static Encoding lang = null!;
+ 
++	// MISTBELL_PATCH_LANG_ENCODING：给 EncodingHandler 暴露当前语言编码。
++	internal static Encoding? CurrentEncoding => lang;
++
+ 	public static void setEncode(int code)
+ 	{
+ 		Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+diff --git a/EraCore.Core/Shared/Runtime/Utils/SafCompat.cs b/EraCore.Core/Shared/Runtime/Utils/SafCompat.cs
+index 71bfe26..e0d5ffb 100644
+--- a/EraCore.Core/Shared/Runtime/Utils/SafCompat.cs
++++ b/EraCore.Core/Shared/Runtime/Utils/SafCompat.cs
+@@ -25,16 +25,22 @@ internal static class SafCompat
+         return acc;
+     }
+ 
++    // MISTBELL_PATCH_CASE_INSENSITIVE：本地路径也回退到 accessor 的逐段大小写容错。
++    // 引擎对固定名资源用硬编码大写（TALENT.CSV 推导 TALENT.als），而 eraTW 包里真实名是
++    // Talent.als；Android 私有目录区分大小写，裸 File.Exists 恒 false → 别名表不加载
++    // → 「音楽知識/愛欲/反発刻印」等中文关键字全部报「无法解析的标识符」。
+     internal static bool FileExists(string path)
+     {
+-        if (!IsContentUri(path)) return File.Exists(path);
+-        return Program.DirAccessor.FileExists(path);
++        if (IsContentUri(path)) return Program.DirAccessor.FileExists(path);
++        if (File.Exists(path)) return true;
++        return Program.DirAccessor?.FileExists(path) ?? false;
+     }
+ 
+     internal static bool DirectoryExists(string path)
+     {
+-        if (!IsContentUri(path)) return Directory.Exists(path);
+-        return Program.DirAccessor.DirectoryExists(path);
++        if (IsContentUri(path)) return Program.DirAccessor.DirectoryExists(path);
++        if (Directory.Exists(path)) return true;
++        return Program.DirAccessor?.DirectoryExists(path) ?? false;
+     }
+ 
+     internal static string ReadAllText(string path)
