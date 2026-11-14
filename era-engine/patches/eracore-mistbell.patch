@@ -26,23 +26,6 @@ index a9c3d18..2db4526 100644
  	/// <summary>边界硬上限（design.md §8，v1 文本 IR 体积 &lt; 源总大小，估 &lt;80MB；eraTW 实测后微调）。超限即判废不生成。</summary>
  	internal const long MaxIrFileBytes = 200L * 1024 * 1024;
  
-diff --git a/EraCore.Core/Shared/Runtime/Script/Loader/ErbLoadScheduler.cs b/EraCore.Core/Shared/Runtime/Script/Loader/ErbLoadScheduler.cs
-index d0434d7..e2d63ba 100644
---- a/EraCore.Core/Shared/Runtime/Script/Loader/ErbLoadScheduler.cs
-+++ b/EraCore.Core/Shared/Runtime/Script/Loader/ErbLoadScheduler.cs
-@@ -160,6 +160,12 @@ internal sealed class ErbLoadScheduler
- 				// 判别日志（handoff §6.3）：每 32 文件输出窗口占用 + GC 增量，卡住阶段可由 logcat 直接判别
- 				if ((merged & 0x1F) == 0)
- 				{
-+					// MISTBELL_PATCH_GC：Android 上 Mono 堆只涨不回落（dAllocMB=0 时仍在涨），
-+					// 中途做一次完整回收，把已废弃的解析中间产物压下去，降低被 LMK 杀的概率。
-+					if (merged % 512 == 0)
-+					{
-+						GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: true);
-+					}
- 					EmueraLog.Info("ErbLoadScheduler", $"LoadPendingParallel: merged={merged}/{pending.Count} active={running.Count} window={window} ms={phaseSw.ElapsedMilliseconds} {GcSnapshot.Diff(gcLast)}");
- 					gcLast = GcSnapshot.Take();
- 				}
 diff --git a/EraCore.Core/Shared/Runtime/Script/Loader/ErbLoadStrategy.cs b/EraCore.Core/Shared/Runtime/Script/Loader/ErbLoadStrategy.cs
 index de57d34..954892a 100644
 --- a/EraCore.Core/Shared/Runtime/Script/Loader/ErbLoadStrategy.cs
