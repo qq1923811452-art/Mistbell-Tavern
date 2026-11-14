@@ -40,8 +40,7 @@
 
   <!-- 只引用 EraCore 的公共宿主门面（零 SkiaSharp / 零 Avalonia / 零 Kestrel） -->
   <ItemGroup>
-    <ProjectReference Include="..\upstream\EraCore.Hosting\EraCore.Hosting.csproj"
-                      AdditionalProperties="TreatWarningsAsErrors=false" />
+    <ProjectReference Include="..\upstream\EraCore.Hosting\EraCore.Hosting.csproj" />
   </ItemGroup>
 
 </Project>

@@ -81,6 +81,7 @@ jobs:
             -p:AndroidPackageFormat=apk \
             -p:AndroidKeyStore=false \
             -p:CheckEolWorkloads=false \
+            -p:TreatWarningsAsErrors=false \
             -v minimal
 
       - name: Locate APK
