@@ -1,3 +1,17 @@
+diff --git a/EraCore.Core/Shared/Runtime/Config/ConfigData.cs b/EraCore.Core/Shared/Runtime/Config/ConfigData.cs
+index f23f5b3..0c45cbf 100644
+--- a/EraCore.Core/Shared/Runtime/Config/ConfigData.cs
++++ b/EraCore.Core/Shared/Runtime/Config/ConfigData.cs
+@@ -193,7 +193,8 @@ internal sealed class ConfigData
+ 		// erb-loader-parallel 03：ERB 並列読み込み（false = 直列フォールバック、AnalysisMode は常に直列）
+ 		configArray.Add(new ConfigItem<bool>(ConfigCode.ParallelErbLoad, "ERBファイルを並列して読み込む", "Load ERB files in parallel", true));
+ 		// erb-loader-parallel 08：ParseScript 未呼び出し関数の解析並列化（false = 直列フォールバック、AnalysisMode は常に直列）
+-		configArray.Add(new ConfigItem<bool>(ConfigCode.ParallelParseScript, "未呼び出し関数の解析を並列して行う", "Parse uncalled functions in parallel", true));
++		// MISTBELL_PATCH_MEMORY：默认关（Android 上并行清扫的峰值内存过高）。
++		configArray.Add(new ConfigItem<bool>(ConfigCode.ParallelParseScript, "未呼び出し関数の解析を並列して行う", "Parse uncalled functions in parallel", false));
+ 		configArray.Add(new ConfigItem<ReduceArgumentOnLoadFlag>(ConfigCode.ReduceArgumentOnLoad, "ロード時に引数を解析する", "Reduce argument on load", ReduceArgumentOnLoadFlag.NO));
+ 
+ 		configArray.Add(new ConfigItem<bool>(ConfigCode.IgnoreUncalledFunction, "呼び出されなかった関数を無視する", "Ignore uncalled functions", true));
 diff --git a/EraCore.Core/Shared/Runtime/Script/Loader/ErbIrCache.cs b/EraCore.Core/Shared/Runtime/Script/Loader/ErbIrCache.cs
 index a9c3d18..2db4526 100644
 --- a/EraCore.Core/Shared/Runtime/Script/Loader/ErbIrCache.cs
@@ -12,6 +26,21 @@ index a9c3d18..2db4526 100644
  	/// <summary>边界硬上限（design.md §8，v1 文本 IR 体积 &lt; 源总大小，估 &lt;80MB；eraTW 实测后微调）。超限即判废不生成。</summary>
  	internal const long MaxIrFileBytes = 200L * 1024 * 1024;
  
+diff --git a/EraCore.Core/Shared/Runtime/Script/Loader/ErbLoadStrategy.cs b/EraCore.Core/Shared/Runtime/Script/Loader/ErbLoadStrategy.cs
+index de57d34..fa9972e 100644
+--- a/EraCore.Core/Shared/Runtime/Script/Loader/ErbLoadStrategy.cs
++++ b/EraCore.Core/Shared/Runtime/Script/Loader/ErbLoadStrategy.cs
+@@ -29,7 +29,9 @@ internal sealed class ErbLoadStrategy
+ {
+ 	/// <summary>erb-loader-parallel 03：并行度的常量上限——窗口内产物同时驻留 = 上限文件数的解析产物
+ 	///（spec 实测 eraTW 规模 12 核理想并行度 ~8-10x，取 8）。默认度 = 核数，见 <see cref="ResolveDegree"/>。</summary>
+-	internal const int MaxParallelErbFiles = 8;
++	// MISTBELL_PATCH_MEMORY：Android largeHeap 上限约 512MB，eraTW 实测窗口=8 时
++	// Mono 堆涨到 526MB 被 OOM 杀掉。降到 3 把峰值压下来，代价是加载稍慢。
++	internal const int MaxParallelErbFiles = 3;
+ 
+ 	/// <summary>genmerge 阶段是否并行（文件级滑动窗口）。</summary>
+ 	internal bool ParallelGenmerge { get; }
 diff --git a/EraCore.Core/Shared/Runtime/Script/Loader/ErbThreePassParser.cs b/EraCore.Core/Shared/Runtime/Script/Loader/ErbThreePassParser.cs
 index ab8bdbd..7a7cf40 100644
 --- a/EraCore.Core/Shared/Runtime/Script/Loader/ErbThreePassParser.cs
