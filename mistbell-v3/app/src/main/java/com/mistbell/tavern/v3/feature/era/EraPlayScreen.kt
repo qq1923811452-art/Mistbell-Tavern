@@ -283,12 +283,18 @@ private fun EraGameLog(
     val lastUid = lines.lastOrNull()?.uid
     // 用户往上翻历史时停止自动跳底，回到底部再恢复跟随。
     var followTail by remember { mutableStateOf(true) }
-    LaunchedEffect(listState, lines.size) {
-        snapshotFlow {
-            val info = listState.layoutInfo
-            val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: -1
-            info.totalItemsCount == 0 || lastVisible >= info.totalItemsCount - 2
-        }.collect { atBottom -> followTail = atBottom }
+    // 只在用户真正滚动时更新跟随状态。
+    // 旧实现把 effect 挂在 lines.size 上：每次新行进来 effect 重启，首帧快照
+    // 计算的是"旧位置是否在底部"，会把 followTail 误置为 false，于是再也不跟随。
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.isScrollInProgress }
+            .collect { scrolling ->
+                if (!scrolling) {
+                    val info = listState.layoutInfo
+                    val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: -1
+                    followTail = info.totalItemsCount == 0 || lastVisible >= info.totalItemsCount - 2
+                }
+            }
     }
     LaunchedEffect(revision, lastUid, followTail) {
         if (lines.isEmpty() || !followTail) return@LaunchedEffect
