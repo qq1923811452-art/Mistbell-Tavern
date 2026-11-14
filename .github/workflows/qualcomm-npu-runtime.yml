@@ -245,10 +245,10 @@ jobs:
 
       # ── 单包：把 .NET 引擎注进 NPU APK 的同一套流程 ─────────────────────────
       # 产物是「一个 APK 同时含 NPU 运行时 + Emuera 引擎」，供真机直接覆盖安装。
-      - name: Setup .NET 8 for merged package
+      - name: Setup .NET 10 for merged package
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: "8.0.x"
+          dotnet-version: "10.0.x"
           dotnet-quality: "ga"
 
       - name: Fetch era engine sources
@@ -257,25 +257,22 @@ jobs:
           rm -rf era-engine/upstream
           git init era-engine/upstream
           cd era-engine/upstream
-          git remote add origin https://github.com/KuroPeach/SkiaX-android-CI.git
-          git fetch --depth 1 origin 07bc3c054fce12d5fa0464597a7bb4c4a98847f2
+          git remote add origin https://github.com/LaoBro/era-core.git
+          git fetch --depth 1 origin 6e14de0fa0cd83b0bb83df96fc29422e107f7af4
           git checkout -q FETCH_HEAD
 
       - name: Install Android workload for engine
         run: dotnet workload install android --skip-manifest-update
 
-      - name: Patch upstream (sys.click support)
-        run: python3 era-engine/scripts/patch_upstream.py era-engine/upstream
-
       - name: Publish arm64 engine APK
         run: |
           set -e
           dotnet publish era-engine/EraHost/EraHost.csproj \
-            -c Release -f net8.0-android34.0 -r android-arm64 \
+            -c Release -f net10.0-android -r android-arm64 \
+            -p:ApplicationId=com.mistbell.tavern.v3 \
             -p:AndroidPackageFormat=apk \
             -p:AndroidKeyStore=false \
             -p:CheckEolWorkloads=false \
-            -p:RunAOTCompilation=false \
             -v minimal
 
       - name: Build app with merged manifest and NPU payload
@@ -293,7 +290,7 @@ jobs:
       - name: Merge engine into the NPU APK
         run: |
           set -e
-          ENGINE=$(find era-engine/EraHost/bin/Release/net8.0-android34.0 -name '*.apk' | head -1)
+          ENGINE=$(find era-engine/EraHost/bin/Release/net10.0-android -name '*.apk' | head -1)
           APP=$(find mistbell-v3/app/build/outputs/apk/debug -name '*.apk' | head -1)
           echo "ENGINE=$ENGINE"
           echo "APP=$APP"

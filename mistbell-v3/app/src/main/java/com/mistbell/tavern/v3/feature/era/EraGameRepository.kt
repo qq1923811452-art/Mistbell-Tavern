@@ -5,16 +5,10 @@ import android.net.Uri
 import com.mistbell.tavern.v3.BuildConfig
 import java.io.File
 
-/**
- * Persistent game library for the eraTW adapter.
- *
- * A selected ZIP is copied to cache, extracted, and then forgotten. The imported directory is the
- * unit of updates: importing a pack with the same name replaces its files while the installer
- * carries `sav/` and root `save*.sav` across.
- */
 class EraGameRepository(context: Context) {
     private val appContext = context.applicationContext
     private val gamesRoot = File(appContext.filesDir, GAMES_DIRECTORY)
+    private val mergedZipRoot = File(appContext.filesDir, MERGED_ZIP_DIRECTORY)
     private val installer = EraGameZipInstaller(gamesRoot)
     private val preferences = appContext.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
 
@@ -67,6 +61,7 @@ class EraGameRepository(context: Context) {
             }
             val install = installer.install(stagingZip, displayName)
             preferences.edit()
+                .remove(KEY_ZIP_PATH)
                 .putString(KEY_DIRECTORY_NAME, install.directory.name)
                 .putString(KEY_DISPLAY_NAME, install.name)
                 .putLong(KEY_IMPORTED_AT, install.importedAtEpochMillis)
@@ -78,10 +73,7 @@ class EraGameRepository(context: Context) {
         }
     }
 
-    /**
-     * 单包：只在 cache 里留一份 ZIP，交给引擎解一次。
-     * 之前 Kotlin 解到 files/era/games、引擎又解到 files/games，磁盘和导入时间都翻倍。
-     */
+    @Suppress("TooGenericExceptionCaught")
     private fun importZipForMerged(
         uri: Uri,
         displayName: String,
@@ -91,27 +83,34 @@ class EraGameRepository(context: Context) {
                 .replace(Regex("[^0-9A-Za-z\\u4e00-\\u9fa5._-]"), "_")
                 .take(MAX_NAME_LENGTH)
                 .ifBlank { "era" }
-        val sourceDir = File(appContext.cacheDir, "era-src").apply { mkdirs() }
-        val zip = File(sourceDir, "$safeName.zip")
-        val temp = File(sourceDir, "$safeName.zip.part")
-        val input = appContext.contentResolver.openInputStream(uri) ?: error("无法读取所选 ZIP 文件")
-        input.use { source -> temp.outputStream().buffered().use { source.copyTo(it) } }
-        if (zip.exists()) zip.delete()
-        if (!temp.renameTo(zip)) error("无法保存 ZIP 副本")
+        mergedZipRoot.mkdirs()
+        val zip = File(mergedZipRoot, "$safeName.zip")
+        val temp = File(mergedZipRoot, "$safeName.zip.part")
+        try {
+            val input = appContext.contentResolver.openInputStream(uri) ?: error("无法读取所选 ZIP 文件")
+            input.use { source -> temp.outputStream().buffered().use { source.copyTo(it) } }
+            if (zip.exists()) zip.delete()
+            if (!temp.renameTo(zip)) error("无法保存 ZIP 副本")
+        } catch (t: Throwable) {
+            temp.delete()
+            throw t
+        }
         val entryCount = runCatching { java.util.zip.ZipFile(zip).use { it.size() } }.getOrDefault(0)
-        // 清掉旧版本解包出来的目录，避免两份 16k 文件同时占空间
+        val importedAt = System.currentTimeMillis()
+        // 清掉旧两包模式解出来的副本与缓存里的老副本，避免双份占用空间
         runCatching { File(appContext.filesDir, GAMES_DIRECTORY).deleteRecursively() }
+        runCatching { File(appContext.cacheDir, "era-src").deleteRecursively() }
         preferences.edit()
             .putString(KEY_ZIP_PATH, zip.absolutePath)
             .remove(KEY_DIRECTORY_NAME)
             .putString(KEY_DISPLAY_NAME, displayName)
-            .putLong(KEY_IMPORTED_AT, System.currentTimeMillis())
+            .putLong(KEY_IMPORTED_AT, importedAt)
             .putInt(KEY_FILE_COUNT, entryCount)
             .apply()
         return EraGameInstall(
             name = displayName,
-            directory = sourceDir,
-            importedAtEpochMillis = preferences.getLong(KEY_IMPORTED_AT, 0L),
+            directory = mergedZipRoot,
+            importedAtEpochMillis = importedAt,
             fileCount = entryCount,
             zipPath = zip,
         )
@@ -119,6 +118,7 @@ class EraGameRepository(context: Context) {
 
     private companion object {
         const val GAMES_DIRECTORY = "era/games"
+        const val MERGED_ZIP_DIRECTORY = "era-src"
         const val PREFERENCES_NAME = "mistbell-era"
         const val KEY_DIRECTORY_NAME = "game_directory"
         const val KEY_DISPLAY_NAME = "game_display_name"

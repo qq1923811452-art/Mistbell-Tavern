@@ -18,8 +18,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  ERA_UPSTREAM_REPO: https://github.com/KuroPeach/SkiaX-android-CI.git
-  ERA_UPSTREAM_SHA: 07bc3c054fce12d5fa0464597a7bb4c4a98847f2
+  ERA_UPSTREAM_REPO: https://github.com/LaoBro/era-core.git
+  ERA_UPSTREAM_SHA: 6e14de0fa0cd83b0bb83df96fc29422e107f7af4
 
 jobs:
   build-engine-apk:
@@ -32,10 +32,10 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Setup .NET 8
+      - name: Setup .NET 10
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: "8.0.x"
+          dotnet-version: "10.0.x"
           dotnet-quality: "ga"
 
       - name: Setup JDK 17
@@ -62,12 +62,9 @@ jobs:
           V=$(dotnet --version)
           echo "SDK in use: $V"
           case "$V" in
-            8.0.*) echo "OK: .NET 8" ;;
-            *) echo "::error::期望 .NET 8，实际 $V（global.json 未生效）"; exit 1 ;;
+            10.0.*) echo "OK: .NET 10" ;;
+            *) echo "::error::期望 .NET 10，实际 $V（global.json 未生效）"; exit 1 ;;
           esac
-
-      - name: Patch upstream (sys.click support)
-        run: python3 era-engine/scripts/patch_upstream.py era-engine/upstream
 
       - name: Install Android workload
         run: |
@@ -79,19 +76,18 @@ jobs:
         run: |
           set -e
           dotnet publish era-engine/EraHost/EraHost.csproj \
-            -c Release -f net8.0-android34.0 -r android-arm64 \
+            -c Release -f net10.0-android -r android-arm64 \
             -p:AndroidSupportedAbis="arm64-v8a" \
             -p:AndroidPackageFormat=apk \
             -p:AndroidKeyStore=false \
             -p:CheckEolWorkloads=false \
-            -p:RunAOTCompilation=false \
             -v minimal
 
       - name: Locate APK
         id: apk
         run: |
           set -e
-          DIR=era-engine/EraHost/bin/Release/net8.0-android34.0
+          DIR=era-engine/EraHost/bin/Release/net10.0-android
           ls -la "$DIR" || true
           APK=$(find "$DIR" -maxdepth 2 -name '*.apk' ! -name '*-Signed.apk' | head -1)
           test -n "$APK" || { echo "未找到 APK"; exit 1; }

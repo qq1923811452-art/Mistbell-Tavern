@@ -17,8 +17,8 @@ on:
       - "mistbell-v3/app/src/main/AndroidManifest.xml"
 
 env:
-  ERA_UPSTREAM_REPO: https://github.com/KuroPeach/SkiaX-android-CI.git
-  ERA_UPSTREAM_SHA: 07bc3c054fce12d5fa0464597a7bb4c4a98847f2
+  ERA_UPSTREAM_REPO: https://github.com/LaoBro/era-core.git
+  ERA_UPSTREAM_SHA: 6e14de0fa0cd83b0bb83df96fc29422e107f7af4
   MISTBELL_DEV_KEYSTORE: ${{ github.workspace }}/.github/keys/mistbell-dev.jks
   MISTBELL_DEV_KEYSTORE_PASSWORD: mistbelldev
   MISTBELL_DEV_KEY_ALIAS: mistbell-dev
@@ -42,7 +42,7 @@ jobs:
       - name: Setup .NET 8
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: "8.0.x"
+          dotnet-version: "10.0.x"
           dotnet-quality: "ga"
 
       - name: Setup JDK 17
@@ -61,9 +61,6 @@ jobs:
           git fetch --depth 1 origin "$ERA_UPSTREAM_SHA"
           git checkout -q FETCH_HEAD
 
-      - name: Patch upstream (sys.click support)
-        run: python3 era-engine/scripts/patch_upstream.py era-engine/upstream
-
       - name: Install Android workload
         run: |
           echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
@@ -73,11 +70,11 @@ jobs:
         run: |
           set -e
           dotnet publish era-engine/EraHost/EraHost.csproj \
-            -c Release -f net8.0-android34.0 -r android-arm64 \
+            -c Release -f net10.0-android -r android-arm64 \
+            -p:ApplicationId=com.mistbell.tavern.v3 \
             -p:AndroidPackageFormat=apk \
             -p:AndroidKeyStore=false \
             -p:CheckEolWorkloads=false \
-            -p:RunAOTCompilation=false \
             -v minimal
 
       - name: Build main app APK (merged manifest)
@@ -89,7 +86,7 @@ jobs:
       - name: Merge engine into the app APK
         run: |
           set -e
-          ENGINE=$(find era-engine/EraHost/bin/Release/net8.0-android34.0 -name '*.apk' | head -1)
+          ENGINE=$(find era-engine/EraHost/bin/Release/net10.0-android -name '*.apk' | head -1)
           APP=$(find mistbell-v3/app/build/outputs/apk/debug -name '*.apk' | head -1)
           echo "ENGINE=$ENGINE"
           echo "APP=$APP"

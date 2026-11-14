@@ -23,7 +23,7 @@
         <uses-native-library android:name="libcdsprpc.so" android:required="false" />
         <provider
             android:name="mono.MonoRuntimeProvider"
-            android:authorities="com.mistbell.tavern.v3.mono.MonoRuntimeProvider.__mono_init__"
+            android:authorities="${applicationId}.mono.MonoRuntimeProvider.__mono_init__"
             android:enabled="${eraMerged}"
             android:exported="false"
             android:initOrder="2147483647"

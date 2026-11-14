@@ -4,160 +4,266 @@ using Android.OS;
 using Android.Util;
 using System;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace Mistbell.Era.Host;
 
-/// <summary>
-/// 给 Mistbell 绑定的引擎服务（无界面）。生命周期＝绑定生命周期：
-/// 客户端 bind 时带「ZIP 文件描述符 + 端口 + 包名」，服务解包后在本进程里跑 EWP，
-/// 前端连 127.0.0.1:port 读事件、回输入。解绑即停。
-/// </summary>
 [Service(Name = "com.mistbell.era.EraEngineService", Exported = true)]
 public sealed class EraEngineService : Service
 {
-	private const string Tag = "EraEngine";
-	public const int MsgStatus = 1;
-	public const int MsgStop = 2;
+    private const string Tag = "EraEngine";
+    public const int MsgStatus = 1;
+    public const int MsgStop = 2;
 
-	private readonly object gate = new();
-	private Messenger replyTo;
-	private Thread worker;
-	private bool running;
-	private Messenger inbound;
+    private readonly object gate = new();
+    private readonly SemaphoreSlim sessionMutex = new(1, 1);
 
-	public override IBinder OnBind(Intent intent)
-	{
-		replyTo = intent?.GetParcelableExtra("replyTo") as Messenger;
-		var port = intent?.GetIntExtra("port", 0) ?? 0;
-		var gameName = intent?.GetStringExtra("gameName");
-		var packVersion = intent?.GetStringExtra("packVersion");
-		var zipPath = intent?.GetStringExtra("zipPath");
-		var zipFd = intent?.GetParcelableExtra("zipFd") as ParcelFileDescriptor;
+    private Messenger? replyTo;
+    private Messenger? inbound;
+    private EraSessionHost? activeHost;
+    private CancellationTokenSource? serviceCts;
+    private Task? runningTask;
 
-		if (inbound == null)
-			inbound = new Messenger(new Handler(Looper.MainLooper, new StopCallback(this)));
+    public override void OnCreate()
+    {
+        base.OnCreate();
+        EraBootstrap.InitLog(this);
+        EraBootstrap.Trace("EraEngineService.OnCreate");
+    }
 
-		bool alreadyRunning;
-		lock (gate) { alreadyRunning = running; }
+    public override IBinder? OnBind(Intent? intent)
+    {
+        return HandleIntent(intent);
+    }
 
-		if (!alreadyRunning)
-		{
-			lock (gate) { running = true; }
-			worker = new Thread(() => Work(gameName, packVersion, port, zipFd, zipPath))
-			{
-				IsBackground = true,
-				Name = "era-engine",
-			};
-			worker.Start();
-		}
-		else
-		{
-			SendStatus("running", null);
-		}
+    public override void OnRebind(Intent? intent)
+    {
+        base.OnRebind(intent);
+        HandleIntent(intent);
+    }
 
-		return inbound.Binder;
-	}
+    public override bool OnUnbind(Intent? intent)
+    {
+        // 返回 true 允许进程存活期间后续触发 OnRebind
+        return true;
+    }
 
-	private sealed class StopCallback : Java.Lang.Object, Handler.ICallback
-	{
-		private readonly EraEngineService owner;
-		public StopCallback(EraEngineService owner) => this.owner = owner;
+    private IBinder? HandleIntent(Intent? intent)
+    {
+        lock (gate)
+        {
+            replyTo = intent?.GetParcelableExtra("replyTo") as Messenger ?? replyTo;
+            inbound ??= new Messenger(new Handler(Looper.MainLooper!, new StopCallback(this)));
+        }
 
-		public bool HandleMessage(Message msg)
-		{
-			if (msg.What == MsgStop)
-			{
-				EraHeadlessHost.RequestStop();
-				return true;
-			}
-			return false;
-		}
-	}
+        var port = intent?.GetIntExtra("port", 0) ?? 0;
+        var gameName = intent?.GetStringExtra("gameName") ?? "era";
+        var packVersion = intent?.GetStringExtra("packVersion") ?? string.Empty;
+        var zipPath = intent?.GetStringExtra("zipPath");
+        var zipFd = intent?.GetParcelableExtra("zipFd") as ParcelFileDescriptor;
+        var forceRestart = intent?.GetBooleanExtra("forceRestart", false) ?? false;
 
-	private void Work(string gameName, string packVersion, int port, ParcelFileDescriptor zipFd, string zipPath)
-	{
-		try
-		{
-			if (port <= 0)
-				port = 5177;
+        var packKey = $"{gameName}::{packVersion}";
 
-			SendStatus("preparing", null);
+        lock (gate)
+        {
+            var host = activeHost;
+            if (!forceRestart && host != null && runningTask != null && !runningTask.IsCompleted && host.PackKey == packKey)
+            {
+                if (port > 0)
+                    host.RebindPort(port);
+                else
+                    SendStatus("running", $"port={host.Port}");
+                zipFd?.Close();
+                return inbound?.Binder;
+            }
+        }
 
-			string gameDir;
-			if (zipFd != null)
-			{
-				SendStatus("importing", null);
-				gameDir = EraGameStore.Install(this, zipFd, gameName, packVersion);
-				SendStatus("imported", gameDir);
-			}
-			else if (!string.IsNullOrEmpty(zipPath))
-			{
-				SendStatus("importing", null);
-				gameDir = EraGameStore.InstallFromPath(this, zipPath, gameName, packVersion);
-				SendStatus("imported", gameDir);
-			}
-			else
-			{
-				gameDir = EraGameStore.LastGameDir(this);
-			}
+        _ = Task.Run(() => StartSessionAsync(gameName, packVersion, packKey, port, zipFd, zipPath));
+        return inbound?.Binder;
+    }
 
-			if (string.IsNullOrEmpty(gameDir) || !System.IO.Directory.Exists(gameDir))
-			{
-				SendStatus("error", "no_game_installed");
-				return;
-			}
+    private async Task StartSessionAsync(
+        string gameName,
+        string packVersion,
+        string packKey,
+        int port,
+        ParcelFileDescriptor? zipFd,
+        string? zipPath)
+    {
+        await sessionMutex.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            EraBootstrap.InitLog(this);
 
-			EraBootstrap.InitLog(this);
-			SendStatus("starting", gameDir);
-			var code = EraBootstrap.Run(gameDir, port);
-			EraBootstrap.Trace("engine exit code " + code + " " + EraBootstrap.LastError);
-			var detail = "exit=" + code;
-			if (!string.IsNullOrEmpty(EraBootstrap.LastError))
-				detail += " " + EraBootstrap.LastError;
-			SendStatus("stopped", detail);
-		}
-		catch (Exception ex)
-		{
-			EraBootstrap.InitLog(this);
-			EraBootstrap.Trace("engine failed: " + ex);
-			Log.Error(Tag, "engine failed: " + ex);
-			SendStatus("error", ex.GetType().Name + ": " + ex.Message);
-		}
-		finally
-		{
-			lock (gate) { running = false; }
-		}
-	}
+            // 若已有旧会话（换包或强制重启），先干净销毁
+            await DisposeCurrentHostLockedAsync().ConfigureAwait(false);
 
-	private void SendStatus(string state, string detail)
-	{
-		var messenger = replyTo;
-		if (messenger == null)
-			return;
-		try
-		{
-			var bundle = new Bundle();
-			bundle.PutString("state", state);
-			if (detail != null)
-				bundle.PutString("detail", detail);
-			var msg = Message.Obtain(null, MsgStatus);
-			msg.Data = bundle;
-			messenger.Send(msg);
-		}
-		catch (Exception ex)
-		{
-			Log.Warn(Tag, "status send failed: " + ex.Message);
-		}
-	}
+            if (port <= 0)
+                port = 5177;
 
-	public override void OnDestroy()
-	{
-		EraHeadlessHost.RequestStop();
-		base.OnDestroy();
-		// 引擎收尾（关闭 EWP 写手/像素流）可能阻塞，交给系统回收进程，避免主线程卡死。
-		new Handler(Looper.MainLooper).PostDelayed(() =>
-		{
-			try { Android.OS.Process.KillProcess(Android.OS.Process.MyPid()); } catch { }
-		}, 1200);
-	}
+            SendStatus("preparing", null);
+
+            string? gameDir;
+            try
+            {
+                if (zipFd != null)
+                {
+                    using (zipFd)
+                    {
+                        SendStatus("importing", null);
+                        gameDir = EraGameStore.Install(this, zipFd, gameName, packVersion);
+                        SendStatus("imported", gameDir);
+                    }
+                }
+                else if (!string.IsNullOrEmpty(zipPath))
+                {
+                    SendStatus("importing", null);
+                    gameDir = EraGameStore.InstallFromPath(this, zipPath, gameName, packVersion);
+                    SendStatus("imported", gameDir);
+                }
+                else
+                {
+                    gameDir = EraGameStore.LastGameDir(this);
+                }
+            }
+            catch (Exception ex)
+            {
+                EraBootstrap.Trace($"Import failed: {ex}");
+                SendStatus("error", $"import_failed: {ex.Message}");
+                return;
+            }
+
+            if (string.IsNullOrEmpty(gameDir) || !System.IO.Directory.Exists(gameDir))
+            {
+                SendStatus("error", "no_game_installed");
+                return;
+            }
+
+            var cts = new CancellationTokenSource();
+            var host = new EraSessionHost(gameDir, packKey, SendStatus);
+            lock (gate)
+            {
+                serviceCts = cts;
+                activeHost = host;
+                runningTask = RunHostAsync(host, port, cts.Token);
+            }
+        }
+        finally
+        {
+            sessionMutex.Release();
+        }
+    }
+
+    private async Task RunHostAsync(EraSessionHost host, int port, CancellationToken ct)
+    {
+        try
+        {
+            await host.StartAsync(port, ct).ConfigureAwait(false);
+            SendStatus("stopped", host.WasExplicitStopRequested ? "exit=0 user_stop" : "exit=0");
+        }
+        catch (OperationCanceledException)
+        {
+            SendStatus("stopped", "exit=0 cancelled");
+        }
+        catch (Exception ex)
+        {
+            var detail = $"exit=1 FATAL {ex.GetType().Name}: {ex.Message}";
+            EraBootstrap.Trace(detail);
+            EraBootstrap.Trace(ex.StackTrace ?? string.Empty);
+            SendStatus("stopped", detail);
+        }
+    }
+
+    private async Task DisposeCurrentHostLockedAsync()
+    {
+        EraSessionHost? oldHost;
+        CancellationTokenSource? oldCts;
+        Task? oldTask;
+        lock (gate)
+        {
+            oldHost = activeHost;
+            oldCts = serviceCts;
+            oldTask = runningTask;
+            activeHost = null;
+            serviceCts = null;
+            runningTask = null;
+        }
+
+        if (oldCts != null)
+        {
+            try { await oldCts.CancelAsync().ConfigureAwait(false); } catch { }
+        }
+        if (oldHost != null)
+        {
+            await oldHost.DisposeAsync().ConfigureAwait(false);
+        }
+        if (oldTask != null)
+        {
+            try { await oldTask.WaitAsync(TimeSpan.FromSeconds(3)).ConfigureAwait(false); } catch { }
+        }
+        oldCts?.Dispose();
+    }
+
+    private sealed class StopCallback : Java.Lang.Object, Handler.ICallback
+    {
+        private readonly EraEngineService owner;
+        public StopCallback(EraEngineService owner) => this.owner = owner;
+
+        public bool HandleMessage(Message msg)
+        {
+            if (msg.What == MsgStop)
+            {
+                _ = Task.Run(async () =>
+                {
+                    await owner.sessionMutex.WaitAsync().ConfigureAwait(false);
+                    try { await owner.DisposeCurrentHostLockedAsync().ConfigureAwait(false); }
+                    finally { owner.sessionMutex.Release(); }
+                });
+                return true;
+            }
+            return false;
+        }
+    }
+
+    private void SendStatus(string state, string? detail)
+    {
+        Messenger? messenger;
+        lock (gate) { messenger = replyTo; }
+        if (messenger == null)
+            return;
+        try
+        {
+            var bundle = new Bundle();
+            bundle.PutString("state", state);
+            if (detail != null)
+                bundle.PutString("detail", detail);
+            var msg = Message.Obtain(null, MsgStatus);
+            msg.Data = bundle;
+            messenger.Send(msg);
+        }
+        catch (Exception ex)
+        {
+            Log.Warn(Tag, "status send failed: " + ex.Message);
+        }
+    }
+
+    public override void OnDestroy()
+    {
+        EraBootstrap.Trace("EraEngineService.OnDestroy");
+        try
+        {
+            Task.Run(async () =>
+            {
+                await sessionMutex.WaitAsync().ConfigureAwait(false);
+                try { await DisposeCurrentHostLockedAsync().ConfigureAwait(false); }
+                finally { sessionMutex.Release(); }
+            }).Wait(TimeSpan.FromSeconds(4));
+        }
+        catch (Exception ex)
+        {
+            EraBootstrap.Trace("OnDestroy cleanup exception: " + ex.Message);
+        }
+        base.OnDestroy();
+    }
 }
