@@ -11,14 +11,14 @@ import android.graphics.BitmapFactory
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -26,9 +26,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -37,7 +34,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -55,33 +51,42 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mistbell.tavern.v3.feature.era.engine.EraEngineManager
-import com.mistbell.tavern.v3.feature.era.engine.TurnAwaiting
 import com.mistbell.tavern.v3.feature.era.engine.TurnBgImage
 import com.mistbell.tavern.v3.feature.era.engine.TurnButton
-import com.mistbell.tavern.v3.feature.era.engine.TurnButtonItem
 import com.mistbell.tavern.v3.feature.era.engine.TurnDisplayLine
+import com.mistbell.tavern.v3.feature.era.ui.EraActionDock
+import com.mistbell.tavern.v3.feature.era.ui.EraStatusBar
+import com.mistbell.tavern.v3.feature.era.ui.parseEraHud
 import com.mistbell.tavern.v3.ui.tavern.TavernPalette
 import com.mistbell.tavern.v3.ui.tavern.TavernPill
 import com.mistbell.tavern.v3.ui.tavern.TavernShape
 import java.io.File
-
-private const val TAG_BUTTON = "era_btn"
 
 /**
  * 立绘层开关。首帧渲染疑似导致主进程崩溃（引擎日志显示 start 成功后 1.6s 前端断开），
  * 先关掉隔离验证，确认后再定位具体是解码还是布局。
  */
 private const val ENABLE_SPRITE_LAYERS = true
+
+/**
+ * 文本里的方括号按钮是否隐藏。
+ *
+ * era 的按钮本来就是「文字里套一层 []」，现在统一收到右侧动作栏里，
+ * 正文再画一遍只会让屏幕更乱，所以默认不画。
+ * 若遇到某些剧本把关键选项混在长句中间，把这个开关关掉即可恢复。
+ */
+private const val HIDE_INLINE_BUTTONS = true
 
 /** 立绘层上限：层数过多会反复解码大图，低内存设备直接闪退。 */
 private const val MAX_LAYER_IMAGES = 4
@@ -90,13 +95,11 @@ private const val MAX_LAYER_FILE_BYTES = 64L * 1024 * 1024
 /** 单张解码上限：超过就降采样，防止大 CG 直接 OOM。 */
 private const val MAX_LAYER_PIXELS = 2_000_000
 
-/** eraTW 按 1800×973 排版；图片尺寸从引擎像素换算 dp 的基准宽度。 */
+private const val TAG_BUTTON = "era_btn"
+
 private val ERA_GOLD_TEXT = Color(0xFFFFCE8A)
-private val ERA_GOLD_BORDER = Color(0x4DFFCE8A)
-private val ERA_GOLD_SOFT = Color(0x26FFCE8A)
-private val ERA_LINE_HEIGHT = 21.sp
-private val ERA_TEXT_SIZE = 14.sp
-private val ERA_BUTTON_HEIGHT = 42.dp
+private val ERA_LINE_HEIGHT = 20.sp
+private val ERA_TEXT_SIZE = 13.5.sp
 
 @Suppress("LongMethod")
 @Composable
@@ -141,6 +144,10 @@ internal fun EraPlayScreen(
     }
 
     val bgColor = remember(state.bgColor) { parseHexColor(state.bgColor) ?: TavernPalette.Night }
+    val hud = remember(state.revision, state.lines) { parseEraHud(state.lines) }
+    var logOpen by remember { mutableStateOf(false) }
+    // activeButtons 每次访问都要扫一遍全屏文本，这里只算一次。
+    val dockButtons = remember(state.lines, state.generation, state.awaiting) { state.activeButtons }
 
     Column(
         modifier =
@@ -148,64 +155,76 @@ internal fun EraPlayScreen(
                 .fillMaxSize()
                 .background(bgColor),
     ) {
-        EraGameLog(
-            lines = state.lines,
-            revision = state.revision,
-            generation = state.generation,
-            onButtonClick = { btn -> session.submitButton(btn) },
-            onBackgroundTap = { session.tapLogBackground() },
-            modifier = Modifier.fillMaxWidth().weight(1f).padding(horizontal = 16.dp, vertical = 8.dp),
+        EraStatusBar(
+            hud = hud,
+            statusText = state.statusText,
+            connected = state.connected,
+            onOpenLog = { logOpen = true },
+            onOpenMenu = onBack,
         )
-        state.inputHint?.let { hint ->
-            Text(
-                text = hint,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-                color = ERA_GOLD_TEXT,
-                fontSize = 12.sp,
+        Row(modifier = Modifier.fillMaxWidth().weight(1f)) {
+            Column(modifier = Modifier.weight(1f)) {
+                Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                    if (ENABLE_SPRITE_LAYERS) {
+                        EraGameLayers(images = state.bgImages, gameDir = state.gameDir)
+                    }
+                    EraGameLog(
+                        lines = state.lines,
+                        revision = state.revision,
+                        generation = state.generation,
+                        inlineFallback = dockButtons.isEmpty(),
+                        onButtonClick = { btn -> session.submitButton(btn) },
+                        onBackgroundTap = { session.tapLogBackground() },
+                        modifier =
+                            Modifier
+                                .fillMaxSize()
+                                .padding(start = 16.dp, end = 12.dp, top = 2.dp, bottom = 6.dp),
+                    )
+                }
+                state.inputHint?.let { hint ->
+                    Text(
+                        text = hint,
+                        modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 12.dp, bottom = 4.dp),
+                        color = ERA_GOLD_TEXT,
+                        fontSize = 12.sp,
+                    )
+                }
+                state.error?.let { message ->
+                    EraErrorBanner(message = message, onRetry = { session.retry(game) })
+                }
+            }
+            EraActionDock(
+                items = dockButtons,
+                awaiting = state.awaiting,
+                onButton = { btn -> session.submitButton(btn) },
+                onSend = { value -> session.submitInput(value) },
+                onRestart = { session.retry(game) },
+                modifier = Modifier.fillMaxHeight(),
             )
         }
-        state.error?.let { message ->
-            EraErrorBanner(message = message, onRetry = { session.retry(game) })
-        }
-        EraInputPanel(
-            awaiting = state.awaiting,
-            quickButtons = state.activeButtons,
-            onButtonClick = { btn -> session.submitButton(btn) },
-            onSend = { value -> session.submitInput(value) },
-            onRestart = { session.retry(game) },
-        )
+    }
+
+    if (logOpen) {
+        EraLogSheet(lines = state.lines, onDismiss = { logOpen = false })
     }
 }
 
-@Suppress("LongParameterList", "LongMethod")
+@Suppress("LongParameterList")
 @Composable
 private fun EraGameLog(
     lines: List<TurnDisplayLine>,
     revision: Long,
     generation: Long,
+    inlineFallback: Boolean,
     onButtonClick: (TurnButton) -> Unit,
     onBackgroundTap: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
     val lastUid = lines.lastOrNull()?.uid
-    // 用户往上翻历史时停止自动跳底，回到底部再恢复跟随。
-    var followTail by remember { mutableStateOf(true) }
-    // 只在用户真正滚动时更新跟随状态。
-    // 旧实现把 effect 挂在 lines.size 上：每次新行进来 effect 重启，首帧快照
-    // 计算的是"旧位置是否在底部"，会把 followTail 误置为 false，于是再也不跟随。
-    LaunchedEffect(listState) {
-        snapshotFlow { listState.isScrollInProgress }
-            .collect { scrolling ->
-                if (!scrolling) {
-                    val info = listState.layoutInfo
-                    val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: -1
-                    followTail = info.totalItemsCount == 0 || lastVisible >= info.totalItemsCount - 2
-                }
-            }
-    }
-    LaunchedEffect(revision, lastUid, followTail) {
-        if (lines.isEmpty() || !followTail) return@LaunchedEffect
+    // 静屏：永远跟随最新一行，不保留「往上翻历史」的滚动手感（历史走日志抽屉）。
+    LaunchedEffect(revision, lastUid) {
+        if (lines.isEmpty()) return@LaunchedEffect
         listState.scrollToItem(lines.lastIndex)
     }
 
@@ -220,7 +239,8 @@ private fun EraGameLog(
         items(items = lines, key = { it.uid }) { line ->
             EraRichLine(
                 line = line,
-                currentGeneration = generation,
+                generation = generation,
+                interactive = inlineFallback,
                 onButtonClick = onButtonClick,
                 onBackgroundTap = onBackgroundTap,
             )
@@ -228,38 +248,45 @@ private fun EraGameLog(
     }
 }
 
-@Suppress("LongMethod", "CyclomaticComplexMethod")
+@Suppress("LongMethod", "CyclomaticComplexMethod", "LongParameterList")
 @Composable
 private fun EraRichLine(
     line: TurnDisplayLine,
-    currentGeneration: Long,
+    generation: Long,
+    interactive: Boolean,
     onButtonClick: (TurnButton) -> Unit,
     onBackgroundTap: () -> Unit,
 ) {
     val buttonMap = remember(line.uid) { HashMap<String, TurnButton>() }
     val annotated: AnnotatedString =
-        remember(line.uid, currentGeneration) {
+        remember(line.uid, generation, interactive) {
             buttonMap.clear()
             buildAnnotatedString {
                 line.entries.forEachIndexed { entryIdx, entry ->
                     val btn = entry.button
-                    val isLiveButton = btn != null && btn.generation == currentGeneration
-                    val tagId = if (isLiveButton) "b$entryIdx" else null
+                    // 只有「动作栏空着」时才退回正文按钮，且不再按 generation 过滤：
+                    // 某些剧本把菜单画一次留好几回合，过滤会把它们全弄失效。
+                    val live = interactive && btn != null
+                    val tagId = if (live) "b$entryIdx" else null
                     if (tagId != null && btn != null) {
                         buttonMap[tagId] = btn
                         pushStringAnnotation(tag = TAG_BUTTON, annotation = tagId)
                     }
+                    if (HIDE_INLINE_BUTTONS && !interactive && btn != null) {
+                        if (tagId != null) pop()
+                        return@forEachIndexed
+                    }
                     for (seg in entry.segments) {
                         val segColor =
                             parseHexColor(seg.color)
-                                ?: if (isLiveButton) ERA_GOLD_TEXT else TavernPalette.TextPrimary
+                                ?: if (live) ERA_GOLD_TEXT else TavernPalette.TextPrimary
                         val deco =
                             when {
                                 seg.underline && seg.strikeout ->
                                     TextDecoration.combine(
                                         listOf(TextDecoration.Underline, TextDecoration.LineThrough),
                                     )
-                                seg.underline || isLiveButton -> TextDecoration.Underline
+                                seg.underline || live -> TextDecoration.Underline
                                 seg.strikeout -> TextDecoration.LineThrough
                                 else -> null
                             }
@@ -286,21 +313,11 @@ private fun EraRichLine(
             "right" -> TextAlign.End
             else -> TextAlign.Start
         }
-
-    Text(
-        text = annotated,
-        onTextLayout = { layoutResult = it },
-        style =
-            TextStyle(
-                fontFamily = FontFamily.Monospace,
-                fontSize = ERA_TEXT_SIZE,
-                lineHeight = ERA_LINE_HEIGHT,
-                textAlign = align,
-            ),
-        modifier =
+    val textModifier =
+        if (interactive) {
             Modifier
                 .fillMaxWidth()
-                .pointerInput(annotated, currentGeneration) {
+                .pointerInput(annotated, generation) {
                     detectTapGestures { pos ->
                         val layout = layoutResult
                         if (layout != null && buttonMap.isNotEmpty()) {
@@ -314,7 +331,21 @@ private fun EraRichLine(
                         }
                         onBackgroundTap()
                     }
-                },
+                }
+        } else {
+            Modifier.fillMaxWidth()
+        }
+    Text(
+        text = annotated,
+        onTextLayout = { layoutResult = it },
+        style =
+            TextStyle(
+                fontFamily = FontFamily.Monospace,
+                fontSize = ERA_TEXT_SIZE,
+                lineHeight = ERA_LINE_HEIGHT,
+                textAlign = align,
+            ),
+        modifier = textModifier,
     )
 }
 
@@ -382,7 +413,7 @@ private fun EraErrorBanner(
     onRetry: () -> Unit,
 ) {
     Column(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+        modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 12.dp, bottom = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Text(
@@ -390,7 +421,7 @@ private fun EraErrorBanner(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .clip(TavernShape.Card)
+                    .clip(TavernShape.CardSmall)
                     .background(TavernPalette.Danger.copy(alpha = 0.14f))
                     .padding(horizontal = 12.dp, vertical = 8.dp),
             color = TavernPalette.Danger,
@@ -400,155 +431,65 @@ private fun EraErrorBanner(
         TavernPill(
             label = "重试",
             onClick = onRetry,
-            modifier = Modifier.fillMaxWidth().height(ERA_BUTTON_HEIGHT),
+            modifier = Modifier.fillMaxWidth().height(42.dp),
             filled = true,
             contentDescription = "重新启动引擎",
         )
     }
 }
 
-@Suppress("LongMethod", "CyclomaticComplexMethod")
+/** 完整历史日志：抽屉式，只在需要时打开，不占主界面。 */
 @Composable
-private fun EraInputPanel(
-    awaiting: TurnAwaiting?,
-    quickButtons: List<TurnButtonItem>,
-    onButtonClick: (TurnButton) -> Unit,
-    onSend: (String) -> Unit,
-    onRestart: () -> Unit,
+private fun EraLogSheet(
+    lines: List<TurnDisplayLine>,
+    onDismiss: () -> Unit,
 ) {
-    Column(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .clip(TavernShape.Card)
-                .background(TavernPalette.Surface.copy(alpha = 0.94f))
-                .border(1.dp, TavernPalette.Border, TavernShape.Card)
-                .padding(horizontal = 14.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
-        if (awaiting == null) {
-            Text(text = "正在等待引擎首帧…", color = TavernPalette.TextTertiary, fontSize = 12.sp)
-            return@Column
-        }
-        if (awaiting.isEnded) {
-            if (awaiting.endedTerminal == "Quit") {
-                TavernPill(
-                    label = "重新开始",
-                    onClick = onRestart,
-                    modifier = Modifier.fillMaxWidth().height(ERA_BUTTON_HEIGHT),
-                    filled = true,
-                    contentDescription = "重新开始游戏",
-                )
-            }
-            return@Column
-        }
-        if (awaiting.inputType == "Void" || !awaiting.acceptsInput) {
-            val waitText =
-                buildString {
-                    append("等待剧本推进")
-                    if (awaiting.waitDisplayTime && (awaiting.waitDurationMs ?: 0L) > 0L) {
-                        append("（${awaiting.waitDurationMs} ms）")
-                    } else {
-                        append("…")
-                    }
-                }
-            Text(text = waitText, color = TavernPalette.TextTertiary, fontSize = 12.sp)
-            return@Column
-        }
-
-        if (quickButtons.isNotEmpty()) {
-            Row(
-                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+        Box(modifier = Modifier.fillMaxSize().background(Color(0x8C000000))) {
+            Column(
+                modifier =
+                    Modifier
+                        .align(Alignment.Center)
+                        .fillMaxHeight()
+                        .fillMaxWidth(0.86f)
+                        .clip(TavernShape.CardSmall)
+                        .background(TavernPalette.Surface)
+                        .padding(horizontal = 18.dp, vertical = 14.dp),
             ) {
-                quickButtons.forEach { item ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
                     Text(
-                        text = item.label,
+                        text = "日志",
                         color = TavernPalette.TextPrimary,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        letterSpacing = 3.sp,
+                    )
+                    Spacer(modifier = Modifier.weight(1f))
+                    Text(
+                        text = "关闭",
+                        color = TavernPalette.TextTertiary,
                         fontSize = 12.sp,
-                        maxLines = 1,
                         modifier =
                             Modifier
                                 .clip(TavernShape.Pill)
-                                .background(TavernPalette.GlassStrong)
-                                .border(1.dp, ERA_GOLD_BORDER, TavernShape.Pill)
-                                .clickable { onButtonClick(item.button) }
-                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                                .background(TavernPalette.Glass)
+                                .clickable(onClick = onDismiss)
+                                .padding(horizontal = 14.dp, vertical = 7.dp),
                     )
+                }
+                LazyColumn(modifier = Modifier.fillMaxWidth().weight(1f).padding(top = 10.dp)) {
+                    items(items = lines, key = { it.uid }) { line ->
+                        EraRichLine(line = line)
+                    }
                 }
             }
         }
-
-        when {
-            awaiting.needsTextValue ||
-                (awaiting.inputType == "IntButton" || awaiting.inputType == "StrButton") && quickButtons.isEmpty() -> {
-                EraValueInput(
-                    numericOnly = awaiting.inputType == "IntValue",
-                    onSend = onSend,
-                )
-            }
-            awaiting.isTapToAdvance -> {
-                TavernPill(
-                    label = "继续",
-                    onClick = { onSend("") },
-                    modifier = Modifier.fillMaxWidth().height(ERA_BUTTON_HEIGHT),
-                    filled = true,
-                    contentDescription = "继续",
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun EraValueInput(
-    numericOnly: Boolean,
-    onSend: (String) -> Unit,
-) {
-    var text by remember { mutableStateOf("") }
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Box(
-            modifier =
-                Modifier
-                    .weight(1f)
-                    .clip(TavernShape.Card)
-                    .background(TavernPalette.Glass)
-                    .border(1.dp, TavernPalette.Border, TavernShape.Card)
-                    .padding(horizontal = 12.dp, vertical = 11.dp),
-        ) {
-            if (text.isEmpty()) {
-                Text(
-                    text = if (numericOnly) "输入数字或点击上方选项" else "输入指令或文本",
-                    color = TavernPalette.TextTertiary,
-                    fontSize = 13.sp,
-                )
-            }
-            BasicTextField(
-                value = text,
-                onValueChange = { text = it },
-                textStyle = TextStyle(color = TavernPalette.TextPrimary, fontSize = 13.sp),
-                keyboardOptions =
-                    KeyboardOptions(
-                        keyboardType = if (numericOnly) KeyboardType.Number else KeyboardType.Text,
-                    ),
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-            )
-        }
-        TavernPill(
-            label = "发送",
-            onClick = {
-                onSend(text)
-                text = ""
-            },
-            modifier = Modifier.height(ERA_BUTTON_HEIGHT),
-            filled = true,
-            contentDescription = "发送输入",
-        )
     }
 }
 
