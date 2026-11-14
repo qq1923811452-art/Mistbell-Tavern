@@ -68,6 +68,20 @@ index ab8bdbd..7a7cf40 100644
  						break;
  					}
  					func.JumpTo = pairLine;
+diff --git a/EraCore.Core/Shared/Runtime/Script/Loader/ErhLoader.cs b/EraCore.Core/Shared/Runtime/Script/Loader/ErhLoader.cs
+index 6d786ec..b572e56 100644
+--- a/EraCore.Core/Shared/Runtime/Script/Loader/ErhLoader.cs
++++ b/EraCore.Core/Shared/Runtime/Script/Loader/ErhLoader.cs
+@@ -135,7 +135,8 @@ internal sealed class ErhLoader
+ 						analyzeSharpFunction(st, position, sharpID == "FUNCTIONS");
+ 						break;
+ 					case var s when s.Equals("DIM", Config.Config.StringComparison) ||
+-									s.Equals("DIMS", Config.Config.StringComparison):
++									s.Equals("DIMS", Config.Config.StringComparison) ||
++									s.Equals("DIMF", Config.Config.StringComparison):
+ 						//1822 #DIMは保留しておいて後でまとめてやる
+ 						{
+ 							WordCollection wc = LexicalAnalyzer.Analyse(st, LexEndWith.EoL, LexAnalyzeFlag.AllowAssignment);
 diff --git a/EraCore.Core/Shared/Runtime/Script/Parser/LexicalAnalyzer.cs b/EraCore.Core/Shared/Runtime/Script/Parser/LexicalAnalyzer.cs
 index 7e880c0..527b2c4 100644
 --- a/EraCore.Core/Shared/Runtime/Script/Parser/LexicalAnalyzer.cs
@@ -125,6 +139,23 @@ index 7e880c0..527b2c4 100644
  						break;
  					case '>':
  						if (endWith == LexEndWith.GreaterThan)
+diff --git a/EraCore.Core/Shared/Runtime/Script/Parser/LogicalLineParser.cs b/EraCore.Core/Shared/Runtime/Script/Parser/LogicalLineParser.cs
+index 682f04c..b2b725f 100644
+--- a/EraCore.Core/Shared/Runtime/Script/Parser/LogicalLineParser.cs
++++ b/EraCore.Core/Shared/Runtime/Script/Parser/LogicalLineParser.cs
+@@ -277,8 +277,11 @@ internal static class LogicalLineParser
+ 						}
+ 					}
+ 					break;
++				// MISTBELL_PATCH_DIMF：eraTW 的 DLC 用 #DIMF 声明小数变量。
++				// 目前按整数变量接受（值截断），避免整段脚本告警失效。
+ 				case var s when s.Equals("DIM", Config.Config.StringComparison) ||
+-								s.Equals("DIMS", Config.Config.StringComparison):
++								s.Equals("DIMS", Config.Config.StringComparison) ||
++								s.Equals("DIMF", Config.Config.StringComparison):
+ 					{
+ 						var wc = LexicalAnalyzer.Analyse(st, LexEndWith.EoL, LexAnalyzeFlag.AllowAssignment);
+ 
 diff --git a/EraCore.Core/Shared/Runtime/Script/Parser/Word.cs b/EraCore.Core/Shared/Runtime/Script/Parser/Word.cs
 index 450f953..4929a7e 100644
 --- a/EraCore.Core/Shared/Runtime/Script/Parser/Word.cs
