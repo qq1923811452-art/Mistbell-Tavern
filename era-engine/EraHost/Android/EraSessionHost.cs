@@ -237,34 +237,31 @@ internal sealed class EraSessionHost : IAsyncDisposable
             {
                 EraBootstrap.Trace("awaiting GameHost.StartAsync...");
                 // 启动期心跳：进程被杀时最后一行心跳就是死前状态（内存 + 进度）。
-                using var heartbeatCts = new CancellationTokenSource();
-                _ = Task.Run(async () =>
+                var heartbeatCts = new CancellationTokenSource();
+                var heartbeatTask = Task.Run(async () =>
                 {
                     try
                     {
-                    while (!heartbeatCts.IsCancellationRequested)
-                    {
-                        await Task.Delay(2000, heartbeatCts.Token).ConfigureAwait(false);
-                        try
+                        while (!heartbeatCts.IsCancellationRequested)
                         {
+                            await Task.Delay(2000, heartbeatCts.Token).ConfigureAwait(false);
                             long managedMb = GC.GetTotalMemory(false) / (1024 * 1024);
-                            long rssMb = 0;
+                            long rssMb;
                             using (var proc = System.Diagnostics.Process.GetCurrentProcess())
                             {
                                 rssMb = proc.WorkingSet64 / (1024 * 1024);
                             }
                             EraBootstrap.Trace($"starting... managed={managedMb}MB rss={rssMb}MB");
                         }
-                        catch
-                        {
-                        }
-                    }
                     }
                     catch
                     {
                     }
                 });
                 var startResult = await pendingStart.ConfigureAwait(false);
+                heartbeatCts.Cancel();
+                heartbeatCts.Dispose();
+                GC.KeepAlive(heartbeatTask);
                 EraBootstrap.Trace($"GameHost.StartAsync returned: ok={startResult.Succeeded} code={startResult.ErrorCode}");
                 if (!startResult.Succeeded)
                 {
