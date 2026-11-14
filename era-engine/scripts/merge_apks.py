@@ -81,12 +81,21 @@ def main(app_apk: str, engine_apk: str, out_apk: str) -> int:
         print(f"native libs: {len(injected_libs)} 项（跳过共用 {len(skipped)}）")
         print(f"engine dex -> classes{'' if dex_index == 1 else dex_index}.dex")
 
+        # 沿用 app 自身对 lib/*.so 的压缩策略：
+        # - extractNativeLibs=false 的构建里 .so 必须 STORE（系统直接 mmap）；
+        # - legacy 打包（如 NPU 版 extractNativeLibs=true）允许压缩，安装时解压。
+        # 之前无条件 STORE，把 263MB 的 NPU 包撑大了近一倍。
+        lib_compression = None
+        for info in app.infolist():
+            if info.filename.startswith("lib/") and info.filename.endswith(".so"):
+                lib_compression = info.compress_type
+                break
+
         with zipfile.ZipFile(out_apk, "w") as out:
             for info in app.infolist():
                 if is_signature(info.filename):
                     continue
-                is_uncompressed_native = info.filename.startswith("lib/") and info.filename.endswith(".so")
-                copy_entry(app, out, info, force_stored=is_uncompressed_native)
+                copy_entry(app, out, info)
 
             for name in injected_assemblies:
                 must_store = name.endswith(".blob")
@@ -95,7 +104,16 @@ def main(app_apk: str, engine_apk: str, out_apk: str) -> int:
             for name in injected_libs:
                 if name in existing_libs:
                     continue
-                copy_entry(engine, out, engine.getinfo(name), force_stored=True)
+                info = engine.getinfo(name)
+                if lib_compression is not None and name.startswith("lib/"):
+                    # 用 app 的策略重写压缩方式（引擎包里是 STORE）
+                    data = engine.read(name)
+                    clone = zipfile.ZipInfo(name, date_time=info.date_time)
+                    clone.compress_type = lib_compression
+                    clone.external_attr = info.external_attr
+                    out.writestr(clone, data)
+                else:
+                    copy_entry(engine, out, info, force_stored=False)
 
             dex_name = "classes.dex" if dex_index == 1 else f"classes{dex_index}.dex"
             data = engine.read(engine_dex)
