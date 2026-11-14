@@ -27,20 +27,18 @@ index a9c3d18..2db4526 100644
  	internal const long MaxIrFileBytes = 200L * 1024 * 1024;
  
 diff --git a/EraCore.Core/Shared/Runtime/Script/Loader/ErbLoadStrategy.cs b/EraCore.Core/Shared/Runtime/Script/Loader/ErbLoadStrategy.cs
-index de57d34..fa9972e 100644
+index de57d34..954892a 100644
 --- a/EraCore.Core/Shared/Runtime/Script/Loader/ErbLoadStrategy.cs
 +++ b/EraCore.Core/Shared/Runtime/Script/Loader/ErbLoadStrategy.cs
-@@ -29,7 +29,9 @@ internal sealed class ErbLoadStrategy
+@@ -29,6 +29,8 @@ internal sealed class ErbLoadStrategy
  {
  	/// <summary>erb-loader-parallel 03：并行度的常量上限——窗口内产物同时驻留 = 上限文件数的解析产物
  	///（spec 实测 eraTW 规模 12 核理想并行度 ~8-10x，取 8）。默认度 = 核数，见 <see cref="ResolveDegree"/>。</summary>
--	internal const int MaxParallelErbFiles = 8;
-+	// MISTBELL_PATCH_MEMORY：Android largeHeap 上限约 512MB，eraTW 实测窗口=8 时
-+	// Mono 堆涨到 526MB 被 OOM 杀掉。降到 3 把峰值压下来，代价是加载稍慢。
-+	internal const int MaxParallelErbFiles = 3;
++	// MISTBELL_PATCH_MEMORY：实测窗口 8→3 不降峰值（544MB vs 526MB）反而慢 2.5 倍，
++	// 说明内存来自已解析 AST 常驻而非并发峰值；恢复默认并发。
+ 	internal const int MaxParallelErbFiles = 8;
  
  	/// <summary>genmerge 阶段是否并行（文件级滑动窗口）。</summary>
- 	internal bool ParallelGenmerge { get; }
 diff --git a/EraCore.Core/Shared/Runtime/Script/Loader/ErbThreePassParser.cs b/EraCore.Core/Shared/Runtime/Script/Loader/ErbThreePassParser.cs
 index ab8bdbd..7a7cf40 100644
 --- a/EraCore.Core/Shared/Runtime/Script/Loader/ErbThreePassParser.cs

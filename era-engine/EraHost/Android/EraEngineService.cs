@@ -24,11 +24,31 @@ public sealed class EraEngineService : Service
     private CancellationTokenSource? serviceCts;
     private Task? runningTask;
 
+
+    /// <summary>
+    /// 记录本进程可用的 ART 堆上限：OOM 判断必须以此为准，
+    /// 不能假设 fixed 512MB（厂商 largeHeap 档位不同）。
+    /// </summary>
+    private void LogMemoryClass()
+    {
+        try
+        {
+            var am = (ActivityManager?)GetSystemService(ActivityService);
+            if (am == null)
+                return;
+            EraBootstrap.Trace($"heap limit: class={am.MemoryClass}MB large={am.LargeMemoryClass}MB");
+        }
+        catch (Exception ex)
+        {
+            EraBootstrap.Trace("memory class query failed: " + ex.Message);
+        }
+    }
     public override void OnCreate()
     {
         base.OnCreate();
         EraBootstrap.InitLog(this);
         InstallCrashHooks();
+        LogMemoryClass();
         EraBootstrap.Trace("EraEngineService.OnCreate");
     }
 
