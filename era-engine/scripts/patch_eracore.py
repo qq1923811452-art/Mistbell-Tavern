@@ -29,7 +29,7 @@ NEW = """\t\tcatch (DecoderFallbackException)
 \t\t\t// 日文包 lang==932，与下面的兜底同编码，行为不变。
 \t\t\ttry
 \t\t\t{
-\t\t\t\tvar langEncoding = LangManager.lang;
+\t\t\t\tvar langEncoding = LangManager.CurrentEncoding;
 \t\t\t\tif (langEncoding != null && langEncoding.CodePage != shiftjisEncoding.CodePage)
 \t\t\t\t{
 \t\t\t\t\tvar strictLang = Encoding.GetEncoding(
@@ -54,6 +54,24 @@ NEW = """\t\tcatch (DecoderFallbackException)
 """
 
 
+LANG_FIELD = "\tstatic Encoding lang = null!;"
+LANG_ACCESSOR = (
+    "\tstatic Encoding lang = null!;"
+    "\n\n\t// MISTBELL_PATCH_LANG_ENCODING：暴露当前语言编码给 EncodingHandler。"
+    "\n\tinternal static Encoding? CurrentEncoding => lang;"
+)
+
+
+def patch_langmanager(path: Path) -> bool:
+    text = path.read_text(encoding="utf-8")
+    if "CurrentEncoding" in text:
+        return False
+    if LANG_FIELD not in text:
+        raise SystemExit("LangManager anchor not found in " + str(path))
+    path.write_text(text.replace(LANG_FIELD, LANG_ACCESSOR, 1), encoding="utf-8")
+    return True
+
+
 def patch(path: Path) -> bool:
     text = path.read_text(encoding="utf-8")
     if "MISTBELL_PATCH_LANG_ENCODING" in text:
@@ -71,6 +89,11 @@ def main() -> int:
         raise SystemExit("EncodingHandler.cs not found: " + str(target))
     changed = patch(target)
     print(("patched " if changed else "already patched ") + str(target))
+
+    langManager = root / "EraCore.Core/Shared/Runtime/Utils/LangManager.cs"
+    if langManager.is_file():
+        changed2 = patch_langmanager(langManager)
+        print(("patched " if changed2 else "already patched ") + str(langManager))
     return 0
 
 
