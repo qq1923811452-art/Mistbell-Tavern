@@ -81,7 +81,7 @@ private const val TAG_BUTTON = "era_btn"
 
 /** 立绘层上限：层数过多会反复解码大图，低内存设备直接闪退。 */
 private const val MAX_LAYER_IMAGES = 4
-private const val MAX_LAYER_BYTES = 4L * 1024 * 1024
+private const val MAX_LAYER_FILE_BYTES = 64L * 1024 * 1024
 
 /** 单张解码上限：超过就降采样，防止大 CG 直接 OOM。 */
 private const val MAX_LAYER_PIXELS = 2_000_000
@@ -395,7 +395,9 @@ private fun EraRichLine(
  * 文件大小阈值挡不住这种情况（压缩后可能只有几百 KB）。
  */
 private fun decodeLayerBitmap(file: File): Bitmap? {
-    if (!file.isFile || file.length() > MAX_LAYER_BYTES) return null
+    // 文件体积与解码内存不成正比：10MB 可能只是 2048×2048 的背景，
+    // 2MB 也可能解出 8000×8000。因此只留一个防损坏的上限，真正靠像素数降采样。
+    if (!file.isFile || file.length() > MAX_LAYER_FILE_BYTES) return null
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     BitmapFactory.decodeFile(file.absolutePath, bounds)
     if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
@@ -403,7 +405,12 @@ private fun decodeLayerBitmap(file: File): Bitmap? {
     while ((bounds.outWidth / sample) * (bounds.outHeight / sample) > MAX_LAYER_PIXELS) {
         sample *= 2
     }
-    val opts = BitmapFactory.Options().apply { inSampleSize = sample }
+    val opts =
+        BitmapFactory.Options().apply {
+            inSampleSize = sample
+            // 图层不需要高色深，RGB_565 直接省一半内存。
+            inPreferredConfig = Bitmap.Config.RGB_565
+        }
     return BitmapFactory.decodeFile(file.absolutePath, opts)
 }
 

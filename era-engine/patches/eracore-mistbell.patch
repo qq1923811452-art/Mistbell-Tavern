@@ -584,7 +584,7 @@ index 08a6c11..20c58e8 100644
  			//WHILEとDOはカウンタがないので、即ジャンプ
  			if (jumpTo.FunctionCode != FunctionCode.WHILE && jumpTo.FunctionCode != FunctionCode.DO)
 diff --git a/EraCore.Core/Shared/Runtime/Utils/EncodingHandler.cs b/EraCore.Core/Shared/Runtime/Utils/EncodingHandler.cs
-index 5ea116f..4fd86e8 100644
+index 5ea116f..d870bc4 100644
 --- a/EraCore.Core/Shared/Runtime/Utils/EncodingHandler.cs
 +++ b/EraCore.Core/Shared/Runtime/Utils/EncodingHandler.cs
 @@ -29,16 +29,8 @@ public static class EncodingHandler
@@ -661,25 +661,40 @@ index 5ea116f..4fd86e8 100644
  	}
  
  	public static Encoding DetectEncoding(Stream stream)
-@@ -94,24 +122,21 @@ public static class EncodingHandler
+@@ -94,24 +122,38 @@ public static class EncodingHandler
  		var pos = stream.Position;
  		try
  		{
 -			using var sr = new StreamReader(stream, UTF8Encoding, true, -1, true);
 -			sr.Peek();
 -			if (!UTF8Encoding.Equals(sr.CurrentEncoding))
--			{
++			// MISTBELL_PATCH_STREAM_WINDOW：只读窗口探测，绝不把整条流吞进内存。
++			// 前 64 KB 全 ASCII 时继续往后扫，避免「开头全是英文注释」被误判成 UTF-8。
++			const int WindowSize = 64 * 1024;
++			var buffer = new byte[WindowSize];
++			while (true)
+ 			{
 -				stream.Seek(pos, SeekOrigin.Begin);
 -				return sr.CurrentEncoding;
--			}
++				int read = stream.Read(buffer, 0, buffer.Length);
++				if (read <= 0)
++					return UTF8Encoding; // 全 ASCII：UTF-8 与 ANSI 等价
++				bool hasNonAscii = false;
++				for (int i = 0; i < read; i++)
++				{
++					if (buffer[i] >= 0x80)
++					{
++						hasNonAscii = true;
++						break;
++					}
++				}
++				if (hasNonAscii || read < buffer.Length)
++					return read == buffer.Length ? DetectEncoding(buffer) : DetectEncoding(buffer[..read]);
+ 			}
 -			sr.ReadToEnd();
 -			sr.Dispose();
 -			stream.Seek(pos, SeekOrigin.Begin);
 -			return UTF8Encoding;
-+			// 一次性读入（存档/资源表量级可接受），复用 byte[] 判定，避免两套探测逻辑分叉。
-+			using var ms = new MemoryStream();
-+			stream.CopyTo(ms);
-+			return DetectEncoding(ms.ToArray());
  		}
  		catch
  		{
