@@ -24,8 +24,8 @@ internal static class SnapshotJsonWriter
     {
         w.WriteStartObject();
         w.WriteNumber("protocolVersion", s.protocolVersion);
-        w.WriteInt64("generation", s.generation);
-        w.WriteInt64("revision", s.revision);
+        w.WriteNumber("generation", s.generation);
+        w.WriteNumber("revision", s.revision);
         if (s.bgColor != null)
             w.WriteString("bgColor", s.bgColor);
 
@@ -70,7 +70,7 @@ internal static class SnapshotJsonWriter
         {
             w.WritePropertyName("wait");
             w.WriteStartObject();
-            w.WriteInt64("durationMs", a.wait.durationMs);
+            w.WriteNumber("durationMs", a.wait.durationMs);
             if (a.wait.displayTime == true)
                 w.WriteBoolean("displayTime", true);
             if (a.wait.timeUpMessage != null)
@@ -136,7 +136,7 @@ internal static class SnapshotJsonWriter
                 break;
         }
         w.WriteBoolean("isInteger", b.isInteger);
-        w.WriteInt64("generation", b.generation);
+        w.WriteNumber("generation", b.generation);
         if (b.col.HasValue)
             w.WriteNumber("col", b.col.Value);
         if (b.width.HasValue)
