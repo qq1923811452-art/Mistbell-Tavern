@@ -64,15 +64,12 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.mistbell.tavern.v3.BuildConfig
 import com.mistbell.tavern.v3.feature.era.engine.EraEngineManager
 import com.mistbell.tavern.v3.feature.era.engine.TurnAwaiting
 import com.mistbell.tavern.v3.feature.era.engine.TurnBgImage
 import com.mistbell.tavern.v3.feature.era.engine.TurnButton
 import com.mistbell.tavern.v3.feature.era.engine.TurnButtonItem
 import com.mistbell.tavern.v3.feature.era.engine.TurnDisplayLine
-import com.mistbell.tavern.v3.ui.tavern.TavernGlyphName
-import com.mistbell.tavern.v3.ui.tavern.TavernIconButton
 import com.mistbell.tavern.v3.ui.tavern.TavernPalette
 import com.mistbell.tavern.v3.ui.tavern.TavernPill
 import com.mistbell.tavern.v3.ui.tavern.TavernShape
@@ -106,7 +103,6 @@ private val ERA_BUTTON_HEIGHT = 42.dp
 internal fun EraPlayScreen(
     game: EraGameInstall,
     onBack: () -> Unit,
-    onOpenSetup: () -> Unit,
 ) {
     BackHandler(onBack = onBack)
     val context = LocalContext.current
@@ -129,7 +125,6 @@ internal fun EraPlayScreen(
         }
     }
     val state by session.state.collectAsStateWithLifecycle()
-    var logLines by remember { mutableStateOf<List<String>?>(null) }
 
     LaunchedEffect(game.name, game.importedAtEpochMillis, game.zipPath) {
         session.ensureStarted(game)
@@ -146,21 +141,6 @@ internal fun EraPlayScreen(
                 .fillMaxSize()
                 .background(bgColor),
     ) {
-        EraPlayTopBar(
-            name = game.name,
-            status = state.statusText,
-            detail = state.detail,
-            onBack = onBack,
-            onOpenSetup = onOpenSetup,
-            onOpenLog = { logLines = readEngineLog(context) },
-            onStopEngine = {
-                session.shutdown()
-                onOpenSetup()
-            },
-        )
-        if (ENABLE_SPRITE_LAYERS) {
-            EraGameLayers(images = state.bgImages, gameDir = state.gameDir)
-        }
         EraGameLog(
             lines = state.lines,
             revision = state.revision,
@@ -180,9 +160,6 @@ internal fun EraPlayScreen(
         state.error?.let { message ->
             EraErrorBanner(message = message, onRetry = { session.retry(game) })
         }
-        logLines?.let { lines ->
-            EraLogDialog(lines = lines, onDismiss = { logLines = null })
-        }
         EraInputPanel(
             awaiting = state.awaiting,
             quickButtons = state.activeButtons,
@@ -194,82 +171,6 @@ internal fun EraPlayScreen(
 }
 
 @Suppress("LongParameterList", "LongMethod")
-@Composable
-private fun EraPlayTopBar(
-    name: String,
-    status: String,
-    detail: String?,
-    onBack: () -> Unit,
-    onOpenSetup: () -> Unit,
-    onOpenLog: () -> Unit,
-    onStopEngine: () -> Unit,
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        TavernIconButton(glyph = TavernGlyphName.Back, onClick = onBack, contentDescription = "返回")
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = name,
-                color = TavernPalette.TextPrimary,
-                fontFamily = FontFamily.Serif,
-                fontWeight = FontWeight.Bold,
-                fontSize = 16.sp,
-                maxLines = 1,
-            )
-            Text(
-                text = (if (BuildConfig.ERA_MERGED) "单包 · " else "两包 · ") + status,
-                color = TavernPalette.TextTertiary,
-                fontSize = 11.sp,
-                maxLines = 2,
-            )
-            if (!detail.isNullOrBlank()) {
-                Text(
-                    text = detail,
-                    color = TavernPalette.TextTertiary,
-                    fontSize = 10.sp,
-                    maxLines = 1,
-                )
-            }
-        }
-        Text(
-            text = "日志",
-            color = TavernPalette.TextSecondary,
-            fontSize = 12.sp,
-            modifier =
-                Modifier
-                    .clip(TavernShape.Pill)
-                    .clickable(onClick = onOpenLog)
-                    .padding(horizontal = 8.dp, vertical = 6.dp),
-        )
-        Text(
-            text = "关闭",
-            color = TavernPalette.Danger,
-            fontSize = 12.sp,
-            modifier =
-                Modifier
-                    .clip(TavernShape.Pill)
-                    .clickable(onClick = onStopEngine)
-                    .padding(horizontal = 8.dp, vertical = 6.dp),
-        )
-        Text(
-            text = "设置",
-            color = ERA_GOLD_TEXT,
-            fontSize = 12.sp,
-            modifier =
-                Modifier
-                    .clip(TavernShape.Pill)
-                    .background(ERA_GOLD_SOFT)
-                    .border(1.dp, ERA_GOLD_BORDER, TavernShape.Pill)
-                    .clickable(onClick = onOpenSetup)
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
-        )
-    }
-}
-
-@Suppress("LongParameterList")
 @Composable
 private fun EraGameLog(
     lines: List<TurnDisplayLine>,

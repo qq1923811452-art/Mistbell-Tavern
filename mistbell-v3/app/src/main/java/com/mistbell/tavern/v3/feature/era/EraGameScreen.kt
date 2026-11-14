@@ -142,7 +142,6 @@ fun EraGameScreen(
         EraPlayScreen(
             game = playable,
             onBack = onBack,
-            onOpenSetup = { playing = false },
         )
         return
     }
