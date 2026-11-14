@@ -28,10 +28,10 @@ index ab8bdbd..7a7cf40 100644
  					}
  					func.JumpTo = pairLine;
 diff --git a/EraCore.Core/Shared/Runtime/Script/Parser/LexicalAnalyzer.cs b/EraCore.Core/Shared/Runtime/Script/Parser/LexicalAnalyzer.cs
-index 7e880c0..e2dbdbe 100644
+index 7e880c0..527b2c4 100644
 --- a/EraCore.Core/Shared/Runtime/Script/Parser/LexicalAnalyzer.cs
 +++ b/EraCore.Core/Shared/Runtime/Script/Parser/LexicalAnalyzer.cs
-@@ -136,6 +136,27 @@ internal static partial class LexicalAnalyzer
+@@ -136,6 +136,39 @@ internal static partial class LexicalAnalyzer
  
  	public static bool UseMacro = true;
  	#region read
@@ -53,13 +53,25 @@ index 7e880c0..e2dbdbe 100644
 +			i++;
 +		if (i >= src.Length || src[i] != '.')
 +			return false;
-+		return i + 1 < src.Length && char.IsDigit(src[i + 1]);
++		if (i + 1 >= src.Length || !char.IsDigit(src[i + 1]))
++			return false;
++		// 后向边界：小数后面必须紧跟分隔符/运算符/行尾，
++		// 否则 `2.5次元的怪盗` 这种「数字开头的裸字符串」会被误判成小数。
++		i += 2;
++		while (i < src.Length && char.IsDigit(src[i]))
++			i++;
++		if (i >= src.Length)
++			return true;
++		char next = src[i];
++		if (char.IsLetterOrDigit(next) || next == '_' || next > 0x7F)
++			return false;
++		return true;
 +	}
 +
  	public static long ReadInt64(CharStream st, bool retZero)
  	{
  		long significand;
-@@ -870,7 +891,11 @@ internal static partial class LexicalAnalyzer
+@@ -870,7 +903,11 @@ internal static partial class LexicalAnalyzer
  					case '7':
  					case '8':
  					case '9':
