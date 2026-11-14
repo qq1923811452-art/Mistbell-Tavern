@@ -73,6 +73,17 @@ private val ERA_TEXT_SIZE = 14.sp
 private val ERA_BUTTON_HEIGHT = 42.dp
 
 @Suppress("LongMethod")
+
+/** 从 Compose 的 Context 向上找到宿主 Activity（用于横屏锁定）。 */
+private fun android.content.Context.findActivity(): android.app.Activity? {
+    var context = this
+    while (context is android.content.ContextWrapper) {
+        if (context is android.app.Activity) return context
+        context = context.baseContext
+    }
+    return null
+}
+
 @Composable
 internal fun EraPlayScreen(
     game: EraGameInstall,
@@ -90,6 +101,14 @@ internal fun EraPlayScreen(
     }
     DisposableEffect(session) {
         onDispose { session.detachUiSocket() }
+    }
+
+    // 横屏锁定（eraTW 按 1800×973 排版），退出恢复
+    val activity = LocalContext.current.findActivity()
+    DisposableEffect(activity) {
+        val previous = activity?.requestedOrientation
+        activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        onDispose { activity?.requestedOrientation = previous ?: android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED }
     }
 
     val bgColor = remember(state.bgColor) { parseHexColor(state.bgColor) ?: TavernPalette.Night }
