@@ -41,6 +41,11 @@
   <!-- 只引用 EraCore 的公共宿主门面（零 SkiaSharp / 零 Avalonia / 零 Kestrel） -->
   <ItemGroup>
     <ProjectReference Include="..\upstream\EraCore.Hosting\EraCore.Hosting.csproj" />
+    <!-- legacy-plugin-compat：eraTW 画蛇添足版自带插件，其 AssemblyRef 是
+         `Emuera, Version=1.824.0.0, PublicKeyToken=null`。这个 facade 只做类型转发，
+         必须随宿主一起打包，否则 PluginManager.LoadPlugins 抛 TypeLoadException → INIT_FAILED。
+         EraCore.Cli 在 android RID 下排除了它，但我们的 Android 宿主是产品形态，需要它。 -->
+    <ProjectReference Include="..\upstream\EraCore.Compat.Emuera\EraCore.Compat.Emuera.csproj" />
   </ItemGroup>
 
 </Project>
