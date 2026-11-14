@@ -21,14 +21,29 @@ OLD = """\t\tcatch (DecoderFallbackException)
 
 NEW = """\t\tcatch (DecoderFallbackException)
 \t\t{
-\t\t\t// MISTBELL_PATCH_LANG_ENCODING：先按当前语言配置的 ANSI 编码解码。
-\t\t\t// 中文包（CHINESE_HANS→GBK/936）的 csv/*.CSV 被当 SJIS 解会整片乱码，
-\t\t\t// 导致 TALENT/MARK 等按名字查表全部失败。日文包此处 lang==932，行为不变。
+\t\t\t// MISTBELL_PATCH_LANG_ENCODING：先按当前语言配置的 ANSI 编码做「严格」解码。
+\t\t\t// 中文包（useLanguage=CHINESE_HANS→GBK/936）的 csv/*.CSV 被当 SJIS 解会整片乱码，
+\t\t\t// 导致 TALENT/MARK 等按名字查表全部失败。
+\t\t\t// 注意：Encoding.GetEncoding(936) 默认是 ReplacementFallback，非法字节约等于沉默；
+\t\t\t// 这里显式包一层 ExceptionFallback，解不了再退回 Shift-JIS（混编包里的日文残留文件靠它）。
+\t\t\t// 日文包 lang==932，与下面的兜底同编码，行为不变。
 \t\t\ttry
 \t\t\t{
 \t\t\t\tvar langEncoding = LangManager.lang;
 \t\t\t\tif (langEncoding != null && langEncoding.CodePage != shiftjisEncoding.CodePage)
-\t\t\t\t\treturn SplitLines(langEncoding.GetString(bytes));
+\t\t\t\t{
+\t\t\t\t\tvar strictLang = Encoding.GetEncoding(
+\t\t\t\t\t\tlangEncoding.CodePage,
+\t\t\t\t\t\tEncoderFallback.ReplacementFallback,
+\t\t\t\t\t\tDecoderFallback.ExceptionFallback);
+\t\t\t\t\ttry
+\t\t\t\t\t{
+\t\t\t\t\t\treturn SplitLines(strictLang.GetString(bytes));
+\t\t\t\t\t}
+\t\t\t\t\tcatch (DecoderFallbackException)
+\t\t\t\t\t{
+\t\t\t\t\t}
+\t\t\t\t}
 \t\t\t}
 \t\t\tcatch
 \t\t\t{
