@@ -140,7 +140,7 @@ index 7e880c0..527b2c4 100644
  					case '>':
  						if (endWith == LexEndWith.GreaterThan)
 diff --git a/EraCore.Core/Shared/Runtime/Script/Parser/LogicalLineParser.cs b/EraCore.Core/Shared/Runtime/Script/Parser/LogicalLineParser.cs
-index 682f04c..157d604 100644
+index 682f04c..3e0b078 100644
 --- a/EraCore.Core/Shared/Runtime/Script/Parser/LogicalLineParser.cs
 +++ b/EraCore.Core/Shared/Runtime/Script/Parser/LogicalLineParser.cs
 @@ -277,9 +277,20 @@ internal static class LogicalLineParser
@@ -160,7 +160,7 @@ index 682f04c..157d604 100644
 +							// 否则小数会被静默截断（倍率恒为 1）。
 +							ParserMediator.Warn(
 +								"#DIMF 暂按整数变量处理：小数会被截断（浮点变量尚未实现）",
-+								position, 1, false);
++								position, 1);
 +						}
  						var wc = LexicalAnalyzer.Analyse(st, LexEndWith.EoL, LexAnalyzeFlag.AllowAssignment);
  
