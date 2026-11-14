@@ -24,7 +24,7 @@
     <!-- Release 开启 Mono Full AOT（不再强行设 false）；Debug 保持 JIT -->
     <RunAOTCompilation Condition="'$(Configuration)' == 'Release'">true</RunAOTCompilation>
     <RunAOTCompilation Condition="'$(Configuration)' != 'Release'">false</RunAOTCompilation>
-    <AndroidLinkMode>SdkOnly</AndroidLinkMode>
+    <AndroidLinkMode>None</AndroidLinkMode>
     <EmbedAssembliesIntoApk>true</EmbedAssembliesIntoApk>
     <InvariantGlobalization>false</InvariantGlobalization>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
