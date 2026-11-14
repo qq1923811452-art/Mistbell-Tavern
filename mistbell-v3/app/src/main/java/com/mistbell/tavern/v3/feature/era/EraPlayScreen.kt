@@ -22,9 +22,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -62,6 +60,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mistbell.tavern.v3.BuildConfig
 import com.mistbell.tavern.v3.feature.era.engine.EraEngineManager
@@ -115,7 +116,15 @@ internal fun EraPlayScreen(
     DisposableEffect(activity) {
         val previous = activity?.requestedOrientation
         activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        // 沉浸式：横屏后连导航栏/状态栏一起隐藏，下滑可临时唤出
+        val window = activity?.window
+        val controller = window?.let { WindowCompat.getInsetsController(it, it.decorView) }
+        controller?.apply {
+            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            hide(WindowInsetsCompat.Type.systemBars())
+        }
         onDispose {
+            controller?.show(WindowInsetsCompat.Type.systemBars())
             activity?.requestedOrientation = previous ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         }
     }
@@ -135,9 +144,7 @@ internal fun EraPlayScreen(
         modifier =
             Modifier
                 .fillMaxSize()
-                .background(bgColor)
-                .statusBarsPadding()
-                .navigationBarsPadding(),
+                .background(bgColor),
     ) {
         EraPlayTopBar(
             name = game.name,
