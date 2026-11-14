@@ -129,6 +129,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        com.mistbell.tavern.v3.feature.era.EraCrashLogger.install(this)
         configureSystemBars()
         diagnostics = DiagnosticLogStore(filesDir)
         val settings = getSharedPreferences("mistbell-v3-settings", MODE_PRIVATE)

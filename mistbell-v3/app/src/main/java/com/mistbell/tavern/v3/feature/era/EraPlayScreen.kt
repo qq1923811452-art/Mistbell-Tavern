@@ -6,6 +6,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.pm.ActivityInfo
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
@@ -81,6 +82,9 @@ private const val TAG_BUTTON = "era_btn"
 /** 立绘层上限：层数过多会反复解码大图，低内存设备直接闪退。 */
 private const val MAX_LAYER_IMAGES = 4
 private const val MAX_LAYER_BYTES = 4L * 1024 * 1024
+
+/** 单张解码上限：超过就降采样，防止大 CG 直接 OOM。 */
+private const val MAX_LAYER_PIXELS = 2_000_000
 
 /** eraTW 按 1800×973 排版；图片尺寸从引擎像素换算 dp 的基准宽度。 */
 private val ERA_GOLD_TEXT = Color(0xFFFFCE8A)
@@ -385,6 +389,24 @@ private fun EraRichLine(
     )
 }
 
+/**
+ * 立绘解码：先读边界再按需降采样。
+ * eraTW 的 CG 单张可能几十兆像素——直接 decodeFile 会 OOM 闪退，
+ * 文件大小阈值挡不住这种情况（压缩后可能只有几百 KB）。
+ */
+private fun decodeLayerBitmap(file: File): Bitmap? {
+    if (!file.isFile || file.length() > MAX_LAYER_BYTES) return null
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeFile(file.absolutePath, bounds)
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+    var sample = 1
+    while ((bounds.outWidth / sample) * (bounds.outHeight / sample) > MAX_LAYER_PIXELS) {
+        sample *= 2
+    }
+    val opts = BitmapFactory.Options().apply { inSampleSize = sample }
+    return BitmapFactory.decodeFile(file.absolutePath, opts)
+}
+
 @Composable
 private fun EraGameLayers(
     images: List<TurnBgImage>,
@@ -401,10 +423,7 @@ private fun EraGameLayers(
         images.take(MAX_LAYER_IMAGES).forEach { layer ->
             val bitmap =
                 remember(gameDir, layer.src) {
-                    runCatching {
-                        val file = File(gameDir, layer.src)
-                        if (!file.isFile || file.length() > MAX_LAYER_BYTES) null else BitmapFactory.decodeFile(file.absolutePath)
-                    }.getOrNull()
+                    runCatching { decodeLayerBitmap(File(gameDir, layer.src)) }.getOrNull()
                 }
             if (bitmap != null) {
                 Image(
