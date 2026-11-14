@@ -485,7 +485,13 @@ private fun EraLogSheet(
                 }
                 LazyColumn(modifier = Modifier.fillMaxWidth().weight(1f).padding(top = 10.dp)) {
                     items(items = lines, key = { it.uid }) { line ->
-                        EraRichLine(line = line)
+                        EraRichLine(
+                            line = line,
+                            generation = 0L,
+                            interactive = false,
+                            onButtonClick = {},
+                            onBackgroundTap = onDismiss,
+                        )
                     }
                 }
             }
